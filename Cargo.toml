@@ -1,0 +1,12 @@
+[package]
+name = "soundbox-ii"
+version = "0.1.0"
+edition = "2018"
+
+[workspace]
+members = ["q-filter-tree"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+q-filter-tree = { path = "./q-filter-tree" }
