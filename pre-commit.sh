@@ -9,8 +9,8 @@ git stash save -q --keep-index "${STASH_NAME}"
 cargo test --workspace
 RESULT=$?
 
-STASHES=$(git stash list)
-if [[ ${STASHES} == "${STASH_NAME}"]]; then
+STASHES=$(git stash list | grep "${STASH_NAME}")
+if [[ ${STASHES} != "" ]]; then
   git stash pop -q
 fi
 [ $RESULT -ne 0 ] && exit 1
