@@ -6,7 +6,7 @@
 STASH_NAME="pre-commit-$(date +%s)"
 git stash save -q --keep-index "${STASH_NAME}"
 
-cargo test --workspace
+cargo clippy --workspace && cargo test --workspace
 RESULT=$?
 
 STASHES=$(git stash list | grep "${STASH_NAME}")
