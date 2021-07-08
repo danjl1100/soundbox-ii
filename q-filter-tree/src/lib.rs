@@ -55,9 +55,7 @@ where
 {
     pub fn new() -> Self {
         let root = Node::default();
-        Tree {
-            root,
-        }
+        Tree { root }
     }
     #[allow(clippy::unused_self)]
     pub fn root_id(&self) -> NodeId {
@@ -77,7 +75,11 @@ where
             self.root.get_node_mut(&node_id.0)
         }
     }
-    pub fn add_child(&mut self, node_id: &NodeId, weight: Option<Weight>) -> Result<NodeId, InvalidNodeId> {
+    pub fn add_child(
+        &mut self,
+        node_id: &NodeId,
+        weight: Option<Weight>,
+    ) -> Result<NodeId, InvalidNodeId> {
         let parent = self.get_node_mut(node_id)?;
         let child_part = parent.children.len() as NodeIdElem;
         let child_id = node_id.extend(child_part);
@@ -107,11 +109,10 @@ where
 
 #[must_use]
 #[derive(Debug, PartialEq, Eq)]
-struct Node<T, F>
-{
+struct Node<T, F> {
     queue: VecDeque<T>,
     filter: F,
-    children: Vec<(Weight, Node<T, F>)>
+    children: Vec<(Weight, Node<T, F>)>,
 }
 impl<T, F> Default for Node<T, F>
 where
@@ -156,7 +157,7 @@ impl<T, F> Node<T, F> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Tree, Node};
+    use super::{Node, Tree};
     #[test]
     fn creates_single() {
         let mut t = Tree::new();
@@ -171,8 +172,12 @@ mod tests {
         }
         assert_eq!(t.pop_item_from(&root_id).expect("root-id exists"), None);
         // filter
-        t.set_filter(&root_id, String::from("my root")).expect("root-id exists");
-        assert_eq!(t.get_filter(&root_id).expect("root-id exists"), &String::from("my root"));
+        t.set_filter(&root_id, String::from("my root"))
+            .expect("root-id exists");
+        assert_eq!(
+            t.get_filter(&root_id).expect("root-id exists"),
+            &String::from("my root")
+        );
     }
     #[test]
     fn two_nodes() {
@@ -181,17 +186,25 @@ mod tests {
         //
         let child_id = t.add_child(&root_id, None).expect("root-id exists");
         // filter
-        t.set_filter(&child_id, String::from("child_filter")).expect("child-id exists");
-        t.set_filter(&root_id, String::from("root_filter")).expect("root-id exists");
+        t.set_filter(&child_id, String::from("child_filter"))
+            .expect("child-id exists");
+        t.set_filter(&root_id, String::from("root_filter"))
+            .expect("root-id exists");
         // item
         const N: usize = 5;
         for i in 0..N {
             t.push_item(&child_id, i).expect("child-id exists");
-            t.push_item(&root_id, i+500).expect("root-id exists");
+            t.push_item(&root_id, i + 500).expect("root-id exists");
         }
         for i in 0..N {
-            assert_eq!(t.pop_item_from(&child_id).expect("child-id exists"), Some(i));
-            assert_eq!(t.pop_item_from(&root_id).expect("root-id exists"), Some(i + 500));
+            assert_eq!(
+                t.pop_item_from(&child_id).expect("child-id exists"),
+                Some(i)
+            );
+            assert_eq!(
+                t.pop_item_from(&root_id).expect("root-id exists"),
+                Some(i + 500)
+            );
         }
         assert_eq!(t.pop_item_from(&child_id).expect("child-id exists"), None);
         assert_eq!(t.pop_item_from(&root_id).expect("root-id exists"), None);
