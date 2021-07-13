@@ -13,27 +13,47 @@
 // docs!
 #![deny(missing_docs)]
 
-use std::collections::VecDeque;
+use node_id::{NodeId, NodeIdElem};
+mod node_id {
+    /// Representation for Root ID
+    pub const ROOT: NodeId = NodeId(vec![]);
 
-type NodeIdElem = usize;
+    #[allow(clippy::module_name_repetitions)]
+    /// Element of a [`NodeId`]
+    pub type NodeIdElem = usize;
 
-/// Identifier for a Node in the [`Tree`]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NodeId(Vec<NodeIdElem>);
-const ROOT_ID: NodeId = NodeId(vec![]);
-impl NodeId {
-    fn extend(&self, next: NodeIdElem) -> NodeId {
-        let mut parts = self.0.clone();
-        parts.push(next);
-        Self(parts)
-    }
-    fn parent(&self) -> Option<NodeId> {
-        if self.0.is_empty() {
-            None
-        } else {
+    /// Identifier for a Node in the [`Tree`]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct NodeId(Vec<NodeIdElem>);
+    impl NodeId {
+        /// Appends an element to the ID
+        pub fn extend(&self, next: NodeIdElem) -> NodeId {
             let mut parts = self.0.clone();
-            parts.pop();
-            Some(Self(parts))
+            parts.push(next);
+            Self(parts)
+        }
+        /// Returns the parent ID (if it exists)
+        pub fn parent(&self) -> Option<NodeId> {
+            if self.0.is_empty() {
+                None
+            } else {
+                let mut parts = self.0.clone();
+                parts.pop();
+                Some(Self(parts))
+            }
+        }
+        pub fn first_elem(&self) -> Option<NodeIdElem> {
+            self.0.get(0).copied()
+        }
+    }
+    impl From<Vec<NodeIdElem>> for NodeId {
+        fn from(elems: Vec<NodeIdElem>) -> Self {
+            Self(elems)
+        }
+    }
+    impl<'a> From<&'a NodeId> for &'a [NodeIdElem] {
+        fn from(node_id: &'a NodeId) -> Self {
+            node_id.0.as_slice()
         }
     }
 }
@@ -44,14 +64,9 @@ pub type Weight = u32;
 /// Error for an invalid [`NodeId`]
 #[derive(Debug)]
 pub struct InvalidNodeId(NodeId);
-impl From<&NodeId> for InvalidNodeId {
-    fn from(node_id: &NodeId) -> Self {
-        Self::from(node_id.0.as_slice())
-    }
-}
 impl From<&[NodeIdElem]> for InvalidNodeId {
     fn from(node_id: &[NodeIdElem]) -> Self {
-        Self(NodeId(node_id.to_vec()))
+        Self(node_id.to_vec().into())
     }
 }
 
@@ -68,21 +83,13 @@ where
     }
     #[allow(clippy::unused_self)]
     pub fn root_id(&self) -> NodeId {
-        ROOT_ID
+        node_id::ROOT
     }
     fn get_node(&self, node_id: &NodeId) -> Result<&Node<T, F>, InvalidNodeId> {
-        if node_id.0.is_empty() {
-            Ok(&self.root)
-        } else {
-            self.root.get_child(&node_id.0).map(|(_, node)| node)
-        }
+        self.root.get_child(node_id.into())
     }
     fn get_node_mut(&mut self, node_id: &NodeId) -> Result<&mut Node<T, F>, InvalidNodeId> {
-        if node_id.0.is_empty() {
-            Ok(&mut self.root)
-        } else {
-            self.root.get_child_mut(&node_id.0).map(|(_, child)| child)
-        }
+        self.root.get_child_mut(node_id.into())
     }
     pub fn add_child(
         &mut self,
@@ -93,7 +100,7 @@ where
         Ok(parent.add_child(node_id, weight))
     }
     pub fn set_weight(&mut self, node_id: &NodeId, weight: Weight) -> Result<(), InvalidNodeId> {
-        self.root.set_weight(&node_id.0, weight)
+        self.root.set_weight(node_id.into(), weight)
     }
     pub fn get_filter(&self, node_id: &NodeId) -> Result<&F, InvalidNodeId> {
         let node = self.get_node(node_id)?;
@@ -137,214 +144,152 @@ impl<T> PopError<T> {
     }
 }
 
-use merge::{ChildMerger, MergeOrder};
-mod merge {
-    use super::{InvalidNodeId, Node, NodeIdElem, PopError, Weight};
+// use merge::{ChildMerger, MergeOrder};
+// mod merge {
+//     use super::{InvalidNodeId, Node, NodeIdElem, PopError, Weight};
+//
+//     /// Order of picking nodes from children nodes, given the node [`Weight`]s.
+//     #[allow(clippy::module_name_repetitions)]
+//     pub enum MergeOrder {
+//         /// Picks [`Weight`] items from one node before moving to the next node
+//         InOrder,
+//     }
+// }
+
+pub use node::Node;
+mod node {
+    use super::{InvalidNodeId, NodeId, NodeIdElem, PopError, Weight};
+    use std::collections::VecDeque;
 
     type Child<T, F> = (Weight, Node<T, F>);
-    /// Order of picking nodes from children nodes, given the node [`Weight`]s.
-    #[allow(clippy::module_name_repetitions)]
-    pub enum MergeOrder {
-        /// Picks [`Weight`] items from one node before moving to the next node
-        InOrder,
-    }
-    trait Merge<T, F>: From<Vec<Child<T, F>>> {
-        fn inner_ref(&self) -> &Vec<Child<T, F>>;
-        fn inner_mut(&mut self) -> &mut Vec<Child<T, F>>;
-        fn into_inner(self) -> Vec<Child<T, F>>;
-        fn pop_item(&mut self) -> Result<T, PopError<()>>;
-        fn get_child(&self, id_elems: &[NodeIdElem]) -> Result<&Child<T, F>, InvalidNodeId> {
-            if let Some((&this_idx, remainder)) = id_elems.split_first() {
-                let child = self.inner_ref().get(this_idx).ok_or(id_elems)?;
-                if remainder.is_empty() {
-                    Ok(child)
-                } else {
-                    let (_, child_node) = child;
-                    child_node.get_child(remainder)
-                }
-            } else {
-                Err(id_elems.into())
-            }
-        }
-        fn get_child_mut(
-            &mut self,
-            id_elems: &[NodeIdElem],
-        ) -> Result<&mut Child<T, F>, InvalidNodeId> {
-            if let Some((&this_idx, remainder)) = id_elems.split_first() {
-                let child = self.inner_mut().get_mut(this_idx).ok_or(id_elems)?;
-                if remainder.is_empty() {
-                    Ok(child)
-                } else {
-                    let (_, child_node) = child;
-                    child_node.get_child_mut(remainder)
-                }
-            } else {
-                Err(id_elems.into())
-            }
-        }
-    }
-    /// State for a [`MergeOrder`]
+
+    /// Internal representation of a filter/queue/merge element in the [`Tree`]
+    #[must_use]
     #[derive(Debug, PartialEq, Eq)]
-    pub enum ChildMerger<T, F> {
-        InOrder(InOrderMerger<T, F>),
+    pub struct Node<T, F> {
+        /// Items queue
+        pub queue: VecDeque<T>,
+        /// Filtering value
+        pub filter: F,
+        children: Vec<(Weight, Node<T, F>)>,
     }
-    impl<T, F> ChildMerger<T, F> {
-        fn get_order(&self) -> MergeOrder {
-            match self {
-                Self::InOrder(_) => MergeOrder::InOrder,
+    impl<T, F> Default for Node<T, F>
+    where
+        F: Default,
+    {
+        fn default() -> Self {
+            Self {
+                queue: VecDeque::new(),
+                filter: F::default(),
+                children: vec![], //MergeOrder::InOrder.into(),
             }
         }
-        fn children_ref(&self) -> &Vec<Child<T, F>> {
-            match self {
-                Self::InOrder(m) => m.inner_ref(),
+    }
+    impl<T, F> Node<T, F>
+    where
+        F: Default,
+    {
+        /// Adds a child to the specified `Node`, with an optional `Weight`
+        pub fn add_child(&mut self, node_id: &NodeId, weight: Option<Weight>) -> NodeId {
+            let weight = weight.unwrap_or(0);
+            let new_child = (weight, Node::default());
+            let child_part = {
+                //self.children.edit_vec(|v| {
+                let child_part = self.children.len() as NodeIdElem;
+                //v.push(new_child);
+                self.children.push(new_child);
+                child_part
+            };
+            node_id.extend(child_part)
+        }
+    }
+    impl<T, F> Node<T, F> {
+        /// Returns the child `Node` at the specified ID elements path
+        ///
+        /// # Errors
+        /// Returns an error if the specified `NodeId` does not point to a valid node
+        ///
+        pub fn get_child(&self, id_elems: &[NodeIdElem]) -> Result<&Node<T, F>, InvalidNodeId> {
+            if id_elems.is_empty() {
+                Ok(self)
+            } else {
+                self.get_child_entry(id_elems).map(|(_, child)| child)
             }
         }
-        fn children_mut(&mut self) -> &mut Vec<Child<T, F>> {
-            match self {
-                Self::InOrder(m) => m.inner_mut(),
-            }
-        }
-        /// Attempts to pop the next item
-        pub fn pop_item(&mut self) -> Result<T, PopError<()>> {
-            match self {
-                Self::InOrder(m) => m.pop_item(),
-            }
-        }
-        /// Returns a reference the specified child element
-        pub fn get_child(&self, id_elems: &[NodeIdElem]) -> Result<&Child<T, F>, InvalidNodeId> {
-            match self {
-                Self::InOrder(m) => m.get_child(id_elems),
-            }
-        }
-        /// Returns a mutable reference to the specified child element
+        /// Returns the child `Node` at the specified ID elements path
+        ///
+        /// # Errors
+        /// Returns an error if the specified `NodeId` does not point to a valid node
+        ///
         pub fn get_child_mut(
             &mut self,
             id_elems: &[NodeIdElem],
-        ) -> Result<&mut Child<T, F>, InvalidNodeId> {
-            match self {
-                Self::InOrder(m) => m.get_child_mut(id_elems),
+        ) -> Result<&mut Node<T, F>, InvalidNodeId> {
+            if id_elems.is_empty() {
+                Ok(self)
+            } else {
+                self.get_child_entry_mut(id_elems).map(|(_, child)| child)
             }
         }
-        fn into_parts(self) -> (MergeOrder, Vec<Child<T, F>>) {
-            let order = self.get_order();
-            let children = match self {
-                Self::InOrder(m) => m.into_inner(),
-            };
-            (order, children)
-        }
-        /// Allows editing the Vec. Resets the [`MergeOrder`] state.
-        pub fn edit_vec<M: FnOnce(&mut Vec<Child<T, F>>) -> R, R>(&mut self, f: M) -> R {
-            // ugly hack to `take` Vec (replace with vec![]), then use that to build new instance
-            let children = self.children_mut();
-            let mut taken = vec![];
-            std::mem::swap(children, &mut taken);
-            let result = f(&mut taken);
-            let order = self.get_order();
-            *self = (order, taken).into();
-            result
-        }
-    }
-    impl<T, F> From<(MergeOrder, Vec<Child<T, F>>)> for ChildMerger<T, F> {
-        fn from((order, children): (MergeOrder, Vec<Child<T, F>>)) -> Self {
-            match order {
-                MergeOrder::InOrder => Self::InOrder(children.into()),
+        fn get_child_entry(
+            &self,
+            id_elems: &[NodeIdElem],
+        ) -> Result<&(Weight, Node<T, F>), InvalidNodeId> {
+            if let Some((&this_idx, remainder)) = id_elems.split_first() {
+                let child = self.children.get(this_idx).ok_or(id_elems)?;
+                if remainder.is_empty() {
+                    Ok(child)
+                } else {
+                    let (_, child_node) = child;
+                    child_node.get_child_entry(remainder)
+                }
+            } else {
+                Err(id_elems.into())
             }
         }
-    }
-    impl<T, F> From<MergeOrder> for ChildMerger<T, F> {
-        fn from(order: MergeOrder) -> Self {
-            (order, vec![]).into()
+        fn get_child_entry_mut(
+            &mut self,
+            id_elems: &[NodeIdElem],
+        ) -> Result<&mut (Weight, Node<T, F>), InvalidNodeId> {
+            if let Some((&this_idx, remainder)) = id_elems.split_first() {
+                let child = self.children.get_mut(this_idx).ok_or(id_elems)?;
+                if remainder.is_empty() {
+                    Ok(child)
+                } else {
+                    let (_, child_node) = child;
+                    child_node.get_child_entry_mut(remainder)
+                }
+            } else {
+                Err(id_elems.into())
+            }
         }
-    }
-    /// State for [`MergeOrder::InOrder`]
-    #[derive(Debug, PartialEq, Eq)]
-    pub struct InOrderMerger<T, F> {
-        children: Vec<Child<T, F>>,
-    }
-    impl<T, F> Default for InOrderMerger<T, F> {
-        fn default() -> Self {
-            Self { children: vec![] }
-        }
-    }
-    impl<T, F> Merge<T, F> for InOrderMerger<T, F> {
-        fn inner_ref(&self) -> &Vec<Child<T, F>> {
-            &self.children
-        }
-        fn inner_mut(&mut self) -> &mut Vec<Child<T, F>> {
-            &mut self.children
-        }
-        fn into_inner(self) -> Vec<Child<T, F>> {
-            self.children
+        /// Sets the weight of the specified `Node`
+        ///
+        /// # Errors
+        /// Returns an error if the specified `NodeId` does not point to a valid node
+        ///
+        pub fn set_weight(
+            &mut self,
+            node_id: &[NodeIdElem],
+            weight: Weight,
+        ) -> Result<(), InvalidNodeId> {
+            let (c_weight, _) = self.get_child_entry_mut(node_id)?;
+            *c_weight = weight;
+            Ok(())
         }
         /// Attempts to pop the next item
-        fn pop_item(&mut self) -> Result<T, PopError<()>> {
-            //TODO: pop the next item
-            Err(PopError::Empty(()))
-        }
-    }
-    impl<T, F> From<Vec<Child<T, F>>> for InOrderMerger<T, F> {
-        fn from(children: Vec<Child<T, F>>) -> Self {
-            Self { children }
-        }
-    }
-}
-
-/// Internal representation of a filter/queue/merge element in the [`Tree`]
-#[must_use]
-#[derive(Debug, PartialEq, Eq)]
-pub struct Node<T, F> {
-    queue: VecDeque<T>,
-    filter: F,
-    children: ChildMerger<T, F>,
-}
-impl<T, F> Default for Node<T, F>
-where
-    F: Default,
-{
-    fn default() -> Self {
-        Self {
-            queue: VecDeque::new(),
-            filter: F::default(),
-            children: MergeOrder::InOrder.into(),
-        }
-    }
-}
-impl<T, F> Node<T, F>
-where
-    F: Default,
-{
-    fn add_child(&mut self, node_id: &NodeId, weight: Option<Weight>) -> NodeId {
-        let weight = weight.unwrap_or(0);
-        let new_child = (weight, Node::default());
-        let child_part = self.children.edit_vec(|v| {
-            let child_part = v.len() as NodeIdElem;
-            v.push(new_child);
-            child_part
-        });
-        node_id.extend(child_part)
-    }
-}
-impl<T, F> Node<T, F> {
-    fn get_child(&self, node_id: &[NodeIdElem]) -> Result<&(Weight, Node<T, F>), InvalidNodeId> {
-        self.children.get_child(node_id)
-    }
-    fn get_child_mut(
-        &mut self,
-        node_id: &[NodeIdElem],
-    ) -> Result<&mut (Weight, Node<T, F>), InvalidNodeId> {
-        self.children.get_child_mut(node_id)
-    }
-    fn set_weight(&mut self, node_id: &[NodeIdElem], weight: Weight) -> Result<(), InvalidNodeId> {
-        let (c_weight, _) = self.children.get_child_mut(node_id)?;
-        *c_weight = weight;
-        Ok(())
-    }
-    fn pop_item(&mut self) -> Result<T, PopError<()>> {
-        #[allow(clippy::option_if_let_else)]
-        if let Some(item) = self.queue.pop_front() {
-            Ok(item)
-        } else {
-            self.children.pop_item()
+        ///
+        /// # Errors
+        /// Returns an error if the pop operation fails
+        ///
+        pub fn pop_item(&mut self) -> Result<T, PopError<()>> {
+            #[allow(clippy::option_if_let_else)]
+            if let Some(item) = self.queue.pop_front() {
+                Ok(item)
+            } else {
+                // TODO
+                Err(PopError::Empty(()))
+            }
         }
     }
 }
