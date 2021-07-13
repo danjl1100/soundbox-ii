@@ -144,21 +144,128 @@ impl<T> PopError<T> {
     }
 }
 
-// use merge::{ChildMerger, MergeOrder};
-// mod merge {
-//     use super::{InvalidNodeId, Node, NodeIdElem, PopError, Weight};
-//
-//     /// Order of picking nodes from children nodes, given the node [`Weight`]s.
-//     #[allow(clippy::module_name_repetitions)]
-//     pub enum MergeOrder {
-//         /// Picks [`Weight`] items from one node before moving to the next node
-//         InOrder,
-//     }
-// }
+mod order {
+    pub enum State<W>
+    where
+        W: PartialEq + Copy,
+    {
+        Empty(Type),
+        State(Box<dyn Order<W>>),
+    }
+    impl<W> State<W>
+    where
+        W: PartialEq + Copy,
+    {
+        pub fn get_type(&self) -> Type {
+            match self {
+                Self::Empty(ty) => *ty,
+                Self::State(order) => order.get_type(),
+            }
+        }
+    }
+    impl<W> From<Type> for State<W>
+    where
+        W: PartialEq + Copy,
+    {
+        fn from(ty: Type) -> Self {
+            Self::Empty(ty)
+        }
+    }
+    impl<W> PartialEq for State<W>
+    where
+        W: PartialEq + Copy,
+    {
+        fn eq(&self, other: &State<W>) -> bool {
+            self.get_type() == other.get_type()
+        }
+    }
+    impl<W> Eq for State<W> where W: PartialEq + Copy {}
+    impl<W> std::fmt::Debug for State<W>
+    where
+        W: PartialEq + Copy,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            let variant = match self {
+                Self::Empty(_) => "Empty",
+                Self::State(_) => "State",
+            };
+            let ty = self.get_type();
+            write!(f, "State::{}({:?})", variant, ty)
+        }
+    }
+
+    /// Order of picking nodes from children nodes, given the node [`Weight`]s.
+    #[allow(clippy::module_name_repetitions)]
+    #[derive(Debug, Eq, PartialEq, Clone, Copy)]
+    pub enum Type {
+        /// Picks [`Weight`] items from one node before moving to the next node
+        InOrder,
+    }
+    impl Type {
+        fn instantiate<W>(self, weights: &[W]) -> Box<dyn Order<W>>
+        where
+            W: PartialEq + Copy + 'static,
+        {
+            match self {
+                Type::InOrder => Box::new(InOrderState::new(weights)),
+            }
+        }
+    }
+
+    pub trait Order<W>
+    where
+        W: PartialEq + Copy,
+    {
+        fn get_type(&self) -> Type;
+        fn resize_to(&mut self, weights: &[W]);
+        fn get_weights(&self) -> &[W];
+        fn inner_next(&mut self) -> usize;
+        fn next(&mut self, weights: &[W]) -> usize {
+            if self.get_weights() != weights {
+                self.resize_to(weights);
+            }
+            self.inner_next()
+        }
+    }
+
+    struct InOrderState<W>
+    where
+        W: PartialEq + Copy,
+    {
+        weights: Vec<W>,
+    }
+    impl<W> InOrderState<W>
+    where
+        W: PartialEq + Copy,
+    {
+        fn new(weights: &[W]) -> Self {
+            let mut this = Self { weights: vec![] };
+            this.resize_to(weights);
+            this
+        }
+    }
+    impl<W> Order<W> for InOrderState<W>
+    where
+        W: PartialEq + Copy,
+    {
+        fn get_type(&self) -> Type {
+            Type::InOrder
+        }
+        fn resize_to(&mut self, weights: &[W]) {
+            self.weights = weights.to_vec();
+        }
+        fn get_weights(&self) -> &[W] {
+            &self.weights
+        }
+        fn inner_next(&mut self) -> usize {
+            todo!()
+        }
+    }
+}
 
 pub use node::Node;
 mod node {
-    use super::{InvalidNodeId, NodeId, NodeIdElem, PopError, Weight};
+    use super::{order, InvalidNodeId, NodeId, NodeIdElem, PopError, Weight};
     use std::collections::VecDeque;
 
     type Child<T, F> = (Weight, Node<T, F>);
@@ -172,6 +279,7 @@ mod node {
         /// Filtering value
         pub filter: F,
         children: Vec<(Weight, Node<T, F>)>,
+        order: order::State<Weight>,
     }
     impl<T, F> Default for Node<T, F>
     where
@@ -181,7 +289,8 @@ mod node {
             Self {
                 queue: VecDeque::new(),
                 filter: F::default(),
-                children: vec![], //MergeOrder::InOrder.into(),
+                children: vec![],
+                order: order::Type::InOrder.into(),
             }
         }
     }
@@ -194,12 +303,13 @@ mod node {
             let weight = weight.unwrap_or(0);
             let new_child = (weight, Node::default());
             let child_part = {
-                //self.children.edit_vec(|v| {
                 let child_part = self.children.len() as NodeIdElem;
-                //v.push(new_child);
+                // push AFTER recording length ^
                 self.children.push(new_child);
                 child_part
             };
+            self.clear_order_state();
+            // return new NodeId
             node_id.extend(child_part)
         }
     }
@@ -263,6 +373,9 @@ mod node {
                 Err(id_elems.into())
             }
         }
+        fn clear_order_state(&mut self) {
+            self.order = order::State::Empty(self.order.get_type());
+        }
         /// Sets the weight of the specified `Node`
         ///
         /// # Errors
@@ -275,6 +388,7 @@ mod node {
         ) -> Result<(), InvalidNodeId> {
             let (c_weight, _) = self.get_child_entry_mut(node_id)?;
             *c_weight = weight;
+            self.clear_order_state();
             Ok(())
         }
         /// Attempts to pop the next item
