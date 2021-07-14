@@ -58,7 +58,7 @@ mod node_id {
     }
 }
 
-/// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`MergeOrder`] algorithms
+/// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`Merge`] algorithms
 pub type Weight = u32;
 
 /// Error for an invalid [`NodeId`]
@@ -152,10 +152,32 @@ mod order {
         State(Box<dyn Order>),
     }
     impl State {
+        /// Returns the [`Type`] of the State
         pub fn get_type(&self) -> Type {
             match self {
                 Self::Empty(ty) => *ty,
                 Self::State(order) => order.get_type(),
+            }
+        }
+        /// Clears the state, leaving only the [`Type`]
+        pub fn clear(&mut self) {
+            *self = Self::Empty(self.get_type());
+        }
+        /// Retrieves the next index from the [`Order`], instantiating if necessary
+        pub fn next(&mut self, weights: &[Weight]) -> Option<usize> {
+            self.get_state(weights).next(weights)
+        }
+        /// Instantiates the state (if needed) to the specified weights
+        fn get_state(&mut self, weights: &[Weight]) -> &mut Box<dyn Order> {
+            match self {
+                Self::State(state) => state,
+                Self::Empty(ty) => {
+                    *self = Self::State(ty.instantiate(weights));
+                    match self {
+                        Self::State(state) => state,
+                        Self::Empty(_) => unreachable!(),
+                    }
+                }
             }
         }
     }
@@ -189,7 +211,8 @@ mod order {
         InOrder,
     }
     impl Type {
-        fn instantiate(self, weights: &[Weight]) -> Box<dyn Order> {
+        /// Creates an instance of the specified `Order` type
+        pub fn instantiate(self, weights: &[Weight]) -> Box<dyn Order> {
             match self {
                 Type::InOrder => Box::new(InOrderState::new(weights)),
             }
@@ -200,12 +223,12 @@ mod order {
         fn get_type(&self) -> Type;
         fn resize_to(&mut self, weights: &[Weight]);
         fn get_weights(&self) -> &[Weight];
-        fn inner_next(&mut self) -> Option<usize>;
+        fn next_unchecked(&mut self) -> Option<usize>;
         fn next(&mut self, weights: &[Weight]) -> Option<usize> {
             if self.get_weights() != weights {
                 self.resize_to(weights);
             }
-            self.inner_next()
+            self.next_unchecked()
         }
     }
 
@@ -234,7 +257,7 @@ mod order {
         fn get_weights(&self) -> &[Weight] {
             &self.weights
         }
-        fn inner_next(&mut self) -> Option<usize> {
+        fn next_unchecked(&mut self) -> Option<usize> {
             let filter_nonzero_weight = |(index, &weight)| {
                 if weight > 0 {
                     Some((index, weight - 1))
@@ -317,7 +340,44 @@ mod node {
     use super::{order, InvalidNodeId, NodeId, NodeIdElem, PopError, Weight};
     use std::collections::VecDeque;
 
-    type Child<T, F> = (Weight, Node<T, F>);
+    #[derive(Debug, PartialEq, Eq)]
+    struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>);
+    impl<T, F> WeightNodeVec<T, F> {
+        fn new() -> Self {
+            Self(vec![], vec![])
+        }
+        fn len(&self) -> usize {
+            self.0.len()
+        }
+        fn is_empty(&self) -> bool {
+            self.0.is_empty()
+        }
+        fn get(&self, index: usize) -> Option<(Weight, &Node<T, F>)> {
+            match (self.0.get(index), self.1.get(index)) {
+                (Some(&weight), Some(node)) => Some((weight, node)),
+                _ => None,
+            }
+        }
+        fn get_mut(&mut self, index: usize) -> Option<(&mut Weight, &mut Node<T, F>)> {
+            match (self.0.get_mut(index), self.1.get_mut(index)) {
+                (Some(weight), Some(node)) => Some((weight, node)),
+                _ => None,
+            }
+        }
+        fn weights(&self) -> &[Weight] {
+            &self.0
+        }
+        fn nodes(&self) -> &[Node<T, F>] {
+            &self.1
+        }
+        fn push(&mut self, (weight, node): (Weight, Node<T, F>)) {
+            self.0.push(weight);
+            self.1.push(node);
+        }
+        fn remove(&mut self, index: usize) -> (Weight, Node<T, F>) {
+            (self.0.remove(index), self.1.remove(index))
+        }
+    }
 
     /// Internal representation of a filter/queue/merge element in the [`Tree`]
     #[must_use]
@@ -327,7 +387,7 @@ mod node {
         pub queue: VecDeque<T>,
         /// Filtering value
         pub filter: F,
-        children: Vec<(Weight, Node<T, F>)>,
+        children: WeightNodeVec<T, F>,
         order: order::State,
     }
     impl<T, F> Default for Node<T, F>
@@ -338,7 +398,7 @@ mod node {
             Self {
                 queue: VecDeque::new(),
                 filter: F::default(),
-                children: vec![],
+                children: WeightNodeVec::new(),
                 order: order::Type::InOrder.into(),
             }
         }
@@ -357,7 +417,7 @@ mod node {
                 self.children.push(new_child);
                 child_part
             };
-            self.clear_order_state();
+            self.order.clear();
             // return new NodeId
             node_id.extend(child_part)
         }
@@ -393,7 +453,7 @@ mod node {
         fn get_child_entry(
             &self,
             id_elems: &[NodeIdElem],
-        ) -> Result<&(Weight, Node<T, F>), InvalidNodeId> {
+        ) -> Result<(Weight, &Node<T, F>), InvalidNodeId> {
             if let Some((&this_idx, remainder)) = id_elems.split_first() {
                 let child = self.children.get(this_idx).ok_or(id_elems)?;
                 if remainder.is_empty() {
@@ -409,7 +469,7 @@ mod node {
         fn get_child_entry_mut(
             &mut self,
             id_elems: &[NodeIdElem],
-        ) -> Result<&mut (Weight, Node<T, F>), InvalidNodeId> {
+        ) -> Result<(&mut Weight, &mut Node<T, F>), InvalidNodeId> {
             if let Some((&this_idx, remainder)) = id_elems.split_first() {
                 let child = self.children.get_mut(this_idx).ok_or(id_elems)?;
                 if remainder.is_empty() {
@@ -421,9 +481,6 @@ mod node {
             } else {
                 Err(id_elems.into())
             }
-        }
-        fn clear_order_state(&mut self) {
-            self.order = order::State::Empty(self.order.get_type());
         }
         /// Sets the weight of the specified `Node`
         ///
@@ -437,7 +494,7 @@ mod node {
         ) -> Result<(), InvalidNodeId> {
             let (c_weight, _) = self.get_child_entry_mut(node_id)?;
             *c_weight = weight;
-            self.clear_order_state();
+            self.order.clear();
             Ok(())
         }
         /// Attempts to pop the next item
@@ -446,13 +503,22 @@ mod node {
         /// Returns an error if the pop operation fails
         ///
         pub fn pop_item(&mut self) -> Result<T, PopError<()>> {
-            #[allow(clippy::option_if_let_else)]
-            if let Some(item) = self.queue.pop_front() {
-                Ok(item)
-            } else {
-                // TODO
-                Err(PopError::Empty(()))
-            }
+            self.queue.pop_front().ok_or(()).or_else(|_| {
+                if self.children.is_empty() {
+                    Err(PopError::Empty(()))
+                } else {
+                    let weights = self.children.weights();
+                    let child = self
+                        .order
+                        .next(weights)
+                        .and_then(|index| self.children.get_mut(index));
+                    if let Some((_, child)) = child {
+                        child.pop_item()
+                    } else {
+                        Err(PopError::Blocked(()))
+                    }
+                }
+            })
         }
     }
 }
@@ -511,11 +577,10 @@ mod tests {
         );
         assert_eq!(
             t.pop_item_from(&root_id).expect("root exists"),
-            Err(PopError::Empty(root_id))
+            Err(PopError::Blocked(root_id))
         );
     }
     #[test]
-    #[ignore] //TODO: implement this
     fn node_pop_chain() {
         let mut t: Tree<_, ()> = Tree::new();
         let root_id = t.root_id();
@@ -532,7 +597,7 @@ mod tests {
         // verify child1 not popping
         assert_eq!(
             t.pop_item_from(&child1).expect("child2 exists"),
-            Err(PopError::Empty(child1.clone()))
+            Err(PopError::Blocked(child1.clone()))
         );
         // allow child1 <- child2
         t.set_weight(&child2, 1).expect("child2 exists");
