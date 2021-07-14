@@ -8,6 +8,7 @@ git stash save -q --keep-index "${STASH_NAME}"
 
 cargo clippy --workspace \
   && cargo test --workspace \
+  && cargo doc --workspace --no-deps -q \
   && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l
 RESULT=$?
 
