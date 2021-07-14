@@ -70,7 +70,10 @@ impl From<&[NodeIdElem]> for InvalidNodeId {
     }
 }
 
-struct Tree<T, F> {
+struct Tree<T, F>
+where
+    F: Default,
+{
     root: Node<T, F>,
 }
 impl<T, F> Tree<T, F>
@@ -341,8 +344,13 @@ mod node {
     use std::collections::VecDeque;
 
     #[derive(Debug, PartialEq, Eq)]
-    struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>);
-    impl<T, F> WeightNodeVec<T, F> {
+    struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>)
+    where
+        F: Default;
+    impl<T, F> WeightNodeVec<T, F>
+    where
+        F: Default,
+    {
         fn new() -> Self {
             Self(vec![], vec![])
         }
@@ -382,7 +390,10 @@ mod node {
     /// Internal representation of a filter/queue/merge element in the [`Tree`]
     #[must_use]
     #[derive(Debug, PartialEq, Eq)]
-    pub struct Node<T, F> {
+    pub struct Node<T, F>
+    where
+        F: Default,
+    {
         /// Items queue
         pub queue: VecDeque<T>,
         /// Filtering value
@@ -421,8 +432,6 @@ mod node {
             // return new NodeId
             node_id.extend(child_part)
         }
-    }
-    impl<T, F> Node<T, F> {
         /// Returns the child `Node` at the specified ID elements path
         ///
         /// # Errors
