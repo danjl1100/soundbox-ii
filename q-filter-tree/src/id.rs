@@ -1,41 +1,85 @@
 //! Paths and Identifiers for nodes
 
 /// Representation for Root ID
-pub const ROOT: NodeId = NodeId(vec![]);
+pub(crate) const ROOT: NodeId = NodeId {
+    path: NodePath(vec![]),
+    sequence: 0,
+};
 
-#[allow(clippy::module_name_repetitions)]
-/// Element of a [`NodeId`]
-pub type NodeIdElem = usize;
+/// Element of a [`NodePath`]
+pub(crate) type NodePathElem = usize;
 
-/// Identifier for a node in the [`Tree`](`super::Tree`)
+/// Type of [`NodeId.sequence()`] for keeping unique identifiers for nodes
+pub(crate) type Sequence = u64;
+
+/// Path to a node in the [`Tree`](`super::Tree`)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodePath(Vec<NodePathElem>);
+
+/// Unique identifier for a node in the [`Tree`](`super::Tree`)
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NodeId(Vec<NodeIdElem>);
-impl NodeId {
-    /// Appends an element to the ID
+pub struct NodeId {
+    path: NodePath,
+    sequence: Sequence,
+}
+
+impl NodePath {
+    /// Appends a path element
     #[must_use]
-    pub fn extend(&self, next: NodeIdElem) -> NodeId {
+    pub(crate) fn extend(&self, next: NodePathElem) -> NodePath {
         let mut parts = self.0.clone();
         parts.push(next);
         Self(parts)
     }
-    /// Returns the parent ID (if it exists) and last element
+    /// Returns the parent path sequence (if it exists) and the last path element
     #[must_use]
-    pub fn parent(&self) -> Option<(NodeId, NodeIdElem)> {
+    pub fn parent(&self) -> Option<(NodePath, NodePathElem)> {
         let mut parts = self.0.clone();
         parts.pop().map(|last_elem| (Self(parts), last_elem))
     }
-    pub(crate) fn first_elem(&self) -> Option<NodeIdElem> {
+    pub(crate) fn first_elem(&self) -> Option<NodePathElem> {
         self.0.get(0).copied()
     }
+    pub(crate) fn with_sequence(self, sequence: Sequence) -> NodeId {
+        NodeId {
+            path: self,
+            sequence,
+        }
+    }
 }
-impl From<Vec<NodeIdElem>> for NodeId {
-    fn from(elems: Vec<NodeIdElem>) -> Self {
+pub(crate) trait SequenceSource {
+    fn sequence(&self) -> Sequence;
+}
+impl SequenceSource for NodeId {
+    fn sequence(&self) -> Sequence {
+        self.sequence
+    }
+}
+impl std::ops::Deref for NodeId {
+    type Target = NodePath;
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
+
+impl From<Vec<NodePathElem>> for NodePath {
+    fn from(elems: Vec<NodePathElem>) -> Self {
         Self(elems)
     }
 }
-impl<'a> From<&'a NodeId> for &'a [NodeIdElem] {
-    fn from(node_id: &'a NodeId) -> Self {
-        node_id.0.as_slice()
+impl<'a> From<&'a NodeId> for &'a [NodePathElem] {
+    fn from(node_id: &'a NodeId) -> &'a [NodePathElem] {
+        (&node_id.path).into()
+    }
+}
+impl<'a> From<&'a NodePath> for &'a [NodePathElem] {
+    fn from(node_path: &'a NodePath) -> Self {
+        node_path.0.as_slice()
+    }
+}
+impl From<NodeId> for NodePath {
+    fn from(node_id: NodeId) -> Self {
+        node_id.path
     }
 }

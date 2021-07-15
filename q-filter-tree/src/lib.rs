@@ -17,8 +17,8 @@
 use node::Node;
 mod node;
 
-pub use id::NodeId;
-use id::NodeIdElem;
+pub use id::{NodeId, NodePath};
+use id::{NodePathElem, Sequence, SequenceSource};
 mod id;
 
 pub use order::Type as OrderType;
@@ -27,11 +27,11 @@ mod order;
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
 
-/// Error for an invalid [`NodeId`]
+/// Error for an invalid [`NodeId`] path
 #[derive(Debug, PartialEq, Eq)]
-pub struct InvalidNodeId(NodeId);
-impl From<&[NodeIdElem]> for InvalidNodeId {
-    fn from(node_id: &[NodeIdElem]) -> Self {
+pub struct InvalidNodePath(NodePath);
+impl From<&[NodePathElem]> for InvalidNodePath {
+    fn from(node_id: &[NodePathElem]) -> Self {
         Self(node_id.to_vec().into())
     }
 }
@@ -42,6 +42,7 @@ where
     F: Default,
 {
     root: Node<T, F>,
+    next_sequence: id::Sequence,
 }
 impl<T, F> Tree<T, F>
 where
@@ -50,19 +51,29 @@ where
     /// Creates a tree with a single root node
     #[must_use]
     pub fn new() -> Self {
-        let root = Node::default();
-        Tree { root }
+        let root_sequence = id::ROOT.sequence();
+        let root = Node::new(root_sequence);
+        Tree {
+            root,
+            next_sequence: root_sequence + 1,
+        }
     }
     /// Returns the [`NodeId`] of the root node
     pub fn root_id(&self) -> NodeId {
         #![allow(clippy::unused_self)]
         id::ROOT
     }
-    fn get_node(&self, node_id: &NodeId) -> Result<&Node<T, F>, InvalidNodeId> {
-        self.root.get_child(node_id.into())
+    fn get_node<'a, P>(&self, node_path: &'a P) -> Result<&Node<T, F>, InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        self.root.get_child(node_path.into())
     }
-    fn get_node_mut(&mut self, node_id: &NodeId) -> Result<&mut Node<T, F>, InvalidNodeId> {
-        self.root.get_child_mut(node_id.into())
+    fn get_node_mut<'a, P>(&mut self, node_path: &'a P) -> Result<&mut Node<T, F>, InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        self.root.get_child_mut(node_path.into())
     }
     /// Adds an empty child node to the specified node, with optional weight
     ///
@@ -73,16 +84,21 @@ where
         &mut self,
         node_id: &NodeId,
         weight: Option<Weight>,
-    ) -> Result<NodeId, InvalidNodeId> {
+    ) -> Result<NodeId, InvalidNodePath> {
+        let sequence = {
+            let sequence = self.next_sequence;
+            self.next_sequence += 1;
+            sequence
+        };
         let parent = self.get_node_mut(node_id)?;
-        Ok(parent.add_child(node_id, weight))
+        Ok(parent.add_child(node_id, weight, sequence))
     }
     /// Sets the weight of the specified node
     ///
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn set_weight(&mut self, node_id: &NodeId, weight: Weight) -> Result<(), InvalidNodeId> {
+    pub fn set_weight(&mut self, node_id: &NodeId, weight: Weight) -> Result<(), InvalidNodePath> {
         self.root.set_weight(node_id.into(), weight)
     }
     /// Returns the filter of the specified node
@@ -90,7 +106,7 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn get_filter(&self, node_id: &NodeId) -> Result<&F, InvalidNodeId> {
+    pub fn get_filter(&self, node_id: &NodeId) -> Result<&F, InvalidNodePath> {
         let node = self.get_node(node_id)?;
         Ok(&node.filter)
     }
@@ -99,7 +115,7 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn set_filter(&mut self, node_id: &NodeId, filter: F) -> Result<(), InvalidNodeId> {
+    pub fn set_filter(&mut self, node_id: &NodeId, filter: F) -> Result<(), InvalidNodePath> {
         let node = self.get_node_mut(node_id)?;
         node.filter = filter;
         Ok(())
@@ -109,7 +125,7 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn set_order(&mut self, node_id: &NodeId, order: OrderType) -> Result<(), InvalidNodeId> {
+    pub fn set_order(&mut self, node_id: &NodeId, order: OrderType) -> Result<(), InvalidNodePath> {
         let node = self.get_node_mut(node_id)?;
         node.set_order(order);
         Ok(())
@@ -119,7 +135,7 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn push_item(&mut self, node_id: &NodeId, item: T) -> Result<(), InvalidNodeId> {
+    pub fn push_item(&mut self, node_id: &NodeId, item: T) -> Result<(), InvalidNodePath> {
         let node = self.get_node_mut(node_id)?;
         node.queue.push_back(item);
         Ok(())
@@ -132,7 +148,7 @@ where
     pub fn pop_item_from(
         &mut self,
         node_id: &NodeId,
-    ) -> Result<Result<T, PopError<NodeId>>, InvalidNodeId> {
+    ) -> Result<Result<T, PopError<NodeId>>, InvalidNodePath> {
         let node = self.get_node_mut(node_id)?;
         Ok(node
             .pop_item()
@@ -144,15 +160,15 @@ where
     /// Returns an error if the specified `NodeId` does not point to a valid node,
     ///  or if the node has existing children.
     ///
-    pub fn remove_node(&mut self, node_id: &NodeId) -> Result<(), RemoveError<NodeId, NodeId>> {
+    pub fn remove_node(&mut self, node_id: &NodeId) -> Result<(), RemoveError> {
         if let Some((parent_id, last_elem)) = node_id.parent() {
             let parent = self.get_node_mut(&parent_id)?;
             parent
-                .remove_child(last_elem)
+                .remove_child(last_elem, node_id)
                 .map(|_| ())
                 .map_err(|e| e.attach_id(node_id))
         } else {
-            Err(RemoveError::Root(node_id.clone()))
+            Err(RemoveError::Root(node_id.clone().into()))
         }
     }
 }
@@ -183,40 +199,58 @@ impl<T> PopError<T> {
 }
 
 /// Error from the [`Tree::remove_node`] operation
+/// Generic parameters set to:
+/// - `T`=[`NodePath`] is the path for parent node
+/// - `U`=[`NodePath`] is the path for children of the parent node
+/// - `V`=[`NodeId`] is the id for the target removal node
+///
+pub type RemoveError = RemoveErrorGeneric<NodePath, NodePath, NodeId>;
+pub(crate) type RemoveErrorInner = RemoveErrorGeneric<(), NodePathElem, ()>;
+/// Error from the [`Tree::remove_node`] operation.
+/// Generic type parameters used internally within nodes:
+/// - `T` is the path for parent node
+/// - `U` is the path for children of the parent node
+/// - `V` is the [`NodeId`] for the target removal node
+///
 #[derive(Debug, PartialEq, Eq)]
-pub enum RemoveError<T, U> {
+pub enum RemoveErrorGeneric<T, U, V> {
     /// No node matching the [`NodeId`]
     Invalid(T),
+    /// Node matching the [`NodeId`] path has a different sequence (e.g. node paths changed)
+    SequenceMismatch(V, Sequence),
     /// Root node cannot be removed
     Root(T),
     /// Node has outstanding children
     NonEmpty(T, Vec<U>),
 }
-impl RemoveError<(), NodeIdElem> {
-    fn attach_id(self, node_id: &NodeId) -> RemoveError<NodeId, NodeId> {
+impl RemoveErrorInner {
+    fn attach_id(self, node_id: &NodeId) -> RemoveError {
         let node_id = node_id.clone();
         match self {
-            Self::Invalid(()) => RemoveError::Invalid(node_id),
-            Self::Root(()) => RemoveError::Root(node_id),
+            Self::Invalid(()) => RemoveError::Invalid(node_id.into()),
+            Self::SequenceMismatch((), sequence) => {
+                RemoveError::SequenceMismatch(node_id, sequence)
+            }
+            Self::Root(()) => RemoveError::Root(node_id.into()),
             Self::NonEmpty((), children) => {
                 let children = children
                     .into_iter()
                     .map(|elem| node_id.extend(elem))
                     .collect();
-                RemoveError::NonEmpty(node_id, children)
+                RemoveError::NonEmpty(node_id.into(), children)
             }
         }
     }
 }
-impl<U> From<InvalidNodeId> for RemoveError<NodeId, U> {
-    fn from(other: InvalidNodeId) -> Self {
+impl<U, V> From<InvalidNodePath> for RemoveErrorGeneric<NodePath, U, V> {
+    fn from(other: InvalidNodePath) -> Self {
         Self::Invalid(other.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{PopError, RemoveError, Tree};
+    use super::{PopError, RemoveError, SequenceSource, Tree};
     #[test]
     fn creates_single() {
         let mut t = Tree::new();
@@ -304,34 +338,65 @@ mod tests {
     fn node_removal() {
         let mut t: Tree<_, ()> = Tree::new();
         let root = t.root_id();
-        //
-        let _child1 = t.add_child(&root, None).expect("root exists");
-        let _child2 = t.add_child(&root, None).expect("root exists");
-        let _child3 = t.add_child(&root, None).expect("root exists");
-        let child4 = t.add_child(&root, None).expect("root exists");
-        let _child5 = t.add_child(&root, None).expect("root exists");
+        // \ root
+        // ---\ base
+        //    |--  child1
+        //    |--  child2
+        //    |--  child3
+        //    |--\ child4
+        //       |--  child4_child
+        //    |--  child5
+        let base = t.add_child(&root, None).expect("root exists");
+        let child1 = t.add_child(&base, None).expect("base exists");
+        let child2 = t.add_child(&base, None).expect("base exists");
+        let child3 = t.add_child(&base, None).expect("base exists");
+        let child4 = t.add_child(&base, None).expect("base exists");
+        let child5 = t.add_child(&base, None).expect("base exists");
         let child4_child = t.add_child(&child4, None).expect("child4 exists");
         // fill child4
         for i in 0..10 {
             t.push_item(&child4, i).expect("child4 exists");
         }
         // verify root pop
+        t.set_weight(&base, 1).expect("base exists");
         t.set_weight(&child4, 1).expect("child4 exists");
         assert_eq!(t.pop_item_from(&root).expect("root exists"), Ok(0));
         assert_eq!(t.pop_item_from(&root).expect("root exists"), Ok(1));
         // fails - remove root
-        assert_eq!(t.remove_node(&root), Err(RemoveError::Root(root.clone())));
+        assert_eq!(
+            t.remove_node(&root),
+            Err(RemoveError::Root(root.clone().into()))
+        );
+        // fails - remove base
+        assert_eq!(
+            t.remove_node(&base),
+            Err(RemoveError::NonEmpty(
+                base.clone().into(),
+                vec![
+                    child1.clone().into(),
+                    child2.clone().into(),
+                    child3.clone().into(),
+                    child4.clone().into(),
+                    child5.clone().into(),
+                ]
+            ))
+        );
         // fails - remove child4
         assert_eq!(
             t.remove_node(&child4),
             Err(RemoveError::NonEmpty(
-                child4.clone(),
-                vec![child4_child.clone()]
+                child4.clone().into(),
+                vec![child4_child.clone().into()]
             ))
         );
         // success - remove child4_child, then child4
         assert_eq!(t.remove_node(&child4_child), Ok(()));
         assert_eq!(t.remove_node(&child4), Ok(()));
+        // fails - remove child4 AGAIN
+        assert_eq!(
+            t.remove_node(&child4),
+            Err(RemoveError::SequenceMismatch(child4, child5.sequence()))
+        );
         // verify root pop empty
         assert_eq!(
             t.pop_item_from(&root).expect("root exists"),

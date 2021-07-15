@@ -1,4 +1,5 @@
-use super::{order, InvalidNodeId, NodeId, NodeIdElem, PopError, RemoveError, Weight};
+use super::{order, InvalidNodePath, PopError, RemoveErrorInner, Weight};
+use crate::id::{NodeId, NodePathElem, Sequence, SequenceSource};
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -48,7 +49,7 @@ where
 /// Internal representation of a filter/queue/merge element in the [`Tree`]
 #[must_use]
 #[derive(Debug, PartialEq, Eq)]
-pub struct Node<T, F>
+pub(crate) struct Node<T, F>
 where
     F: Default,
 {
@@ -58,37 +59,39 @@ where
     pub filter: F,
     children: WeightNodeVec<T, F>,
     order: order::State,
-}
-impl<T, F> Default for Node<T, F>
-where
-    F: Default,
-{
-    fn default() -> Self {
-        Self {
-            queue: VecDeque::new(),
-            filter: F::default(),
-            children: WeightNodeVec::new(),
-            order: order::Type::InOrder.into(),
-        }
-    }
+    sequence: Sequence,
 }
 impl<T, F> Node<T, F>
 where
     F: Default,
 {
+    pub(crate) fn new(sequence: Sequence) -> Self {
+        Self {
+            queue: VecDeque::new(),
+            filter: F::default(),
+            children: WeightNodeVec::new(),
+            order: order::Type::InOrder.into(),
+            sequence,
+        }
+    }
     /// Adds a child to the specified `Node`, with an optional `Weight`
-    pub fn add_child(&mut self, node_id: &NodeId, weight: Option<Weight>) -> NodeId {
+    pub fn add_child(
+        &mut self,
+        node_id: &NodeId,
+        weight: Option<Weight>,
+        sequence: Sequence,
+    ) -> NodeId {
         let weight = weight.unwrap_or(0);
-        let new_child = (weight, Node::default());
+        let new_child = (weight, Node::new(sequence));
         let child_part = {
-            let child_part = self.children.len() as NodeIdElem;
+            let child_part = self.children.len() as NodePathElem;
             // push AFTER recording length ^
             self.children.push(new_child);
             child_part
         };
         self.order.clear();
         // return new NodeId
-        node_id.extend(child_part)
+        node_id.extend(child_part).with_sequence(sequence)
     }
     /// Removes the specified child node
     ///
@@ -96,20 +99,26 @@ where
     /// Returns an error if the specified `NodeId` does not point to a valid node,
     ///  or if the node has existing children.
     ///
-    pub fn remove_child(
+    pub fn remove_child<S: SequenceSource>(
         &mut self,
-        id_elem: NodeIdElem,
-    ) -> Result<(Weight, Node<T, F>), RemoveError<(), NodeIdElem>> {
+        id_elem: NodePathElem,
+        sequence_source: &S,
+    ) -> Result<(Weight, Node<T, F>), RemoveErrorInner> {
         if let Some((_, child)) = self.children.get(id_elem) {
-            let child_children = child.get_child_nodes();
-            if child_children.is_empty() {
-                Ok(self.children.remove(id_elem))
+            let child_sequence = child.sequence();
+            if child_sequence == sequence_source.sequence() {
+                let child_children = child.get_child_nodes();
+                if child_children.is_empty() {
+                    Ok(self.children.remove(id_elem))
+                } else {
+                    let child_id_elems = (0..child_children.len()).collect();
+                    Err(RemoveErrorInner::NonEmpty((), child_id_elems))
+                }
             } else {
-                let child_id_elems = (0..child_children.len()).collect();
-                Err(RemoveError::NonEmpty((), child_id_elems))
+                Err(RemoveErrorInner::SequenceMismatch((), child_sequence))
             }
         } else {
-            Err(RemoveError::Invalid(()))
+            Err(RemoveErrorInner::Invalid(()))
         }
     }
     fn get_child_nodes(&self) -> &[Node<T, F>] {
@@ -120,7 +129,7 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn get_child(&self, id_elems: &[NodeIdElem]) -> Result<&Node<T, F>, InvalidNodeId> {
+    pub fn get_child(&self, id_elems: &[NodePathElem]) -> Result<&Node<T, F>, InvalidNodePath> {
         if id_elems.is_empty() {
             Ok(self)
         } else {
@@ -134,8 +143,8 @@ where
     ///
     pub fn get_child_mut(
         &mut self,
-        id_elems: &[NodeIdElem],
-    ) -> Result<&mut Node<T, F>, InvalidNodeId> {
+        id_elems: &[NodePathElem],
+    ) -> Result<&mut Node<T, F>, InvalidNodePath> {
         if id_elems.is_empty() {
             Ok(self)
         } else {
@@ -144,8 +153,8 @@ where
     }
     fn get_child_entry(
         &self,
-        id_elems: &[NodeIdElem],
-    ) -> Result<(Weight, &Node<T, F>), InvalidNodeId> {
+        id_elems: &[NodePathElem],
+    ) -> Result<(Weight, &Node<T, F>), InvalidNodePath> {
         if let Some((&this_idx, remainder)) = id_elems.split_first() {
             let child = self.children.get(this_idx).ok_or(id_elems)?;
             if remainder.is_empty() {
@@ -160,8 +169,8 @@ where
     }
     fn get_child_entry_mut(
         &mut self,
-        id_elems: &[NodeIdElem],
-    ) -> Result<(&mut Weight, &mut Node<T, F>), InvalidNodeId> {
+        id_elems: &[NodePathElem],
+    ) -> Result<(&mut Weight, &mut Node<T, F>), InvalidNodePath> {
         if let Some((&this_idx, remainder)) = id_elems.split_first() {
             let child = self.children.get_mut(this_idx).ok_or(id_elems)?;
             if remainder.is_empty() {
@@ -181,9 +190,9 @@ where
     ///
     pub fn set_weight(
         &mut self,
-        node_id: &[NodeIdElem],
+        node_id: &[NodePathElem],
         weight: Weight,
-    ) -> Result<(), InvalidNodeId> {
+    ) -> Result<(), InvalidNodePath> {
         let (c_weight, _) = self.get_child_entry_mut(node_id)?;
         *c_weight = weight;
         self.order.clear();
@@ -217,5 +226,13 @@ where
                 }
             }
         })
+    }
+}
+impl<T, F> SequenceSource for Node<T, F>
+where
+    F: Default,
+{
+    fn sequence(&self) -> Sequence {
+        self.sequence
     }
 }
