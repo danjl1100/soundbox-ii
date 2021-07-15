@@ -48,11 +48,10 @@ impl NodePath {
         }
     }
 }
-pub(crate) trait SequenceSource {
-    fn sequence(&self) -> Sequence;
-}
-impl SequenceSource for NodeId {
-    fn sequence(&self) -> Sequence {
+impl NodeId {
+    /// Returns the sequence identifier for the node
+    #[must_use]
+    pub fn sequence(&self) -> Sequence {
         self.sequence
     }
 }

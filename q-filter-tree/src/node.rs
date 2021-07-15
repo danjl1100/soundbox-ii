@@ -1,5 +1,8 @@
-use super::{order, InvalidNodePath, PopError, RemoveErrorInner, Weight};
-use crate::id::{NodeId, NodePathElem, Sequence, SequenceSource};
+use crate::{
+    error::{InvalidNodePath, PopError, RemoveErrorInner},
+    id::{NodeId, NodePathElem, Sequence},
+    order, Weight,
+};
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -226,6 +229,14 @@ where
                 }
             }
         })
+    }
+}
+pub(crate) trait SequenceSource {
+    fn sequence(&self) -> Sequence;
+}
+impl SequenceSource for NodeId {
+    fn sequence(&self) -> Sequence {
+        self.sequence()
     }
 }
 impl<T, F> SequenceSource for Node<T, F>
