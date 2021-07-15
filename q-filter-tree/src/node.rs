@@ -1,4 +1,4 @@
-use super::{order, InvalidNodeId, NodeId, NodeIdElem, PopError, Weight};
+use super::{order, InvalidNodeId, NodeId, NodeIdElem, PopError, RemoveError, Weight};
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -89,6 +89,31 @@ where
         self.order.clear();
         // return new NodeId
         node_id.extend(child_part)
+    }
+    /// Removes the specified child node
+    ///
+    /// # Errors
+    /// Returns an error if the specified `NodeId` does not point to a valid node,
+    ///  or if the node has existing children.
+    ///
+    pub fn remove_child(
+        &mut self,
+        id_elem: NodeIdElem,
+    ) -> Result<(Weight, Node<T, F>), RemoveError<(), NodeIdElem>> {
+        if let Some((_, child)) = self.children.get(id_elem) {
+            let child_children = child.get_child_nodes();
+            if child_children.is_empty() {
+                Ok(self.children.remove(id_elem))
+            } else {
+                let child_id_elems = (0..child_children.len()).collect();
+                Err(RemoveError::NonEmpty((), child_id_elems))
+            }
+        } else {
+            Err(RemoveError::Invalid(()))
+        }
+    }
+    fn get_child_nodes(&self) -> &[Node<T, F>] {
+        self.children.nodes()
     }
     /// Returns the child `Node` at the specified ID elements path
     ///

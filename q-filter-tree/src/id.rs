@@ -1,3 +1,5 @@
+//! Paths and Identifiers for nodes
+
 /// Representation for Root ID
 pub const ROOT: NodeId = NodeId(vec![]);
 
@@ -17,16 +19,11 @@ impl NodeId {
         parts.push(next);
         Self(parts)
     }
-    /// Returns the parent ID (if it exists)
+    /// Returns the parent ID (if it exists) and last element
     #[must_use]
-    pub fn parent(&self) -> Option<NodeId> {
-        if self.0.is_empty() {
-            None
-        } else {
-            let mut parts = self.0.clone();
-            parts.pop();
-            Some(Self(parts))
-        }
+    pub fn parent(&self) -> Option<(NodeId, NodeIdElem)> {
+        let mut parts = self.0.clone();
+        parts.pop().map(|last_elem| (Self(parts), last_elem))
     }
     pub(crate) fn first_elem(&self) -> Option<NodeIdElem> {
         self.0.get(0).copied()
