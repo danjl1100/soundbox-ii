@@ -88,18 +88,60 @@ impl std::fmt::Debug for State {
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root)));
 /// ```
+///
+/// 2. [`Self::RoundRobin`]
+///
+/// Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
+/// ```
+/// use q_filter_tree::{Tree, PopError, OrderType};
+/// let mut t: Tree<_, ()> = Tree::default();
+/// let root = t.root_id();
+/// //
+/// t.set_order(&root, OrderType::RoundRobin);
+/// //
+/// let childA = t.add_child(&root, Some(2)).unwrap();
+/// t.push_item(&childA, "A1").unwrap();
+/// t.push_item(&childA, "A2").unwrap();
+/// let childB = t.add_child(&root, Some(1)).unwrap();
+/// t.push_item(&childB, "B1").unwrap();
+/// let childC = t.add_child(&root, Some(3)).unwrap();
+/// t.push_item(&childC, "C1").unwrap();
+/// t.push_item(&childC, "C2").unwrap();
+/// t.push_item(&childC, "C3").unwrap();
+/// //
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A1"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("B1"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root)));
+/// ```
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum Type {
     /// Picks [`Weight`] items from one node before moving to the next node
     InOrder,
+    /// Picks items from each node in turn, up to maximum of [`Weight`] items per cycle.
+    RoundRobin,
+    // TODO
+    // /// Shuffles the order of items given by [`Self::InOrder`] for each cycle.
+    // Shuffle,
+    // /// Randomly selects items based on the relative [`Weight`]s.
+    // Random,
 }
 impl Type {
     /// Creates an instance of the specified `Order` type
     pub(crate) fn instantiate(self, weights: &[Weight]) -> Box<dyn Order> {
-        match self {
+        let state: Box<dyn Order> = match self {
             Type::InOrder => Box::new(InOrderState::new(weights)),
+            Type::RoundRobin => Box::new(RoundRobinState::new(weights)),
+        };
+        #[cfg(test)]
+        {
+            assert_eq!(state.get_type(), self, "constructed Order type mismatch");
         }
+        state
     }
 }
 
@@ -173,6 +215,86 @@ impl Order for InOrderState {
         self.index_remaining.map(|(index, _)| index)
     }
 }
+
+struct RoundRobinState {
+    weights: Vec<Weight>,
+    count_remaining: Vec<Weight>,
+    index: Option<usize>,
+}
+impl RoundRobinState {
+    fn new(weights: &[Weight]) -> Self {
+        let mut this = Self {
+            weights: vec![],
+            count_remaining: vec![],
+            index: None,
+        };
+        this.resize_to(weights);
+        this
+    }
+}
+impl Order for RoundRobinState {
+    fn get_type(&self) -> Type {
+        Type::RoundRobin
+    }
+    fn resize_to(&mut self, weights: &[Weight]) {
+        self.weights = weights.to_vec();
+    }
+    fn get_weights(&self) -> &[Weight] {
+        &self.weights
+    }
+    fn next_unchecked(&mut self) -> Option<usize> {
+        if self.weights.is_empty() || self.weights.iter().all(|x| *x == 0) {
+            None
+        } else {
+            let weights_len = self.weights.len();
+            let mut mark_no_progress_since = None;
+            loop {
+                // fill count_remaining
+                if self.count_remaining.is_empty() {
+                    self.count_remaining = self.weights.clone();
+                }
+                // increment
+                let index = match self.index {
+                    Some(prev_index) if prev_index + 1 < weights_len => prev_index + 1,
+                    Some(_) | None if 0 < weights_len => 0,
+                    _ => {
+                        // no valid index
+                        return None;
+                    }
+                };
+                self.index.replace(index);
+                // catch full-loop-no-progress
+                match mark_no_progress_since {
+                    Some(i) if i == index => {
+                        mark_no_progress_since = None;
+                        // reset
+                        self.index = None;
+                        self.count_remaining.clear();
+                        continue;
+                    }
+                    _ => {}
+                }
+                // check count-remaining
+                match self.count_remaining.get_mut(index) {
+                    Some(0) => {
+                        // record "no progress" marker
+                        if mark_no_progress_since.is_none() {
+                            mark_no_progress_since.replace(index);
+                        }
+                        continue;
+                    }
+                    Some(count) => {
+                        // found! decrement
+                        *count -= 1;
+                        return Some(index);
+                    }
+                    None => unreachable!("length mismatch: self.count_remaining to self.weights"),
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Type;
@@ -192,17 +314,17 @@ mod tests {
     }
     // Type::InOrder
     #[test]
-    fn in_order_simple() {
-        check_simple(Type::InOrder);
-    }
-    #[test]
-    fn in_order_blocked() {
-        check_blocked(Type::InOrder);
+    fn in_order_simple_and_blocked() {
+        let ty = Type::InOrder;
+        check_simple(ty);
+        check_blocked(ty);
     }
     #[test]
     fn in_order_longer() {
+        let ty = Type::InOrder;
+        //
         let weights = &[1, 2, 2, 3, 0, 5];
-        let mut s = Type::InOrder.instantiate(weights);
+        let mut s = ty.instantiate(weights);
         for _ in 0..100 {
             for (index, &weight) in weights.iter().enumerate() {
                 for _ in 0..weight {
@@ -212,6 +334,43 @@ mod tests {
                     // let expected = Some(index);
                     // assert_eq!(value, expected);
                     // println!("{:?} = {:?} ??", value, expected);
+                }
+            }
+        }
+    }
+    // Type::RoundRobin
+    #[test]
+    fn round_robin_simple_and_blocked() {
+        let ty = Type::RoundRobin;
+        //
+        check_simple(ty);
+        check_blocked(ty);
+    }
+    #[test]
+    fn round_robin_longer() {
+        let ty = Type::RoundRobin;
+        //
+        let weights = &[1, 2, 2, 3, 0, 5];
+        let mut s = ty.instantiate(weights);
+        for _ in 0..100 {
+            let mut remaining = weights.to_vec();
+            loop {
+                let mut popped = false;
+                for (index, remaining) in remaining.iter_mut().enumerate() {
+                    if *remaining > 0 {
+                        popped = true;
+                        *remaining -= 1;
+                        //
+                        assert_eq!(s.next(weights), Some(index));
+                        //
+                        // let value = s.next(weights);
+                        // let expected = Some(index);
+                        // assert_eq!(value, expected);
+                        // println!("{:?} = {:?} ??", value, expected);
+                    }
+                }
+                if !popped {
+                    break;
                 }
             }
         }
