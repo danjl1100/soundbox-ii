@@ -12,16 +12,19 @@
 #![deny(clippy::panic)]
 // docs!
 #![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 use node::Node;
 mod node;
 
-use id::{NodeId, NodeIdElem};
+pub use id::NodeId;
+use id::NodeIdElem;
 mod id;
 
+pub use order::Type as OrderType;
 mod order;
 
-/// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`Merge`] algorithms
+/// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
 
 /// Error for an invalid [`NodeId`]
@@ -101,6 +104,16 @@ where
         node.filter = filter;
         Ok(())
     }
+    /// Sets the [`OrderType`] of the specified node
+    ///
+    /// # Errors
+    /// Returns error if no node matches the `node_id`.
+    ///
+    pub fn set_order(&mut self, node_id: &NodeId, order: OrderType) -> Result<(), InvalidNodeId> {
+        let node = self.get_node_mut(node_id)?;
+        node.set_order(order);
+        Ok(())
+    }
     /// Appends an item to the queue of the specified node
     ///
     /// # Errors
@@ -135,7 +148,7 @@ where
     }
 }
 
-/// Error from the item-pop operation
+/// Error from the [`Tree::pop_item_from`] operation
 #[derive(Debug, PartialEq, Eq)]
 pub enum PopError<T> {
     /// Terminal node has an empty queue (needs push)

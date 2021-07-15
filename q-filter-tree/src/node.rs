@@ -164,6 +164,12 @@ where
         self.order.clear();
         Ok(())
     }
+    /// Sets the [`OrderType`] of this node
+    pub fn set_order(&mut self, ty: order::Type) {
+        if ty != self.order.get_type() {
+            self.order = order::State::Empty(ty);
+        }
+    }
     /// Attempts to pop the next item
     ///
     /// # Errors

@@ -6,18 +6,18 @@ pub enum State {
 }
 impl State {
     /// Returns the [`Type`] of the State
-    pub fn get_type(&self) -> Type {
+    pub(crate) fn get_type(&self) -> Type {
         match self {
             Self::Empty(ty) => *ty,
             Self::State(order) => order.get_type(),
         }
     }
     /// Clears the state, leaving only the [`Type`]
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         *self = Self::Empty(self.get_type());
     }
     /// Retrieves the next index from the [`Order`], instantiating if necessary
-    pub fn next(&mut self, weights: &[Weight]) -> Option<usize> {
+    pub(crate) fn next(&mut self, weights: &[Weight]) -> Option<usize> {
         self.get_state(weights).next(weights)
     }
     /// Instantiates the state (if needed) to the specified weights
@@ -57,6 +57,37 @@ impl std::fmt::Debug for State {
 }
 
 /// Order of picking nodes from children nodes, given the node [`Weight`]s.
+///
+/// # Examples:
+///
+/// 1. [`Self::InOrder`]
+///
+/// Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
+/// ```
+/// use q_filter_tree::{Tree, PopError, OrderType};
+/// let mut t: Tree<_, ()> = Tree::default();
+/// let root = t.root_id();
+/// //
+/// t.set_order(&root, OrderType::InOrder);
+/// //
+/// let childA = t.add_child(&root, Some(2)).unwrap();
+/// t.push_item(&childA, "A1").unwrap();
+/// t.push_item(&childA, "A2").unwrap();
+/// let childB = t.add_child(&root, Some(1)).unwrap();
+/// t.push_item(&childB, "B1").unwrap();
+/// let childC = t.add_child(&root, Some(3)).unwrap();
+/// t.push_item(&childC, "C1").unwrap();
+/// t.push_item(&childC, "C2").unwrap();
+/// t.push_item(&childC, "C3").unwrap();
+/// //
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A1"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("B1"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root)));
+/// ```
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum Type {
@@ -65,7 +96,7 @@ pub enum Type {
 }
 impl Type {
     /// Creates an instance of the specified `Order` type
-    pub fn instantiate(self, weights: &[Weight]) -> Box<dyn Order> {
+    pub(crate) fn instantiate(self, weights: &[Weight]) -> Box<dyn Order> {
         match self {
             Type::InOrder => Box::new(InOrderState::new(weights)),
         }

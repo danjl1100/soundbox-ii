@@ -5,18 +5,20 @@ pub const ROOT: NodeId = NodeId(vec![]);
 /// Element of a [`NodeId`]
 pub type NodeIdElem = usize;
 
-/// Identifier for a Node in the [`Tree`]
+/// Identifier for a node in the [`Tree`](`super::Tree`)
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeId(Vec<NodeIdElem>);
 impl NodeId {
     /// Appends an element to the ID
+    #[must_use]
     pub fn extend(&self, next: NodeIdElem) -> NodeId {
         let mut parts = self.0.clone();
         parts.push(next);
         Self(parts)
     }
     /// Returns the parent ID (if it exists)
+    #[must_use]
     pub fn parent(&self) -> Option<NodeId> {
         if self.0.is_empty() {
             None
@@ -26,7 +28,7 @@ impl NodeId {
             Some(Self(parts))
         }
     }
-    pub fn first_elem(&self) -> Option<NodeIdElem> {
+    pub(crate) fn first_elem(&self) -> Option<NodeIdElem> {
         self.0.get(0).copied()
     }
 }
