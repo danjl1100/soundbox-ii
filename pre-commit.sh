@@ -19,10 +19,12 @@ if [ "${old_stash}" = "${new_stash}" ]; then
 fi
 
 # Run tests
-cargo clippy --workspace \
+true \
+  && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l && echo "[none]" \
+  && cargo clippy --workspace \
   && cargo test --workspace \
   && cargo doc --workspace --no-deps -q \
-  && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l
+  && true # trailing commas for the win
 RESULT=$?
 
 # Restore changes
