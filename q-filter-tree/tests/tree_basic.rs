@@ -6,6 +6,8 @@ use q_filter_tree::{
 fn creates_single() {
     let mut t = Tree::new();
     let root = t.root_id();
+    // verify count
+    assert_eq!(t.sum_node_count(), 1);
     // item
     const N: usize = 10;
     for i in 0..N {
@@ -32,6 +34,8 @@ fn two_nodes() {
     let root = t.root_id();
     //
     let child = t.add_child(&root, None).expect("root exists");
+    // verify count
+    assert_eq!(t.sum_node_count(), 2);
     // filter
     t.set_filter(&child, String::from("child_filter"))
         .expect("child exists");
@@ -63,6 +67,8 @@ fn node_pop_chain() {
     //
     let child1 = t.add_child(&root, None).expect("root exists");
     let child2 = t.add_child(&child1, None).expect("child1 exists");
+    // verify count
+    assert_eq!(t.sum_node_count(), 3);
     // fill child2
     for i in 0..4 {
         t.push_item(&child2, i).expect("child2 exists");
@@ -88,6 +94,9 @@ fn node_pop_chain() {
 #[test]
 fn node_removal() {
     let mut t: Tree<_, ()> = Tree::new();
+    // verify count
+    assert_eq!(t.sum_node_count(), 1);
+    //
     let root = t.root_id();
     // \ root
     // ---\ base
@@ -108,6 +117,8 @@ fn node_removal() {
     for i in 0..10 {
         t.push_item(&child4, i).expect("child4 exists");
     }
+    // verify count
+    assert_eq!(t.sum_node_count(), 8);
     // verify root pop
     t.set_weight(&base, 1).expect("base exists");
     t.set_weight(&child4, 1).expect("child4 exists");

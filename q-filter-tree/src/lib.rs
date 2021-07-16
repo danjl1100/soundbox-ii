@@ -28,6 +28,8 @@ mod order;
 
 mod iter;
 
+mod tree_serde;
+
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
 
@@ -179,6 +181,10 @@ where
         } else {
             Err(RemoveError::Root(node_id.clone().into()))
         }
+    }
+    /// Calculate the total node count (including the root)
+    pub fn sum_node_count(&self) -> usize {
+        self.root.sum_node_count()
     }
 }
 impl<T, F> Default for Tree<T, F>

@@ -3,10 +3,11 @@ use crate::{
     id::{NodeId, NodeIdBuilder, NodePathElem, Sequence},
     order, Weight,
 };
+use serde::Serialize;
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq, Eq)]
-struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>)
+pub(crate) struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>)
 where
     F: Default;
 impl<T, F> WeightNodeVec<T, F>
@@ -34,7 +35,7 @@ where
             _ => None,
         }
     }
-    fn weights(&self) -> &[Weight] {
+    pub(crate) fn weights(&self) -> &[Weight] {
         &self.0
     }
     fn nodes(&self) -> &[Node<T, F>] {
@@ -51,7 +52,7 @@ where
 
 /// Internal representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
 #[must_use]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct Node<T, F>
 where
     F: Default,
@@ -63,8 +64,10 @@ where
     // TODO
     // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
     // pub retain_count: usize,
+    #[serde(rename = "child_weights")]
     children: WeightNodeVec<T, F>,
     order: order::State,
+    #[serde(skip)]
     sequence: Sequence,
 }
 impl<T, F> Node<T, F>
@@ -202,6 +205,10 @@ where
                     builder
                 })
             })
+    }
+    pub(crate) fn sum_node_count(&self) -> usize {
+        let child_sum: usize = self.children.nodes().iter().map(Self::sum_node_count).sum();
+        child_sum + 1
     }
     fn get_child_entry(
         &self,

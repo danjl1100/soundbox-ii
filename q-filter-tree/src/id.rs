@@ -8,7 +8,7 @@ pub(crate) const ROOT: NodeId = NodeId {
 };
 
 /// Element of a [`NodePath`]
-pub(crate) type NodePathElem = usize;
+pub type NodePathElem = usize;
 
 /// Type of [`NodeId.sequence()`] for keeping unique identifiers for nodes
 pub(crate) type Sequence = u64;
@@ -47,6 +47,11 @@ impl NodePath {
             path: self,
             sequence,
         }
+    }
+    /// Returns a slice of the [`NodePathElem`]s
+    #[must_use]
+    pub fn elems(&self) -> &[NodePathElem] {
+        &self.0
     }
     /// Returns `true` if the path is empty
     #[must_use]

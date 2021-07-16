@@ -1,4 +1,5 @@
 use super::Weight;
+use serde::Serialize;
 
 pub enum State {
     Empty(Type),
@@ -118,7 +119,7 @@ impl std::fmt::Debug for State {
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root)));
 /// ```
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize)]
 pub enum Type {
     /// Picks [`Weight`] items from one node before moving to the next node
     InOrder,
