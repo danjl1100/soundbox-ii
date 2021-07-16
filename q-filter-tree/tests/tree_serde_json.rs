@@ -60,7 +60,6 @@ fn complex_serialize() -> Result<()> {
 }
 
 #[test]
-#[ignore]
 fn simple_deserialize() -> Result<()> {
     let tree_json = r#"
         {
@@ -88,6 +87,13 @@ fn simple_deserialize() -> Result<()> {
           }
         }"#;
     let mut t: Tree<String, ()> = serde_json::from_str(tree_json)?;
+    //
+    println!(
+        "input:\n\t{}\ndeserialized to:\n\t{}",
+        tree_json,
+        serde_json::to_string(&t)?
+    );
+    //
     let root = t.root_id();
     assert_eq!(
         t.pop_item_from(&root).expect("root exists"),
@@ -105,7 +111,7 @@ fn simple_deserialize() -> Result<()> {
     );
     assert_eq!(
         t.pop_item_from(&root).expect("root exists"),
-        Err(PopError::Empty(child))
+        Err(PopError::Empty(root.into()))
     );
     Ok(())
 }

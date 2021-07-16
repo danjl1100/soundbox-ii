@@ -14,7 +14,7 @@ pub type NodePathElem = usize;
 pub(crate) type Sequence = u64;
 
 /// Path to a node in the [`Tree`](`super::Tree`)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodePath(Vec<NodePathElem>);
 
 /// Unique identifier for a node in the [`Tree`](`super::Tree`)

@@ -30,7 +30,7 @@ impl<T, F> WeightNodeVec<T, F> {
             _ => None,
         }
     }
-    pub(crate) fn weights(&self) -> &[Weight] {
+    fn weights(&self) -> &[Weight] {
         &self.0
     }
     fn nodes(&self) -> &[Node<T, F>] {
@@ -58,6 +58,34 @@ pub(crate) struct NodeInfo<T, F> {
     // pub retain_count: usize,
     child_weights: Vec<Weight>,
     order: order::Type,
+}
+/// Intrinsic fields of [`NodeInfo`]
+#[must_use]
+pub(crate) struct NodeInfoIntrinsic<T, F> {
+    /// Items queue
+    queue: VecDeque<T>,
+    /// Filtering value
+    filter: Option<F>,
+    // TODO
+    // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
+    // pub retain_count: usize,
+    order: order::Type,
+}
+impl<'a, T, F> From<NodeInfo<T, F>> for (NodeInfoIntrinsic<T, F>, Vec<Weight>) {
+    fn from(other: NodeInfo<T, F>) -> Self {
+        let NodeInfo {
+            queue,
+            filter,
+            child_weights,
+            order,
+        } = other;
+        let intrinsic = NodeInfoIntrinsic {
+            queue,
+            filter,
+            order,
+        };
+        (intrinsic, child_weights)
+    }
 }
 impl<'a, T: Clone, F: Clone> From<&'a Node<T, F>> for NodeInfo<T, F> {
     fn from(node: &'a Node<T, F>) -> Self {
@@ -304,6 +332,33 @@ impl<T, F> Node<T, F> {
                 }
             }
         })
+    }
+    pub(crate) fn overwrite_from(&mut self, info: NodeInfoIntrinsic<T, F>) {
+        let NodeInfoIntrinsic {
+            queue,
+            filter,
+            order,
+        } = info;
+        self.queue = queue;
+        self.filter = filter;
+        self.set_order(order);
+    }
+    pub(crate) fn overwrite_child_weights(
+        &mut self,
+        weights: Vec<Weight>,
+    ) -> Result<(), (Vec<Weight>, usize)> {
+        let orig_len = self.children.len();
+        if weights.len() == orig_len {
+            self.children.0 = weights;
+            assert_eq!(
+                self.children.0.len(),
+                self.children.1.len(),
+                "child-weights and -nodes lists length equal after overwrite_child_weights"
+            );
+            Ok(())
+        } else {
+            Err((weights, orig_len))
+        }
     }
 }
 pub(crate) trait SequenceSource {
