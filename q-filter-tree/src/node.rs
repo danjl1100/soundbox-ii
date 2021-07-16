@@ -1,6 +1,6 @@
 use crate::{
     error::{InvalidNodePath, PopError, RemoveErrorInner},
-    id::{NodeId, NodePathElem, Sequence},
+    id::{NodeId, NodeIdBuilder, NodePathElem, Sequence},
     order, Weight,
 };
 use std::collections::VecDeque;
@@ -52,7 +52,7 @@ where
 /// Internal representation of a filter/queue/merge element in the [`Tree`]
 #[must_use]
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Node<T, F>
+pub struct Node<T, F>
 where
     F: Default,
 {
@@ -102,7 +102,7 @@ where
     /// Returns an error if the specified `NodeId` does not point to a valid node,
     ///  or if the node has existing children.
     ///
-    pub fn remove_child<S: SequenceSource>(
+    pub(crate) fn remove_child<S: SequenceSource>(
         &mut self,
         id_elem: NodePathElem,
         sequence_source: &S,
@@ -153,6 +153,42 @@ where
         } else {
             self.get_child_entry_mut(id_elems).map(|(_, child)| child)
         }
+    }
+    pub(crate) fn get_child_and_next_id(
+        &self,
+        id_elems: &[NodePathElem],
+    ) -> Result<(&Node<T, F>, Option<NodeIdBuilder>), InvalidNodePath> {
+        if let Some((&this_idx, remainder)) = id_elems.split_first() {
+            // forward request to child
+            let (_, child_node) = self.children.get(this_idx).ok_or(id_elems)?;
+            child_node
+                .get_child_and_next_id(remainder)
+                .map(|(node, builder)| {
+                    let builder = self.gen_id_builder_from(Some((this_idx, builder)));
+                    (node, builder)
+                })
+        } else {
+            // process request - self is the destination!
+            let builder = self.gen_id_builder_from(None);
+            Ok((self, builder))
+        }
+    }
+    fn gen_id_builder_from(
+        &self,
+        this_idx_and_builder: Option<(usize, Option<NodeIdBuilder>)>,
+    ) -> Option<NodeIdBuilder> {
+        let next_idx = this_idx_and_builder.as_ref().map_or(0, |(idx, _)| *idx + 1);
+        this_idx_and_builder
+            .and_then(|(this_idx, builder)| {
+                // prepend `this_idx` to builder
+                builder.map(|b| b.prepend(this_idx))
+            })
+            .or_else(|| {
+                // create builder starting with next child
+                self.children.get(next_idx).map(|(_, next_child)| {
+                    NodeIdBuilder::new(next_child.sequence()).prepend(next_idx)
+                })
+            })
     }
     fn get_child_entry(
         &self,

@@ -17,8 +17,8 @@
 pub use error::{InvalidNodePath, PopError, RemoveError};
 mod error;
 
-use id::NodePathElem;
 pub use id::{NodeId, NodePath};
+use id::{NodeIdBuilder, NodePathElem};
 mod id;
 
 use node::Node;
@@ -26,6 +26,8 @@ mod node;
 
 pub use order::Type as OrderType;
 mod order;
+
+mod iter;
 
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
@@ -68,6 +70,20 @@ where
         &'a P: Into<&'a [NodePathElem]>,
     {
         self.root.get_child_mut(node_path.into())
+    }
+    fn get_node_and_next_id<'a, P>(
+        &self,
+        node_path: &'a P,
+    ) -> Result<(&Node<T, F>, Option<NodeId>), InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        self.root
+            .get_child_and_next_id(node_path.into())
+            .map(|(node, builder)| {
+                let next_id = builder.map(NodeIdBuilder::finish);
+                (node, next_id)
+            })
     }
     /// Adds an empty child node to the specified node, with optional weight
     ///

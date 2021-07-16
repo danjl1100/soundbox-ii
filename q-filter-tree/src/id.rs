@@ -1,4 +1,5 @@
 //! Paths and Identifiers for nodes
+use std::collections::VecDeque;
 
 /// Representation for Root ID
 pub(crate) const ROOT: NodeId = NodeId {
@@ -47,6 +48,11 @@ impl NodePath {
             sequence,
         }
     }
+    /// Returns `true` if the path is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 impl NodeId {
     /// Returns the sequence identifier for the node
@@ -67,6 +73,11 @@ impl From<Vec<NodePathElem>> for NodePath {
         Self(elems)
     }
 }
+impl From<VecDeque<NodePathElem>> for NodePath {
+    fn from(elems: VecDeque<NodePathElem>) -> Self {
+        Self(elems.into_iter().collect())
+    }
+}
 impl<'a> From<&'a NodeId> for &'a [NodePathElem] {
     fn from(node_id: &'a NodeId) -> &'a [NodePathElem] {
         (&node_id.path).into()
@@ -80,5 +91,41 @@ impl<'a> From<&'a NodePath> for &'a [NodePathElem] {
 impl From<NodeId> for NodePath {
     fn from(node_id: NodeId) -> Self {
         node_id.path
+    }
+}
+
+#[derive(Default, Debug)]
+pub(crate) struct NodePathBuilder(VecDeque<NodePathElem>);
+impl NodePathBuilder {
+    pub fn prepend(mut self, elem: NodePathElem) -> Self {
+        self.0.push_front(elem);
+        self
+    }
+    pub fn finish(self) -> NodePath {
+        self.0.into()
+    }
+}
+#[derive(Debug)]
+pub(crate) struct NodeIdBuilder {
+    path: NodePathBuilder,
+    sequence: Sequence,
+}
+impl NodeIdBuilder {
+    pub fn new(sequence: Sequence) -> Self {
+        Self {
+            path: NodePathBuilder::default(),
+            sequence,
+        }
+    }
+    pub fn prepend(mut self, elem: NodePathElem) -> Self {
+        self.path = self.path.prepend(elem);
+        self
+    }
+    pub fn finish(self) -> NodeId {
+        let Self { path, sequence } = self;
+        NodeId {
+            path: path.finish(),
+            sequence,
+        }
     }
 }
