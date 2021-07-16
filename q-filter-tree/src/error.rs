@@ -1,5 +1,7 @@
+//! Various error types associated with [`Tree`](`crate::Tree`) methods
+
 #![allow(clippy::module_name_repetitions)]
-use crate::id::{NodeId, NodePath, NodePathElem, Sequence};
+use crate::id::{NodeId, NodeIdBuilder, NodePath, NodePathElem, Sequence};
 
 /// Error for an invalid [`NodeId`] path
 #[derive(Debug, PartialEq, Eq)]
@@ -23,6 +25,84 @@ impl<T> PopError<T> {
         match self {
             Self::Empty(inner) => PopError::Empty(f(inner)),
             Self::Blocked(inner) => PopError::Blocked(f(inner)),
+        }
+    }
+}
+/// Result value, optionally wrapped in a [`PushNeed`]
+/* TODO: pub */
+type PopResult<T, F> = PushNeeds<F, Result<T, PopError<NodeId>>>;
+/// Result value, optionally wrapped with one or more [`PushNeed`]s
+#[derive(Debug)]
+struct PushNeeds<F, T> {
+    /// Needs identified by child nodes
+    pub needs: Vec<PushNeed<F>>,
+    /// Inner result value
+    pub inner: T,
+}
+/// Notice that [`Tree::push_item`](`crate::Tree::push_item`) is needed for the specified node
+#[derive(Debug)]
+/* TODO: pub */
+struct PushNeed<F> {
+    /// Destination for the needed push
+    pub dest: NodeId,
+    /// Count of items needed
+    pub count: usize,
+    /// Filters applied to the destination node
+    pub filters: Vec<F>,
+}
+
+#[derive(Default, Debug)]
+/* TODO: pub(crate) */
+struct PushNeedsBuilder<F> {
+    needs: Vec<PushNeedBuilder<F>>,
+}
+#[derive(Debug)]
+/* TODO: pub(crate) */
+struct PushNeedBuilder<F> {
+    dest: NodeIdBuilder,
+    count: usize,
+    filters: Vec<F>,
+}
+impl<F> PushNeedsBuilder<F>
+where
+    F: Clone,
+{
+    pub fn add_need(&mut self, sequence: Sequence, count: usize, filter: F) {
+        self.needs.push(PushNeedBuilder {
+            dest: NodeIdBuilder::new(sequence),
+            count,
+            filters: vec![filter],
+        });
+    }
+    pub fn prepend(&mut self, path_elem: NodePathElem, filter: F) {
+        for builder in &mut self.needs {
+            builder.dest.prepend(path_elem);
+            builder.filters.push(filter.clone());
+        }
+    }
+    pub fn finish<T>(self, inner: T) -> PushNeeds<F, T> {
+        let needs = self
+            .needs
+            .into_iter()
+            .map(PushNeedBuilder::finish)
+            .collect();
+        PushNeeds { needs, inner }
+    }
+}
+impl<F> PushNeedBuilder<F>
+where
+    F: Clone,
+{
+    fn finish(self) -> PushNeed<F> {
+        let Self {
+            dest,
+            count,
+            filters,
+        } = self;
+        PushNeed {
+            dest: dest.finish(),
+            count,
+            filters,
         }
     }
 }

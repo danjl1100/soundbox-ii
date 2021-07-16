@@ -1,4 +1,7 @@
-use q_filter_tree::{PopError, RemoveError, Tree};
+use q_filter_tree::{
+    error::{PopError, RemoveError},
+    Tree,
+};
 #[test]
 fn creates_single() {
     let mut t = Tree::new();

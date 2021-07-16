@@ -14,14 +14,13 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-pub use error::{InvalidNodePath, PopError, RemoveError};
-mod error;
+use error::{InvalidNodePath, PopError, RemoveError};
+pub mod error;
 
-pub use id::{NodeId, NodePath};
-use id::{NodeIdBuilder, NodePathElem};
-mod id;
+use id::{NodeId, NodeIdBuilder, NodePathElem};
+pub mod id;
 
-use node::Node;
+pub use node::Node;
 mod node;
 
 pub use order::Type as OrderType;
@@ -32,7 +31,7 @@ mod iter;
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
 
-/// Tree data structure, consisting of nodes with queues of items `T`, filter `F`
+/// Tree data structure, consisting of [`Node`]s with queues of items `T`, filter `F`
 pub struct Tree<T, F>
 where
     F: Default,

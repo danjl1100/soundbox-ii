@@ -97,9 +97,8 @@ impl From<NodeId> for NodePath {
 #[derive(Default, Debug)]
 pub(crate) struct NodePathBuilder(VecDeque<NodePathElem>);
 impl NodePathBuilder {
-    pub fn prepend(mut self, elem: NodePathElem) -> Self {
+    pub fn prepend(&mut self, elem: NodePathElem) {
         self.0.push_front(elem);
-        self
     }
     pub fn finish(self) -> NodePath {
         self.0.into()
@@ -117,9 +116,8 @@ impl NodeIdBuilder {
             sequence,
         }
     }
-    pub fn prepend(mut self, elem: NodePathElem) -> Self {
-        self.path = self.path.prepend(elem);
-        self
+    pub fn prepend(&mut self, elem: NodePathElem) {
+        self.path.prepend(elem);
     }
     pub fn finish(self) -> NodeId {
         let Self { path, sequence } = self;

@@ -64,7 +64,7 @@ impl std::fmt::Debug for State {
 ///
 /// Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
 /// ```
-/// use q_filter_tree::{Tree, PopError, OrderType};
+/// use q_filter_tree::{Tree, error::PopError, OrderType};
 /// let mut t: Tree<_, ()> = Tree::default();
 /// let root = t.root_id();
 /// //
@@ -93,7 +93,7 @@ impl std::fmt::Debug for State {
 ///
 /// Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
 /// ```
-/// use q_filter_tree::{Tree, PopError, OrderType};
+/// use q_filter_tree::{Tree, error::PopError, OrderType};
 /// let mut t: Tree<_, ()> = Tree::default();
 /// let root = t.root_id();
 /// //
@@ -150,12 +150,21 @@ pub trait Order {
     fn resize_to(&mut self, weights: &[Weight]);
     fn get_weights(&self) -> &[Weight];
     fn next_unchecked(&mut self) -> Option<usize>;
+    // TODO
+    // fn peek_unchecked(&self) -> Option<usize>;
     fn next(&mut self, weights: &[Weight]) -> Option<usize> {
         if self.get_weights() != weights {
             self.resize_to(weights);
         }
         self.next_unchecked()
     }
+    // TODO
+    // fn peek(&mut self, weights: &[Weight]) -> Option<usize> {
+    //     if self.get_weights() != weights {
+    //         self.resize_to(weights);
+    //     }
+    //     self.peek_unchecked()
+    // }
 }
 
 struct InOrderState {

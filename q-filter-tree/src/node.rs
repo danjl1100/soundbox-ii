@@ -49,7 +49,7 @@ where
     }
 }
 
-/// Internal representation of a filter/queue/merge element in the [`Tree`]
+/// Internal representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
 #[must_use]
 #[derive(Debug, PartialEq, Eq)]
 pub struct Node<T, F>
@@ -60,6 +60,9 @@ where
     pub queue: VecDeque<T>,
     /// Filtering value
     pub filter: F,
+    // TODO
+    // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
+    // pub retain_count: usize,
     children: WeightNodeVec<T, F>,
     order: order::State,
     sequence: Sequence,
@@ -72,13 +75,15 @@ where
         Self {
             queue: VecDeque::new(),
             filter: F::default(),
+            // TODO
+            // retain_count: 0,
             children: WeightNodeVec::new(),
             order: order::Type::InOrder.into(),
             sequence,
         }
     }
     /// Adds a child to the specified `Node`, with an optional `Weight`
-    pub fn add_child(
+    pub(crate) fn add_child(
         &mut self,
         node_id: &NodeId,
         weight: Option<Weight>,
@@ -132,7 +137,10 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn get_child(&self, id_elems: &[NodePathElem]) -> Result<&Node<T, F>, InvalidNodePath> {
+    pub(crate) fn get_child(
+        &self,
+        id_elems: &[NodePathElem],
+    ) -> Result<&Node<T, F>, InvalidNodePath> {
         if id_elems.is_empty() {
             Ok(self)
         } else {
@@ -144,7 +152,7 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn get_child_mut(
+    pub(crate) fn get_child_mut(
         &mut self,
         id_elems: &[NodePathElem],
     ) -> Result<&mut Node<T, F>, InvalidNodePath> {
@@ -181,12 +189,17 @@ where
         this_idx_and_builder
             .and_then(|(this_idx, builder)| {
                 // prepend `this_idx` to builder
-                builder.map(|b| b.prepend(this_idx))
+                builder.map(|mut builder| {
+                    builder.prepend(this_idx);
+                    builder
+                })
             })
             .or_else(|| {
                 // create builder starting with next child
                 self.children.get(next_idx).map(|(_, next_child)| {
-                    NodeIdBuilder::new(next_child.sequence()).prepend(next_idx)
+                    let mut builder = NodeIdBuilder::new(next_child.sequence());
+                    builder.prepend(next_idx);
+                    builder
                 })
             })
     }
@@ -237,13 +250,13 @@ where
         self.order.clear();
         Ok(())
     }
-    /// Sets the [`OrderType`] of this node
+    /// Sets the [`OrderType`](`crate::order::Type`) of this node
     pub fn set_order(&mut self, ty: order::Type) {
         if ty != self.order.get_type() {
             self.order = order::State::Empty(ty);
         }
     }
-    /// Attempts to pop the next item
+    /// Attempts to pop the next item, pulling from child nodes as needed
     ///
     /// # Errors
     /// Returns an error if the pop operation fails
