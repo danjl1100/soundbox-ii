@@ -1,9 +1,6 @@
 use crate::{id::NodeId, node::Node, Tree};
 
-impl<T, F> Tree<T, F>
-where
-    F: Default,
-{
+impl<T, F> Tree<T, F> {
     /// Creates a depth-first iterator over [`NodeId`]s
     pub fn iter_ids(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.enumerate().map(|(id, _)| id)
@@ -16,17 +13,11 @@ where
         }
     }
 }
-struct Iter<'a, T, F>
-where
-    F: Default,
-{
+struct Iter<'a, T, F> {
     tree: &'a Tree<T, F>,
     next_id: Option<NodeId>,
 }
-impl<'a, T, F> Iterator for Iter<'a, T, F>
-where
-    F: Default,
-{
+impl<'a, T, F> Iterator for Iter<'a, T, F> {
     type Item = (NodeId, &'a Node<T, F>);
     fn next(&mut self) -> Option<Self::Item> {
         self.next_id.take().and_then(|cur_id| {

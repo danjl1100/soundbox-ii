@@ -1,10 +1,12 @@
 mod ser {
-    use crate::{id, node, order, Tree};
+    use crate::{id, node::NodeInfo, Tree};
+
     use serde::ser::{Serialize, SerializeMap, Serializer};
+
     impl<T, F> Serialize for Tree<T, F>
     where
-        F: Serialize + Default,
-        T: Serialize,
+        F: Serialize + Clone,
+        T: Serialize + Clone,
     {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
@@ -14,7 +16,8 @@ mod ser {
             let mut map = serializer.serialize_map(Some(node_count))?;
             for (node_id, node) in self.enumerate() {
                 let node_path = id::NodePath::from(node_id);
-                map.serialize_entry(&node_path, node)?;
+                let node_info = NodeInfo::from(node);
+                map.serialize_entry(&node_path, &node_info)?;
             }
             map.end()
         }
@@ -33,24 +36,62 @@ mod ser {
             serializer.serialize_str(&path_str)
         }
     }
-    impl<T, F> Serialize for node::WeightNodeVec<T, F>
+}
+mod de {
+    use crate::{id, node::NodeInfo, Tree};
+
+    use core::marker::PhantomData;
+    use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
+
+    impl<'de, T, F> Deserialize<'de> for Tree<T, F>
     where
-        F: Default,
+        F: Deserialize<'de> + /* TODO: remove DEBUG */ std::fmt::Debug,
+        T: Deserialize<'de> + /* TODO: remove DEBUG */ std::fmt::Debug,
     {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
-            S: Serializer,
+            D: Deserializer<'de>,
         {
-            self.weights().serialize(serializer)
+            deserializer.deserialize_map(TreeVisitor {
+                marker: PhantomData,
+            })
         }
     }
-    impl Serialize for order::State {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+
+    struct TreeVisitor<T, F> {
+        marker: PhantomData<fn() -> Tree<T, F>>,
+    }
+    impl<'de, T, F> Visitor<'de> for TreeVisitor<T, F>
+    where
+        F: Deserialize<'de> + /* TODO: remove DEBUG */ std::fmt::Debug,
+        T: Deserialize<'de> + /* TODO: remove DEBUG */ std::fmt::Debug,
+    {
+        type Value = Tree<T, F>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("key value pairs (map) to construct Tree nodes")
+        }
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
         where
-            S: Serializer,
+            M: MapAccess<'de>,
         {
-            let ty = self.get_type();
-            ty.serialize(serializer)
+            // let mut tree = Tree::new();
+
+            while let Some((node_path_str, node)) = access.next_entry::<String, NodeInfo<T, F>>()? {
+                /* TODO: remove DEBUG */
+                dbg!(node_path_str, node);
+            }
+
+            todo!()
+            // Ok(tree)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for id::NodePath {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            todo!()
         }
     }
 }

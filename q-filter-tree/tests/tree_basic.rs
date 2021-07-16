@@ -18,14 +18,15 @@ fn creates_single() {
     }
     assert_eq!(
         t.pop_item_from(&root).expect("root exists"),
-        Err(PopError::Empty(root.clone()))
+        Err(PopError::Empty(root.clone().into()))
     );
     // filter
+    assert_eq!(t.get_filter(&root).expect("root exists"), None);
     t.set_filter(&root, String::from("my root"))
         .expect("root exists");
     assert_eq!(
         t.get_filter(&root).expect("root exists"),
-        &String::from("my root")
+        Some(&String::from("my root"))
     );
 }
 #[test]
@@ -53,11 +54,11 @@ fn two_nodes() {
     }
     assert_eq!(
         t.pop_item_from(&child).expect("child exists"),
-        Err(PopError::Empty(child))
+        Err(PopError::Empty(child.into()))
     );
     assert_eq!(
         t.pop_item_from(&root).expect("root exists"),
-        Err(PopError::Blocked(root))
+        Err(PopError::Blocked(root.into()))
     );
 }
 #[test]
@@ -79,7 +80,7 @@ fn node_pop_chain() {
     // verify child1 not popping
     assert_eq!(
         t.pop_item_from(&child1).expect("child2 exists"),
-        Err(PopError::Blocked(child1.clone()))
+        Err(PopError::Blocked((*child1).clone()))
     );
     // allow child1 <- child2
     t.set_weight(&child2, 1).expect("child2 exists");
@@ -88,7 +89,7 @@ fn node_pop_chain() {
     assert_eq!(t.pop_item_from(&child1).expect("child2 exists"), Ok(3));
     assert_eq!(
         t.pop_item_from(&child1).expect("child2 exists"),
-        Err(PopError::Empty(child1))
+        Err(PopError::Empty(child1.into()))
     );
 }
 #[test]
@@ -162,6 +163,6 @@ fn node_removal() {
     // verify root pop empty
     assert_eq!(
         t.pop_item_from(&root).expect("root exists"),
-        Err(PopError::Blocked(root))
+        Err(PopError::Blocked(root.into()))
     );
 }

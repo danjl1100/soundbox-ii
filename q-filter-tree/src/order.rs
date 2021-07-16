@@ -1,5 +1,5 @@
 use super::Weight;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub enum State {
     Empty(Type),
@@ -87,7 +87,7 @@ impl std::fmt::Debug for State {
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root)));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root.into())));
 /// ```
 ///
 /// 2. [`Self::RoundRobin`]
@@ -116,10 +116,10 @@ impl std::fmt::Debug for State {
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
 /// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root)));
+/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root.into())));
 /// ```
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum Type {
     /// Picks [`Weight`] items from one node before moving to the next node
     InOrder,

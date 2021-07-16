@@ -17,7 +17,7 @@
 use error::{InvalidNodePath, PopError, RemoveError};
 pub mod error;
 
-use id::{NodeId, NodeIdBuilder, NodePathElem};
+use id::{NodeId, NodeIdBuilder, NodePath, NodePathElem};
 pub mod id;
 
 pub use node::Node;
@@ -34,17 +34,11 @@ mod tree_serde;
 pub type Weight = u32;
 
 /// Tree data structure, consisting of [`Node`]s with queues of items `T`, filter `F`
-pub struct Tree<T, F>
-where
-    F: Default,
-{
+pub struct Tree<T, F> {
     root: Node<T, F>,
     next_sequence: id::Sequence,
 }
-impl<T, F> Tree<T, F>
-where
-    F: Default,
-{
+impl<T, F> Tree<T, F> {
     /// Creates a tree with a single root node
     #[must_use]
     pub fn new() -> Self {
@@ -91,44 +85,74 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn add_child(
+    pub fn add_child<'a, P>(
         &mut self,
-        node_id: &NodeId,
+        node_path: &'a P,
         weight: Option<Weight>,
-    ) -> Result<NodeId, InvalidNodePath> {
+    ) -> Result<NodeId, InvalidNodePath>
+    where
+        &'a P: Into<&'a NodePath>,
+    {
+        let node_path = node_path.into();
         let sequence = {
             let sequence = self.next_sequence;
             self.next_sequence += 1;
             sequence
         };
-        let parent = self.get_node_mut(node_id)?;
-        Ok(parent.add_child(node_id, weight, sequence))
+        let parent = self.get_node_mut(node_path)?;
+        Ok(parent.add_child(node_path, weight, sequence))
     }
     /// Sets the weight of the specified node
     ///
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn set_weight(&mut self, node_id: &NodeId, weight: Weight) -> Result<(), InvalidNodePath> {
-        self.root.set_weight(node_id.into(), weight)
+    pub fn set_weight<'a, P>(
+        &mut self,
+        node_path: &'a P,
+        weight: Weight,
+    ) -> Result<(), InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        self.root.set_weight(node_path.into(), weight)
     }
     /// Returns the filter of the specified node
     ///
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn get_filter(&self, node_id: &NodeId) -> Result<&F, InvalidNodePath> {
-        let node = self.get_node(node_id)?;
-        Ok(&node.filter)
+    pub fn get_filter<'a, P>(&self, node_path: &'a P) -> Result<Option<&F>, InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        let node = self.get_node(node_path)?;
+        Ok(node.filter.as_ref())
     }
     /// Sets the filter of the specified node
     ///
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn set_filter(&mut self, node_id: &NodeId, filter: F) -> Result<(), InvalidNodePath> {
-        let node = self.get_node_mut(node_id)?;
-        node.filter = filter;
+    pub fn set_filter<'a, P>(&mut self, node_path: &'a P, filter: F) -> Result<(), InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        let node = self.get_node_mut(node_path)?;
+        node.filter.replace(filter);
+        Ok(())
+    }
+    /// Removes the filter of the specified node
+    ///
+    /// # Errors
+    /// Returns an error if the specified `NodeId` does not point to a valid node
+    ///
+    pub fn clear_filter<'a, P>(&mut self, node_path: &'a P) -> Result<(), InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        let node = self.get_node_mut(node_path)?;
+        node.filter.take();
         Ok(())
     }
     /// Sets the [`OrderType`] of the specified node
@@ -136,8 +160,15 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn set_order(&mut self, node_id: &NodeId, order: OrderType) -> Result<(), InvalidNodePath> {
-        let node = self.get_node_mut(node_id)?;
+    pub fn set_order<'a, P>(
+        &mut self,
+        node_path: &'a P,
+        order: OrderType,
+    ) -> Result<(), InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        let node = self.get_node_mut(node_path)?;
         node.set_order(order);
         Ok(())
     }
@@ -146,8 +177,11 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn push_item(&mut self, node_id: &NodeId, item: T) -> Result<(), InvalidNodePath> {
-        let node = self.get_node_mut(node_id)?;
+    pub fn push_item<'a, P>(&mut self, node_path: &'a P, item: T) -> Result<(), InvalidNodePath>
+    where
+        &'a P: Into<&'a [NodePathElem]>,
+    {
+        let node = self.get_node_mut(node_path)?;
         node.queue.push_back(item);
         Ok(())
     }
@@ -156,16 +190,23 @@ where
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn pop_item_from(
+    pub fn pop_item_from<'a, P>(
         &mut self,
-        node_id: &NodeId,
-    ) -> Result<Result<T, PopError<NodeId>>, InvalidNodePath> {
-        let node = self.get_node_mut(node_id)?;
+        node_path: &'a P,
+    ) -> Result<Result<T, PopError<NodePath>>, InvalidNodePath>
+    where
+        &'a P: Into<&'a NodePath>,
+    {
+        let node_path = node_path.into();
+        let node = self.get_node_mut(node_path)?;
         Ok(node
             .pop_item()
-            .map_err(|e| e.map_inner(|_| node_id.clone())))
+            .map_err(|e| e.map_inner(|_| node_path.clone())))
     }
     /// Removes an empty node
+    ///
+    /// **Note:** Explicit [`NodeId`] is required to preserve idempotency.
+    /// E.g. Removing a node may change the path of adjacent nodes.
     ///
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node,
@@ -187,10 +228,7 @@ where
         self.root.sum_node_count()
     }
 }
-impl<T, F> Default for Tree<T, F>
-where
-    F: Default,
-{
+impl<T, F> Default for Tree<T, F> {
     fn default() -> Self {
         Self::new()
     }

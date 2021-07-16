@@ -1,4 +1,4 @@
-use q_filter_tree::Tree;
+use q_filter_tree::{error::PopError, id::NodePath, Tree};
 use serde_json::Result;
 
 const EMPTY_NODE: &'static str =
@@ -57,4 +57,122 @@ fn complex_serialize() -> Result<()> {
         )
     );
     Ok(())
+}
+
+#[test]
+#[ignore]
+fn simple_deserialize() -> Result<()> {
+    let tree_json = r#"
+        {
+          "": {
+            "queue": [],
+            "filter": null,
+            "child_weights": [
+              1
+            ],
+            "order": "InOrder"
+          },
+          "0": {
+            "queue": [],
+            "filter": null,
+            "child_weights": [
+              0
+            ],
+            "order": "InOrder"
+          },
+          "0,0": {
+            "queue": ["Alfalfa", "Oats"],
+            "filter": null,
+            "child_weights": [],
+            "order": "InOrder"
+          }
+        }"#;
+    let mut t: Tree<String, ()> = serde_json::from_str(tree_json)?;
+    let root = t.root_id();
+    assert_eq!(
+        t.pop_item_from(&root).expect("root exists"),
+        Err(PopError::Blocked((*root).clone()))
+    );
+    let child: NodePath = serde_json::from_str("\"0,0\"")?;
+    t.set_weight(&child, 1).expect("child exists");
+    assert_eq!(
+        t.pop_item_from(&root).expect("root exists"),
+        Ok(String::from("Alfalfa"))
+    );
+    assert_eq!(
+        t.pop_item_from(&root).expect("root exists"),
+        Ok(String::from("Oats"))
+    );
+    assert_eq!(
+        t.pop_item_from(&root).expect("root exists"),
+        Err(PopError::Empty(child))
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore]
+fn complex_deserialize() -> Result<()> {
+    let _tree_json = r#"
+    {
+      "": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [
+          0
+        ],
+        "order": "InOrder"
+      },
+      "0": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "order": "InOrder"
+      },
+      "0,0": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [],
+        "order": "InOrder"
+      },
+      "0,1": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [],
+        "order": "InOrder"
+      },
+      "0,2": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [],
+        "order": "InOrder"
+      },
+      "0,3": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [
+          0
+        ],
+        "order": "InOrder"
+      },
+      "0,3,0": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [],
+        "order": "InOrder"
+      },
+      "0,4": {
+        "queue": [],
+        "filter": null,
+        "child_weights": [],
+        "order": "InOrder"
+      }
+    }"#;
+    todo!()
 }

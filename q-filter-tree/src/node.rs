@@ -1,19 +1,14 @@
 use crate::{
     error::{InvalidNodePath, PopError, RemoveErrorInner},
-    id::{NodeId, NodeIdBuilder, NodePathElem, Sequence},
+    id::{NodeId, NodeIdBuilder, NodePath, NodePathElem, Sequence},
     order, Weight,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>)
-where
-    F: Default;
-impl<T, F> WeightNodeVec<T, F>
-where
-    F: Default,
-{
+pub(crate) struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>);
+impl<T, F> WeightNodeVec<T, F> {
     fn new() -> Self {
         Self(vec![], vec![])
     }
@@ -50,34 +45,58 @@ where
     }
 }
 
-/// Internal representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
+/// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
 #[must_use]
-#[derive(Debug, PartialEq, Eq, Serialize)]
-pub struct Node<T, F>
-where
-    F: Default,
-{
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct NodeInfo<T, F> {
     /// Items queue
-    pub queue: VecDeque<T>,
+    queue: VecDeque<T>,
     /// Filtering value
-    pub filter: F,
+    filter: Option<F>,
     // TODO
     // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
     // pub retain_count: usize,
-    #[serde(rename = "child_weights")]
+    child_weights: Vec<Weight>,
+    order: order::Type,
+}
+impl<'a, T: Clone, F: Clone> From<&'a Node<T, F>> for NodeInfo<T, F> {
+    fn from(node: &'a Node<T, F>) -> Self {
+        let Node {
+            queue,
+            filter,
+            children,
+            order,
+            ..
+        } = node;
+        Self {
+            queue: queue.clone(),
+            filter: filter.clone(),
+            child_weights: children.weights().into(),
+            order: order.get_type(),
+        }
+    }
+}
+
+/// Internal representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
+#[must_use]
+#[derive(Debug, PartialEq, Eq)]
+pub struct Node<T, F> {
+    /// Items queue
+    pub queue: VecDeque<T>,
+    /// Filtering value
+    pub filter: Option<F>,
+    // TODO
+    // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
+    // pub retain_count: usize,
     children: WeightNodeVec<T, F>,
     order: order::State,
-    #[serde(skip)]
     sequence: Sequence,
 }
-impl<T, F> Node<T, F>
-where
-    F: Default,
-{
+impl<T, F> Node<T, F> {
     pub(crate) fn new(sequence: Sequence) -> Self {
         Self {
             queue: VecDeque::new(),
-            filter: F::default(),
+            filter: None,
             // TODO
             // retain_count: 0,
             children: WeightNodeVec::new(),
@@ -88,7 +107,7 @@ where
     /// Adds a child to the specified `Node`, with an optional `Weight`
     pub(crate) fn add_child(
         &mut self,
-        node_id: &NodeId,
+        node_path: &NodePath,
         weight: Option<Weight>,
         sequence: Sequence,
     ) -> NodeId {
@@ -102,7 +121,7 @@ where
         };
         self.order.clear();
         // return new NodeId
-        node_id.extend(child_part).with_sequence(sequence)
+        node_path.extend(child_part).with_sequence(sequence)
     }
     /// Removes the specified child node
     ///
@@ -295,10 +314,7 @@ impl SequenceSource for NodeId {
         self.sequence()
     }
 }
-impl<T, F> SequenceSource for Node<T, F>
-where
-    F: Default,
-{
+impl<T, F> SequenceSource for Node<T, F> {
     fn sequence(&self) -> Sequence {
         self.sequence
     }
