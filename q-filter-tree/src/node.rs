@@ -100,7 +100,7 @@ impl<'a, T: Clone, F: Clone> From<&'a Node<T, F>> for NodeInfo<T, F> {
             queue: queue.clone(),
             filter: filter.clone(),
             child_weights: children.weights().into(),
-            order: order.get_type(),
+            order: order.into(),
         }
     }
 }
@@ -167,6 +167,7 @@ impl<T, F> Node<T, F> {
             if child_sequence == sequence_source.sequence() {
                 let child_children = child.get_child_nodes();
                 if child_children.is_empty() {
+                    self.order.clear();
                     Ok(self.children.remove(id_elem))
                 } else {
                     let child_id_elems = (0..child_children.len()).collect();
@@ -306,9 +307,7 @@ impl<T, F> Node<T, F> {
     }
     /// Sets the [`OrderType`](`crate::order::Type`) of this node
     pub fn set_order(&mut self, ty: order::Type) {
-        if ty != self.order.get_type() {
-            self.order = order::State::Empty(ty);
-        }
+        self.order.set_type(ty);
     }
     /// Attempts to pop the next item, pulling from child nodes as needed
     ///

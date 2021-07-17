@@ -1,123 +1,69 @@
+//! Order of picking nodes from children nodes, given the node [`Weight`]s.
+//!
+//! # Examples:
+//!
+//! 1. [`Type::InOrder`]
+//!
+//! Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
+//! ```
+//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! let mut t: Tree<_, ()> = Tree::default();
+//! let root = t.root_id();
+//! //
+//! t.set_order(&root, OrderType::InOrder);
+//! //
+//! let childA = t.add_child(&root, Some(2)).unwrap();
+//! t.push_item(&childA, "A1").unwrap();
+//! t.push_item(&childA, "A2").unwrap();
+//! let childB = t.add_child(&root, Some(1)).unwrap();
+//! t.push_item(&childB, "B1").unwrap();
+//! let childC = t.add_child(&root, Some(3)).unwrap();
+//! t.push_item(&childC, "C1").unwrap();
+//! t.push_item(&childC, "C2").unwrap();
+//! t.push_item(&childC, "C3").unwrap();
+//! //
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A1"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("B1"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root.into())));
+//! ```
+//!
+//! 2. [`Type::RoundRobin`]
+//!
+//! Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
+//! ```
+//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! let mut t: Tree<_, ()> = Tree::default();
+//! let root = t.root_id();
+//! //
+//! t.set_order(&root, OrderType::RoundRobin);
+//! //
+//! let childA = t.add_child(&root, Some(2)).unwrap();
+//! t.push_item(&childA, "A1").unwrap();
+//! t.push_item(&childA, "A2").unwrap();
+//! let childB = t.add_child(&root, Some(1)).unwrap();
+//! t.push_item(&childB, "B1").unwrap();
+//! let childC = t.add_child(&root, Some(3)).unwrap();
+//! t.push_item(&childC, "C1").unwrap();
+//! t.push_item(&childC, "C2").unwrap();
+//! t.push_item(&childC, "C3").unwrap();
+//! //
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A1"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("B1"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
+//! assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root.into())));
+//! ```
+
 use super::Weight;
 use serde::{Deserialize, Serialize};
 
-pub enum State {
-    Empty(Type),
-    State(Box<dyn Order>),
-}
-impl State {
-    /// Returns the [`Type`] of the State
-    pub(crate) fn get_type(&self) -> Type {
-        match self {
-            Self::Empty(ty) => *ty,
-            Self::State(order) => order.get_type(),
-        }
-    }
-    /// Clears the state, leaving only the [`Type`]
-    pub(crate) fn clear(&mut self) {
-        *self = Self::Empty(self.get_type());
-    }
-    /// Retrieves the next index from the [`Order`], instantiating if necessary
-    pub(crate) fn next(&mut self, weights: &[Weight]) -> Option<usize> {
-        self.get_state(weights).next(weights)
-    }
-    /// Instantiates the state (if needed) to the specified weights
-    fn get_state(&mut self, weights: &[Weight]) -> &mut Box<dyn Order> {
-        match self {
-            Self::State(state) => state,
-            Self::Empty(ty) => {
-                *self = Self::State(ty.instantiate(weights));
-                match self {
-                    Self::State(state) => state,
-                    Self::Empty(_) => unreachable!(),
-                }
-            }
-        }
-    }
-}
-impl From<Type> for State {
-    fn from(ty: Type) -> Self {
-        Self::Empty(ty)
-    }
-}
-impl PartialEq for State {
-    fn eq(&self, other: &State) -> bool {
-        self.get_type() == other.get_type()
-    }
-}
-impl Eq for State {}
-impl std::fmt::Debug for State {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let variant = match self {
-            Self::Empty(_) => "Empty",
-            Self::State(_) => "State",
-        };
-        let ty = self.get_type();
-        write!(f, "State::{}({:?})", variant, ty)
-    }
-}
-
-/// Order of picking nodes from children nodes, given the node [`Weight`]s.
-///
-/// # Examples:
-///
-/// 1. [`Self::InOrder`]
-///
-/// Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
-/// ```
-/// use q_filter_tree::{Tree, error::PopError, OrderType};
-/// let mut t: Tree<_, ()> = Tree::default();
-/// let root = t.root_id();
-/// //
-/// t.set_order(&root, OrderType::InOrder);
-/// //
-/// let childA = t.add_child(&root, Some(2)).unwrap();
-/// t.push_item(&childA, "A1").unwrap();
-/// t.push_item(&childA, "A2").unwrap();
-/// let childB = t.add_child(&root, Some(1)).unwrap();
-/// t.push_item(&childB, "B1").unwrap();
-/// let childC = t.add_child(&root, Some(3)).unwrap();
-/// t.push_item(&childC, "C1").unwrap();
-/// t.push_item(&childC, "C2").unwrap();
-/// t.push_item(&childC, "C3").unwrap();
-/// //
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A1"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("B1"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root.into())));
-/// ```
-///
-/// 2. [`Self::RoundRobin`]
-///
-/// Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
-/// ```
-/// use q_filter_tree::{Tree, error::PopError, OrderType};
-/// let mut t: Tree<_, ()> = Tree::default();
-/// let root = t.root_id();
-/// //
-/// t.set_order(&root, OrderType::RoundRobin);
-/// //
-/// let childA = t.add_child(&root, Some(2)).unwrap();
-/// t.push_item(&childA, "A1").unwrap();
-/// t.push_item(&childA, "A2").unwrap();
-/// let childB = t.add_child(&root, Some(1)).unwrap();
-/// t.push_item(&childB, "B1").unwrap();
-/// let childC = t.add_child(&root, Some(3)).unwrap();
-/// t.push_item(&childC, "C1").unwrap();
-/// t.push_item(&childC, "C2").unwrap();
-/// t.push_item(&childC, "C3").unwrap();
-/// //
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A1"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("B1"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C1"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("A2"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C2"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Ok("C3"));
-/// assert_eq!(t.pop_item_from(&root).unwrap(), Err(PopError::Empty(root.into())));
-/// ```
+/// Method of determining Order
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum Type {
@@ -131,69 +77,120 @@ pub enum Type {
     // /// Randomly selects items based on the relative [`Weight`]s.
     // Random,
 }
-impl Type {
-    /// Creates an instance of the specified `Order` type
-    pub(crate) fn instantiate(self, weights: &[Weight]) -> Box<dyn Order> {
-        let state: Box<dyn Order> = match self {
-            Type::InOrder => Box::new(InOrderState::new(weights)),
-            Type::RoundRobin => Box::new(RoundRobinState::new(weights)),
-        };
-        #[cfg(test)]
-        {
-            assert_eq!(state.get_type(), self, "constructed Order type mismatch");
+
+#[allow(missing_docs)]
+/// State for tracking Ordering progression
+pub enum State {
+    InOrder(InOrderState),
+    RoundRobin(RoundRobinState),
+}
+impl From<Type> for State {
+    fn from(ty: Type) -> Self {
+        match ty {
+            Type::InOrder => Self::InOrder(InOrderState::default()),
+            Type::RoundRobin => Self::RoundRobin(RoundRobinState::default()),
         }
-        state
     }
 }
-
-pub trait Order {
-    fn get_type(&self) -> Type;
-    fn resize_to(&mut self, weights: &[Weight]);
-    fn get_weights(&self) -> &[Weight];
-    fn next_unchecked(&mut self) -> Option<usize>;
-    // TODO
-    // fn peek_unchecked(&self) -> Option<usize>;
-    fn next(&mut self, weights: &[Weight]) -> Option<usize> {
+impl From<&State> for Type {
+    fn from(state: &State) -> Self {
+        match state {
+            State::InOrder(_) => Self::InOrder,
+            State::RoundRobin(_) => Self::RoundRobin,
+        }
+    }
+}
+impl std::ops::Deref for State {
+    type Target = dyn Order;
+    fn deref(&self) -> &(dyn Order + 'static) {
+        match self {
+            Self::InOrder(inner) => inner,
+            Self::RoundRobin(inner) => inner,
+        }
+    }
+}
+impl std::ops::DerefMut for State {
+    fn deref_mut(&mut self) -> &mut (dyn Order + 'static) {
+        match self {
+            Self::InOrder(inner) => inner,
+            Self::RoundRobin(inner) => inner,
+        }
+    }
+}
+impl State {
+    /// Returns the next element in the ordering
+    pub fn next(&mut self, weights: &[Weight]) -> Option<usize> {
         if self.get_weights() != weights {
-            self.resize_to(weights);
+            self.advance(Some(weights));
         }
-        self.next_unchecked()
+        let value = self.peek_unchecked();
+        self.advance(None);
+        value
     }
-    // TODO
-    // fn peek(&mut self, weights: &[Weight]) -> Option<usize> {
-    //     if self.get_weights() != weights {
-    //         self.resize_to(weights);
-    //     }
-    //     self.peek_unchecked()
-    // }
+    /// Reads what will be returned by call to [`next()`](`Self::next()`)
+    pub fn peek(&mut self, weights: &[Weight]) -> Option<usize> {
+        if self.get_weights() != weights {
+            self.advance(Some(weights));
+        }
+        self.peek_unchecked()
+    }
+    /// Clears the state, leaving only the [`Type`]
+    pub fn clear(&mut self) {
+        let ty = Type::from(&*self);
+        *self = Self::from(ty);
+    }
+    /// Sets the order type and clears the state
+    pub fn set_type(&mut self, new_ty: Type) {
+        if new_ty != Type::from(&*self) {
+            *self = Self::from(new_ty);
+        }
+    }
+}
+impl PartialEq for State {
+    fn eq(&self, other: &State) -> bool {
+        Type::from(self) == Type::from(other)
+    }
+}
+impl Eq for State {}
+impl std::fmt::Debug for State {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let ty = Type::from(self);
+        write!(f, "State::{:?}", ty)
+    }
 }
 
-struct InOrderState {
+/// Supplier of ordering
+pub trait Order {
+    /// Returns the currently-stored weights array
+    fn get_weights(&self) -> &[Weight];
+    /// Reads the current value in the ordering
+    fn peek_unchecked(&self) -> Option<usize>;
+    /// Advances the next element in the ordering
+    fn advance(&mut self, resize_weights: Option<&[Weight]>);
+}
+
+/// Tracks weights and items remaining for current index
+pub struct InOrderState {
     weights: Vec<Weight>,
     index_remaining: Option<(usize, Weight)>,
 }
-impl InOrderState {
-    fn new(weights: &[Weight]) -> Self {
-        let mut this = Self {
+impl Default for InOrderState {
+    fn default() -> Self {
+        Self {
             weights: vec![],
             index_remaining: None,
-        };
-        this.resize_to(weights);
-        this
+        }
     }
 }
 impl Order for InOrderState {
-    fn get_type(&self) -> Type {
-        Type::InOrder
-    }
-    fn resize_to(&mut self, weights: &[Weight]) {
-        self.weights = weights.to_vec();
-        self.index_remaining = None;
-    }
     fn get_weights(&self) -> &[Weight] {
         &self.weights
     }
-    fn next_unchecked(&mut self) -> Option<usize> {
+    fn advance(&mut self, resize: Option<&[Weight]>) {
+        if let Some(new_weights) = resize {
+            self.weights = new_weights.to_vec();
+            self.index_remaining = None;
+        }
         let filter_nonzero_weight = |(index, &weight)| {
             if weight > 0 {
                 Some((index, weight - 1))
@@ -221,39 +218,39 @@ impl Order for InOrderState {
                     .enumerate()
                     .find_map(filter_nonzero_weight)
             });
+    }
+    fn peek_unchecked(&self) -> Option<usize> {
         // next index
         self.index_remaining.map(|(index, _)| index)
     }
 }
 
-struct RoundRobinState {
+/// Tracks count remaining for each element
+pub struct RoundRobinState {
     weights: Vec<Weight>,
     count_remaining: Vec<Weight>,
     index: Option<usize>,
+    peek_value: Option<usize>, //TODO remove redundancy, code smell
 }
-impl RoundRobinState {
-    fn new(weights: &[Weight]) -> Self {
-        let mut this = Self {
+impl Default for RoundRobinState {
+    fn default() -> Self {
+        Self {
             weights: vec![],
             count_remaining: vec![],
             index: None,
-        };
-        this.resize_to(weights);
-        this
+            peek_value: None,
+        }
     }
 }
 impl Order for RoundRobinState {
-    fn get_type(&self) -> Type {
-        Type::RoundRobin
-    }
-    fn resize_to(&mut self, weights: &[Weight]) {
-        self.weights = weights.to_vec();
-    }
     fn get_weights(&self) -> &[Weight] {
         &self.weights
     }
-    fn next_unchecked(&mut self) -> Option<usize> {
-        if self.weights.is_empty() || self.weights.iter().all(|x| *x == 0) {
+    fn advance(&mut self, resize: Option<&[Weight]>) {
+        if let Some(new_weights) = resize {
+            self.weights = new_weights.to_vec();
+        }
+        self.peek_value = if self.weights.is_empty() || self.weights.iter().all(|x| *x == 0) {
             None
         } else {
             let weights_len = self.weights.len();
@@ -269,7 +266,7 @@ impl Order for RoundRobinState {
                     Some(_) | None if 0 < weights_len => 0,
                     _ => {
                         // no valid index
-                        return None;
+                        break None;
                     }
                 };
                 self.index.replace(index);
@@ -296,29 +293,35 @@ impl Order for RoundRobinState {
                     Some(count) => {
                         // found! decrement
                         *count -= 1;
-                        return Some(index);
+                        break Some(index);
                     }
                     None => unreachable!("length mismatch: self.count_remaining to self.weights"),
                 }
             }
         }
     }
+    fn peek_unchecked(&self) -> Option<usize> {
+        // impl not clear from function above
+        self.peek_value
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Type;
+    use super::{State, Type};
     fn check_simple(ty: Type) {
         let weights = &[1];
-        let mut s = ty.instantiate(weights);
+        let mut s = State::from(ty);
         for _ in 0..100 {
+            assert_eq!(s.peek(weights), Some(0));
             assert_eq!(s.next(weights), Some(0));
         }
     }
     fn check_blocked(ty: Type) {
         let weights = &[0];
-        let mut s = ty.instantiate(weights);
+        let mut s = State::from(ty);
         for _ in 0..100 {
+            assert_eq!(s.peek(weights), None);
             assert_eq!(s.next(weights), None);
         }
     }
@@ -334,10 +337,11 @@ mod tests {
         let ty = Type::InOrder;
         //
         let weights = &[1, 2, 2, 3, 0, 5];
-        let mut s = ty.instantiate(weights);
+        let mut s = State::from(ty);
         for _ in 0..100 {
             for (index, &weight) in weights.iter().enumerate() {
                 for _ in 0..weight {
+                    assert_eq!(s.peek(weights), Some(index));
                     assert_eq!(s.next(weights), Some(index));
                     //
                     // let value = s.next(weights);
@@ -361,7 +365,7 @@ mod tests {
         let ty = Type::RoundRobin;
         //
         let weights = &[1, 2, 2, 3, 0, 5];
-        let mut s = ty.instantiate(weights);
+        let mut s = State::from(ty);
         for _ in 0..100 {
             let mut remaining = weights.to_vec();
             loop {
@@ -371,6 +375,7 @@ mod tests {
                         popped = true;
                         *remaining -= 1;
                         //
+                        assert_eq!(s.peek(weights), Some(index));
                         assert_eq!(s.next(weights), Some(index));
                         //
                         // let value = s.next(weights);

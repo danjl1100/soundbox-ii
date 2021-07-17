@@ -24,7 +24,7 @@ pub use node::Node;
 mod node;
 
 pub use order::Type as OrderType;
-mod order;
+pub mod order;
 
 mod iter;
 mod serde;
