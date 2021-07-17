@@ -33,6 +33,37 @@ mod serde;
 pub type Weight = u32;
 
 /// Tree data structure, consisting of [`Node`]s with queues of items `T`, filter `F`
+///
+/// # Example
+/// ```
+/// use q_filter_tree::{Tree, error::PopError};
+/// let mut tree: Tree<_,()> = Tree::new();
+/// let root = tree.root_id();
+/// //
+/// let child_blocked = tree.add_child(&root, None).expect("root exists");
+/// let child = tree.add_child(&root, Some(1)).expect("root exists");
+/// // initial weight `None` (0)
+/// tree.push_item(&child_blocked, "apple").expect("childBlocked exists");
+/// // initial weight `1`
+/// tree.push_item(&child, "banana").expect("child exists");
+/// //
+/// assert_eq!(
+///     tree.pop_item_from(&root).expect("root exists"),
+///     Ok("banana")
+/// );
+/// assert_eq!(
+///     tree.pop_item_from(&root).expect("root exists"),
+///     Err(PopError::Empty((*root).clone()))
+/// );
+/// // unblock "child_blocked"
+/// tree.set_weight(&child_blocked, 2);
+/// let child_unblocked = child_blocked;
+/// assert_eq!(
+///     tree.pop_item_from(&root).expect("root exists"),
+///     Ok("apple"),
+/// );
+/// ```
+///
 pub struct Tree<T, F> {
     root: Node<T, F>,
     next_sequence: id::Sequence,
