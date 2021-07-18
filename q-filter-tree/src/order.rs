@@ -121,16 +121,16 @@ impl State {
     /// Returns the next element in the ordering
     pub fn next(&mut self, weights: &[Weight]) -> Option<usize> {
         if self.get_weights() != weights {
-            self.advance(Some(weights));
+            self.set_weights(weights);
         }
         let value = self.peek_unchecked();
-        self.advance(None);
+        self.advance();
         value
     }
     /// Reads what will be returned by call to [`next()`](`Self::next()`)
     pub fn peek(&mut self, weights: &[Weight]) -> Option<usize> {
         if self.get_weights() != weights {
-            self.advance(Some(weights));
+            self.set_weights(weights);
         }
         self.peek_unchecked()
     }
@@ -165,8 +165,10 @@ pub trait Order {
     fn get_weights(&self) -> &[Weight];
     /// Reads the current value in the ordering
     fn peek_unchecked(&self) -> Option<usize>;
+    /// Updates the state for new weights
+    fn set_weights(&mut self, new_weights: &[Weight]);
     /// Advances the next element in the ordering
-    fn advance(&mut self, resize_weights: Option<&[Weight]>);
+    fn advance(&mut self);
 }
 
 /// Tracks weights and items remaining for current index
@@ -186,11 +188,12 @@ impl Order for InOrderState {
     fn get_weights(&self) -> &[Weight] {
         &self.weights
     }
-    fn advance(&mut self, resize: Option<&[Weight]>) {
-        if let Some(new_weights) = resize {
-            self.weights = new_weights.to_vec();
-            self.index_remaining = None;
-        }
+    fn set_weights(&mut self, new_weights: &[Weight]) {
+        self.weights = new_weights.to_vec();
+        self.index_remaining = None;
+        self.advance();
+    }
+    fn advance(&mut self) {
         let filter_nonzero_weight = |(index, &weight)| {
             if weight > 0 {
                 Some((index, weight - 1))
@@ -228,17 +231,15 @@ impl Order for InOrderState {
 /// Tracks count remaining for each element
 pub struct RoundRobinState {
     weights: Vec<Weight>,
-    count_remaining: Vec<Weight>,
+    count: Vec<Weight>,
     index: Option<usize>,
-    peek_value: Option<usize>, //TODO remove redundancy, code smell
 }
 impl Default for RoundRobinState {
     fn default() -> Self {
         Self {
             weights: vec![],
-            count_remaining: vec![],
+            count: vec![],
             index: None,
-            peek_value: None,
         }
     }
 }
@@ -246,27 +247,84 @@ impl Order for RoundRobinState {
     fn get_weights(&self) -> &[Weight] {
         &self.weights
     }
-    fn advance(&mut self, resize: Option<&[Weight]>) {
-        if let Some(new_weights) = resize {
-            self.weights = new_weights.to_vec();
+    fn set_weights(&mut self, new_weights: &[Weight]) {
+        /// ensures correct order of actions, packaging a struct of which actions are desired
+        struct Act {
+            clear_count: bool,
+            do_advance: bool,
         }
-        self.peek_value = if self.weights.is_empty() || self.weights.iter().all(|x| *x == 0) {
-            None
+        let old_len = self.weights.len();
+        // pre-calculate from COUNT
+        let was_restarting = // .
+            self.count.iter().take(1).all(|&x| x == 1) && // .
+            self.count.iter().skip(1).all(|&x| x == 0);
+        // update weights
+        self.weights = new_weights.to_vec();
+        // verify current index is VALID
+        let index_is_valid = self.index.map(|index| self.check_valid(index));
+        // resize COUNT
+        self.count.resize(new_weights.len(), 0);
+        //
+        let actions = match index_is_valid {
+            Some(_) if was_restarting => {
+                // dbg!("CONTINUE COUNT FROM INDEX = OLD_LEN");
+                self.index.replace(old_len - 1);
+                Act {
+                    clear_count: true,
+                    do_advance: true,
+                }
+            }
+            Some(true) => {
+                // continue on valid index
+                // dbg!("CONTINUE, IT'S VALID :D");
+                Act {
+                    clear_count: false,
+                    do_advance: false,
+                }
+            }
+            Some(_) => {
+                // dbg!("RESET ALL EXCEPT INDEX");
+                Act {
+                    clear_count: true,
+                    do_advance: true,
+                }
+            }
+            None => {
+                // reset
+                // dbg!("RESET ALL, INCLUDING INDEX");
+                self.index = None;
+                Act {
+                    clear_count: true,
+                    do_advance: true,
+                }
+            }
+        };
+        if actions.clear_count {
+            self.count.fill(0);
+        }
+        if actions.do_advance {
+            self.advance();
+        }
+    }
+    fn advance(&mut self) {
+        if self.weights.is_empty() || self.weights.iter().all(|x| *x == 0) {
+            self.index = None;
         } else {
             let weights_len = self.weights.len();
             let mut mark_no_progress_since = None;
+            self.simplify_count();
             loop {
-                // fill count_remaining
-                if self.count_remaining.is_empty() {
-                    self.count_remaining = self.weights.clone();
-                }
+                assert_eq!(
+                    self.count.len(),
+                    self.weights.len(),
+                    "count length matches weights"
+                );
                 // increment
                 let index = match self.index {
                     Some(prev_index) if prev_index + 1 < weights_len => prev_index + 1,
-                    Some(_) | None if 0 < weights_len => 0,
                     _ => {
-                        // no valid index
-                        break None;
+                        // weights is NOT empty (per outer `else`) --> restart at index `0`
+                        0
                     }
                 };
                 self.index.replace(index);
@@ -276,39 +334,64 @@ impl Order for RoundRobinState {
                         mark_no_progress_since = None;
                         // reset
                         self.index = None;
-                        self.count_remaining.clear();
+                        self.count.fill(0);
                         continue;
                     }
                     _ => {}
                 }
                 // check count-remaining
-                match self.count_remaining.get_mut(index) {
-                    Some(0) => {
+                match (self.count.get_mut(index), self.weights.get(index)) {
+                    (Some(count), Some(weight)) if *count >= *weight => {
                         // record "no progress" marker
-                        if mark_no_progress_since.is_none() {
-                            mark_no_progress_since.replace(index);
-                        }
+                        mark_no_progress_since.get_or_insert(index);
                         continue;
                     }
-                    Some(count) => {
-                        // found! decrement
-                        *count -= 1;
-                        break Some(index);
+                    (Some(count), Some(_)) => {
+                        // found! increment count
+                        *count += 1;
+                        break;
                     }
-                    None => unreachable!("length mismatch: self.count_remaining to self.weights"),
+                    (count_opt, weight_opt) => unreachable!(
+                        "length mismatch at index {}: self.count_remaining {:?} to self.weights {:?}",
+                        index, count_opt, weight_opt),
                 }
             }
         }
     }
     fn peek_unchecked(&self) -> Option<usize> {
-        // impl not clear from function above
-        self.peek_value
+        self.index
+    }
+}
+impl RoundRobinState {
+    fn check_valid(&self, index: usize) -> bool {
+        // check count-remaining
+        match (self.count.get(index), self.weights.get(index)) {
+            (Some(count), Some(weight)) if *count >= *weight => false,
+            (Some(count), Some(weight)) if *count < *weight => true,
+            _ => false,
+        }
+    }
+    fn simplify_count(&mut self) -> bool {
+        let simplify = self
+            .count
+            .iter()
+            .zip(self.weights.iter())
+            .all(|(count, weight)| count == weight);
+        if simplify {
+            self.count.fill(0);
+        }
+        simplify
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{State, Type};
+    fn check_all(ty: Type) {
+        check_simple(ty);
+        check_blocked(ty);
+        check_empty_resizing(ty);
+    }
     fn check_simple(ty: Type) {
         let weights = &[1];
         let mut s = State::from(ty);
@@ -325,12 +408,31 @@ mod tests {
             assert_eq!(s.next(weights), None);
         }
     }
+    fn check_empty_resizing(ty: Type) {
+        let weights = &[];
+        let mut s = State::from(ty);
+        for _ in 0..100 {
+            assert_eq!(s.peek(weights), None);
+            assert_eq!(s.next(weights), None);
+        }
+        //
+        let weights = &[1];
+        for _ in 0..100 {
+            assert_eq!(s.peek(weights), Some(0));
+            assert_eq!(s.next(weights), Some(0));
+        }
+        //
+        let weights = &[0];
+        for _ in 0..100 {
+            assert_eq!(s.peek(weights), None);
+            assert_eq!(s.next(weights), None);
+        }
+    }
     // Type::InOrder
     #[test]
-    fn in_order_simple_and_blocked() {
+    fn in_order_all() {
         let ty = Type::InOrder;
-        check_simple(ty);
-        check_blocked(ty);
+        check_all(ty);
     }
     #[test]
     fn in_order_longer() {
@@ -352,13 +454,27 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn in_order_resizing() {
+        let ty = Type::InOrder;
+        //
+        let all_weights = &[1, 2, 2, 3, 0, 5];
+        let mut s = State::from(ty);
+        for i in 0..100 {
+            let weights = &all_weights[0..(i % (all_weights.len() + 1))];
+            for (index, &weight) in weights.iter().enumerate() {
+                for _ in 0..weight {
+                    assert_eq!(s.peek(weights), Some(index));
+                    assert_eq!(s.next(weights), Some(index));
+                }
+            }
+        }
+    }
     // Type::RoundRobin
     #[test]
-    fn round_robin_simple_and_blocked() {
+    fn round_robin_all() {
         let ty = Type::RoundRobin;
-        //
-        check_simple(ty);
-        check_blocked(ty);
+        check_all(ty);
     }
     #[test]
     fn round_robin_longer() {
@@ -374,14 +490,111 @@ mod tests {
                     if *remaining > 0 {
                         popped = true;
                         *remaining -= 1;
-                        //
+                        // //
+                        // assert_eq!(s.peek(weights), Some(index));
+                        // assert_eq!(s.next(weights), Some(index));
+                        // //
+                        let value = s.next(weights);
+                        let expected = Some(index);
+                        assert_eq!(value, expected);
+                        println!("{:?} = {:?} ??", value, expected);
+                    }
+                }
+                if !popped {
+                    break;
+                }
+            }
+        }
+    }
+    #[test]
+    fn round_robin_resizing() {
+        let ty = Type::RoundRobin;
+        //
+        let all_weights = &[1, 2, 2, 3, 0, 5];
+        let mut s = State::from(ty);
+        let mut prev_index = 0;
+        for i in 0..100 {
+            let weights = &all_weights[0..(i % (all_weights.len() + 1))];
+            let mut remaining = weights.to_vec();
+            loop {
+                let mut popped = false;
+                let start_index = if prev_index < remaining.len() {
+                    prev_index + 1
+                } else {
+                    0
+                };
+                let (front, tail) = remaining.split_at_mut(start_index);
+                let front_iter = front.iter_mut().enumerate();
+                let tail_iter = tail
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(idx, val)| (idx + start_index, val));
+                for (index, remaining) in tail_iter.chain(front_iter) {
+                    if *remaining > 0 {
+                        popped = true;
+                        *remaining -= 1;
                         assert_eq!(s.peek(weights), Some(index));
-                        assert_eq!(s.next(weights), Some(index));
                         //
+                        assert_eq!(s.next(weights), Some(index));
+                        // //
                         // let value = s.next(weights);
                         // let expected = Some(index);
-                        // assert_eq!(value, expected);
                         // println!("{:?} = {:?} ??", value, expected);
+                        // assert_eq!(value, expected);
+                        //
+                        prev_index = index;
+                    }
+                }
+                if !popped {
+                    break;
+                }
+            }
+        }
+    }
+    #[test]
+    fn round_robin_resizing_dynamic() {
+        let ty = Type::RoundRobin;
+        //
+        let all_weights = &[1, 2, 2, 3, 0, 5, 9, 0, 0, 3, 7];
+        let mut s = State::from(ty);
+        let mut prev_index = 0;
+        let double_len = all_weights.len() * 2;
+        for i in 0..(double_len * 2) {
+            let test_size = if i < double_len {
+                i.min((double_len + 0) - i)
+            } else {
+                let i = i - double_len + 1;
+                i.max((double_len + 1) - i) - all_weights.len()
+            };
+            let weights = &all_weights[0..test_size];
+            let mut remaining = weights.to_vec();
+            loop {
+                let mut popped = false;
+                let start_index = if prev_index < remaining.len() {
+                    prev_index + 1
+                } else {
+                    0
+                };
+                let (front, tail) = remaining.split_at_mut(start_index);
+                let front_iter = front.iter_mut().enumerate();
+                let tail_iter = tail
+                    .iter_mut()
+                    .enumerate()
+                    .map(|(idx, val)| (idx + start_index, val));
+                for (index, remaining) in tail_iter.chain(front_iter) {
+                    if *remaining > 0 {
+                        popped = true;
+                        *remaining -= 1;
+                        assert_eq!(s.peek(weights), Some(index));
+                        //
+                        // assert_eq!(s.next(weights), Some(index));
+                        // //
+                        let value = s.next(weights);
+                        let expected = Some(index);
+                        println!("{:?} = {:?} ??", value, expected);
+                        assert_eq!(value, expected);
+                        //
+                        prev_index = index;
                     }
                 }
                 if !popped {
