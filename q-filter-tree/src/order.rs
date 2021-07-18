@@ -386,7 +386,14 @@ impl RoundRobinState {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, Type};
+    use super::{State, Type, Weight};
+    fn assert_peek_next(s: &mut State, weights: &[Weight], expected: Option<usize>) {
+        let peeked = s.peek(weights);
+        let popped = s.next(weights);
+        println!("{:?} = {:?} ??", peeked, expected);
+        assert_eq!(peeked, expected);
+        assert_eq!(popped, expected);
+    }
     fn check_all(ty: Type) {
         check_simple(ty);
         check_blocked(ty);
@@ -396,36 +403,31 @@ mod tests {
         let weights = &[1];
         let mut s = State::from(ty);
         for _ in 0..100 {
-            assert_eq!(s.peek(weights), Some(0));
-            assert_eq!(s.next(weights), Some(0));
+            assert_peek_next(&mut s, weights, Some(0));
         }
     }
     fn check_blocked(ty: Type) {
         let weights = &[0];
         let mut s = State::from(ty);
         for _ in 0..100 {
-            assert_eq!(s.peek(weights), None);
-            assert_eq!(s.next(weights), None);
+            assert_peek_next(&mut s, weights, None);
         }
     }
     fn check_empty_resizing(ty: Type) {
         let weights = &[];
         let mut s = State::from(ty);
         for _ in 0..100 {
-            assert_eq!(s.peek(weights), None);
-            assert_eq!(s.next(weights), None);
+            assert_peek_next(&mut s, weights, None);
         }
         //
         let weights = &[1];
         for _ in 0..100 {
-            assert_eq!(s.peek(weights), Some(0));
-            assert_eq!(s.next(weights), Some(0));
+            assert_peek_next(&mut s, weights, Some(0));
         }
         //
         let weights = &[0];
         for _ in 0..100 {
-            assert_eq!(s.peek(weights), None);
-            assert_eq!(s.next(weights), None);
+            assert_peek_next(&mut s, weights, None);
         }
     }
     // Type::InOrder
@@ -443,13 +445,7 @@ mod tests {
         for _ in 0..100 {
             for (index, &weight) in weights.iter().enumerate() {
                 for _ in 0..weight {
-                    assert_eq!(s.peek(weights), Some(index));
-                    assert_eq!(s.next(weights), Some(index));
-                    //
-                    // let value = s.next(weights);
-                    // let expected = Some(index);
-                    // assert_eq!(value, expected);
-                    // println!("{:?} = {:?} ??", value, expected);
+                    assert_peek_next(&mut s, weights, Some(index));
                 }
             }
         }
@@ -464,8 +460,7 @@ mod tests {
             let weights = &all_weights[0..(i % (all_weights.len() + 1))];
             for (index, &weight) in weights.iter().enumerate() {
                 for _ in 0..weight {
-                    assert_eq!(s.peek(weights), Some(index));
-                    assert_eq!(s.next(weights), Some(index));
+                    assert_peek_next(&mut s, weights, Some(index));
                 }
             }
         }
@@ -478,102 +473,52 @@ mod tests {
     }
     #[test]
     fn round_robin_longer() {
-        let ty = Type::RoundRobin;
-        //
         let weights = &[1, 2, 2, 3, 0, 5];
-        let mut s = State::from(ty);
-        for _ in 0..100 {
-            let mut remaining = weights.to_vec();
-            loop {
-                let mut popped = false;
-                for (index, remaining) in remaining.iter_mut().enumerate() {
-                    if *remaining > 0 {
-                        popped = true;
-                        *remaining -= 1;
-                        // //
-                        // assert_eq!(s.peek(weights), Some(index));
-                        // assert_eq!(s.next(weights), Some(index));
-                        // //
-                        let value = s.next(weights);
-                        let expected = Some(index);
-                        assert_eq!(value, expected);
-                        println!("{:?} = {:?} ??", value, expected);
-                    }
-                }
-                if !popped {
-                    break;
-                }
-            }
-        }
+        let test_sizes = (0..100).map(|_| weights.len());
+        let check_counter = do_run_round_robin(weights, test_sizes);
+        assert_eq!(check_counter, 1300); // rigging to ensure test does not get shorter while modifying
     }
     #[test]
     fn round_robin_resizing() {
-        let ty = Type::RoundRobin;
-        //
         let all_weights = &[1, 2, 2, 3, 0, 5];
-        let mut s = State::from(ty);
-        let mut prev_index = 0;
-        for i in 0..100 {
-            let weights = &all_weights[0..(i % (all_weights.len() + 1))];
-            let mut remaining = weights.to_vec();
-            loop {
-                let mut popped = false;
-                let start_index = if prev_index < remaining.len() {
-                    prev_index + 1
-                } else {
-                    0
-                };
-                let (front, tail) = remaining.split_at_mut(start_index);
-                let front_iter = front.iter_mut().enumerate();
-                let tail_iter = tail
-                    .iter_mut()
-                    .enumerate()
-                    .map(|(idx, val)| (idx + start_index, val));
-                for (index, remaining) in tail_iter.chain(front_iter) {
-                    if *remaining > 0 {
-                        popped = true;
-                        *remaining -= 1;
-                        assert_eq!(s.peek(weights), Some(index));
-                        //
-                        assert_eq!(s.next(weights), Some(index));
-                        // //
-                        // let value = s.next(weights);
-                        // let expected = Some(index);
-                        // println!("{:?} = {:?} ??", value, expected);
-                        // assert_eq!(value, expected);
-                        //
-                        prev_index = index;
-                    }
-                }
-                if !popped {
-                    break;
-                }
-            }
-        }
+        let test_sizes = (0..100).map(|i| (i % (all_weights.len() + 1)));
+        let check_counter = do_run_round_robin(all_weights, test_sizes);
+        assert_eq!(check_counter, 533); // rigging to ensure test does not get shorter while modifying
     }
     #[test]
     fn round_robin_resizing_dynamic() {
-        let ty = Type::RoundRobin;
-        //
         let all_weights = &[1, 2, 2, 3, 0, 5, 9, 0, 0, 3, 7];
-        let mut s = State::from(ty);
-        let mut prev_index = 0;
         let double_len = all_weights.len() * 2;
-        for i in 0..(double_len * 2) {
+        let test_sizes = (0..(double_len * 2)).map(|i| {
             let test_size = if i < double_len {
                 i.min((double_len + 0) - i)
             } else {
                 let i = i - double_len + 1;
                 i.max((double_len + 1) - i) - all_weights.len()
             };
+            test_size
+        });
+        let check_counter = do_run_round_robin(all_weights, test_sizes);
+        assert_eq!(check_counter, 612); // rigging to ensure test does not get shorter while modifying
+    }
+    fn do_run_round_robin<I>(all_weights: &[Weight], test_sizes: I) -> usize
+    where
+        I: IntoIterator<Item = usize>,
+    {
+        let ty = Type::RoundRobin;
+        //
+        let mut s = State::from(ty);
+        let mut prev_index = None;
+        let mut check_counter = 0;
+        for test_size in test_sizes {
             let weights = &all_weights[0..test_size];
+            dbg!(test_size, all_weights, weights, prev_index);
             let mut remaining = weights.to_vec();
             loop {
                 let mut popped = false;
-                let start_index = if prev_index < remaining.len() {
-                    prev_index + 1
-                } else {
-                    0
+                let start_index = match prev_index {
+                    Some(prev_index) if prev_index < remaining.len() => prev_index + 1,
+                    Some(_) | None => 0,
                 };
                 let (front, tail) = remaining.split_at_mut(start_index);
                 let front_iter = front.iter_mut().enumerate();
@@ -583,18 +528,13 @@ mod tests {
                     .map(|(idx, val)| (idx + start_index, val));
                 for (index, remaining) in tail_iter.chain(front_iter) {
                     if *remaining > 0 {
+                        assert_peek_next(&mut s, weights, Some(index));
+                        //
                         popped = true;
                         *remaining -= 1;
-                        assert_eq!(s.peek(weights), Some(index));
                         //
-                        // assert_eq!(s.next(weights), Some(index));
-                        // //
-                        let value = s.next(weights);
-                        let expected = Some(index);
-                        println!("{:?} = {:?} ??", value, expected);
-                        assert_eq!(value, expected);
-                        //
-                        prev_index = index;
+                        prev_index.replace(index);
+                        check_counter += 1;
                     }
                 }
                 if !popped {
@@ -602,5 +542,6 @@ mod tests {
                 }
             }
         }
+        check_counter
     }
 }
