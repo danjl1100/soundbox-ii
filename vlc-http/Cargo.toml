@@ -1,16 +1,10 @@
 [package]
-name = "soundbox-ii"
+name = "vlc-http"
 version = "0.1.0"
 edition = "2018"
-
-[workspace]
-members = ["q-filter-tree", "vlc-http"]
-resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-q-filter-tree = { path = "./q-filter-tree" }
-vlc-http = { path = "./vlc-http" }
-actix-web = "3.3.2"
+awc = "2.0.3"
 tokio = { version = "1.8.1", features = ["rt", "sync"] }

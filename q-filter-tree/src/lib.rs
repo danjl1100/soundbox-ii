@@ -1,6 +1,6 @@
 //! [`Tree`] structure, where each node has a queue of items and a filter.
 
-// only while building
+// TODO: only while building
 #![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
