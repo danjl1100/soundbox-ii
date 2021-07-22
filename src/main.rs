@@ -40,6 +40,10 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
     const CMD_NEXT: &str = "next";
     const CMD_PREV: &str = "prev";
     const CMD_SEEK: &str = "seek";
+    const CMD_VOL: &str = "vol";
+    const CMD_SPEED: &str = "speed";
+    let err_invalid_int = |_| "invalid integer number".to_string();
+    let err_invalid_float = |_| "invalid decimal number".to_string();
     match cmd_str {
         CMD_PLAY => Ok(Command::PlaybackResume),
         CMD_PAUSE => Ok(Command::PlaybackPause),
@@ -63,8 +67,22 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
             Some((seconds_str, extra)) if extra.is_empty() => seconds_str
                 .parse()
                 .map(|seconds| Command::SeekTo { seconds })
-                .map_err(|_| "invalid number".to_string()),
+                .map_err(err_invalid_int),
             _ => Err("expected 1 argument (seconds)".to_string()),
+        },
+        CMD_VOL => match args.split_first() {
+            Some((percent_str, extra)) if extra.is_empty() => percent_str
+                .parse()
+                .map(|percent| Command::Volume { percent })
+                .map_err(err_invalid_int),
+            _ => Err("expected 1 argument (percent)".to_string()),
+        },
+        CMD_SPEED => match args.split_first() {
+            Some((speed_str, extra)) if extra.is_empty() => speed_str
+                .parse()
+                .map(|speed| Command::PlaybackSpeed { speed })
+                .map_err(err_invalid_float),
+            _ => Err("expected 1 argument (decimal)".to_string()),
         },
         _ => Err(format!("Unknown command: \"{}\"", cmd_str)),
     }

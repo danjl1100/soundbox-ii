@@ -43,11 +43,11 @@ pub enum Command {
         /// Seconds within the current item
         seconds: u32,
     },
-    // /// Set the playback volume
-    // Volume {
-    //     /// Percentage for the volume (clamped at 300, which means 300% volume)
-    //     percent: u16,
-    // },
+    /// Set the playback volume
+    Volume {
+        /// Percentage for the volume (clamped at 300, which means 300% volume)
+        percent: u16,
+    },
     // /// Set the item selection mode
     // /// TODO: deleteme in Phase 2
     // PlaybackMode {
@@ -56,8 +56,11 @@ pub enum Command {
     //     /// Randomizes the VLC playback order when `true`
     //     random: bool,
     // },
-    // /// Set the playback speed (unit scale, 1.0 = normal speed)
-    // PlaybackSpeed(f64),
+    /// Set the playback speed
+    PlaybackSpeed {
+        /// Speed on unit scale (1.0 = normal speed)
+        speed: f64,
+    },
 }
 /// Information queries for VLC
 pub enum Query {
@@ -298,7 +301,23 @@ impl Controller {
                 command: "seek",
                 args: vec![("val", seconds.to_string())],
             },
+            Command::Volume { percent } => RequestIntent::Status {
+                command: "volume",
+                args: vec![("val", Self::encode_volume_val(percent).to_string())],
+            },
+            Command::PlaybackSpeed { speed } => RequestIntent::Status {
+                command: "rate",
+                args: vec![("val", speed.to_string())],
+            },
             // _ => todo!(),
+        }
+    }
+    fn encode_volume_val(percent: u16) -> u32 {
+        let based_256 = f32::from(percent * 256) / 100.0;
+        #[allow(clippy::cast_possible_truncation)] // target size comfortably fits `u16 * 2.56`
+        #[allow(clippy::cast_sign_loss)] // value is always non-negative `u16 * 2.56`
+        {
+            based_256.round() as u32
         }
     }
     // TODO
@@ -373,6 +392,15 @@ mod tests {
                 method: Method::GET,
             },
         );
+        assert_encode_simple(
+            Command::PlaybackSpeed { speed: 0.21 },
+            RequestInfo {
+                path_and_query: "/requests/status.json?command=rate&val=0.21"
+                    .parse()
+                    .unwrap(),
+                method: Method::GET,
+            },
+        );
     }
     #[test]
     fn exec_url_encoded() {
@@ -399,5 +427,28 @@ mod tests {
                 method: Method::GET,
             },
         );
+    }
+    #[test]
+    fn exec_volume() {
+        let percent_vals = [
+            (100, "256"),
+            (0, "0"),
+            (20, "51"),  // round: 51.2 --> 21
+            (40, "102"), // round: 102.4 --> 102
+            (60, "154"), // round: 153.6 --> 154
+            (80, "205"), // round: 204.8 --> 205
+            (200, "512"),
+        ];
+        for (percent, val) in &percent_vals {
+            assert_encode_simple(
+                Command::Volume { percent: *percent },
+                RequestInfo {
+                    path_and_query: format!("/requests/status.json?command=volume&val={}", val)
+                        .parse()
+                        .unwrap(),
+                    method: Method::GET,
+                },
+            );
+        }
     }
 }
