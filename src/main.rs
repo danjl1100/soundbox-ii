@@ -37,6 +37,9 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
     const CMD_STOP: &str = "stop";
     const CMD_ADD: &str = "add";
     const CMD_START: &str = "start";
+    const CMD_NEXT: &str = "next";
+    const CMD_PREV: &str = "prev";
+    const CMD_SEEK: &str = "seek";
     match cmd_str {
         CMD_PLAY => Ok(Command::PlaybackResume),
         CMD_PAUSE => Ok(Command::PlaybackPause),
@@ -45,14 +48,23 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
             Some((uri, extra)) if extra.is_empty() => Ok(Command::PlaylistAdd {
                 uri: uri.to_string(),
             }),
-            _ => Err("expected 1 path/URI argument".to_string()),
+            _ => Err("expected 1 argument (path/URI)".to_string()),
         },
         CMD_START => match args.split_first() {
             None => Ok(Command::PlaylistPlay { item_id: None }),
             Some((item_id, extra)) if extra.is_empty() => Ok(Command::PlaylistPlay {
                 item_id: Some(item_id.to_string()),
             }),
-            _ => Err("expected maximum of 1 item id".to_string()),
+            _ => Err("expected maximum of 1 argument (item id)".to_string()),
+        },
+        CMD_NEXT => Ok(Command::SeekNext),
+        CMD_PREV => Ok(Command::SeekPrevious),
+        CMD_SEEK => match args.split_first() {
+            Some((seconds_str, extra)) if extra.is_empty() => seconds_str
+                .parse()
+                .map(|seconds| Command::SeekTo { seconds })
+                .map_err(|_| "invalid number".to_string()),
+            _ => Err("expected 1 argument (seconds)".to_string()),
         },
         _ => Err(format!("Unknown command: \"{}\"", cmd_str)),
     }

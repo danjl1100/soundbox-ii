@@ -34,15 +34,15 @@ pub enum Command {
     PlaybackPause,
     /// Force playback to pause
     PlaybackStop,
-    // /// Seek to the next item
-    // SeekNext,
-    // /// Seek to the previous item
-    // SeekPrevious,
-    // /// Seek within the current item
-    // SeekTo {
-    //     /// Seconds within the current item
-    //     seconds: u32,
-    // },
+    /// Seek to the next item
+    SeekNext,
+    /// Seek to the previous item
+    SeekPrevious,
+    /// Seek within the current item
+    SeekTo {
+        /// Seconds within the current item
+        seconds: u32,
+    },
     // /// Set the playback volume
     // Volume {
     //     /// Percentage for the volume (clamped at 300, which means 300% volume)
@@ -292,6 +292,12 @@ impl Controller {
             Command::PlaybackResume => RequestIntent::status("pl_forceresume"),
             Command::PlaybackPause => RequestIntent::status("pl_forcepause"),
             Command::PlaybackStop => RequestIntent::status("pl_stop"),
+            Command::SeekNext => RequestIntent::status("pl_next"),
+            Command::SeekPrevious => RequestIntent::status("pl_previous"),
+            Command::SeekTo { seconds } => RequestIntent::Status {
+                command: "seek",
+                args: vec![("val", seconds.to_string())],
+            },
             // _ => todo!(),
         }
     }
@@ -341,6 +347,29 @@ mod tests {
             Command::PlaybackStop,
             RequestInfo {
                 path_and_query: "/requests/status.json?command=pl_stop".parse().unwrap(),
+                method: Method::GET,
+            },
+        );
+        assert_encode_simple(
+            Command::SeekNext,
+            RequestInfo {
+                path_and_query: "/requests/status.json?command=pl_next".parse().unwrap(),
+                method: Method::GET,
+            },
+        );
+        assert_encode_simple(
+            Command::SeekPrevious,
+            RequestInfo {
+                path_and_query: "/requests/status.json?command=pl_previous".parse().unwrap(),
+                method: Method::GET,
+            },
+        );
+        assert_encode_simple(
+            Command::SeekTo { seconds: 259 },
+            RequestInfo {
+                path_and_query: "/requests/status.json?command=seek&val=259"
+                    .parse()
+                    .unwrap(),
                 method: Method::GET,
             },
         );
