@@ -1,5 +1,5 @@
-if [ "${VLC_HOST}" = "" ]; then
-  echo "VLC_HOST is not set";
+if [ "${VLC_BIND_HOST}" = "" ]; then
+  echo "VLC_BIND_HOST is not set";
   exit 1;
 fi
 if [ "${VLC_PORT}" = "" ]; then
@@ -11,7 +11,7 @@ if [ "${VLC_PASSWORD}" = "" ]; then
   exit 1;
 fi
 
-ARGS="--audio-replay-gain-mode track --http-host ${VLC_HOST} --http-port ${VLC_PORT} --http-password ${VLC_PASSWORD}"
+ARGS="--audio-replay-gain-mode track --http-host ${VLC_BIND_HOST} --http-port ${VLC_PORT} --http-password ${VLC_PASSWORD}"
 
 if [ "$1" = "-v" ]; then
   echo "!!!NOTE!!! Need to click menu:  View > Add Interface > Web"

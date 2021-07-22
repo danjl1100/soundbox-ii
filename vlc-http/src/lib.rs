@@ -14,12 +14,20 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use std::convert::TryFrom;
-
 /// Control commands for VLC
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[allow(clippy::pub_enum_variant_names)]
 pub enum Command {
+    /// Add the specified item to the playlist
+    PlaylistAdd {
+        /// Path to the file to enqueue
+        uri: String,
+    },
+    /// Play the specified item in the playlist
+    PlaylistPlay {
+        /// Identifier of the playlist item
+        item_id: Option<String>,
+    },
     /// Force playback to resume
     PlaybackResume,
     /// Force playback to pause
@@ -48,6 +56,8 @@ pub enum Command {
     //     /// Randomizes the VLC playback order when `true`
     //     random: bool,
     // },
+    // /// Set the playback speed (unit scale, 1.0 = normal speed)
+    // PlaybackSpeed(f64),
 }
 /// Information queries for VLC
 pub enum Query {
@@ -67,12 +77,10 @@ pub enum RepeatMode {
     One,
 }
 
-pub use web::Authority;
+pub use web::Credentials;
 pub(crate) use web::{Context, RequestIntent};
-/// HTTP-specific primitives (interchange for test purposes)
 pub mod web {
-    use super::Credentials;
-
+    //! HTTP-specific primitives (interchange for test purposes)
     pub use awc::{
         http::{
             uri::{Authority, InvalidUri, PathAndQuery, Uri},
@@ -80,7 +88,8 @@ pub mod web {
         },
         Client,
     };
-    /// HTTP Request information
+
+    /// VLC backend request information
     #[must_use]
     #[derive(Debug, PartialEq, Eq)]
     pub(crate) struct RequestInfo {
@@ -94,18 +103,21 @@ pub mod web {
     pub enum RequestIntent<'a, 'b> {
         Status {
             command: &'a str,
-            arg_str: Option<&'b str>,
+            args: Vec<(&'b str, String)>,
         },
         Art {
-            id: Option<u32>,
+            id: Option<String>,
         },
-        Playlist,
+        Playlist {
+            command: &'a str,
+            args: Vec<(&'b str, String)>,
+        },
     }
     impl<'a, 'b> RequestIntent<'a, 'b> {
         pub(crate) fn status(command: &'a str) -> Self {
             Self::Status {
                 command,
-                arg_str: None,
+                args: vec![],
             }
         }
     }
@@ -115,23 +127,17 @@ pub mod web {
             const PLAYLIST_JSON: &str = "/requests/playlist.json";
             const ART: &str = "/art";
             let path_and_query = match intent {
-                RequestIntent::Status {
-                    command,
-                    arg_str: None,
-                } => format!("{}?command={}", STATUS_JSON, command)
-                    .parse()
-                    .expect("valid command in RequestIntent"),
-                RequestIntent::Status {
-                    command,
-                    arg_str: Some(arg_str),
-                } => format!("{}?command={}&{}", STATUS_JSON, command, arg_str)
-                    .parse()
-                    .expect("valid command and arg_str in RequestIntent"),
-                RequestIntent::Art { id: Some(id) } => format!("{}?item={}", ART, id)
-                    .parse()
-                    .expect("valid arg_str in RequestIntent"),
+                RequestIntent::Status { command, args } => {
+                    Self::format_cmd_args(STATUS_JSON, command, args)
+                }
+                RequestIntent::Playlist { command, args } => {
+                    Self::format_cmd_args(PLAYLIST_JSON, command, args)
+                }
+                RequestIntent::Art { id: Some(id) } => Self::format_path_query(
+                    ART,
+                    &Self::query_builder().append_pair("item", &id).finish(),
+                ),
                 RequestIntent::Art { id: None } => PathAndQuery::from_static(ART),
-                RequestIntent::Playlist => PathAndQuery::from_static(PLAYLIST_JSON),
             };
             Self {
                 path_and_query,
@@ -139,19 +145,29 @@ pub mod web {
             }
         }
     }
+    impl RequestInfo {
+        fn query_builder() -> form_urlencoded::Serializer<'static, String> {
+            form_urlencoded::Serializer::new(String::new())
+        }
+        fn format_cmd_args(path: &str, command: &str, args: Vec<(&str, String)>) -> PathAndQuery {
+            let query = Self::query_builder()
+                .append_pair("command", command)
+                .extend_pairs(args)
+                .finish();
+            Self::format_path_query(path, &query)
+        }
+        fn format_path_query(path: &str, query: &str) -> PathAndQuery {
+            format!("{path}?{query}", path = path, query = query)
+                .parse()
+                .expect("valid urlencoded args")
+        }
+    }
     /// Execution context for [`RequestIntent`]s
-    pub(crate) struct Context(Client, Authority);
+    pub(crate) struct Context(Client, Credentials);
     impl Context {
         pub fn new(credentials: Credentials) -> Self {
-            const NO_USER: &str = "";
-            let Credentials {
-                password,
-                authority,
-            } = credentials;
-            let client = Client::builder()
-                .basic_auth(NO_USER, Some(&password))
-                .finish();
-            Self(client, authority)
+            let client = credentials.client_builder().finish();
+            Self(client, credentials)
         }
         pub async fn run<'a, 'b>(&self, request: RequestIntent<'a, 'b>) {
             let RequestInfo {
@@ -166,12 +182,81 @@ pub mod web {
             res.expect("it always works flawlessly? (fixme)");
         }
         fn uri_from(&self, path_and_query: PathAndQuery) -> Uri {
-            Uri::builder()
-                .scheme("http")
-                .authority(self.1.clone())
+            self.1
+                .uri_builder()
                 .path_and_query(path_and_query)
                 .build()
                 .expect("internally-generated URI is valid")
+        }
+    }
+
+    pub use auth::Credentials;
+    pub mod auth {
+        //! Primitives for authorization / method of connecting to VLC server
+        use awc::http::uri::Builder as UriBuilder;
+        use awc::{
+            http::uri::{Authority, InvalidUri},
+            ClientBuilder,
+        };
+        use std::convert::TryFrom;
+
+        /// Error obtaining a sepecific environment variable
+        #[derive(Debug)]
+        pub struct EnvError(&'static str, std::env::VarError);
+
+        /// Credential information for connecting to the VLC instance
+        #[derive(Debug)]
+        pub struct Credentials {
+            /// Password string (plaintext)
+            pub password: String,
+            /// Host and Port
+            pub authority: Authority,
+        }
+        impl Credentials {
+            /// Attempts to construct an authority from environment variables
+            ///
+            /// # Errors
+            /// Returns an error if the environment variables are missing or invalid
+            ///
+            pub fn try_from_env() -> Result<Result<Credentials, InvalidUri>, EnvError> {
+                fn get_env(key: &'static str) -> Result<String, EnvError> {
+                    std::env::var(key).map_err(|e| EnvError(key, e))
+                }
+                const ENV_VLC_HOST: &str = "VLC_HOST";
+                const ENV_VLC_PORT: &str = "VLC_PORT";
+                const ENV_VLC_PASSWORD: &str = "VLC_PASSWORD";
+                let host = get_env(ENV_VLC_HOST)?;
+                let port = get_env(ENV_VLC_PORT)?;
+                let password = get_env(ENV_VLC_PASSWORD)?;
+                let host_port: &str = &format!("{host}:{port}", host = host, port = port);
+                Ok(Authority::try_from(host_port).map(|authority| Credentials {
+                    password,
+                    authority,
+                }))
+            }
+            /// Constructs a [`ClientBuilder`] from the credential info
+            pub fn client_builder(&self) -> ClientBuilder {
+                self.into()
+            }
+            /// Constructs a [`UriBuilder`] from the credential info
+            pub fn uri_builder(&self) -> UriBuilder {
+                self.into()
+            }
+        }
+        impl<'a> From<&'a Credentials> for ClientBuilder {
+            fn from(credentials: &'a Credentials) -> ClientBuilder {
+                const NO_USER: &str = "";
+                let Credentials { password, .. } = credentials;
+                ClientBuilder::new().basic_auth(NO_USER, Some(&password))
+            }
+        }
+        impl<'a> From<&'a Credentials> for UriBuilder {
+            fn from(credentials: &'a Credentials) -> UriBuilder {
+                let Credentials { authority, .. } = credentials;
+                UriBuilder::new()
+                    .scheme("http")
+                    .authority(authority.clone())
+            }
         }
     }
 }
@@ -196,6 +281,14 @@ impl Controller {
     #[allow(clippy::unused_self)] // TODO
     pub fn encode(&self, command: Command) -> RequestIntent {
         match command {
+            Command::PlaylistAdd { uri } => RequestIntent::Playlist {
+                command: "in_enqueue",
+                args: vec![("input", uri)],
+            },
+            Command::PlaylistPlay { item_id } => RequestIntent::Status {
+                command: "pl_play",
+                args: item_id.map(|id| vec![("id", id)]).unwrap_or_default(),
+            },
             Command::PlaybackResume => RequestIntent::status("pl_forceresume"),
             Command::PlaybackPause => RequestIntent::status("pl_forcepause"),
             Command::PlaybackStop => RequestIntent::status("pl_stop"),
@@ -206,45 +299,6 @@ impl Controller {
     // fn query(&self, query: Query, output: Sender<()>) -> RequestInfo {
     //     todo!()
     // }
-}
-
-/// Error obtaining a sepecific environment variable
-#[derive(Debug)]
-pub struct EnvError(&'static str, std::env::VarError);
-
-/// Host, Port, and Password for connecting to the VLC instance
-#[derive(Debug)]
-pub struct Credentials {
-    /// Password string (plaintext)
-    pub password: String,
-    /// Host and Port
-    pub authority: web::Authority,
-}
-impl Credentials {
-    /// Attempts to construct an authority from environment variables `VLC_HOST`:`VLC_PORT`
-    ///
-    /// # Errors
-    /// Returns an error if the environment args are invalid
-    ///
-    pub fn try_from_env() -> Result<Result<Credentials, web::InvalidUri>, EnvError> {
-        fn get_env(key: &'static str) -> Result<String, EnvError> {
-            std::env::var(key).map_err(|e| EnvError(key, e))
-        }
-        const ENV_VLC_HOST: &str = "VLC_HOST";
-        const ENV_VLC_PORT: &str = "VLC_PORT";
-        const ENV_VLC_PASSWORD: &str = "VLC_PASSWORD";
-        let host = get_env(ENV_VLC_HOST)?;
-        let port = get_env(ENV_VLC_PORT)?;
-        let password = get_env(ENV_VLC_PASSWORD)?;
-        let authority = {
-            let host_port: &str = &format!("{host}:{port}", host = host, port = port);
-            web::Authority::try_from(host_port)
-        };
-        Ok(authority.map(|authority| Credentials {
-            password,
-            authority,
-        }))
-    }
 }
 
 #[cfg(test)]
@@ -258,6 +312,13 @@ mod tests {
     }
     #[test]
     fn execs_simple() {
+        assert_encode_simple(
+            Command::PlaylistPlay { item_id: None },
+            RequestInfo {
+                path_and_query: "/requests/status.json?command=pl_play".parse().unwrap(),
+                method: Method::GET,
+            },
+        );
         assert_encode_simple(
             Command::PlaybackResume,
             RequestInfo {
@@ -280,6 +341,32 @@ mod tests {
             Command::PlaybackStop,
             RequestInfo {
                 path_and_query: "/requests/status.json?command=pl_stop".parse().unwrap(),
+                method: Method::GET,
+            },
+        );
+    }
+    #[test]
+    fn exec_url_encoded() {
+        assert_encode_simple(
+            Command::PlaylistAdd {
+                uri: String::from("SENTINEL_ _URI_%^$"),
+            },
+            RequestInfo {
+                path_and_query:
+                    "/requests/playlist.json?command=in_enqueue&input=SENTINEL_+_URI_%25%5E%24"
+                        .parse()
+                        .unwrap(),
+                method: Method::GET,
+            },
+        );
+        assert_encode_simple(
+            Command::PlaylistPlay {
+                item_id: Some(String::from("some id")),
+            },
+            RequestInfo {
+                path_and_query: "/requests/status.json?command=pl_play&id=some+id"
+                    .parse()
+                    .unwrap(),
                 method: Method::GET,
             },
         );

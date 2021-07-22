@@ -1690,6 +1690,7 @@ name = "vlc-http"
 version = "0.1.0"
 dependencies = [
  "awc",
+ "form_urlencoded",
  "tokio 1.8.1",
 ]
 

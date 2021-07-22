@@ -23,21 +23,38 @@ fn prompt(tx: Sender<Command>) -> std::io::Result<()> {
             }
             _ => parse_line(cmd_str, &parts[1..]),
         };
-        if let Some(cmd) = cmd {
-            tx.blocking_send(cmd).unwrap();
-        } else {
-            eprintln!("Unknown command: \"{}\"", cmd_str);
+        match cmd {
+            Ok(cmd) => tx.blocking_send(cmd).unwrap(),
+            Err(message) => eprintln!("Input error: {}", message),
         }
         buffer.clear();
     }
     Ok(())
 }
-fn parse_line(cmd_str: &str, args: &[&str]) -> Option<Command> {
+fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
+    const CMD_PLAY: &str = "play";
+    const CMD_PAUSE: &str = "pause";
+    const CMD_STOP: &str = "stop";
+    const CMD_ADD: &str = "add";
+    const CMD_START: &str = "start";
     match cmd_str {
-        "play" => Some(Command::PlaybackResume),
-        "pause" => Some(Command::PlaybackPause),
-        "stop" => Some(Command::PlaybackStop),
-        _ => None,
+        CMD_PLAY => Ok(Command::PlaybackResume),
+        CMD_PAUSE => Ok(Command::PlaybackPause),
+        CMD_STOP => Ok(Command::PlaybackStop),
+        CMD_ADD => match args.split_first() {
+            Some((uri, extra)) if extra.is_empty() => Ok(Command::PlaylistAdd {
+                uri: uri.to_string(),
+            }),
+            _ => Err("expected 1 path/URI argument".to_string()),
+        },
+        CMD_START => match args.split_first() {
+            None => Ok(Command::PlaylistPlay { item_id: None }),
+            Some((item_id, extra)) if extra.is_empty() => Ok(Command::PlaylistPlay {
+                item_id: Some(item_id.to_string()),
+            }),
+            _ => Err("expected maximum of 1 item id".to_string()),
+        },
+        _ => Err(format!("Unknown command: \"{}\"", cmd_str)),
     }
 }
 
