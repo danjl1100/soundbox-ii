@@ -1,4 +1,4 @@
-use vlc_http::{self, Command, Controller, Credentials};
+use vlc_http::{self, Command, Credentials};
 
 use std::io::{BufRead, Write};
 use tokio::sync::mpsc::{channel, Sender};
@@ -103,6 +103,5 @@ async fn main() {
     });
 
     // run controller
-    let controller = Controller::default();
-    controller.run(host_port, rx).await;
+    vlc_http::run(host_port, rx).await;
 }
