@@ -22,35 +22,45 @@ mod request;
 pub(crate) use context::Context;
 mod context {
     use super::{auth::Credentials, command::RequestIntent, request::RequestInfo};
-    use awc::{
-        http::{PathAndQuery, Uri},
-        Client,
+    use hyper::{
+        body::Body, client::Builder as ClientBuilder, Client as HyperClient,
+        Request as HyperRequest,
     };
+    type Client = HyperClient<hyper::client::connect::HttpConnector, Body>;
+    type Request = HyperRequest<Body>;
+
     /// Execution context for [`RequestIntent`]s
     pub(crate) struct Context(Client, Credentials);
     impl Context {
         pub fn new(credentials: Credentials) -> Self {
-            let client = credentials.client_builder().finish();
+            let client = ClientBuilder::default().build_http();
             Self(client, credentials)
         }
         pub async fn run<'a, 'b>(&self, request: RequestIntent<'a, 'b>) {
-            let RequestInfo {
-                path_and_query,
-                method,
-            } = request.into();
-            let uri = self.uri_from(path_and_query);
-            println!("{}: {}", method, uri);
-            let res = self.0.request(method, uri).send().await;
+            let request = self.request_from(request.into());
+            dbg!(&request);
+            let res = self.0.request(request).await;
             dbg!(&res);
             //TODO process response internally, only respond to consumer if requested
             res.expect("it always works flawlessly? (fixme)");
         }
-        fn uri_from(&self, path_and_query: PathAndQuery) -> Uri {
-            self.1
+        fn request_from(&self, request: RequestInfo) -> Request {
+            let RequestInfo {
+                path_and_query,
+                method,
+            } = request;
+            let uri = self
+                .1
                 .uri_builder()
                 .path_and_query(path_and_query)
                 .build()
-                .expect("internally-generated URI is valid")
+                .expect("internally-generated URI is valid");
+            self.1
+                .request_builder()
+                .uri(uri)
+                .method(method)
+                .body(Body::empty())
+                .expect("internally-generated URI and Method is valid")
         }
     }
 }
@@ -58,11 +68,12 @@ mod context {
 pub use auth::Credentials;
 mod auth {
     //! Primitives for authorization / method of connecting to VLC server
-    use awc::http::uri::Builder as UriBuilder;
-    use awc::{
-        http::uri::{Authority, InvalidUri},
-        ClientBuilder,
+    use http::{
+        request::Builder as RequestBuilder,
+        uri::{Authority, Builder as UriBuilder, InvalidUri},
     };
+    // use hyper::client::Builder;
+
     use std::convert::TryFrom;
 
     /// Error obtaining a sepecific environment variable
@@ -99,22 +110,30 @@ mod auth {
                 authority,
             }))
         }
-        /// Constructs a [`ClientBuilder`] from the credential info
-        pub fn client_builder(&self) -> ClientBuilder {
-            self.into()
-        }
+        // /// Constructs a [`ClientBuilder`] from the credential info
+        // pub fn client_builder(&self) -> ClientBuilder {
+        //     self.into()
+        // }
         /// Constructs a [`UriBuilder`] from the credential info
         pub fn uri_builder(&self) -> UriBuilder {
             self.into()
         }
-    }
-    impl<'a> From<&'a Credentials> for ClientBuilder {
-        fn from(credentials: &'a Credentials) -> ClientBuilder {
-            const NO_USER: &str = "";
-            let Credentials { password, .. } = credentials;
-            ClientBuilder::new().basic_auth(NO_USER, Some(&password))
+        /// Constructs a [`RequestBuilder`] from the credential info
+        pub fn request_builder(&self) -> RequestBuilder {
+            RequestBuilder::new().header("Authorization", self.authorization_string())
+        }
+        fn authorization_string(&self) -> String {
+            let user_pass = format!(":{}", &self.password); // TODO: calculate this ONCE.
+            format!("Basic {}", base64::encode(user_pass))
         }
     }
+    // impl<'a> From<&'a Credentials> for ClientBuilder {
+    //     fn from(credentials: &'a Credentials) -> ClientBuilder {
+    //         // const NO_USER: &str = "";
+    //         //let Credentials { password, .. } = credentials;
+    //         ClientBuilder::default() //.basic_auth(NO_USER, Some(&password))
+    //     }
+    // }
     impl<'a> From<&'a Credentials> for UriBuilder {
         fn from(credentials: &'a Credentials) -> UriBuilder {
             let Credentials { authority, .. } = credentials;

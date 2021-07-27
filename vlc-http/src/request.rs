@@ -2,7 +2,7 @@
 
 use super::command::RequestIntent;
 
-pub use awc::http::{
+pub use http::{
     uri::{Authority, InvalidUri, PathAndQuery, Uri},
     Method,
 };

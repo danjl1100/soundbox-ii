@@ -88,7 +88,7 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
     }
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() {
     println!("\nHello, soundbox-ii!\n");
 
