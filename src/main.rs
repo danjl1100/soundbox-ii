@@ -1,5 +1,6 @@
-use vlc_http::{self, Command, Credentials};
+use vlc_http::{self, Command};
 
+use std::convert::TryInto;
 use std::io::{BufRead, Write};
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -92,8 +93,9 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
 async fn main() {
     println!("\nHello, soundbox-ii!\n");
 
-    let host_port = Credentials::try_from_env().unwrap().unwrap();
-    println!("Will connect to: {:?}", host_port);
+    let config = vlc_http::Config::try_from_env().expect("ENV vars set");
+    let credentials = config.try_into().expect("valid host");
+    println!("Will connect to: {:?}", credentials);
 
     let (tx, rx) = channel(1);
 
@@ -103,5 +105,5 @@ async fn main() {
     });
 
     // run controller
-    vlc_http::run(host_port, rx).await;
+    vlc_http::run(credentials, rx).await;
 }

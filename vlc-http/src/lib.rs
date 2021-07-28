@@ -65,7 +65,7 @@ mod context {
     }
 }
 
-pub use auth::Credentials;
+pub use auth::{Config, Credentials};
 mod auth {
     //! Primitives for authorization / method of connecting to VLC server
     use http::{
@@ -80,21 +80,22 @@ mod auth {
     #[derive(Debug)]
     pub struct EnvError(&'static str, std::env::VarError);
 
-    /// Credential information for connecting to the VLC instance
-    #[derive(Debug)]
-    pub struct Credentials {
+    /// Configuration for connecting to the VLC instance
+    pub struct Config {
         /// Password string (plaintext)
         pub password: String,
-        /// Host and Port
-        pub authority: Authority,
+        /// Host string
+        pub host: String,
+        /// Port number
+        pub port: String,
     }
-    impl Credentials {
+    impl Config {
         /// Attempts to construct an authority from environment variables
         ///
         /// # Errors
         /// Returns an error if the environment variables are missing or invalid
         ///
-        pub fn try_from_env() -> Result<Result<Credentials, InvalidUri>, EnvError> {
+        pub fn try_from_env() -> Result<Config, EnvError> {
             fn get_env(key: &'static str) -> Result<String, EnvError> {
                 std::env::var(key).map_err(|e| EnvError(key, e))
             }
@@ -104,55 +105,48 @@ mod auth {
             let host = get_env(ENV_VLC_HOST)?;
             let port = get_env(ENV_VLC_PORT)?;
             let password = get_env(ENV_VLC_PASSWORD)?;
-            let host_port: &str = &format!("{host}:{port}", host = host, port = port);
-            Ok(Authority::try_from(host_port).map(|authority| Credentials {
+            Ok(Self {
                 password,
-                authority,
-            }))
+                host,
+                port,
+            })
         }
-        // /// Constructs a [`ClientBuilder`] from the credential info
-        // pub fn client_builder(&self) -> ClientBuilder {
-        //     self.into()
-        // }
+    }
+    impl TryFrom<Config> for Credentials {
+        type Error = InvalidUri;
+        fn try_from(config: Config) -> Result<Self, Self::Error> {
+            let Config {
+                password,
+                host,
+                port,
+            } = config;
+            let user_pass = format!(":{}", password);
+            let auth = format!("Basic {}", base64::encode(user_pass));
+            let host_port: &str = &format!("{host}:{port}", host = host, port = port);
+            Authority::try_from(host_port).map(|authority| Credentials { auth, authority })
+        }
+    }
+    /// Credential information for connecting to the VLC instance
+    #[derive(Debug)]
+    pub struct Credentials {
+        /// Bearer string (base64 encoded password with prefix)
+        auth: String,
+        /// Host and Port
+        authority: Authority,
+    }
+    impl Credentials {
         /// Constructs a [`UriBuilder`] from the credential info
         pub fn uri_builder(&self) -> UriBuilder {
-            self.into()
+            UriBuilder::new()
+                .scheme("http")
+                .authority(self.authority.clone())
         }
         /// Constructs a [`RequestBuilder`] from the credential info
         pub fn request_builder(&self) -> RequestBuilder {
-            RequestBuilder::new().header("Authorization", self.authorization_string())
-        }
-        fn authorization_string(&self) -> String {
-            let user_pass = format!(":{}", &self.password); // TODO: calculate this ONCE.
-            format!("Basic {}", base64::encode(user_pass))
-        }
-    }
-    // impl<'a> From<&'a Credentials> for ClientBuilder {
-    //     fn from(credentials: &'a Credentials) -> ClientBuilder {
-    //         // const NO_USER: &str = "";
-    //         //let Credentials { password, .. } = credentials;
-    //         ClientBuilder::default() //.basic_auth(NO_USER, Some(&password))
-    //     }
-    // }
-    impl<'a> From<&'a Credentials> for UriBuilder {
-        fn from(credentials: &'a Credentials) -> UriBuilder {
-            let Credentials { authority, .. } = credentials;
-            UriBuilder::new()
-                .scheme("http")
-                .authority(authority.clone())
+            RequestBuilder::new().header("Authorization", &self.auth)
         }
     }
 }
-
-// /// Processor for VLC commands and queries
-// #[derive(Default)]
-// pub struct Controller;
-// impl Controller {
-//     // TODO
-//     // fn query(&self, query: Query, output: Sender<()>) -> RequestInfo {
-//     //     todo!()
-//     // }
-// }
 
 use tokio::sync::mpsc::Receiver;
 /// Executes the specified commands
