@@ -1,6 +1,5 @@
 /// Control commands for VLC
 #[derive(Debug, Clone)]
-#[allow(clippy::pub_enum_variant_names)]
 pub enum Command {
     /// Add the specified item to the playlist
     PlaylistAdd {

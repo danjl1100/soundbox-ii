@@ -1,10 +1,31 @@
-use vlc_http::{self, Command};
+use vlc_http::{self, Action, Command};
 
 use std::convert::TryInto;
 use std::io::{BufRead, Write};
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::{mpsc, oneshot};
 
-fn prompt(tx: Sender<Command>) -> std::io::Result<()> {
+fn blocking_recv<T, F: Fn()>(
+    mut rx: oneshot::Receiver<T>,
+    interval: std::time::Duration,
+    wait_fn: F,
+) -> Option<T> {
+    loop {
+        //std::thread::yield_now();
+        std::thread::sleep(interval);
+        match rx.try_recv() {
+            Ok(t) => {
+                return Some(t);
+            }
+            Err(oneshot::error::TryRecvError::Empty) => {}
+            Err(oneshot::error::TryRecvError::Closed) => {
+                return None;
+            }
+        }
+        wait_fn();
+    }
+}
+
+fn prompt(action_tx: mpsc::Sender<Action>) -> std::io::Result<()> {
     let stdin = std::io::stdin();
     let mut stdin = stdin.lock();
     let mut stdout = std::io::stdout();
@@ -14,25 +35,50 @@ fn prompt(tx: Sender<Command>) -> std::io::Result<()> {
         stdout.flush()?;
         stdin.read_line(&mut buffer)?;
         let parts: Vec<&str> = buffer.trim().split(' ').collect();
-        let cmd_str = parts[0];
-        let cmd = match cmd_str {
+        let action_str = parts[0];
+        let cmd = match action_str {
             "" => {
                 continue;
             }
             "quit" | "exit" => {
                 break;
             }
-            _ => parse_line(cmd_str, &parts[1..]),
+            _ => parse_line(action_str, &parts[1..]),
         };
         match cmd {
-            Ok(cmd) => tx.blocking_send(cmd).unwrap(),
+            Ok(cmd) => {
+                // print action
+                print!("running {:?} ", cmd);
+                let print_a_dot = || {
+                    print!(".");
+                    drop(stdout.lock().flush());
+                };
+                print_a_dot();
+                // send command
+                let (action, result_rx) = cmd.to_action_rx();
+                action_tx.blocking_send(action).unwrap();
+                // wait for result
+                match blocking_recv(
+                    result_rx,
+                    std::time::Duration::from_millis(100),
+                    print_a_dot,
+                ) {
+                    Some(Ok(())) => {
+                        println!();
+                    }
+                    Some(action_result) => {
+                        let _ = dbg!(action_result);
+                    }
+                    None => println!("Failed to obtain command result"),
+                }
+            }
             Err(message) => eprintln!("Input error: {}", message),
         }
         buffer.clear();
     }
     Ok(())
 }
-fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
+fn parse_line(action_str: &str, args: &[&str]) -> Result<Command, String> {
     const CMD_PLAY: &str = "play";
     const CMD_PAUSE: &str = "pause";
     const CMD_STOP: &str = "stop";
@@ -45,7 +91,7 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
     const CMD_SPEED: &str = "speed";
     let err_invalid_int = |_| "invalid integer number".to_string();
     let err_invalid_float = |_| "invalid decimal number".to_string();
-    match cmd_str {
+    match action_str {
         CMD_PLAY => Ok(Command::PlaybackResume),
         CMD_PAUSE => Ok(Command::PlaybackPause),
         CMD_STOP => Ok(Command::PlaybackStop),
@@ -85,7 +131,7 @@ fn parse_line(cmd_str: &str, args: &[&str]) -> Result<Command, String> {
                 .map_err(err_invalid_float),
             _ => Err("expected 1 argument (decimal)".to_string()),
         },
-        _ => Err(format!("Unknown command: \"{}\"", cmd_str)),
+        _ => Err(format!("Unknown command: \"{}\"", action_str)),
     }
 }
 
@@ -97,13 +143,13 @@ async fn main() {
     let credentials = config.try_into().expect("valid host");
     println!("Will connect to: {:?}", credentials);
 
-    let (tx, rx) = channel(1);
+    let (action_tx, action_rx) = mpsc::channel(1);
 
     // spawn prompt
     std::thread::spawn(move || {
-        prompt(tx).unwrap();
+        prompt(action_tx).unwrap();
     });
 
     // run controller
-    vlc_http::run(credentials, rx).await;
+    vlc_http::run(credentials, action_rx).await;
 }

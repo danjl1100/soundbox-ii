@@ -14,6 +14,24 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use tokio::sync::{mpsc, oneshot};
+
+/// Action available to be `run()`, with `Sender<T>` for returning the result
+#[must_use]
+#[derive(Debug)]
+pub enum Action {
+    /// `Command` with `Sender` for the result
+    Command(Command, oneshot::Sender<Result<(), Error>>),
+}
+impl Command {
+    /// Constructs an [`Action`] from the Command, with the corresponding result [`oneshot::Receiver`]
+    pub fn to_action_rx(self) -> (Action, oneshot::Receiver<Result<(), Error>>) {
+        let (result_tx, result_rx) = oneshot::channel();
+        let action = Action::Command(self, result_tx);
+        (action, result_rx)
+    }
+}
+
 pub use command::Command;
 mod command;
 
@@ -36,13 +54,35 @@ mod context {
             let client = ClientBuilder::default().build_http();
             Self(client, credentials)
         }
-        pub async fn run<'a, 'b>(&self, request: RequestIntent<'a, 'b>) {
-            let request = self.request_from(request.into());
-            dbg!(&request);
-            let res = self.0.request(request).await;
-            dbg!(&res);
+        pub async fn run<'a, 'b>(
+            &self,
+            request_intent: RequestIntent<'a, 'b>,
+        ) -> Result<(), hyper::Error> {
+            let request_info = RequestInfo::from(request_intent);
+            // dbg!(&request_info);
+            let _res = self.run_retry_loop(request_info).await?;
             //TODO process response internally, only respond to consumer if requested
-            res.expect("it always works flawlessly? (fixme)");
+            Ok(())
+        }
+        async fn run_retry_loop(
+            &self,
+            request: RequestInfo,
+        ) -> Result<hyper::Response<Body>, hyper::Error> {
+            use backoff::{future::retry, ExponentialBackoff};
+            use tokio::time::Duration;
+            let backoff_config = ExponentialBackoff {
+                current_interval: Duration::from_millis(50),
+                initial_interval: Duration::from_millis(50),
+                multiplier: 4.0,
+                max_interval: Duration::from_secs(2),
+                max_elapsed_time: Some(Duration::from_secs(10)),
+                ..ExponentialBackoff::default()
+            };
+            retry(backoff_config, || async {
+                let request = self.request_from(request.clone()); //TODO: avoid expensive clone?
+                Ok(self.0.request(request).await?)
+            })
+            .await
         }
         fn request_from(&self, request: RequestInfo) -> Request {
             let RequestInfo {
@@ -148,15 +188,31 @@ mod auth {
     }
 }
 
-use tokio::sync::mpsc::Receiver;
+/// Error from the `run()` function
+#[derive(Debug)]
+pub enum Error {
+    /// Hyper client-side error
+    Hyper(hyper::Error),
+}
+impl From<hyper::Error> for Error {
+    fn from(err: hyper::Error) -> Self {
+        Self::Hyper(err)
+    }
+}
+
 /// Executes the specified commands
-pub async fn run(credentials: Credentials, mut commands: Receiver<Command>) {
+pub async fn run(credentials: Credentials, mut commands: mpsc::Receiver<Action>) {
     let context = Context::new(credentials);
-    while let Some(command) = commands.recv().await {
-        dbg!(&command);
-        let request = command.into();
-        dbg!(&request);
-        context.run(request).await;
+    while let Some(action) = commands.recv().await {
+        match action {
+            Action::Command(command, result_tx) => {
+                let request = command.into();
+                let result = context.run(request).await;
+                if let Err(result_tx_err) = result_tx.send(result.map_err(|e| e.into())) {
+                    println!("WARNING: result_tx send error: {:?}", result_tx_err);
+                }
+            }
+        }
     }
     println!("context ended!");
 }

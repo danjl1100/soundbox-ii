@@ -9,7 +9,7 @@ pub use http::{
 
 /// VLC backend request information
 #[must_use]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RequestInfo {
     pub path_and_query: PathAndQuery,
     pub method: Method,

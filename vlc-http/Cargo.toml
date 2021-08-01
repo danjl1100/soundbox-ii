@@ -11,3 +11,4 @@ form_urlencoded = "1.0.1"
 hyper = { version = "0.14.11", features = ["client", "http1", "tcp"] }
 http = "0.2.4"
 base64 = "0.13.0"
+backoff = { version = "0.3.0", features = ["tokio"] }
