@@ -16,26 +16,53 @@
 
 use tokio::sync::{mpsc, oneshot};
 
+/// Sender for an action result
+pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
+/// Receiver for an action result
+pub type ResultReceiver<T> = oneshot::Receiver<Result<T, Error>>;
+
 /// Action available to be `run()`, with `Sender<T>` for returning the result
 #[must_use]
 #[derive(Debug)]
 pub enum Action {
-    /// `Command` with `Sender` for the result
-    Command(Command, oneshot::Sender<Result<(), Error>>),
+    /// [`Command`] with `Sender` for the result
+    Command(Command, ResultSender<()>),
+    /// [`Query`] with a `Sender` for the result
+    QueryPlaybackStatus(ResultSender<PlaybackStatus>),
+}
+impl Action {
+    /// Constructs a [`Query::PlaybackStatus`] action variant, with the corresponding
+    /// [`ResultReceiver`]
+    pub fn query_playback_status() -> (Self, ResultReceiver<PlaybackStatus>) {
+        let (result_tx, result_rx) = oneshot::channel();
+        let action = Self::QueryPlaybackStatus(result_tx);
+        (action, result_rx)
+    }
 }
 impl Command {
-    /// Constructs an [`Action`] from the Command, with the corresponding result [`oneshot::Receiver`]
-    pub fn to_action_rx(self) -> (Action, oneshot::Receiver<Result<(), Error>>) {
+    /// Constructs an [`Action`] from the Command, with the corresponding [`ResultReceiver`]
+    pub fn to_action_rx(self) -> (Action, ResultReceiver<()>) {
         let (result_tx, result_rx) = oneshot::channel();
         let action = Action::Command(self, result_tx);
         (action, result_rx)
     }
 }
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Command(command, _) => write!(f, "{:?}", command),
+            Self::QueryPlaybackStatus(_) => write!(f, "{:?}", Query::PlaybackStatus),
+        }
+    }
+}
 
-pub use command::Command;
+pub use command::{Command, Query};
 mod command;
 
 mod request;
+
+pub use vlc_responses::{PlaybackInfo, PlaybackState, PlaybackStatus};
+mod vlc_responses;
 
 pub(crate) use context::Context;
 mod context {
@@ -56,13 +83,10 @@ mod context {
         }
         pub async fn run<'a, 'b>(
             &self,
-            request_intent: RequestIntent<'a, 'b>,
-        ) -> Result<(), hyper::Error> {
+            request_intent: &RequestIntent<'a, 'b>,
+        ) -> Result<hyper::Response<Body>, hyper::Error> {
             let request_info = RequestInfo::from(request_intent);
-            // dbg!(&request_info);
-            let _res = self.run_retry_loop(request_info).await?;
-            //TODO process response internally, only respond to consumer if requested
-            Ok(())
+            Ok(self.run_retry_loop(request_info).await?)
         }
         async fn run_retry_loop(
             &self,
@@ -84,11 +108,11 @@ mod context {
             })
             .await
         }
-        fn request_from(&self, request: RequestInfo) -> Request {
+        fn request_from(&self, info: RequestInfo) -> Request {
             let RequestInfo {
                 path_and_query,
                 method,
-            } = request;
+            } = info;
             let uri = self
                 .1
                 .uri_builder()
@@ -112,7 +136,6 @@ mod auth {
         request::Builder as RequestBuilder,
         uri::{Authority, Builder as UriBuilder, InvalidUri},
     };
-    // use hyper::client::Builder;
 
     use std::convert::TryFrom;
 
@@ -193,10 +216,17 @@ mod auth {
 pub enum Error {
     /// Hyper client-side error
     Hyper(hyper::Error),
+    /// Deserialization error
+    Serde(serde_json::Error),
 }
 impl From<hyper::Error> for Error {
     fn from(err: hyper::Error) -> Self {
         Self::Hyper(err)
+    }
+}
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Serde(err)
     }
 }
 
@@ -207,12 +237,35 @@ pub async fn run(credentials: Credentials, mut commands: mpsc::Receiver<Action>)
         match action {
             Action::Command(command, result_tx) => {
                 let request = command.into();
-                let result = context.run(request).await;
-                if let Err(result_tx_err) = result_tx.send(result.map_err(|e| e.into())) {
-                    println!("WARNING: result_tx send error: {:?}", result_tx_err);
-                }
+                let result = context
+                    .run(&request)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.into());
+                send_result(result, result_tx);
             }
-        }
+            Action::QueryPlaybackStatus(result_tx) => {
+                let request = Query::PlaybackStatus.into();
+                let result = context.run(&request).await;
+                let result: Result<_, Error> = match result {
+                    Ok(response) => hyper::body::to_bytes(response.into_body())
+                        .await
+                        .map_err(|err| err.into())
+                        .and_then(|bytes| Ok(PlaybackStatus::from_slice(&bytes)?)),
+                    Err(err) => Err(err.into()),
+                };
+                send_result(result, result_tx);
+            }
+        };
     }
     println!("context ended!");
+}
+fn send_result<T>(result: Result<T, Error>, result_tx: ResultSender<T>)
+where
+    T: std::fmt::Debug,
+{
+    let send_result = result_tx.send(result);
+    if let Err(send_err) = send_result {
+        println!("WARNING: result_tx send error: {:?}", send_err);
+    }
 }

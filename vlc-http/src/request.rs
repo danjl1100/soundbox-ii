@@ -1,6 +1,6 @@
 //! HTTP-specific primitives (interchange for test purposes)
 
-use super::command::RequestIntent;
+use super::command::{CmdArgs, RequestIntent};
 
 pub use http::{
     uri::{Authority, InvalidUri, PathAndQuery, Uri},
@@ -14,23 +14,25 @@ pub(crate) struct RequestInfo {
     pub path_and_query: PathAndQuery,
     pub method: Method,
 }
-impl<'a, 'b> From<RequestIntent<'a, 'b>> for RequestInfo {
-    fn from(intent: RequestIntent<'a, 'b>) -> Self {
+impl From<&RequestIntent<'_, '_>> for RequestInfo {
+    fn from(intent: &RequestIntent<'_, '_>) -> Self {
         const STATUS_JSON: &str = "/requests/status.json";
         const PLAYLIST_JSON: &str = "/requests/playlist.json";
         const ART: &str = "/art";
         let path_and_query = match intent {
-            RequestIntent::Status { command, args } => {
+            RequestIntent::Status(Some(CmdArgs { command, args })) => {
                 Self::format_cmd_args(STATUS_JSON, command, args)
             }
-            RequestIntent::Playlist { command, args } => {
+            RequestIntent::Playlist(Some(CmdArgs { command, args })) => {
                 Self::format_cmd_args(PLAYLIST_JSON, command, args)
             }
             RequestIntent::Art { id: Some(id) } => Self::format_path_query(
                 ART,
-                &Self::query_builder().append_pair("item", &id).finish(),
+                &Self::query_builder().append_pair("item", id).finish(),
             ),
             RequestIntent::Art { id: None } => PathAndQuery::from_static(ART),
+            RequestIntent::Status(None) => PathAndQuery::from_static(STATUS_JSON),
+            RequestIntent::Playlist(None) => PathAndQuery::from_static(PLAYLIST_JSON),
         };
         Self {
             path_and_query,
@@ -42,7 +44,7 @@ impl RequestInfo {
     fn query_builder() -> form_urlencoded::Serializer<'static, String> {
         form_urlencoded::Serializer::new(String::new())
     }
-    fn format_cmd_args(path: &str, command: &str, args: Vec<(&str, String)>) -> PathAndQuery {
+    fn format_cmd_args(path: &str, command: &str, args: &[(&str, String)]) -> PathAndQuery {
         let query = Self::query_builder()
             .append_pair("command", command)
             .extend_pairs(args)
@@ -61,12 +63,12 @@ mod tests {
     use super::*;
     #[test]
     fn encodes_status_request() {
-        let empty = RequestIntent::Status {
+        let empty = RequestIntent::Status(Some(CmdArgs {
             command: "sentinel_command",
             args: vec![],
-        };
+        }));
         assert_eq!(
-            RequestInfo::from(empty),
+            RequestInfo::from(&empty),
             RequestInfo {
                 path_and_query: "/requests/status.json?command=sentinel_command"
                     .parse()
@@ -75,15 +77,15 @@ mod tests {
             }
         );
         //
-        let with_args = RequestIntent::Status {
+        let with_args = RequestIntent::Status(Some(CmdArgs {
             command: "second",
             args: vec![
                 ("first", "this".to_string()),
                 ("then", "something else".to_string()),
             ],
-        };
+        }));
         assert_eq!(
-            RequestInfo::from(with_args),
+            RequestInfo::from(&with_args),
             RequestInfo {
                 path_and_query:
                     "/requests/status.json?command=second&first=this&then=something+else"
@@ -95,12 +97,12 @@ mod tests {
     }
     #[test]
     fn encodes_playlist_request() {
-        let empty = RequestIntent::Playlist {
+        let empty = RequestIntent::Playlist(Some(CmdArgs {
             command: "do_something",
             args: vec![],
-        };
+        }));
         assert_eq!(
-            RequestInfo::from(empty),
+            RequestInfo::from(&empty),
             RequestInfo {
                 path_and_query: "/requests/playlist.json?command=do_something"
                     .parse()
@@ -109,14 +111,14 @@ mod tests {
             }
         );
         //
-        let with_args = RequestIntent::Playlist {
+        let with_args = RequestIntent::Playlist(Some(CmdArgs {
             command: "ditherous",
             args: vec![
                 ("everything", "is".to_string()),
                 ("awesome", "!!#$%".to_string()),
             ],
-        };
-        assert_eq!(RequestInfo::from(with_args), RequestInfo {
+        }));
+        assert_eq!(RequestInfo::from(&with_args), RequestInfo {
             path_and_query: "/requests/playlist.json?command=ditherous&everything=is&awesome=%21%21%23%24%25".parse().unwrap(),
             method: Method::GET,
         });
@@ -125,7 +127,7 @@ mod tests {
     fn encodes_art_request() {
         let empty = RequestIntent::Art { id: None };
         assert_eq!(
-            RequestInfo::from(empty),
+            RequestInfo::from(&empty),
             RequestInfo {
                 path_and_query: "/art".parse().unwrap(),
                 method: Method::GET,
@@ -136,11 +138,33 @@ mod tests {
             id: Some("sentinel_ID".to_string()),
         };
         assert_eq!(
-            RequestInfo::from(with_id),
+            RequestInfo::from(&with_id),
             RequestInfo {
                 path_and_query: "/art?item=sentinel_ID".parse().unwrap(),
                 method: Method::GET,
             }
+        );
+    }
+    #[test]
+    fn encodes_playback_status_request() {
+        let status = RequestIntent::Status(None);
+        assert_eq!(
+            RequestInfo::from(&status),
+            RequestInfo {
+                path_and_query: "/requests/status.json".parse().unwrap(),
+                method: Method::GET,
+            },
+        );
+    }
+    #[test]
+    fn encodes_playlist_status_request() {
+        let playlist = RequestIntent::Playlist(None);
+        assert_eq!(
+            RequestInfo::from(&playlist),
+            RequestInfo {
+                path_and_query: "/requests/playlist.json".parse().unwrap(),
+                method: Method::GET,
+            },
         );
     }
 }
