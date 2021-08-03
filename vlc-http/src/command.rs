@@ -53,7 +53,7 @@ pub enum Query {
     /// Playback status for the current playing item
     PlaybackStatus,
     /// Playlist items
-    Playlist,
+    PlaylistInfo,
 }
 
 /// Rule for selecting the next playback item in the VLC queue
@@ -142,7 +142,7 @@ impl<'a, 'b> From<Query> for RequestIntent<'a, 'b> {
         match query {
             Query::Art => RequestIntent::Art { id: None },
             Query::PlaybackStatus => RequestIntent::Status(None),
-            Query::Playlist => RequestIntent::Playlist(None),
+            Query::PlaylistInfo => RequestIntent::Playlist(None),
         }
     }
 }
@@ -265,6 +265,6 @@ mod tests {
     fn execs_simple_queries() {
         assert_encode(Query::Art, RequestIntent::Art { id: None });
         assert_encode(Query::PlaybackStatus, RequestIntent::Status(None));
-        assert_encode(Query::Playlist, RequestIntent::Playlist(None));
+        assert_encode(Query::PlaylistInfo, RequestIntent::Playlist(None));
     }
 }

@@ -29,6 +29,8 @@ pub enum Action {
     Command(Command, ResultSender<()>),
     /// [`Query`] with a `Sender` for the result
     QueryPlaybackStatus(ResultSender<PlaybackStatus>),
+    /// [`Query`] with a `Sender` for the result
+    QueryPlaylistInfo(ResultSender<PlaylistInfo>),
 }
 impl Action {
     /// Constructs a [`Query::PlaybackStatus`] action variant, with the corresponding
@@ -36,6 +38,13 @@ impl Action {
     pub fn query_playback_status() -> (Self, ResultReceiver<PlaybackStatus>) {
         let (result_tx, result_rx) = oneshot::channel();
         let action = Self::QueryPlaybackStatus(result_tx);
+        (action, result_rx)
+    }
+    /// Constructs a [`Query::PlaylistInfo`] action variant, with the corresponding
+    /// [`ResultReceiver`]
+    pub fn query_playlist_info() -> (Self, ResultReceiver<PlaylistInfo>) {
+        let (result_tx, result_rx) = oneshot::channel();
+        let action = Self::QueryPlaylistInfo(result_tx);
         (action, result_rx)
     }
 }
@@ -52,6 +61,7 @@ impl std::fmt::Display for Action {
         match self {
             Self::Command(command, _) => write!(f, "{:?}", command),
             Self::QueryPlaybackStatus(_) => write!(f, "{:?}", Query::PlaybackStatus),
+            Self::QueryPlaylistInfo(_) => write!(f, "{:?}", Query::PlaylistInfo),
         }
     }
 }
@@ -61,8 +71,8 @@ mod command;
 
 mod request;
 
-pub use vlc_responses::{PlaybackInfo, PlaybackState, PlaybackStatus};
-mod vlc_responses;
+pub use vlc_responses::{PlaybackStatus, PlaylistInfo};
+pub mod vlc_responses;
 
 pub(crate) use context::Context;
 mod context {
@@ -246,19 +256,35 @@ pub async fn run(credentials: Credentials, mut commands: mpsc::Receiver<Action>)
             }
             Action::QueryPlaybackStatus(result_tx) => {
                 let request = Query::PlaybackStatus.into();
-                let result = context.run(&request).await;
-                let result: Result<_, Error> = match result {
-                    Ok(response) => hyper::body::to_bytes(response.into_body())
-                        .await
-                        .map_err(|err| err.into())
-                        .and_then(|bytes| Ok(PlaybackStatus::from_slice(&bytes)?)),
-                    Err(err) => Err(err.into()),
-                };
+                let response = context.run(&request).await;
+                let result = parse_body_json(response, PlaybackStatus::from_slice).await;
+                send_result(result, result_tx);
+            }
+            Action::QueryPlaylistInfo(result_tx) => {
+                let request = Query::PlaylistInfo.into();
+                let response = context.run(&request).await;
+                let result = parse_body_json(response, PlaylistInfo::from_slice).await;
                 send_result(result, result_tx);
             }
         };
     }
     println!("context ended!");
+}
+async fn parse_body_json<F, T, E>(
+    result: Result<hyper::Response<hyper::Body>, hyper::Error>,
+    map_fn: F,
+) -> Result<T, Error>
+where
+    F: FnOnce(&[u8]) -> Result<T, E>,
+    Error: From<E>,
+{
+    match result {
+        Ok(response) => hyper::body::to_bytes(response.into_body())
+            .await
+            .map_err(|err| err.into())
+            .and_then(|bytes| Ok(map_fn(&bytes)?)),
+        Err(err) => Err(err.into()),
+    }
 }
 fn send_result<T>(result: Result<T, Error>, result_tx: ResultSender<T>)
 where

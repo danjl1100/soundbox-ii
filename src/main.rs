@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use cli::Prompt;
 mod cli {
-    use vlc_http::{self, Action, Command, PlaybackStatus, Query, ResultReceiver};
+    use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, Query, ResultReceiver};
 
     use std::io::{BufRead, Write};
     use tokio::sync::{mpsc, oneshot};
@@ -72,6 +72,9 @@ mod cli {
                     Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
                         self.send_and_print_result(action, result_rx);
                     }
+                    Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
+                        self.send_and_print_result(action, result_rx);
+                    }
                     Err(message) => eprintln!("Input error: {}", message),
                 }
             }
@@ -119,6 +122,7 @@ mod cli {
     enum ActionAndReceiver {
         Command(Action, ResultReceiver<()>),
         QueryPlaybackStatus(Action, ResultReceiver<PlaybackStatus>),
+        QueryPlaylistInfo(Action, ResultReceiver<PlaylistInfo>),
     }
     impl From<Command> for ActionAndReceiver {
         fn from(command: Command) -> Self {
@@ -129,11 +133,15 @@ mod cli {
     impl From<Query> for ActionAndReceiver {
         fn from(query: Query) -> Self {
             match query {
+                Query::Art => todo!(),
                 Query::PlaybackStatus => {
                     let (action, result_rx) = Action::query_playback_status();
                     Self::QueryPlaybackStatus(action, result_rx)
                 }
-                _ => todo!(),
+                Query::PlaylistInfo => {
+                    let (action, result_rx) = Action::query_playlist_info();
+                    Self::QueryPlaylistInfo(action, result_rx)
+                }
             }
         }
     }
@@ -149,6 +157,7 @@ mod cli {
         const CMD_VOL: &str = "vol";
         const CMD_SPEED: &str = "speed";
         const QUERY_STATUS: &str = "status";
+        const QUERY_PLAYLIST: &str = "playlist";
         let err_invalid_int = |_| "invalid integer number".to_string();
         let err_invalid_float = |_| "invalid decimal number".to_string();
         match action_str {
@@ -194,6 +203,7 @@ mod cli {
                 _ => Err("expected 1 argument (decimal)".to_string()),
             },
             "." | QUERY_STATUS => Ok(Query::PlaybackStatus.into()),
+            "p" | QUERY_PLAYLIST => Ok(Query::PlaylistInfo.into()),
             _ => Err(format!("Unknown command: \"{}\"", action_str)),
         }
     }
