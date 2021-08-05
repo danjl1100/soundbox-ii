@@ -32,53 +32,64 @@ mod cli {
     pub struct Prompt {
         action_tx: mpsc::Sender<Action>,
         stdout: std::io::Stdout,
-        buffer: String,
     }
     impl Prompt {
         pub(crate) fn new(action_tx: mpsc::Sender<Action>) -> Self {
             Self {
                 action_tx,
                 stdout: std::io::stdout(),
-                buffer: String::new(),
             }
         }
         pub(crate) fn run(&mut self) -> std::io::Result<()> {
             let stdin = std::io::stdin();
             let mut stdin = stdin.lock();
+            let mut buffer = String::new();
             loop {
                 // print prompt
                 print!("> ");
                 self.stdout.flush()?;
                 // read line
-                self.buffer.clear();
-                stdin.read_line(&mut self.buffer)?;
-                // parse and line
-                let parts: Vec<&str> = self.buffer.trim().split(' ').collect();
-                let action_str = parts[0];
-                let action_and_rx = match action_str {
-                    "" => {
-                        continue;
-                    }
-                    "quit" | "q" | "exit" => {
-                        break;
-                    }
-                    _ => parse_line(action_str, &parts[1..]),
-                };
-                // execute action and print result
-                match action_and_rx {
-                    Ok(ActionAndReceiver::Command(action, result_rx)) => {
-                        self.send_and_print_result(action, result_rx);
-                    }
-                    Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
-                        self.send_and_print_result(action, result_rx);
-                    }
-                    Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
-                        self.send_and_print_result(action, result_rx);
-                    }
-                    Err(message) => eprintln!("Input error: {}", message),
+                buffer.clear();
+                let read_count = stdin.read_line(&mut buffer)?;
+                if read_count == 0 {
+                    println!("<<STDIN EOF>>");
+                    break;
                 }
+                if !self.run_line(&buffer) {
+                    break;
+                };
             }
             Ok(())
+        }
+        fn run_line(&mut self, line: &str) -> bool {
+            // split args
+            let parts: Vec<&str> = line.trim().split(' ').collect();
+            let action_str = parts[0];
+            match action_str {
+                "" => {
+                    return true;
+                }
+                "quit" | "q" | "exit" => {
+                    return false;
+                }
+                _ => {}
+            };
+            // parse action
+            let action_and_rx = parse_line(action_str, &parts[1..]);
+            // execute action and print result
+            match action_and_rx {
+                Ok(ActionAndReceiver::Command(action, result_rx)) => {
+                    self.send_and_print_result(action, result_rx);
+                }
+                Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
+                    self.send_and_print_result(action, result_rx);
+                }
+                Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
+                    self.send_and_print_result(action, result_rx);
+                }
+                Err(message) => eprintln!("Input error: {}", message),
+            }
+            true
         }
 
         fn send_and_print_result<T>(&mut self, action: Action, result_rx: ResultReceiver<T>)
