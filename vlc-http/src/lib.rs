@@ -268,7 +268,7 @@ pub async fn run(credentials: Credentials, mut commands: mpsc::Receiver<Action>)
             }
         };
     }
-    println!("context ended!");
+    println!("vlc_http::run() - context ended!");
 }
 async fn parse_body_json<F, T, E>(
     result: Result<hyper::Response<hyper::Body>, hyper::Error>,
