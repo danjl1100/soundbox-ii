@@ -229,4 +229,8 @@ impl Credentials {
     pub fn request_builder(&self) -> RequestBuilder {
         RequestBuilder::new().header("Authorization", &self.auth)
     }
+    /// Returns a string describing the authority (host:port)
+    pub fn authority_str(&self) -> &str {
+        self.authority.as_str()
+    }
 }

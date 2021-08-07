@@ -7,14 +7,16 @@ mod web {
     pub use filter::root as filter;
     mod filter {
         use http::uri::Uri;
+        use std::path::PathBuf;
         use tokio::sync::mpsc;
         use vlc_http::Action;
         use warp::Filter;
 
         pub fn root(
             action_tx: mpsc::Sender<Action>,
+            assets_dir: PathBuf,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-            root_redirect().or(static_files())
+            root_redirect().or(static_files(assets_dir))
         }
 
         fn root_redirect(
@@ -23,11 +25,12 @@ mod web {
             warp::path::end().map(|| warp::redirect::temporary(Uri::from_static("/app/")))
         }
 
-        fn static_files() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
-        {
+        fn static_files(
+            assets_dir: PathBuf,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             warp::get()
                 .and(warp::path("app"))
-                .and(warp::fs::dir("dist/"))
+                .and(warp::fs::dir(assets_dir))
         }
     }
 }
@@ -35,12 +38,14 @@ mod web {
 mod args {
     use std::convert::TryFrom;
     use std::net::SocketAddr;
+    use std::path::PathBuf;
     use std::str::FromStr;
 
     pub struct Config {
         pub interactive: bool,
         pub bind_address: SocketAddr,
         pub vlc_http_credentials: vlc_http::Credentials,
+        pub static_assets: PathBuf,
     }
 
     static INTERACTIVE: &str = "interactive";
@@ -48,6 +53,7 @@ mod args {
     static VLC_HOST: &str = "vlc-host";
     static VLC_PORT: &str = "vlc-port";
     static VLC_PASSWORD: &str = "vlc-password";
+    static STATIC_ASSETS: &str = "static-assets";
 
     pub fn parse_or_exit() -> Config {
         use clap::{
@@ -86,6 +92,13 @@ mod args {
                     .takes_value(true)
                     .help("Password of VLC-HTTP server (overrides environment variable)"),
             )
+            .arg(
+                Arg::with_name(STATIC_ASSETS)
+                    .long(STATIC_ASSETS)
+                    .short("s")
+                    .default_value("dist/")
+                    .help("static asserts folder path (created by frontend)"),
+            )
             .get_matches();
 
         match build_config(&matches) {
@@ -102,10 +115,21 @@ mod args {
     fn build_config(matches: &clap::ArgMatches<'_>) -> Result<Config, String> {
         let bind_address = matches
             .value_of(BIND_ADDRESS)
-            .ok_or_else(|| String::from("missing bind address"))
+            .ok_or_else(|| "missing bind address".to_string())
             .and_then(|s| {
                 SocketAddr::from_str(s)
                     .map_err(|err| format!("{} ({} argument \"{}\")", err, BIND_ADDRESS, s))
+            })?;
+        let static_assets = matches
+            .value_of(STATIC_ASSETS)
+            .ok_or_else(|| "missing static-assets folder".to_string())
+            .and_then(|s| match PathBuf::from_str(s) {
+                Err(err) => Err(format!("{} ({} argument \"{}\")", err, STATIC_ASSETS, s)),
+                Ok(path) => match (path.exists(), path.is_dir()) {
+                    (false, _) => Err(format!("static-assets path \"{}\" does not exist", s)),
+                    (_, false) => Err(format!("static-assets path \"{}\" is not a folder", s)),
+                    (true, true) => Ok(path),
+                },
             })?;
         let vlc_http_credentials = build_vlc_credentials(matches)?;
         //
@@ -113,6 +137,7 @@ mod args {
             interactive: matches.is_present(INTERACTIVE),
             bind_address,
             vlc_http_credentials,
+            static_assets,
         })
     }
     fn build_vlc_credentials(
@@ -159,10 +184,15 @@ async fn main() {
 
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
-    let api = web::filter(action_tx.clone());
 
-    println!("Listening on: {:?}", args.bind_address);
-    println!("Will connect to VLC on: {:?}", &args.vlc_http_credentials);
+    println!("  - Listening on: {}", args.bind_address);
+    println!("  - Serving static assets from {:?}", args.static_assets);
+    println!(
+        "  - VLC-HTTP will connect to server: {}",
+        args.vlc_http_credentials.authority_str()
+    );
+
+    let api = web::filter(action_tx.clone(), args.static_assets);
 
     if args.interactive {
         // spawn prompt
