@@ -2,6 +2,7 @@
 name = "soundbox-ii"
 version = "0.1.0"
 edition = "2018"
+description = "Interactive graph-based sequencer for beets songs playing on a VLC backend."
 
 [workspace]
 members = ["q-filter-tree", "vlc-http"]
@@ -15,3 +16,4 @@ vlc-http = { path = "./vlc-http" }
 tokio = { version = "1.8.1", features = ["rt-multi-thread", "sync", "macros"] }
 warp = "0.3.1"
 http = "0.2.4"
+clap = "2.33.3"
