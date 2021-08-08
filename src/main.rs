@@ -16,7 +16,9 @@ mod web {
             action_tx: mpsc::Sender<Action>,
             assets_dir: PathBuf,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-            root_redirect().or(static_files(assets_dir))
+            root_redirect()
+                .or(warp::path("v1").and(api_v1::root()))
+                .or(static_files(assets_dir))
         }
 
         fn root_redirect(
@@ -31,6 +33,37 @@ mod web {
             warp::get()
                 .and(warp::path("app"))
                 .and(warp::fs::dir(assets_dir))
+        }
+
+        mod api_v1 {
+            use warp::Filter;
+
+            pub fn root(
+            ) -> impl Filter<Extract = (String,) /*impl warp::Reply*/, Error = warp::Rejection> + Clone
+            {
+                warp::get().and(test_number_random())
+            }
+            fn test_number_random(
+            ) -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone {
+                use std::sync::atomic::{AtomicU32, Ordering};
+                use std::sync::Arc;
+                let atomic_num = Arc::new(AtomicU32::new(27));
+                warp::path("number").map(move || {
+                    let value = atomic_num.fetch_add(1, Ordering::Relaxed);
+                    let title = if value % 3 == 0 {
+                        "the BEST number"
+                    } else {
+                        "an OKAY number"
+                    }
+                    .to_string();
+                    let number = shared::Number {
+                        value,
+                        title,
+                        is_even: value % 2 == 0,
+                    };
+                    serde_json::to_string(&number).expect("Serializes Number without error")
+                })
+            }
         }
     }
 }
