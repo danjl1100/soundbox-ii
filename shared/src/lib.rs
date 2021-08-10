@@ -25,6 +25,12 @@ pub struct Number {
     pub is_even: bool,
 }
 
+/// Non-descriptive success/failure result
+///
+/// TODO: populate with success and/or error flags
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Success;
+
 #[cfg(test)]
 mod tests {
     #[test]
