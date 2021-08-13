@@ -153,7 +153,6 @@ mod playlist {
     use std::convert::TryInto;
 
     /// Playlist information
-    #[derive(Debug)]
     #[allow(missing_docs)]
     pub struct PlaylistInfo {
         pub items: Vec<PlaylistItem>,
@@ -220,6 +219,39 @@ mod playlist {
                 name,
                 uri,
             }
+        }
+    }
+    impl std::fmt::Debug for PlaylistInfo {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            let PlaylistInfo { items } = self;
+            writeln!(f, "Playlist items [")?;
+            for item in items {
+                let PlaylistItem {
+                    duration,
+                    id,
+                    name,
+                    uri,
+                } = item;
+                //
+                write!(f, r#"   [{id}] "{name}""#, id = id, name = name)?;
+                //
+                if let Some(duration) = duration {
+                    let duration_hour = (duration / 60) / 60;
+                    let duration_min = (duration / 60) % 60;
+                    let duration_sec = duration % 60;
+                    if duration_hour == 0 {
+                        write!(f, " ({}:{:02})", duration_min, duration_sec)?;
+                    } else {
+                        write!(
+                            f,
+                            " ({}:{:02}:{:02})",
+                            duration_hour, duration_min, duration_sec
+                        )?;
+                    }
+                }
+                writeln!(f, "\n\t{uri}", uri = uri)?;
+            }
+            writeln!(f, "]")
         }
     }
 }
