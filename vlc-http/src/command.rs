@@ -147,6 +147,22 @@ impl<'a, 'b> From<Query> for RequestIntent<'a, 'b> {
     }
 }
 
+impl From<shared::Command> for Command {
+    fn from(other: shared::Command) -> Self {
+        use shared::Command;
+        match other {
+            Command::PlaybackResume => Self::PlaybackResume,
+            Command::PlaybackPause => Self::PlaybackPause,
+            Command::PlaybackStop => Self::PlaybackStop,
+            Command::SeekNext => Self::SeekNext,
+            Command::SeekPrevious => Self::SeekPrevious,
+            Command::SeekTo { seconds } => Self::SeekTo { seconds },
+            Command::Volume { percent } => Self::Volume { percent },
+            Command::PlaybackSpeed { speed } => Self::PlaybackSpeed { speed },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,6 +19,7 @@ mod web {
             root_redirect()
                 .or(warp::path("v1").and(api_v1::root()))
                 .or(static_files(assets_dir))
+                .or(super::web_socket::filter())
         }
 
         fn root_redirect(
@@ -66,6 +67,58 @@ mod web {
             }
         }
     }
+
+    mod web_socket {
+        use futures::{SinkExt, StreamExt};
+        use warp::ws::{Message, WebSocket};
+        use warp::Filter;
+
+        pub fn filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+        {
+            warp::path("ws")
+                .and(warp::ws())
+                .map(|ws: warp::ws::Ws| ws.on_upgrade(handle_client))
+        }
+        async fn handle_client(mut websocket: warp::ws::WebSocket) {
+            while let Some(body) = websocket.next().await {
+                let message = match body {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        eprintln!("Error reading message on websocket: {}", e);
+                        break;
+                    }
+                };
+
+                handle_message(message, &mut websocket).await;
+            }
+        }
+        async fn handle_message(message: Message, websocket: &mut WebSocket) {
+            // Skip any non-Text messages...
+            let msg = if let Ok(s) = message.to_str() {
+                s
+            } else {
+                println!("ping-pong");
+                return;
+            };
+            dbg!(&msg);
+            let deserialized: Result<shared::ClientRequest, _> = serde_json::from_str(msg);
+            match deserialized {
+                Ok(message) => {
+                    dbg!(message);
+                }
+                Err(err) => {
+                    dbg!(err);
+                }
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+            let response = shared::ServerResponse::Success; //TODO
+            let response_str = serde_json::to_string(&response).unwrap();
+
+            websocket.send(Message::text(response_str)).await.unwrap();
+        }
+    }
 }
 
 mod args;
@@ -81,12 +134,13 @@ async fn main() {
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
 
-    println!("  - Listening on: {}", args.bind_address);
-    println!("  - Serving static assets from {:?}", args.static_assets);
     println!(
         "  - VLC-HTTP will connect to server: {}",
         args.vlc_http_credentials.authority_str()
     );
+    println!("  - Serving static assets from {:?}", args.static_assets);
+    println!("  - Listening on: {}", args.bind_address);
+    // ^^^ listen URL is last (for easy skimming)
 
     let api = web::filter(action_tx.clone(), args.static_assets);
 

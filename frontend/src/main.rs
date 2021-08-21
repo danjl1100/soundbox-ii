@@ -15,103 +15,122 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use yew::prelude::*;
-use yew::services::fetch::{FetchService, FetchTask, Request, Response};
+use yew::services::ConsoleService;
 
-#[derive(Debug)]
-pub(crate) enum ApiFetch {
-    Basic { uri: String },
-}
+mod websocket;
 
 enum Msg {
-    Fetch(ApiFetch),
-    ReceiveSuccessResponse(shared::Success),
+    WebsocketConnect,
+    SendCommand(shared::Command),
+    ReceiveMessage(shared::ServerResponse),
     ReceiveError(anyhow::Error),
+    WebsocketNotify(websocket::Notify),
 }
-impl From<ApiFetch> for Msg {
-    fn from(other: ApiFetch) -> Self {
-        Self::Fetch(other)
+impl From<shared::Command> for Msg {
+    fn from(cmd: shared::Command) -> Self {
+        Self::SendCommand(cmd)
     }
 }
 
 struct Model {
     link: ComponentLink<Self>,
-    active_fetch: Option<FetchTask>,
-    queued_fetch: Vec<ApiFetch>,
+    websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse>,
     errors: Vec<anyhow::Error>,
 }
 impl Model {
-    fn start_fetch(&mut self, fetch: ApiFetch) {
-        use yew::format::{Json, Nothing};
-        //
-        let request = match fetch {
-            ApiFetch::Basic { uri } => Request::get(uri)
-                .body(Nothing)
-                .expect("Could not build request."),
-        };
-        let callback = self.link.callback(
-            |response: Response<Json<Result<shared::Success, anyhow::Error>>>| {
-                let Json(data) = response.into_body();
-                match data {
-                    Ok(response) => Msg::ReceiveSuccessResponse(response),
-                    Err(err) => Msg::ReceiveError(err),
-                }
-            },
-        );
-        let task = FetchService::fetch(request, callback).expect("failed to start request");
-        self.active_fetch.replace(task);
+    fn view_disconnected(&self) -> Html {
+        html! {
+            <div>
+                { "Disconnected from server, that's sad :/" }
+                <br/>
+                <button onclick=self.link.callback(|_| Msg::WebsocketConnect)>
+                    { "Connect" }
+                </button>
+            </div>
+        }
+    }
+    fn view_connected(&self) -> Html {
+        html! {
+            <div>
+                <p>{ "This is generated in Yew!" }</p>
+                <NumFetcher />
+                <Controls on_command=self.link.callback(|cmd| cmd) />
+                <p>{ format!("errors: {:?}", &self.errors) }</p>
+            </div>
+        }
     }
 }
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        let websocket = {
+            const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws";
+            let on_message = link.callback(|msg| match msg {
+                Ok(msg) => Msg::ReceiveMessage(msg),
+                Err(e) => Msg::ReceiveError(e),
+            });
+            let on_notification = link.callback(Msg::WebsocketNotify);
+            websocket::Helper::new(URL_WEBSOCKET, &on_message, on_notification)
+        };
+        link.send_message(Msg::WebsocketConnect);
         Self {
             link,
-            active_fetch: None,
-            queued_fetch: vec![],
+            websocket,
             errors: vec![],
         }
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Msg::Fetch(fetch) => {
-                self.queued_fetch.push(fetch);
+            Msg::WebsocketConnect => {
+                ConsoleService::log("WEBSOCKET: Connecting...");
+                match self.websocket.connect() {
+                    Ok(_) => true,
+                    Err(err) => {
+                        self.errors.push(err.into());
+                        true
+                    }
+                }
             }
-            Msg::ReceiveSuccessResponse(data) => {
-                self.active_fetch.take();
+            Msg::SendCommand(command) => {
+                let payload = shared::ClientRequest::Command(command);
+                ConsoleService::log(&format!("-> {:?}", &payload));
+                if let Some(task) = self.websocket.get_task() {
+                    task.send(&payload);
+                }
+                true
+            }
+            Msg::ReceiveMessage(message) => {
+                ConsoleService::log(&format!("<- {:?}", message));
+                false
             }
             Msg::ReceiveError(err) => {
-                self.active_fetch.take();
+                ConsoleService::error(&format!("ERROR: {:?}", err));
                 self.errors.push(err);
+                true
+            }
+            Msg::WebsocketNotify(event) => {
+                ConsoleService::info(&format!("WEBSOCKET: {:?}", event));
+                self.websocket.on_notify(event)
             }
         }
-        if self.active_fetch.is_none() {
-            if let Some(fetch) = self.queued_fetch.pop() {
-                self.start_fetch(fetch);
-            }
-        }
-        true
     }
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
         // no props
         false
     }
     fn view(&self) -> Html {
-        html! {
-            <div>
-                <p>{ "This is generated in Yew!" }</p>
-                <NumFetcher />
-                <Controls on_fetch=self.link.callback(|api| api) />
-                <p>{ format!("running: {:?}", &self.active_fetch) }</p>
-                <p>{ format!("queue: {:?}", &self.queued_fetch) }</p>
-                <p>{ format!("errors: {:?}", &self.errors) }</p>
-            </div>
+        if self.websocket.is_connected() {
+            self.view_connected()
+        } else {
+            self.view_disconnected()
         }
     }
 }
+
 use controls::Controls;
 mod controls {
-    use crate::ApiFetch;
+    use shared::Command;
     use yew::prelude::*;
 
     // reference table: https://stackoverflow.com/a/27053825/5742216
@@ -122,32 +141,30 @@ mod controls {
 
     #[derive(Properties, Clone)]
     pub(crate) struct Properties {
-        pub on_fetch: Callback<ApiFetch>,
+        pub on_command: Callback<Command>,
     }
 
     pub(crate) enum Msg {}
 
     pub(crate) struct Controls {
-        on_fetch: Callback<ApiFetch>,
+        on_command: Callback<Command>,
         link: ComponentLink<Self>,
     }
     impl Controls {
         fn view_buttons(&self) -> Html {
-            let fetch_button = |uri: &'static str, text| {
+            let fetch_button = |text, cmd: Command| {
                 html! {
-                    <button onclick=self.on_fetch.reform(move |_| ApiFetch::Basic {
-                        uri: uri.to_string(),
-                    })>
+                    <button onclick=self.on_command.reform(move |_| cmd.clone())>
                         { text }
                     </button>
                 }
             };
             html! {
                 <>
-                    { fetch_button("/v1/previous", SYMBOL_PREVIOUS) }
-                    { fetch_button("/v1/play", SYMBOL_PLAY) }
-                    { fetch_button("/v1/pause", SYMBOL_PAUSE) }
-                    { fetch_button("/v1/next", SYMBOL_NEXT) }
+                    { fetch_button(SYMBOL_PREVIOUS, Command::SeekPrevious, ) }
+                    { fetch_button(SYMBOL_PLAY, Command::PlaybackResume, ) }
+                    { fetch_button(SYMBOL_PAUSE, Command::PlaybackPause, ) }
+                    { fetch_button(SYMBOL_NEXT, Command::SeekNext, ) }
                 </>
             }
         }
@@ -156,15 +173,15 @@ mod controls {
         type Message = Msg;
         type Properties = Properties;
         fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-            let Properties { on_fetch } = props;
-            Self { on_fetch, link }
+            let Properties { on_command } = props;
+            Self { on_command, link }
         }
         fn update(&mut self, msg: Self::Message) -> ShouldRender {
             match msg {}
         }
         fn change(&mut self, props: Self::Properties) -> ShouldRender {
-            let Properties { on_fetch } = props;
-            self.on_fetch = on_fetch;
+            let Properties { on_command } = props;
+            self.on_command = on_command;
             // pessimistic
             true
         }

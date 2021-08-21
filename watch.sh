@@ -1,1 +1,1 @@
-cargo watch --ignore frontend --clear -x r
+cargo watch --ignore frontend --clear -s "cargo run -- $*"
