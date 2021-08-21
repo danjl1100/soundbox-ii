@@ -48,9 +48,16 @@ impl Action {
         (action, result_rx)
     }
 }
-impl Command {
-    /// Constructs an [`Action`] from the Command, with the corresponding [`ResultReceiver`]
-    pub fn to_action_rx(self) -> (Action, ResultReceiver<()>) {
+/// Type that can transform into an [`Action`] and [`ResultReceiver`] pair
+pub trait IntoAction {
+    /// Type output by the [`ResultReceiver`]
+    type Output;
+    /// Converts the object to an [`Action`] and [`ResultReceiver`] pair
+    fn to_action_rx(self) -> (Action, ResultReceiver<Self::Output>);
+}
+impl IntoAction for Command {
+    type Output = ();
+    fn to_action_rx(self) -> (Action, ResultReceiver<()>) {
         let (result_tx, result_rx) = oneshot::channel();
         let action = Action::Command(self, result_tx);
         (action, result_rx)
@@ -158,6 +165,22 @@ impl From<hyper::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Self::Serde(err)
+    }
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Hyper(e) => write!(f, "vlc_http hyper error: {}", e),
+            Self::Serde(e) => write!(f, "vlc_http serde error: {}", e),
+        }
+    }
+}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Hyper(e) => Some(e),
+            Self::Serde(e) => Some(e),
+        }
     }
 }
 

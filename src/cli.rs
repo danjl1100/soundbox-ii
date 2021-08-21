@@ -132,6 +132,7 @@ enum ActionAndReceiver {
 }
 impl From<Command> for ActionAndReceiver {
     fn from(command: Command) -> Self {
+        use vlc_http::IntoAction;
         let (action, result_rx) = command.to_action_rx();
         Self::Command(action, result_rx)
     }

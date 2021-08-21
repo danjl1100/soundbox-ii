@@ -19,7 +19,7 @@ mod web {
             root_redirect()
                 .or(warp::path("v1").and(api_v1::root()))
                 .or(static_files(assets_dir))
-                .or(super::web_socket::filter())
+                .or(super::web_socket::filter(action_tx))
         }
 
         fn root_redirect(
@@ -70,53 +70,102 @@ mod web {
 
     mod web_socket {
         use futures::{SinkExt, StreamExt};
-        use warp::ws::{Message, WebSocket};
+        use shared::{ClientRequest, ServerResponse};
+        use tokio::sync::mpsc;
+        use vlc_http::{Action, IntoAction};
+        use warp::ws::Message;
         use warp::Filter;
 
-        pub fn filter() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
-        {
+        pub fn filter(
+            action_tx: mpsc::Sender<Action>,
+        ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             warp::path("ws")
                 .and(warp::ws())
-                .map(|ws: warp::ws::Ws| ws.on_upgrade(handle_client))
+                .map(move |ws: warp::ws::Ws| {
+                    let action_tx = action_tx.clone();
+                    ws.on_upgrade(|websocket| {
+                        ClientHandler {
+                            websocket,
+                            action_tx,
+                        }
+                        .run()
+                    })
+                })
         }
-        async fn handle_client(mut websocket: warp::ws::WebSocket) {
-            while let Some(body) = websocket.next().await {
-                let message = match body {
-                    Ok(msg) => msg,
-                    Err(e) => {
-                        eprintln!("Error reading message on websocket: {}", e);
-                        break;
+        struct ClientHandler {
+            websocket: warp::ws::WebSocket,
+            action_tx: mpsc::Sender<Action>,
+        }
+        impl ClientHandler {
+            async fn run(mut self) {
+                while let Some(body) = self.websocket.next().await {
+                    let message = match body {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            eprintln!("Error reading message on websocket: {}", e);
+                            break;
+                        }
+                    };
+
+                    self.handle_message(message).await;
+                }
+            }
+            async fn handle_message(&mut self, message: Message) {
+                // Skip any non-Text messages...
+                let msg = if let Ok(s) = message.to_str() {
+                    s
+                } else {
+                    println!("ping-pong");
+                    return;
+                };
+                dbg!(&msg);
+                let response = match serde_json::from_str(msg) {
+                    Ok(request) => self.process_request(request).await,
+                    Err(err) => {
+                        dbg!(&err);
+                        err.into()
                     }
                 };
 
-                handle_message(message, &mut websocket).await;
+                // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+                let response_str = serde_json::to_string(&response).unwrap();
+
+                self.websocket
+                    .send(Message::text(response_str))
+                    .await
+                    .unwrap();
             }
-        }
-        async fn handle_message(message: Message, websocket: &mut WebSocket) {
-            // Skip any non-Text messages...
-            let msg = if let Ok(s) = message.to_str() {
-                s
-            } else {
-                println!("ping-pong");
-                return;
-            };
-            dbg!(&msg);
-            let deserialized: Result<shared::ClientRequest, _> = serde_json::from_str(msg);
-            match deserialized {
-                Ok(message) => {
-                    dbg!(message);
-                }
-                Err(err) => {
-                    dbg!(err);
+            async fn process_request(&mut self, request: ClientRequest) -> ServerResponse {
+                match request {
+                    ClientRequest::Command(command) => {
+                        dbg!(&command);
+                        let command = vlc_http::Command::from(command);
+                        self.process_action(command).await
+                    }
                 }
             }
-
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-            let response = shared::ServerResponse::Success; //TODO
-            let response_str = serde_json::to_string(&response).unwrap();
-
-            websocket.send(Message::text(response_str)).await.unwrap();
+            async fn process_action<T>(&mut self, action: T) -> ServerResponse
+            where
+                T: IntoAction<Output = ()>,
+            {
+                let (action, result_rx) = action.to_action_rx();
+                let send_result = self.action_tx.send(action).await;
+                match send_result {
+                    Ok(()) => {
+                        let recv_result = result_rx.await;
+                        dbg!(&recv_result);
+                        match recv_result {
+                            Ok(result) => ServerResponse::from_result(result),
+                            Err(recv_err) => recv_err.into(),
+                        }
+                    }
+                    Err(send_error) => {
+                        dbg!(&send_error);
+                        send_error.into()
+                    }
+                }
+            }
         }
     }
 }

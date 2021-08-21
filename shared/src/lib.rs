@@ -17,11 +17,13 @@
 use serde::{Deserialize, Serialize};
 
 /// Testing "awesome number" type
-#[allow(missing_docs)] //TODO
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Number {
+    /// A number
     pub value: u32,
+    /// String label
     pub title: String,
+    /// Extra info about number, why not!
     pub is_even: bool,
 }
 
@@ -29,17 +31,9 @@ pub struct Number {
 #[derive(Debug)]
 #[cfg_attr(feature = "client", derive(Serialize))]
 #[cfg_attr(feature = "server", derive(Deserialize))]
-#[allow(missing_docs)] //TODO
 pub enum ClientRequest {
+    /// Command
     Command(Command),
-}
-/// Message sent from server to client
-#[derive(Debug)]
-#[cfg_attr(feature = "client", derive(Deserialize))]
-#[cfg_attr(feature = "server", derive(Serialize))]
-#[allow(missing_docs)] //TODO
-pub enum ServerResponse {
-    Success,
 }
 
 /// Command for the player
@@ -72,6 +66,37 @@ pub enum Command {
         /// Speed on unit scale (1.0 = normal speed)
         speed: f64,
     },
+}
+
+/// Message sent from server to client
+#[derive(Debug)]
+#[cfg_attr(feature = "client", derive(Deserialize))]
+#[cfg_attr(feature = "server", derive(Serialize))]
+pub enum ServerResponse {
+    /// Success performing a command
+    Success,
+    /// Error message, internal to the server
+    ServerError(String),
+}
+impl ServerResponse {
+    /// Constructs a `ServerRespone` from a result type
+    ///
+    /// Note: Not a [`From`] impl, due to overlapping trait bounds
+    pub fn from_result<E>(result: Result<(), E>) -> Self
+    where
+        E: std::error::Error,
+    {
+        match result {
+            Ok(()) => Self::Success,
+            Err(e) => Self::from(e),
+        }
+    }
+}
+impl<E: std::error::Error> From<E> for ServerResponse {
+    fn from(error: E) -> Self {
+        let message = error.to_string();
+        Self::ServerError(message)
+    }
 }
 
 #[cfg(test)]

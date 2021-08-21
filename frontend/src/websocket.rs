@@ -16,10 +16,6 @@ pub(crate) struct Helper<T: Serialize, U: DeserializeOwned> {
     on_notification: Callback<Notify>,
     task: Option<SocketTask<T, U>>,
 }
-pub(crate) struct SocketTask<T: Serialize, U: DeserializeOwned> {
-    task: WebSocketTask,
-    _phantom: PhantomData<dyn Fn(T) -> U>,
-}
 impl<T: Serialize, U: DeserializeOwned + 'static> Helper<T, U> {
     pub(crate) fn new(
         url: &'static str,
@@ -51,10 +47,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static> Helper<T, U> {
             .reform(|event| Notify(NotifyMsg(event)));
         let task =
             WebSocketService::connect_text(self.url, self.on_message.clone(), on_notification)?;
-        self.task.replace(SocketTask {
-            task,
-            _phantom: PhantomData,
-        });
+        self.task.replace(SocketTask::new(task));
         Ok(self.task.as_mut().expect("replaced `task` option is some"))
     }
     pub(crate) fn on_notify(&mut self, Notify(NotifyMsg(event)): Notify) -> ShouldRender {
@@ -67,7 +60,17 @@ impl<T: Serialize, U: DeserializeOwned + 'static> Helper<T, U> {
         }
     }
 }
+pub(crate) struct SocketTask<T: Serialize, U: DeserializeOwned> {
+    task: WebSocketTask,
+    _phantom: PhantomData<dyn Fn(T) -> U>,
+}
 impl<T: Serialize, U: DeserializeOwned> SocketTask<T, U> {
+    fn new(task: WebSocketTask) -> Self {
+        Self {
+            task,
+            _phantom: PhantomData,
+        }
+    }
     pub(crate) fn send(&mut self, message: &T) {
         self.task.send(Json(message));
     }

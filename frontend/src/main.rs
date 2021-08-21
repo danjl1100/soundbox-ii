@@ -20,22 +20,39 @@ use yew::services::ConsoleService;
 mod websocket;
 
 enum Msg {
-    WebsocketConnect,
-    SendCommand(shared::Command),
+    WebSocket(MsgWebSocket),
+    User(MsgUser),
+}
+enum MsgWebSocket {
+    Connect,
+    Notify(websocket::Notify),
     ReceiveMessage(shared::ServerResponse),
     ReceiveError(anyhow::Error),
-    WebsocketNotify(websocket::Notify),
+}
+enum MsgUser {
+    SendCommand(shared::Command),
+    ClearErrors,
+}
+impl From<MsgWebSocket> for Msg {
+    fn from(msg: MsgWebSocket) -> Self {
+        Self::WebSocket(msg)
+    }
+}
+impl From<MsgUser> for Msg {
+    fn from(msg: MsgUser) -> Self {
+        Self::User(msg)
+    }
 }
 impl From<shared::Command> for Msg {
     fn from(cmd: shared::Command) -> Self {
-        Self::SendCommand(cmd)
+        Self::User(MsgUser::SendCommand(cmd))
     }
 }
 
 struct Model {
     link: ComponentLink<Self>,
     websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse>,
-    errors: Vec<anyhow::Error>,
+    errors: Vec<String>,
 }
 impl Model {
     fn view_disconnected(&self) -> Html {
@@ -43,7 +60,7 @@ impl Model {
             <div>
                 { "Disconnected from server, that's sad :/" }
                 <br/>
-                <button onclick=self.link.callback(|_| Msg::WebsocketConnect)>
+                <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
                     { "Connect" }
                 </button>
             </div>
@@ -55,25 +72,110 @@ impl Model {
                 <p>{ "This is generated in Yew!" }</p>
                 <NumFetcher />
                 <Controls on_command=self.link.callback(|cmd| cmd) />
-                <p>{ format!("errors: {:?}", &self.errors) }</p>
+                <br/>
+                { self.view_errors() }
             </div>
         }
     }
+    fn view_errors(&self) -> Html {
+        let render_error = |err| {
+            html! {
+                <li>{ err }</li>
+            }
+        };
+        if self.errors.is_empty() {
+            html! {
+                <div>
+                    { "Errors: None" }
+                </div>
+            }
+        } else {
+            html! {
+                <div>
+                    { "Errors: " }
+                    <button onclick=self.link.callback(|_| MsgUser::ClearErrors)>
+                        { "Clear" }
+                    </button>
+                    <ul>
+                    { for self.errors.iter().map(render_error) }
+                    </ul>
+                </div>
+            }
+        }
+    }
+}
+impl Model {
+    fn push_error<E: std::fmt::Display>(&mut self, err_type: &str, error: E) {
+        self.errors.push(format!("{} error: {}", err_type, error));
+    }
+    fn update_websocket(&mut self, msg: MsgWebSocket) -> ShouldRender {
+        match msg {
+            MsgWebSocket::Connect => {
+                ConsoleService::log("WEBSOCKET: Connecting...");
+                match self.websocket.connect() {
+                    Ok(_) => true,
+                    Err(err) => {
+                        self.push_error("websocket connect", err);
+                        true
+                    }
+                }
+            }
+            MsgWebSocket::Notify(event) => {
+                ConsoleService::info(&format!("WEBSOCKET: {:?}", event));
+                self.websocket.on_notify(event)
+            }
+            MsgWebSocket::ReceiveMessage(message) => {
+                ConsoleService::log(&format!("<- {:?}", message));
+                match message {
+                    shared::ServerResponse::Success => false,
+                    shared::ServerResponse::ServerError(err_message) => {
+                        self.push_error("server", err_message);
+                        true
+                    }
+                }
+            }
+            MsgWebSocket::ReceiveError(err) => {
+                ConsoleService::error(&format!("ERROR: {:?}", err));
+                self.push_error("receive", err);
+                true
+            }
+        }
+    }
+    fn update_user(&mut self, msg: MsgUser) -> ShouldRender {
+        match msg {
+            MsgUser::SendCommand(command) => {
+                let payload = shared::ClientRequest::Command(command);
+                ConsoleService::log(&format!("-> {:?}", &payload));
+                if let Some(task) = self.websocket.get_task() {
+                    task.send(&payload);
+                }
+                true
+            }
+            MsgUser::ClearErrors => {
+                let was_empty = self.errors.is_empty();
+                self.errors.clear();
+                !was_empty
+            }
+        }
+    }
+}
+fn create_websocket(
+    link: &ComponentLink<Model>,
+) -> websocket::Helper<shared::ClientRequest, shared::ServerResponse> {
+    const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws";
+    let on_message = link.callback(|msg| match msg {
+        Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
+        Err(e) => MsgWebSocket::ReceiveError(e),
+    });
+    let on_notification = link.callback(MsgWebSocket::Notify);
+    websocket::Helper::new(URL_WEBSOCKET, &on_message, on_notification)
 }
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let websocket = {
-            const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws";
-            let on_message = link.callback(|msg| match msg {
-                Ok(msg) => Msg::ReceiveMessage(msg),
-                Err(e) => Msg::ReceiveError(e),
-            });
-            let on_notification = link.callback(Msg::WebsocketNotify);
-            websocket::Helper::new(URL_WEBSOCKET, &on_message, on_notification)
-        };
-        link.send_message(Msg::WebsocketConnect);
+        let websocket = create_websocket(&link);
+        link.send_message(MsgWebSocket::Connect);
         Self {
             link,
             websocket,
@@ -82,37 +184,8 @@ impl Component for Model {
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Msg::WebsocketConnect => {
-                ConsoleService::log("WEBSOCKET: Connecting...");
-                match self.websocket.connect() {
-                    Ok(_) => true,
-                    Err(err) => {
-                        self.errors.push(err.into());
-                        true
-                    }
-                }
-            }
-            Msg::SendCommand(command) => {
-                let payload = shared::ClientRequest::Command(command);
-                ConsoleService::log(&format!("-> {:?}", &payload));
-                if let Some(task) = self.websocket.get_task() {
-                    task.send(&payload);
-                }
-                true
-            }
-            Msg::ReceiveMessage(message) => {
-                ConsoleService::log(&format!("<- {:?}", message));
-                false
-            }
-            Msg::ReceiveError(err) => {
-                ConsoleService::error(&format!("ERROR: {:?}", err));
-                self.errors.push(err);
-                true
-            }
-            Msg::WebsocketNotify(event) => {
-                ConsoleService::info(&format!("WEBSOCKET: {:?}", event));
-                self.websocket.on_notify(event)
-            }
+            Msg::WebSocket(msg) => self.update_websocket(msg),
+            Msg::User(msg) => self.update_user(msg),
         }
     }
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
