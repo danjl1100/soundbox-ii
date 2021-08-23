@@ -1,6 +1,5 @@
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
-use cli::Prompt;
 mod cli;
 
 mod web {
@@ -8,12 +7,14 @@ mod web {
     mod filter {
         use http::uri::Uri;
         use std::path::PathBuf;
-        use tokio::sync::mpsc;
-        use vlc_http::Action;
+        use tokio::sync::{mpsc, watch};
+        use vlc_http::{Action, PlaybackStatus, PlaylistInfo};
         use warp::Filter;
 
         pub fn root(
             action_tx: mpsc::Sender<Action>,
+            playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
+            playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
             assets_dir: PathBuf,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             root_redirect()
@@ -182,6 +183,8 @@ async fn main() {
 
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
+    let (playback_status_tx, playback_status_rx) = watch::channel(Default::default());
+    let (playlist_info_tx, playlist_info_rx) = watch::channel(Default::default());
 
     println!(
         "  - VLC-HTTP will connect to server: {}",
@@ -191,19 +194,39 @@ async fn launch(args: args::Config) {
     println!("  - Listening on: {}", args.bind_address);
     // ^^^ listen URL is last (for easy skimming)
 
-    let api = web::filter(action_tx.clone(), args.static_assets);
-
     if args.interactive {
         // spawn prompt
+        let action_tx = action_tx.clone();
+        let playback_status_rx = playback_status_rx.clone();
+        let playlist_info_rx = playlist_info_rx.clone();
         std::thread::spawn(move || {
-            Prompt::new(action_tx).run().unwrap();
+            cli::Config {
+                action_tx,
+                playback_status_rx,
+                playlist_info_rx,
+            }
+            .build()
+            .run()
+            .unwrap();
         });
     }
+
+    let api = web::filter(
+        action_tx,
+        playback_status_rx,
+        playlist_info_rx,
+        args.static_assets,
+    );
 
     // spawn server
     let server = warp::serve(api).bind(args.bind_address);
     tokio::task::spawn(server);
 
     // run controller
-    vlc_http::run(args.vlc_http_credentials, action_rx).await;
+    let vlc_controller = vlc_http::Controller {
+        action_rx,
+        playback_status_tx,
+        playlist_info_tx,
+    };
+    vlc_controller.run(args.vlc_http_credentials).await;
 }

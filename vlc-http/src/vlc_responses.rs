@@ -11,7 +11,7 @@ mod playback {
     use std::convert::TryInto;
 
     /// Status of the current playback
-    #[derive(Debug)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
     pub struct PlaybackStatus {
         /// version of the VLC-HTTP interface api
@@ -23,11 +23,11 @@ mod playback {
         /// True if playlist-loop is enabled
         pub is_loop: bool,
         /// Fractional position within the current item (unit scale)
-        pub position: f64,
+        pub position: Position,
         /// True if playlist-randomize is enabled
         pub is_random: bool,
         /// Playback rate (unit scale)
-        pub rate: f64,
+        pub rate: Rate,
         /// True if single-item-repeat is enabled
         pub is_repeat: bool,
         /// State of playback
@@ -62,6 +62,7 @@ mod playback {
                 version,
                 volume,
             } = other;
+            // convert PlaybackInfoJSON to PlaybackInfo, and attach `playlist_item_id` if present
             let meta = information.map(PlaybackInfo::from).map(|mut meta| {
                 meta.playlist_item_id = playlist_item_id.try_into().ok();
                 meta
@@ -82,6 +83,47 @@ mod playback {
             }
         }
     }
+    macro_rules! cheap_float_eq {
+        (
+            $(
+                #[$($attr:meta)*]
+                $vis:vis struct $name:ident (pub $float_ty:ty );
+            )+
+        ) => {
+            $(
+                $(#[$attr])*
+                #[derive(PartialOrd, Deserialize)]
+                #[serde(transparent)]
+                $vis struct $name ( pub $float_ty );
+                impl PartialEq for $name {
+                    fn eq(&self, rhs: &Self) -> bool {
+                        let Self(lhs) = self;
+                        let Self(rhs) = rhs;
+                        let max = lhs.abs().max(rhs.abs());
+                        (lhs - rhs).abs() < (max * <$float_ty>::EPSILON)
+                    }
+                }
+                impl Eq for $name {}
+                impl From<$float_ty> for $name {
+                    fn from(val: $float_ty) -> Self {
+                        Self(val)
+                    }
+                }
+                impl From<$name> for $float_ty {
+                    fn from($name(val): $name) -> Self {
+                        val
+                    }
+                }
+            )+
+        }
+    }
+    cheap_float_eq! {
+        #[derive(Debug, Clone, Copy)]
+        pub struct Position(pub f64);
+
+        #[derive(Debug, Clone, Copy)]
+        pub struct Rate(pub f64);
+    }
 
     #[derive(Deserialize, Debug)]
     pub(crate) struct PlaybackStatusJSON {
@@ -93,10 +135,10 @@ mod playback {
         duration: u64,
         #[serde(rename = "loop")]
         is_loop: bool,
-        position: f64,
+        position: Position, //f64,
         #[serde(rename = "random")]
         is_random: bool,
-        rate: f64,
+        rate: Rate, //f64,
         #[serde(rename = "repeat")]
         is_repeat: bool,
         state: PlaybackState,
@@ -106,7 +148,7 @@ mod playback {
         volume: u32,
     }
     /// Mode of the playback
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
     #[serde(rename_all = "lowercase")]
     pub enum PlaybackState {
         /// Paused
@@ -125,7 +167,7 @@ mod playback {
         meta: PlaybackInfo,
     }
     /// Information about the current (playing/paused) item
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
     pub struct PlaybackInfo {
         pub title: String,
@@ -153,6 +195,7 @@ mod playlist {
     use std::convert::TryInto;
 
     /// Playlist information
+    #[derive(Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
     pub struct PlaylistInfo {
         pub items: Vec<PlaylistItem>,
@@ -195,7 +238,7 @@ mod playlist {
         uri: String,
     }
     /// Item in the playlist (track, playlist, folder, etc.)
-    #[derive(Debug)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
     pub struct PlaylistItem {
         /// Duration of the current song in seconds

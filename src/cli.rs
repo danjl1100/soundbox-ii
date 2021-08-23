@@ -1,7 +1,7 @@
 use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, Query, ResultReceiver};
 
 use std::io::{BufRead, Write};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 fn blocking_recv<T, F: Fn()>(
     mut rx: oneshot::Receiver<T>,
@@ -24,18 +24,34 @@ fn blocking_recv<T, F: Fn()>(
     }
 }
 
+pub struct Config {
+    pub action_tx: mpsc::Sender<Action>,
+    pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
+    pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
+}
 pub struct Prompt {
     action_tx: mpsc::Sender<Action>,
+    playback_status: SyncWatchReceiver<Option<PlaybackStatus>>,
+    playlist_info: SyncWatchReceiver<Option<PlaylistInfo>>,
     stdout: std::io::Stdout,
 }
-impl Prompt {
-    pub(crate) fn new(action_tx: mpsc::Sender<Action>) -> Self {
-        Self {
+impl Config {
+    pub(crate) fn build(self) -> Prompt {
+        let Self {
             action_tx,
+            playback_status_rx,
+            playlist_info_rx,
+        } = self;
+        Prompt {
+            action_tx,
+            playback_status: SyncWatchReceiver::new(playback_status_rx),
+            playlist_info: SyncWatchReceiver::new(playlist_info_rx),
             stdout: std::io::stdout(),
         }
     }
-    pub(crate) fn run(&mut self) -> std::io::Result<()> {
+}
+impl Prompt {
+    pub(crate) fn run(mut self) -> std::io::Result<()> {
         let stdin = std::io::stdin();
         let mut stdin = stdin.lock();
         let mut buffer = String::new();
@@ -84,10 +100,22 @@ impl Prompt {
             }
             Err(message) => eprintln!("Input error: {}", message),
         }
+        // poll and print status
+        if let Some(Some(playback)) = self.playback_status.poll_update() {
+            dbg!(playback);
+        }
+        if let Some(Some(playlist)) = self.playlist_info.poll_update() {
+            dbg!(playlist);
+        }
+
         true
     }
 
-    fn send_and_print_result<T>(&mut self, action: Action, result_rx: ResultReceiver<T>)
+    fn send_and_print_result<T>(
+        &mut self,
+        action: Action,
+        result_rx: ResultReceiver<T>,
+    ) -> Option<T>
     where
         T: std::fmt::Debug,
     {
@@ -114,13 +142,57 @@ impl Prompt {
             Some(Ok(action_result)) => {
                 println!();
                 if print_result {
-                    dbg!(action_result);
+                    dbg!(&action_result);
                 }
+                Some(action_result)
             }
             Some(Err(action_err)) => {
                 dbg!(action_err);
+                None
             }
-            None => println!("Failed to obtain command result"),
+            None => {
+                println!("Failed to obtain command result");
+                None
+            }
+        }
+    }
+}
+struct SyncWatchReceiver<T>
+where
+    T: PartialEq + Clone,
+{
+    receiver: watch::Receiver<T>,
+    prev_value: Option<T>,
+}
+impl<T> SyncWatchReceiver<T>
+where
+    T: PartialEq + Clone,
+{
+    fn new(receiver: watch::Receiver<T>) -> Self {
+        Self {
+            receiver,
+            prev_value: None,
+        }
+    }
+    fn poll_update(&mut self) -> Option<&T>
+    where
+        T: std::fmt::Debug + PartialEq + Clone,
+    {
+        //TODO: too many `clone`s!
+        let current = self.receiver.borrow().clone();
+        self.update_changed(current)
+    }
+    fn update_changed(&mut self, value: T) -> Option<&T> {
+        // detect change in value
+        let identical = matches!(&self.prev_value, Some(prev) if *prev == value);
+        let changed = !identical;
+        // update regardless (no harm if same)
+        self.prev_value = Some(value);
+        // if changed, give updated value ref
+        if changed {
+            self.prev_value.as_ref()
+        } else {
+            None
         }
     }
 }

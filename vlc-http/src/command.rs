@@ -67,6 +67,15 @@ pub enum RepeatMode {
     /// Repeat only the current item
     One,
 }
+
+/// Type of a request
+#[allow(missing_docs)]
+pub enum RequestType {
+    Art,
+    Status,
+    Playlist,
+}
+
 /// Description of a request to be executed
 #[must_use]
 #[allow(missing_docs)]
@@ -87,6 +96,13 @@ impl<'a, 'b> RequestIntent<'a, 'b> {
             command,
             args: vec![],
         }))
+    }
+    pub fn get_type(&self) -> RequestType {
+        match self {
+            Self::Art { .. } => RequestType::Art,
+            Self::Status(_) => RequestType::Status,
+            Self::Playlist(_) => RequestType::Playlist,
+        }
     }
 }
 pub(crate) fn encode_volume_val(percent: u16) -> u32 {

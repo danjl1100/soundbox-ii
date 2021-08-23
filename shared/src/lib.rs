@@ -1,7 +1,5 @@
 //! Shared payload types used in backend and frontend.
 
-// TODO: only while building
-#![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
 // no unsafe
@@ -99,10 +97,7 @@ impl<E: std::error::Error> From<E> for ServerResponse {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+// // no logic in this crate, just data types!
+// #[cfg(test)]
+// mod tests {
+// }
