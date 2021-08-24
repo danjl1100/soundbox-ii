@@ -76,29 +76,33 @@ impl Prompt {
         // split args
         let parts: Vec<&str> = line.trim().split(' ').collect();
         let action_str = parts[0];
-        match action_str {
+        let parsed = match action_str {
             "" => {
-                return true;
+                // skip action, just poll and print status
+                None
             }
             "quit" | "q" | "exit" => {
                 return false;
             }
-            _ => {}
+            _ => {
+                // parse action
+                Some(parse_line(action_str, &parts[1..]))
+            }
         };
-        // parse action
-        let action_and_rx = parse_line(action_str, &parts[1..]);
-        // execute action and print result
-        match action_and_rx {
-            Ok(ActionAndReceiver::Command(action, result_rx)) => {
-                self.send_and_print_result(action, result_rx);
+        if let Some(action_and_rx) = parsed {
+            // execute action and print result
+            match action_and_rx {
+                Ok(ActionAndReceiver::Command(action, result_rx)) => {
+                    self.send_and_print_result(action, result_rx);
+                }
+                Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
+                    self.send_and_print_result(action, result_rx);
+                }
+                Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
+                    self.send_and_print_result(action, result_rx);
+                }
+                Err(message) => eprintln!("Input error: {}", message),
             }
-            Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
-                self.send_and_print_result(action, result_rx);
-            }
-            Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
-                self.send_and_print_result(action, result_rx);
-            }
-            Err(message) => eprintln!("Input error: {}", message),
         }
         // poll and print status
         if let Some(Some(playback)) = self.playback_status.poll_update() {
@@ -166,7 +170,7 @@ where
 }
 impl<T> SyncWatchReceiver<T>
 where
-    T: PartialEq + Clone,
+    T: PartialEq + Clone + std::fmt::Debug,
 {
     fn new(receiver: watch::Receiver<T>) -> Self {
         Self {
@@ -174,10 +178,7 @@ where
             prev_value: None,
         }
     }
-    fn poll_update(&mut self) -> Option<&T>
-    where
-        T: std::fmt::Debug + PartialEq + Clone,
-    {
+    fn poll_update(&mut self) -> Option<&T> {
         //TODO: too many `clone`s!
         let current = self.receiver.borrow().clone();
         self.update_changed(current)

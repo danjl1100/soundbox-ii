@@ -18,56 +18,50 @@ impl Controller {
             match action {
                 Action::Command(command, result_tx) => {
                     let request = command.into();
-                    let result = context
-                        .run(&request)
-                        .await
-                        .map(response::parse)
-                        .map_err(|e| e.into());
-                    let send_result = match result {
-                        Ok(response_fut) => match response_fut.await {
-                            Ok(typed) => {
-                                self.update_status(typed);
-                                Ok(())
-                            }
-                            Err(e) => Err(e),
-                        },
+                    let parse_result = response::try_parse(context.run(&request).await).await;
+                    let send_result = match parse_result {
+                        Ok(typed) => {
+                            self.update_status(typed);
+                            Ok(())
+                        }
                         Err(e) => Err(e),
                     };
                     Self::send_result(send_result, result_tx);
                 }
                 Action::QueryPlaybackStatus(result_tx) => {
                     let request = Query::PlaybackStatus.into();
-                    let result = context
-                        .run(&request)
-                        .await
-                        .map(response::parse)
-                        .map_err(|e| e.into());
-                    let send_result = match result {
-                        Ok(response_fut) => match response_fut.await {
-                            Ok(response::Typed::Playback(playback)) => {
-                                let send_result = Ok(playback.clone());
-                                self.update_status(response::Typed::Playback(playback));
-                                send_result
-                            }
-                            Ok(_) => unreachable!("PlaybackRequest should be Playback"),
-                            Err(e) => Err(e),
-                        },
-                        Err(e) => Err(e),
+                    let result = response::try_parse(context.run(&request).await).await;
+                    let cloned_result = match result {
+                        Ok(response::Typed::Playback(playback)) => {
+                            // (optional clone)
+                            let cloned = result_tx.map(|tx| (Ok(playback.clone()), tx));
+                            // send status
+                            self.update_status(response::Typed::Playback(playback));
+                            cloned
+                        }
+                        Err(e) => result_tx.map(|tx| (Err(e), tx)),
+                        Ok(_) => unreachable!("PlaybackRequest should be type Playback"),
                     };
-                    if let Some(result_tx) = result_tx {
-                        Self::send_result(send_result, result_tx);
+                    if let Some((result, tx)) = cloned_result {
+                        Self::send_result(result, tx);
                     }
                 }
                 Action::QueryPlaylistInfo(result_tx) => {
                     let request = Query::PlaylistInfo.into();
-                    let response = context.run(&request).await.map(|(_, result)| result); //TODO remove me
-                    let result =
-                        response::parse_body_json(response, PlaylistInfo::from_slice).await; //TODO remove me
-                    if let Ok(playlist) = &result {
-                        self.update_status(response::Typed::Playlist((*playlist).clone()));
-                    }
-                    if let Some(result_tx) = result_tx {
-                        Self::send_result(result, result_tx);
+                    let result = response::try_parse(context.run(&request).await).await;
+                    let cloned_result = match result {
+                        Ok(response::Typed::Playlist(playlist)) => {
+                            // (optional clone)
+                            let cloned = result_tx.map(|tx| (Ok(playlist.clone()), tx));
+                            // send status
+                            self.update_status(response::Typed::Playlist(playlist));
+                            cloned
+                        }
+                        Err(e) => result_tx.map(|tx| (Err(e), tx)),
+                        Ok(_) => unreachable!("PlaylistInfo should be type Playlist"),
+                    };
+                    if let Some((result, tx)) = cloned_result {
+                        Self::send_result(result, tx);
                     }
                 }
             };
@@ -121,17 +115,22 @@ mod response {
         Playlist(PlaylistInfo),
     }
 
-    pub(crate) async fn parse(
-        (res_type, response): (RequestType, hyper::Response<hyper::Body>),
+    pub(crate) async fn try_parse(
+        response: Result<(RequestType, hyper::Response<hyper::Body>), hyper::Error>,
     ) -> Result<Typed, Error> {
-        match res_type {
-            RequestType::Art => todo!(),
-            RequestType::Status => parse_typed(response, PlaybackStatus::from_slice)
-                .await
-                .map(Typed::Playback),
-            RequestType::Playlist => parse_typed(response, PlaylistInfo::from_slice)
-                .await
-                .map(Typed::Playlist),
+        match response {
+            Ok((RequestType::Art, _)) => todo!(),
+            Ok((RequestType::Status, response)) => {
+                parse_typed(response, PlaybackStatus::from_slice)
+                    .await
+                    .map(Typed::Playback)
+            }
+            Ok((RequestType::Playlist, response)) => {
+                parse_typed(response, PlaylistInfo::from_slice)
+                    .await
+                    .map(Typed::Playlist)
+            }
+            Err(e) => Err(e.into()),
         }
     }
     pub(crate) async fn parse_typed<F, T, E>(
