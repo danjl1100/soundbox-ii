@@ -1,4 +1,4 @@
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 mod cli;
 
@@ -185,6 +185,7 @@ async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
     let (playback_status_tx, playback_status_rx) = watch::channel(Default::default());
     let (playlist_info_tx, playlist_info_rx) = watch::channel(Default::default());
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
     println!(
         "  - VLC-HTTP will connect to server: {}",
@@ -208,18 +209,21 @@ async fn launch(args: args::Config) {
             .build()
             .run()
             .unwrap();
+            let _ = shutdown_tx.send(());
         });
     }
 
+    // spawn server
     let api = web::filter(
         action_tx,
         playback_status_rx,
         playlist_info_rx,
         args.static_assets,
     );
-
-    // spawn server
-    let server = warp::serve(api).bind(args.bind_address);
+    let (_addr, server) = warp::serve(api).bind_with_graceful_shutdown(args.bind_address, async {
+        shutdown_rx.await.ok();
+        println!("waiting for HTTP clients to disconnect..."); // TODO: add mechanism to ask WebSocket clients to disconnect
+    });
     tokio::task::spawn(server);
 
     // run controller
