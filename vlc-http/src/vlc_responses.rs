@@ -100,7 +100,7 @@ mod playback {
                         let Self(lhs) = self;
                         let Self(rhs) = rhs;
                         let max = lhs.abs().max(rhs.abs());
-                        (lhs - rhs).abs() < (max * <$float_ty>::EPSILON)
+                        (lhs - rhs).abs() <= (max * <$float_ty>::EPSILON)
                     }
                 }
                 impl Eq for $name {}
