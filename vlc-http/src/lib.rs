@@ -20,7 +20,7 @@ pub use auth::{Config, Credentials};
 pub mod auth;
 
 pub use controller::Controller;
-mod controller;
+pub mod controller;
 
 pub use command::{Command, Query, RequestType};
 mod command;

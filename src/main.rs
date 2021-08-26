@@ -1,4 +1,5 @@
-use tokio::sync::{mpsc, oneshot, watch};
+use shared::{Never, Shutdown};
+use tokio::sync::{mpsc, watch};
 
 mod cli;
 
@@ -181,11 +182,101 @@ async fn main() {
     launch(args).await;
 }
 
+use task::{AsyncTasks, ShutdownReceiver};
+mod task {
+    use shared::{Never, Shutdown};
+    use tokio::sync::watch;
+
+    /// Receiver for the [`Shutdown`] signal
+    #[derive(Clone)]
+    pub struct ShutdownReceiver(watch::Receiver<Option<Shutdown>>);
+    impl ShutdownReceiver {
+        /// Constructs a [`watch::Sender`] and [`ShutdownReceiver`] pair
+        pub fn new() -> (watch::Sender<Option<Shutdown>>, Self) {
+            let (tx, rx) = watch::channel(None);
+            (tx, Self(rx))
+        }
+        /// Synchronous poll for Shutdown
+        pub fn poll_shutdown(&self, task_name: &'static str) -> Option<Shutdown> {
+            let value = *self.0.borrow();
+            if let Some(Shutdown) = value {
+                println!("{} received shutdown", task_name);
+            }
+            value
+        }
+        /// Asynchronous poll for Shutdown
+        pub async fn is_shutdown(&mut self, task_name: &'static str) -> Option<Shutdown> {
+            let rx = &mut self.0;
+            let changed_result = rx.changed().await;
+            if changed_result.is_err() {
+                eprintln!(
+                    "error waiting for {} shutdown signal, shutting down...",
+                    task_name
+                );
+                Some(Shutdown)
+            } else {
+                let shutdown = *rx.borrow();
+                if shutdown.is_some() {
+                    println!("received shutdown: {}", task_name);
+                }
+                shutdown
+            }
+        }
+        /// Asynchronous wait for Shutdown
+        pub async fn wait_for_shutdown(mut self, task_name: &'static str) {
+            while self.is_shutdown(task_name).await.is_none() {
+                continue;
+            }
+        }
+    }
+
+    pub struct AsyncTasks {
+        handles: Vec<tokio::task::JoinHandle<()>>,
+        shutdown_rx: ShutdownReceiver,
+    }
+    impl AsyncTasks {
+        /// Creates an empty instance, using the specified [`ShutdownReceiver`] to abort tasks
+        pub fn new(shutdown_rx: ShutdownReceiver) -> Self {
+            Self {
+                handles: vec![],
+                shutdown_rx,
+            }
+        }
+        /// Spawns a new async task, to be cancelled when Shutdown is received
+        pub fn spawn(
+            &mut self,
+            task_name: &'static str,
+            task: impl std::future::Future<Output = Result<Never, Shutdown>> + Send + 'static,
+        ) {
+            let mut shutdown_rx = self.shutdown_rx.clone();
+            let handle = tokio::task::spawn(async move {
+                tokio::select! {
+                    biased; // poll in-order (shutdown first)
+                    Some(Shutdown) = shutdown_rx.is_shutdown(task_name) => {}
+                    Err(Shutdown) = task => {}
+                };
+                println!("ended: {}", task_name);
+            });
+            self.handles.push(handle);
+        }
+        /// Waits for all tasks to complete
+        ///
+        /// # Errors
+        /// Returns an error if any task fails to join
+        pub async fn join_all(self) -> Result<(), tokio::task::JoinError> {
+            for task in self.handles {
+                task.await?;
+            }
+            Ok(())
+        }
+    }
+}
+
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
     let (playback_status_tx, playback_status_rx) = watch::channel(Default::default());
     let (playlist_info_tx, playlist_info_rx) = watch::channel(Default::default());
-    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
 
     println!(
         "  - VLC-HTTP will connect to server: {}",
@@ -195,42 +286,113 @@ async fn launch(args: args::Config) {
     println!("  - Listening on: {}", args.bind_address);
     // ^^^ listen URL is last (for easy skimming)
 
-    if args.interactive {
+    let cli_handle = if args.interactive {
+        const TASK_NAME: &str = "cli";
         // spawn prompt
         let action_tx = action_tx.clone();
         let playback_status_rx = playback_status_rx.clone();
         let playlist_info_rx = playlist_info_rx.clone();
-        std::thread::spawn(move || {
+        let shutdown_rx = shutdown_rx.clone();
+        let handle = std::thread::spawn(move || {
             cli::Config {
                 action_tx,
                 playback_status_rx,
                 playlist_info_rx,
             }
             .build()
-            .run()
+            .run_until(move || shutdown_rx.poll_shutdown(TASK_NAME))
             .unwrap();
-            let _ = shutdown_tx.send(());
+            let _ = cli_shutdown_tx.send(Some(Shutdown));
+            println!("{} ended", TASK_NAME);
+        });
+        Some(handle)
+    } else {
+        None
+    };
+
+    // spawn server
+    let warp_graceful_handle = {
+        let api = web::filter(
+            action_tx.clone(),
+            playback_status_rx,
+            playlist_info_rx,
+            args.static_assets,
+        );
+        const TASK_NAME: &str = "warp";
+        let shutdown_rx = shutdown_rx.clone();
+        let (_addr, server) =
+            warp::serve(api).bind_with_graceful_shutdown(args.bind_address, async move {
+                shutdown_rx.wait_for_shutdown(TASK_NAME).await;
+                println!("waiting for warp HTTP clients to disconnect..."); // TODO: add mechanism to ask WebSocket ClientHandlers to disconnect
+            });
+        tokio::task::spawn(async {
+            server.await;
+            println!("ended: {}", TASK_NAME);
+        })
+    };
+
+    let mut tasks = AsyncTasks::new(shutdown_rx);
+
+    // spawn PlaybackStatus requestor
+    {
+        async fn playback_status_requestor(
+            action_tx: mpsc::Sender<vlc_http::Action>,
+        ) -> Result<Never, Shutdown> {
+            const DELAY_SEC_SHORT: u64 = 3;
+            const DELAY_SEC_LONG: u64 = 9;
+            loop {
+                let (cmd, result_rx) = vlc_http::Action::query_playback_status();
+                let () = action_tx.send(cmd).await.map_err(|err| {
+                    eprintln!("error auto-requesting PlaylistStatus: {}", err);
+                    Shutdown
+                })?;
+                use tokio::time::Duration;
+                println!("fetching PlaybackStatus... ");
+                let sleep_duration = match result_rx.await {
+                    Err(err) => {
+                        eprintln!("vlc_http module did not respond :/  {}", err);
+                        Err(Shutdown)
+                    }
+                    Ok(Err(err)) => {
+                        eprintln!("error in result: {:?}", err);
+                        Ok(Duration::from_secs(DELAY_SEC_LONG))
+                    }
+                    Ok(Ok(_)) => {
+                        println!("fetched PlaybackStatus");
+                        Ok(Duration::from_secs(DELAY_SEC_SHORT))
+                    }
+                };
+                tokio::time::sleep(sleep_duration?).await;
+            }
+        }
+        let action_tx = action_tx.clone();
+        tasks.spawn("PlaybackStatus-requestor", async {
+            playback_status_requestor(action_tx).await
         });
     }
 
-    // spawn server
-    let api = web::filter(
-        action_tx,
-        playback_status_rx,
-        playlist_info_rx,
-        args.static_assets,
-    );
-    let (_addr, server) = warp::serve(api).bind_with_graceful_shutdown(args.bind_address, async {
-        shutdown_rx.await.ok();
-        println!("waiting for HTTP clients to disconnect..."); // TODO: add mechanism to ask WebSocket clients to disconnect
-    });
-    tokio::task::spawn(server);
-
     // run controller
-    let vlc_controller = vlc_http::Controller {
-        action_rx,
-        playback_status_tx,
-        playlist_info_tx,
-    };
-    vlc_controller.run(args.vlc_http_credentials).await;
+    {
+        tasks.spawn(
+            "vlc controller",
+            vlc_http::controller::Config {
+                action_rx,
+                playback_status_tx,
+                playlist_info_tx,
+                credentials: args.vlc_http_credentials,
+            }
+            .build()
+            .run(),
+        );
+    }
+
+    // join all async tasks and thread(s)
+    tasks.join_all().await.unwrap();
+    warp_graceful_handle.await.unwrap();
+    if let Some(cli_handle) = cli_handle {
+        cli_handle.join().unwrap();
+    }
+
+    // end of MAIN
+    println!("[main exit]");
 }

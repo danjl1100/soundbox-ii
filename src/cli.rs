@@ -1,3 +1,4 @@
+use shared::Shutdown;
 use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, Query, ResultReceiver};
 
 use std::io::{BufRead, Write};
@@ -51,13 +52,19 @@ impl Config {
     }
 }
 impl Prompt {
-    pub(crate) fn run(mut self) -> std::io::Result<()> {
+    pub(crate) fn run_until<F>(mut self, is_shutdown_fn: F) -> std::io::Result<()>
+    where
+        F: Fn() -> Option<Shutdown>,
+    {
         let stdin = std::io::stdin();
         let mut stdin = stdin.lock();
         let mut buffer = String::new();
         loop {
+            if let Some(Shutdown) = is_shutdown_fn() {
+                break;
+            }
             // print prompt
-            print!("> ");
+            print!("soundbox-ii> ");
             self.stdout.flush()?;
             // read line
             buffer.clear();
@@ -82,6 +89,7 @@ impl Prompt {
                 None
             }
             "quit" | "q" | "exit" => {
+                println!("exit\n");
                 return false;
             }
             _ => {

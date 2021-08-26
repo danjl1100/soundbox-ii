@@ -1,24 +1,58 @@
+//! Controller for VLC-HTTP, with associated helper types
+
 use crate::{Action, Credentials, Error, PlaybackStatus, PlaylistInfo, Query, ResultSender};
+use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, watch};
 
-/// Control interface for VLC-HTTP
-pub struct Controller {
+/// Configuration for [`Controller`]
+pub struct Config {
     /// Receiver for [`Action`]s
     pub action_rx: mpsc::Receiver<Action>,
     /// Sender for [`PlaybackStatus`]
     pub playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
     /// Sender for [`PlaylistInfo`]
     pub playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
+    /// Credentials
+    pub credentials: Credentials,
+}
+/// Control interface for VLC-HTTP
+pub struct Controller {
+    action_rx: mpsc::Receiver<Action>,
+    playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
+    playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
+    context: Context,
+}
+impl Config {
+    /// Creates a [`Controller`] form the specified [`Config`]
+    pub fn build(self) -> Controller {
+        let Self {
+            action_rx,
+            playback_status_tx,
+            playlist_info_tx,
+            credentials,
+        } = self;
+        let context = Context::new(credentials);
+        Controller {
+            action_rx,
+            playback_status_tx,
+            playlist_info_tx,
+            context,
+        }
+    }
 }
 impl Controller {
-    /// Executes the specified actions
-    pub async fn run(mut self, credentials: Credentials) {
-        let context = Context::new(credentials);
-        while let Some(action) = self.action_rx.recv().await {
+    /// Executes the all received actions
+    ///
+    /// # Errors
+    /// Returns a [`Shutdown`] error when no [`Action`] senders remain
+    ///
+    pub async fn run(mut self) -> Result<Never, Shutdown> {
+        loop {
+            let action = self.action_rx.recv().await.ok_or(Shutdown)?;
             match action {
                 Action::Command(command, result_tx) => {
                     let request = command.into();
-                    let parse_result = response::try_parse(context.run(&request).await).await;
+                    let parse_result = response::try_parse(self.context.run(&request).await).await;
                     let send_result = match parse_result {
                         Ok(typed) => {
                             self.update_status(typed);
@@ -30,7 +64,7 @@ impl Controller {
                 }
                 Action::QueryPlaybackStatus(result_tx) => {
                     let request = Query::PlaybackStatus.into();
-                    let result = response::try_parse(context.run(&request).await).await;
+                    let result = response::try_parse(self.context.run(&request).await).await;
                     let cloned_result = match result {
                         Ok(response::Typed::Playback(playback)) => {
                             // (optional clone)
@@ -48,7 +82,7 @@ impl Controller {
                 }
                 Action::QueryPlaylistInfo(result_tx) => {
                     let request = Query::PlaylistInfo.into();
-                    let result = response::try_parse(context.run(&request).await).await;
+                    let result = response::try_parse(self.context.run(&request).await).await;
                     let cloned_result = match result {
                         Ok(response::Typed::Playlist(playlist)) => {
                             // (optional clone)
@@ -64,9 +98,8 @@ impl Controller {
                         Self::send_result(result, tx);
                     }
                 }
-            };
+            }
         }
-        println!("vlc_http::run() - context ended!");
     }
     fn send_result<T>(result: Result<T, Error>, result_tx: ResultSender<T>)
     where
@@ -198,7 +231,7 @@ mod context {
             &self,
             request: RequestInfo,
         ) -> Result<hyper::Response<Body>, hyper::Error> {
-            use backoff::{future::retry, ExponentialBackoff};
+            use backoff::ExponentialBackoff;
             use tokio::time::Duration;
             let backoff_config = ExponentialBackoff {
                 current_interval: Duration::from_millis(50),
@@ -208,7 +241,7 @@ mod context {
                 max_elapsed_time: Some(Duration::from_secs(10)),
                 ..ExponentialBackoff::default()
             };
-            retry(backoff_config, || async {
+            backoff::future::retry(backoff_config, || async {
                 let request = self.request_from(request.clone()); //TODO: avoid expensive clone?
                 Ok(self.0.request(request).await?)
             })

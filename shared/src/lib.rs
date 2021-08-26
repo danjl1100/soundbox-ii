@@ -14,6 +14,14 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Shutdown signal
+#[must_use]
+#[derive(Clone, Copy)]
+pub struct Shutdown;
+
+/// Un-instantiable type
+pub enum Never {}
+
 /// Testing "awesome number" type
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Number {
