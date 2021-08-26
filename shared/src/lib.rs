@@ -12,8 +12,21 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use serde::{Deserialize, Serialize};
-
+macro_rules! serde_derive_unidirectional {
+    (
+        $($from:literal => $to:literal {
+            $($item:item)+
+        })+
+    ) => {
+        $(
+            $(
+                #[cfg_attr(feature = $from, derive(serde::Serialize))]
+                #[cfg_attr(feature = $to, derive(serde::Deserialize))]
+                $item
+            )+
+        )+
+    };
+}
 /// Shutdown signal
 #[must_use]
 #[derive(Clone, Copy)]
@@ -23,7 +36,7 @@ pub struct Shutdown;
 pub enum Never {}
 
 /// Testing "awesome number" type
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Number {
     /// A number
     pub value: u32,
@@ -33,56 +46,82 @@ pub struct Number {
     pub is_even: bool,
 }
 
-/// Message sent from client to server
-#[derive(Debug)]
-#[cfg_attr(feature = "client", derive(Serialize))]
-#[cfg_attr(feature = "server", derive(Deserialize))]
-pub enum ClientRequest {
-    /// Command
-    Command(Command),
-}
+serde_derive_unidirectional! {
+    "client" => "server" {
+        /// Message sent from client to server
+        #[derive(Debug)]
+        pub enum ClientRequest {
+            /// Command
+            Command(Command),
+        }
 
-/// Command for the player
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "client", derive(Serialize))]
-#[cfg_attr(feature = "server", derive(Deserialize))]
-pub enum Command {
-    /// Force playback to resume
-    PlaybackResume,
-    /// Force playback to pause
-    PlaybackPause,
-    /// Force playback to pause
-    PlaybackStop,
-    /// Seek to the next item
-    SeekNext,
-    /// Seek to the previous item
-    SeekPrevious,
-    /// Seek within the current item
-    SeekTo {
-        /// Seconds within the current item
-        seconds: u32,
-    },
-    /// Set the playback volume
-    Volume {
-        /// Percentage for the volume (clamped at 300, which means 300% volume)
-        percent: u16,
-    },
-    /// Set the playback speed
-    PlaybackSpeed {
-        /// Speed on unit scale (1.0 = normal speed)
-        speed: f64,
-    },
-}
+        /// Command for the player
+        #[derive(Debug, Clone)]
+        pub enum Command {
+            /// Force playback to resume
+            PlaybackResume,
+            /// Force playback to pause
+            PlaybackPause,
+            /// Force playback to pause
+            PlaybackStop,
+            /// Seek to the next item
+            SeekNext,
+            /// Seek to the previous item
+            SeekPrevious,
+            /// Seek within the current item
+            SeekTo {
+                /// Seconds within the current item
+                seconds: u32,
+            },
+            /// Set the playback volume
+            Volume {
+                /// Percentage for the volume (clamped at 300, which means 300% volume)
+                percent: u16,
+            },
+            /// Set the playback speed
+            PlaybackSpeed {
+                /// Speed on unit scale (1.0 = normal speed)
+                speed: f64,
+            },
+        }
+    }
 
-/// Message sent from server to client
-#[derive(Debug)]
-#[cfg_attr(feature = "client", derive(Deserialize))]
-#[cfg_attr(feature = "server", derive(Serialize))]
-pub enum ServerResponse {
-    /// Success performing a command
-    Success,
-    /// Error message, internal to the server
-    ServerError(String),
+    "server" => "client" {
+        /// Message sent from server to client
+        #[derive(Debug)]
+        pub enum ServerResponse {
+            /// Success performing a command
+            Success,
+            /// Error message, internal to the server
+            ServerError(String),
+            // /// Playback Status
+            // PlaybackStatus(PlaybackStatus),
+        }
+        /// Status of Playback
+        pub struct PlaybackStatus {
+            /// Duration of the current song in seconds
+            pub duration: u64,
+            /// Fractional position within the current item (unit scale)
+            pub position: f64,
+            /// Playback rate (unit scale)
+            pub rate: f64,
+            /// State of playback
+            pub state: PlaybackState,
+            /// Position within the current time (seconds)
+            pub time: u64,
+            /// Volume percentage
+            pub volume_percent: u16,
+        }
+        /// Mode of the playback
+        pub enum PlaybackState {
+            /// Paused
+            Paused,
+            /// Playing
+            Playing,
+            /// Stopped
+            Stopped,
+        }
+    }
 }
 impl ServerResponse {
     /// Constructs a `ServerRespone` from a result type
