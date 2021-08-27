@@ -94,11 +94,15 @@ serde_derive_unidirectional! {
             Success,
             /// Error message, internal to the server
             ServerError(String),
-            // /// Playback Status
-            // PlaybackStatus(PlaybackStatus),
+            /// Playback Status
+            PlaybackStatus(PlaybackStatus),
         }
         /// Status of Playback
+        #[must_use]
+        #[derive(Debug, Clone)]
         pub struct PlaybackStatus {
+            /// Information about the current item
+            pub information: Option<PlaybackInfo>,
             /// Duration of the current song in seconds
             pub duration: u64,
             /// Fractional position within the current item (unit scale)
@@ -112,7 +116,22 @@ serde_derive_unidirectional! {
             /// Volume percentage
             pub volume_percent: u16,
         }
+        /// Information about the current (playing/paused) item
+        #[must_use]
+        #[derive(Debug, Clone)]
+        #[allow(missing_docs)]
+        pub struct PlaybackInfo {
+            pub title: String,
+            pub artist: String,
+            pub album: String,
+            pub date: String,
+            pub track_number: String,
+            pub track_total: String,
+            /// Playlist ID of the item
+            pub playlist_item_id: Option<u64>,
+        }
         /// Mode of the playback
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum PlaybackState {
             /// Paused
             Paused,
@@ -133,14 +152,18 @@ impl ServerResponse {
     {
         match result {
             Ok(()) => Self::Success,
-            Err(e) => Self::from(e),
+            Err(e) => Self::ServerError(e.to_string()),
         }
     }
 }
-impl<E: std::error::Error> From<E> for ServerResponse {
-    fn from(error: E) -> Self {
-        let message = error.to_string();
-        Self::ServerError(message)
+impl From<PlaybackStatus> for ServerResponse {
+    fn from(other: PlaybackStatus) -> Self {
+        Self::PlaybackStatus(other)
+    }
+}
+impl From<Shutdown> for ServerResponse {
+    fn from(_: Shutdown) -> Self {
+        Self::ServerError("server is shutting down".to_string())
     }
 }
 

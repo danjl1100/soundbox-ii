@@ -14,15 +14,27 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use gloo_timers::callback::Interval;
 use yew::prelude::*;
-use yew::services::ConsoleService;
+type Time = chrono::DateTime<chrono::offset::Utc>;
 
 mod websocket;
 
-enum Msg {
-    WebSocket(MsgWebSocket),
-    User(MsgUser),
+const LOG_RENDERS: bool = false;
+#[macro_use]
+mod macros;
+
+use playback::{PlaybackMeta, PlaybackPosition, PositionInfo};
+mod playback;
+
+derive_wrapper! {
+    enum Msg for Model {
+        WebSocket(MsgWebSocket) for update_websocket(..),
+        User(MsgUser) for update_user(..),
+    }
 }
+
+#[allow(clippy::large_enum_variant)] //TODO is this valid?
 enum MsgWebSocket {
     Connect,
     Notify(websocket::Notify),
@@ -32,27 +44,15 @@ enum MsgWebSocket {
 enum MsgUser {
     SendCommand(shared::Command),
     ClearErrors,
-}
-impl From<MsgWebSocket> for Msg {
-    fn from(msg: MsgWebSocket) -> Self {
-        Self::WebSocket(msg)
-    }
-}
-impl From<MsgUser> for Msg {
-    fn from(msg: MsgUser) -> Self {
-        Self::User(msg)
-    }
-}
-impl From<shared::Command> for Msg {
-    fn from(cmd: shared::Command) -> Self {
-        Self::User(MsgUser::SendCommand(cmd))
-    }
+    IntervalTick,
 }
 
 struct Model {
     link: ComponentLink<Self>,
     websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse>,
+    playback: Option<(shared::PlaybackStatus, Time)>,
     errors: Vec<String>,
+    _interval: Interval,
 }
 impl Model {
     fn view_disconnected(&self) -> Html {
@@ -71,10 +71,34 @@ impl Model {
             <div>
                 <p>{ "This is generated in Yew!" }</p>
                 <NumFetcher />
-                <Controls on_command=self.link.callback(|cmd| cmd) />
+                { self.view_playback() }
+                <Controls
+                    on_command=self.link.callback(MsgUser::SendCommand)
+                    playback_state=self.playback.as_ref().map(|(playback, _)| playback.state)
+                    />
                 <br/>
                 { self.view_errors() }
             </div>
+        }
+    }
+    fn view_playback(&self) -> Html {
+        if let Some((playback, playback_received)) = &self.playback {
+            let meta_html = if let Some(info) = &playback.information {
+                PlaybackMeta::render(info)
+            } else {
+                html! {}
+            };
+            html! {
+                <>
+                    { meta_html }
+                    <PlaybackPosition
+                        position_info=PositionInfo::from((playback, playback_received))
+                        on_command=self.link.callback(MsgUser::SendCommand)
+                        />
+                </>
+            }
+        } else {
+            html! { "No playback status... yet." }
         }
     }
     fn view_errors(&self) -> Html {
@@ -111,7 +135,7 @@ impl Model {
     fn update_websocket(&mut self, msg: MsgWebSocket) -> ShouldRender {
         match msg {
             MsgWebSocket::Connect => {
-                ConsoleService::log("WEBSOCKET: Connecting...");
+                log!("WEBSOCKET: Connecting...");
                 match self.websocket.connect() {
                     Ok(_) => true,
                     Err(err) => {
@@ -121,21 +145,26 @@ impl Model {
                 }
             }
             MsgWebSocket::Notify(event) => {
-                ConsoleService::info(&format!("WEBSOCKET: {:?}", event));
+                info!("WEBSOCKET: {:?}", event);
                 self.websocket.on_notify(event)
             }
             MsgWebSocket::ReceiveMessage(message) => {
-                ConsoleService::log(&format!("<- {:?}", message));
+                log!("<- {:#?}", message);
                 match message {
                     shared::ServerResponse::Success => false,
                     shared::ServerResponse::ServerError(err_message) => {
                         self.push_error("server", err_message);
                         true
                     }
+                    shared::ServerResponse::PlaybackStatus(playback) => {
+                        let now = chrono::Utc::now();
+                        self.playback = Some((playback, now));
+                        true
+                    }
                 }
             }
             MsgWebSocket::ReceiveError(err) => {
-                ConsoleService::error(&format!("ERROR: {:?}", err));
+                error!("ERROR: {:?}", err);
                 self.push_error("receive", err);
                 true
             }
@@ -145,24 +174,26 @@ impl Model {
         match msg {
             MsgUser::SendCommand(command) => {
                 let payload = shared::ClientRequest::Command(command);
-                ConsoleService::log(&format!("-> {:?}", &payload));
+                log!("-> {:?}", &payload);
                 if let Some(task) = self.websocket.get_task() {
                     task.send(&payload);
                 }
-                true
+                //true
+                false
             }
             MsgUser::ClearErrors => {
                 let was_empty = self.errors.is_empty();
                 self.errors.clear();
                 !was_empty
             }
+            MsgUser::IntervalTick => true,
         }
     }
 }
 fn create_websocket(
     link: &ComponentLink<Model>,
 ) -> websocket::Helper<shared::ClientRequest, shared::ServerResponse> {
-    const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws";
+    const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws"; //TODO: generalize this url... not always local!
     let on_message = link.callback(|msg| match msg {
         Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
         Err(e) => MsgWebSocket::ReceiveError(e),
@@ -176,23 +207,29 @@ impl Component for Model {
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
         let websocket = create_websocket(&link);
         link.send_message(MsgWebSocket::Connect);
+        let interval = {
+            let callback = link.callback(|_| MsgUser::IntervalTick);
+            Interval::new(500, move || {
+                callback.emit(());
+            })
+        };
         Self {
             link,
             websocket,
+            playback: None,
             errors: vec![],
+            _interval: interval,
         }
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        match msg {
-            Msg::WebSocket(msg) => self.update_websocket(msg),
-            Msg::User(msg) => self.update_user(msg),
-        }
+        msg.update_on(self)
     }
     fn change(&mut self, _props: Self::Properties) -> ShouldRender {
         // no props
         false
     }
     fn view(&self) -> Html {
+        log_render!("Model");
         if self.websocket.is_connected() {
             self.view_connected()
         } else {
@@ -215,6 +252,7 @@ mod controls {
     #[derive(Properties, Clone)]
     pub(crate) struct Properties {
         pub on_command: Callback<Command>,
+        pub playback_state: Option<shared::PlaybackState>,
     }
 
     pub(crate) enum Msg {}
@@ -222,22 +260,30 @@ mod controls {
     pub(crate) struct Controls {
         on_command: Callback<Command>,
         link: ComponentLink<Self>,
+        playback_state: Option<shared::PlaybackState>,
     }
     impl Controls {
         fn view_buttons(&self) -> Html {
-            let fetch_button = |text, cmd: Command| {
-                html! {
-                    <button onclick=self.on_command.reform(move |_| cmd.clone())>
-                        { text }
-                    </button>
+            let is_paused = self.playback_state == Some(shared::PlaybackState::Paused);
+            let is_playing = self.playback_state == Some(shared::PlaybackState::Playing);
+            //
+            let fetch_button = |text, cmd: Command, enable| {
+                if enable {
+                    html! {
+                        <button onclick=self.on_command.reform(move |_| cmd.clone())>
+                            { text }
+                        </button>
+                    }
+                } else {
+                    html! {}
                 }
             };
             html! {
                 <>
-                    { fetch_button(SYMBOL_PREVIOUS, Command::SeekPrevious, ) }
-                    { fetch_button(SYMBOL_PLAY, Command::PlaybackResume, ) }
-                    { fetch_button(SYMBOL_PAUSE, Command::PlaybackPause, ) }
-                    { fetch_button(SYMBOL_NEXT, Command::SeekNext, ) }
+                    { fetch_button(SYMBOL_PREVIOUS, Command::SeekPrevious, true) }
+                    { fetch_button(SYMBOL_PLAY, Command::PlaybackResume, !is_playing) }
+                    { fetch_button(SYMBOL_PAUSE, Command::PlaybackPause, !is_paused) }
+                    { fetch_button(SYMBOL_NEXT, Command::SeekNext, true) }
                 </>
             }
         }
@@ -246,21 +292,33 @@ mod controls {
         type Message = Msg;
         type Properties = Properties;
         fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-            let Properties { on_command } = props;
-            Self { on_command, link }
+            let Properties {
+                on_command,
+                playback_state,
+            } = props;
+            Self {
+                on_command,
+                link,
+                playback_state,
+            }
         }
         fn update(&mut self, msg: Self::Message) -> ShouldRender {
             match msg {}
         }
         fn change(&mut self, props: Self::Properties) -> ShouldRender {
-            let Properties { on_command } = props;
-            self.on_command = on_command;
-            // pessimistic
-            true
+            let Properties {
+                on_command,
+                playback_state,
+            } = props;
+            self.on_command = on_command; // Callback's `PartialEq` implementation is empirically useless
+            set_detect_change! {
+                self.playback_state = playback_state;
+            }
         }
         fn view(&self) -> Html {
+            log_render!("Controls");
             html! {
-                <div>
+                <div class="playback control">
                     { self.view_buttons() }
                 </div>
             }
@@ -379,6 +437,7 @@ mod num_fetcher {
             }
         }
         fn view(&self) -> Html {
+            log_render!("NumFetcher");
             html! {
                 <>
                     { self.view_fetching() }

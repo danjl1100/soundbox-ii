@@ -12,7 +12,6 @@ mod playback {
 
     /// Status of the current playback
     #[derive(Debug, Clone, PartialEq, Eq)]
-    #[allow(missing_docs)]
     pub struct PlaybackStatus {
         /// version of the VLC-HTTP interface api
         pub apiversion: u32,
@@ -148,7 +147,7 @@ mod playback {
         volume: u32,
     }
     /// Mode of the playback
-    #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
     #[serde(rename_all = "lowercase")]
     pub enum PlaybackState {
         /// Paused
@@ -170,16 +169,22 @@ mod playback {
     #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
     pub struct PlaybackInfo {
+        #[serde(default)]
         pub title: String,
+        #[serde(default)]
         pub artist: String,
+        #[serde(default)]
         pub album: String,
+        #[serde(default)]
         pub date: String,
+        #[serde(default)]
         pub track_number: String,
+        #[serde(default)]
         pub track_total: String,
         #[serde(flatten)]
         pub extra: HashMap<String, String>,
         /// Playlist ID of the item
-        #[serde(skip)]
+        #[serde(default)]
         pub playlist_item_id: Option<u64>,
     }
     impl From<PlaybackInfoJSON> for PlaybackInfo {
@@ -295,6 +300,73 @@ mod playlist {
                 writeln!(f, "\n\t{uri}", uri = uri)?;
             }
             writeln!(f, "]")
+        }
+    }
+}
+
+mod external_conversions {
+    use super::{PlaybackInfo, PlaybackState, PlaybackStatus};
+    impl PlaybackStatus {
+        /// Clones the [`PlaybackStatus`] to a [`shared::PlaybackStatus`]
+        //TODO: eliminate needless clone prior to serializing
+        //  from: `vlc_http` type --clone--> `shared` type --copy into--> serde string
+        //  to:   `vlc_http` type --reference--> shared reference type --copy into --> serde string
+        pub fn clone_to_shared(&self) -> shared::PlaybackStatus {
+            let Self {
+                information,
+                duration,
+                position,
+                rate,
+                state,
+                time,
+                volume_percent,
+                ..
+            } = self;
+            shared::PlaybackStatus {
+                information: information.as_ref().map(PlaybackInfo::clone_to_shared),
+                duration: *duration,
+                position: (*position).into(),
+                rate: (*rate).into(),
+                state: (*state).into(),
+                time: *time,
+                volume_percent: *volume_percent,
+            }
+        }
+    }
+    impl From<PlaybackState> for shared::PlaybackState {
+        fn from(other: PlaybackState) -> Self {
+            match other {
+                PlaybackState::Paused => Self::Paused,
+                PlaybackState::Playing => Self::Playing,
+                PlaybackState::Stopped => Self::Stopped,
+            }
+        }
+    }
+    impl PlaybackInfo {
+        /// Clones the [`PlaybackInfo`] to a [`shared::PlaybackInfo`]
+        //TODO: eliminate needless clone prior to serializing
+        //  from: `vlc_http` type --clone--> `shared` type       --copy into--> serde string
+        //  to:   `vlc_http` type --ref--> shared reference type --copy into--> serde string
+        pub fn clone_to_shared(&self) -> shared::PlaybackInfo {
+            let Self {
+                title,
+                artist,
+                album,
+                date,
+                track_number,
+                track_total,
+                playlist_item_id,
+                ..
+            } = self;
+            shared::PlaybackInfo {
+                title: title.clone(),
+                artist: artist.clone(),
+                album: album.clone(),
+                date: date.clone(),
+                track_number: track_number.clone(),
+                track_total: track_total.clone(),
+                playlist_item_id: *playlist_item_id,
+            }
         }
     }
 }

@@ -16,12 +16,18 @@ mod web {
             action_tx: mpsc::Sender<Action>,
             playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
             playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
+            shutdown_rx: crate::ShutdownReceiver,
             assets_dir: PathBuf,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             root_redirect()
                 .or(warp::path("v1").and(api_v1::root()))
                 .or(static_files(assets_dir))
-                .or(super::web_socket::filter(action_tx))
+                .or(super::web_socket::filter(super::web_socket::Config {
+                    action_tx,
+                    playback_status_rx,
+                    playlist_info_rx,
+                    shutdown_rx,
+                }))
         }
 
         fn root_redirect(
@@ -71,67 +77,91 @@ mod web {
     }
 
     mod web_socket {
+        use crate::ShutdownReceiver;
         use futures::{SinkExt, StreamExt};
         use shared::{ClientRequest, ServerResponse};
-        use tokio::sync::mpsc;
-        use vlc_http::{Action, IntoAction};
+        use tokio::sync::{mpsc, watch};
+        use vlc_http::{Action, IntoAction, PlaybackStatus, PlaylistInfo};
         use warp::ws::Message;
         use warp::Filter;
 
+        #[derive(Clone)]
+        pub struct Config {
+            pub action_tx: mpsc::Sender<Action>,
+            pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
+            pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>, //TODO use this field, or remove it!
+            pub shutdown_rx: ShutdownReceiver,
+        }
         pub fn filter(
-            action_tx: mpsc::Sender<Action>,
+            config: Config,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             warp::path("ws")
                 .and(warp::ws())
                 .map(move |ws: warp::ws::Ws| {
-                    let action_tx = action_tx.clone();
-                    ws.on_upgrade(|websocket| {
-                        ClientHandler {
-                            websocket,
-                            action_tx,
-                        }
-                        .run()
-                    })
+                    let config = config.clone();
+                    ws.on_upgrade(|websocket| ClientHandler { websocket, config }.run())
                 })
         }
         struct ClientHandler {
             websocket: warp::ws::WebSocket,
-            action_tx: mpsc::Sender<Action>,
+            config: Config,
         }
         impl ClientHandler {
             async fn run(mut self) {
-                while let Some(body) = self.websocket.next().await {
-                    let message = match body {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            eprintln!("Error reading message on websocket: {}", e);
+                // invalidate pending "changed" values
+                {
+                    self.config.playback_status_rx.borrow_and_update();
+                    self.config.playlist_info_rx.borrow_and_update();
+                }
+                loop {
+                    let send_message = tokio::select! {
+                        Some(body) = self.websocket.next() => {
+                            let message = match body {
+                                Ok(msg) => msg,
+                                Err(e) => {
+                                    eprintln!("Error reading message on websocket: {}", e);
+                                    break;
+                                }
+                            };
+                            // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                            self.handle_message(message).await
+                        }
+                        Ok(_) = self.config.playback_status_rx.changed() => {
+                            let playback = (*self.config.playback_status_rx.borrow())
+                                .as_ref()
+                                .map(vlc_http::PlaybackStatus::clone_to_shared)
+                                .map(ServerResponse::from);
+                            playback
+                        }
+                        else => {
                             break;
                         }
                     };
-
-                    self.handle_message(message).await;
+                    if let Some(message) = send_message {
+                        self.send_response(message).await;
+                    }
                 }
             }
-            async fn handle_message(&mut self, message: Message) {
+            async fn handle_message(&mut self, message: Message) -> Option<ServerResponse> {
                 // Skip any non-Text messages...
                 let msg = if let Ok(s) = message.to_str() {
                     s
                 } else {
                     println!("ping-pong");
-                    return;
+                    return None;
                 };
                 dbg!(&msg);
                 let response = match serde_json::from_str(msg) {
                     Ok(request) => self.process_request(request).await,
                     Err(err) => {
                         dbg!(&err);
-                        err.into()
+                        ServerResponse::from_result(Err(err))
                     }
                 };
-
-                // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-                let response_str = serde_json::to_string(&response).unwrap();
+                Some(response)
+            }
+            async fn send_response(&mut self, message: ServerResponse) {
+                let response_str = serde_json::to_string(&message).unwrap();
 
                 self.websocket
                     .send(Message::text(response_str))
@@ -152,19 +182,19 @@ mod web {
                 T: IntoAction<Output = ()>,
             {
                 let (action, result_rx) = action.to_action_rx();
-                let send_result = self.action_tx.send(action).await;
+                let send_result = self.config.action_tx.send(action).await;
                 match send_result {
                     Ok(()) => {
                         let recv_result = result_rx.await;
                         dbg!(&recv_result);
                         match recv_result {
                             Ok(result) => ServerResponse::from_result(result),
-                            Err(recv_err) => recv_err.into(),
+                            Err(recv_err) => ServerResponse::from_result(Err(recv_err)),
                         }
                     }
                     Err(send_error) => {
                         dbg!(&send_error);
-                        send_error.into()
+                        ServerResponse::from_result(Err(send_error))
                     }
                 }
             }
@@ -314,8 +344,9 @@ async fn launch(args: args::Config) {
     let warp_graceful_handle = {
         let api = web::filter(
             action_tx.clone(),
-            playback_status_rx,
+            playback_status_rx.clone(),
             playlist_info_rx,
+            shutdown_rx.clone(),
             args.static_assets,
         );
         const TASK_NAME: &str = "warp";
@@ -330,6 +361,7 @@ async fn launch(args: args::Config) {
             println!("ended: {}", TASK_NAME);
         })
     };
+    //TODO: use HotWatch to check for changes in `static_assets dir, command websocket clients to refresh
 
     let mut tasks = AsyncTasks::new(shutdown_rx);
 
@@ -337,9 +369,12 @@ async fn launch(args: args::Config) {
     {
         async fn playback_status_requestor(
             action_tx: mpsc::Sender<vlc_http::Action>,
+            playback_status_rx: watch::Receiver<Option<vlc_http::PlaybackStatus>>,
         ) -> Result<Never, Shutdown> {
-            const DELAY_SEC_SHORT: u64 = 3;
-            const DELAY_SEC_LONG: u64 = 9;
+            use vlc_http::vlc_responses::PlaybackState;
+            const DELAY_SEC_MIN: u64 = 1;
+            const DELAY_SEC_SHORT: u64 = 20;
+            const DELAY_SEC_LONG: u64 = 90;
             loop {
                 let (cmd, result_rx) = vlc_http::Action::query_playback_status();
                 let () = action_tx.send(cmd).await.map_err(|err| {
@@ -347,7 +382,11 @@ async fn launch(args: args::Config) {
                     Shutdown
                 })?;
                 use tokio::time::Duration;
-                println!("fetching PlaybackStatus... ");
+                print!("fetching PlaybackStatus...  ");
+                {
+                    use std::io::Write;
+                    let _ = std::io::stdout().lock().flush();
+                }
                 let sleep_duration = match result_rx.await {
                     Err(err) => {
                         eprintln!("vlc_http module did not respond :/  {}", err);
@@ -358,16 +397,26 @@ async fn launch(args: args::Config) {
                         Ok(Duration::from_secs(DELAY_SEC_LONG))
                     }
                     Ok(Ok(_)) => {
-                        println!("fetched PlaybackStatus");
-                        Ok(Duration::from_secs(DELAY_SEC_SHORT))
+                        println!("fetch done");
+                        let remaining = match &*playback_status_rx.borrow() {
+                            Some(playback) if playback.state == PlaybackState::Playing => {
+                                Some(playback.duration.saturating_sub(playback.time))
+                            }
+                            _ => None,
+                        };
+                        let delay = remaining
+                            .map(|remaining| remaining.min(DELAY_SEC_SHORT).max(DELAY_SEC_MIN))
+                            .unwrap_or(DELAY_SEC_SHORT);
+                        Ok(Duration::from_secs(delay))
                     }
                 };
                 tokio::time::sleep(sleep_duration?).await;
             }
         }
         let action_tx = action_tx.clone();
+        let playback_status_rx = playback_status_rx.clone();
         tasks.spawn("PlaybackStatus-requestor", async {
-            playback_status_requestor(action_tx).await
+            playback_status_requestor(action_tx, playback_status_rx).await
         });
     }
 
