@@ -113,6 +113,7 @@ mod web {
                     self.config.playback_status_rx.borrow_and_update();
                     self.config.playlist_info_rx.borrow_and_update();
                 }
+                self.send_response(ServerResponse::Heartbeat).await;
                 loop {
                     let send_message = tokio::select! {
                         Some(body) = self.websocket.next() => {
@@ -132,6 +133,9 @@ mod web {
                                 .map(vlc_http::PlaybackStatus::clone_to_shared)
                                 .map(ServerResponse::from);
                             playback
+                        }
+                        _ = tokio::time::sleep(tokio::time::Duration::from_secs(30)) => {
+                            Some(ServerResponse::Heartbeat)
                         }
                         else => {
                             break;
@@ -170,6 +174,7 @@ mod web {
             }
             async fn process_request(&mut self, request: ClientRequest) -> ServerResponse {
                 match request {
+                    ClientRequest::Heartbeat => ServerResponse::Heartbeat,
                     ClientRequest::Command(command) => {
                         dbg!(&command);
                         let command = vlc_http::Command::from(command);

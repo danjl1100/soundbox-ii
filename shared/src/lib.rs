@@ -51,6 +51,8 @@ serde_derive_unidirectional! {
         /// Message sent from client to server
         #[derive(Debug)]
         pub enum ClientRequest {
+            /// Verification of open socket
+            Heartbeat,
             /// Command
             Command(Command),
         }
@@ -90,6 +92,8 @@ serde_derive_unidirectional! {
         /// Message sent from server to client
         #[derive(Debug)]
         pub enum ServerResponse {
+            /// Verification of open socket
+            Heartbeat,
             /// Success performing a command
             Success,
             /// Error message, internal to the server

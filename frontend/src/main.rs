@@ -14,11 +14,10 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use backoff::ExponentialBackoff;
 use gloo_timers::callback::Interval;
 use yew::prelude::*;
 type Time = chrono::DateTime<chrono::offset::Utc>;
-
-mod websocket;
 
 const LOG_RENDERS: bool = false;
 #[macro_use]
@@ -26,6 +25,8 @@ mod macros;
 
 use playback::{PlaybackMeta, PlaybackPosition, PositionInfo};
 mod playback;
+
+mod websocket;
 
 derive_wrapper! {
     enum Msg for Model {
@@ -49,12 +50,55 @@ enum MsgUser {
 
 struct Model {
     link: ComponentLink<Self>,
-    websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse>,
+    websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse, ExponentialBackoff>,
     playback: Option<(shared::PlaybackStatus, Time)>,
     errors: Vec<String>,
     _interval: Interval,
 }
 impl Model {
+    fn new(link: ComponentLink<Self>) -> Self {
+        let websocket = {
+            const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws"; //TODO: generalize this url... not always local!
+            let on_message = link.callback(|msg| match msg {
+                Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
+                Err(e) => MsgWebSocket::ReceiveError(e),
+            });
+            let on_notification = link.callback(MsgWebSocket::Notify);
+            let on_reconnect = link.callback(|_| MsgWebSocket::Connect);
+            let reconnect_backoff = {
+                use std::time::Duration;
+                ExponentialBackoff {
+                    current_interval: Duration::from_secs(2),
+                    initial_interval: Duration::from_secs(2),
+                    multiplier: 2.0,
+                    max_interval: Duration::from_secs(20 * 60),
+                    max_elapsed_time: Some(Duration::from_secs(30 * 60)),
+                    ..ExponentialBackoff::default()
+                }
+            };
+            websocket::Helper::new(
+                URL_WEBSOCKET,
+                &on_message,
+                on_notification,
+                on_reconnect,
+                reconnect_backoff,
+            )
+        };
+        link.send_message(MsgWebSocket::Connect);
+        let interval = {
+            let callback = link.callback(|_| MsgUser::IntervalTick);
+            Interval::new(500, move || {
+                callback.emit(());
+            })
+        };
+        Self {
+            link,
+            websocket,
+            playback: None,
+            errors: vec![],
+            _interval: interval,
+        }
+    }
     fn view_disconnected(&self) -> Html {
         html! {
             <div>
@@ -67,6 +111,7 @@ impl Model {
         }
     }
     fn view_connected(&self) -> Html {
+        let heartbeat_str = format!("Server last seen: {:?}", self.websocket.last_heartbeat());
         html! {
             <div>
                 <p>{ "This is generated in Yew!" }</p>
@@ -77,6 +122,7 @@ impl Model {
                     playback_state=self.playback.as_ref().map(|(playback, _)| playback.state)
                     />
                 <br/>
+                <p style="font-size: 0.7em;">{ heartbeat_str }</p>
                 { self.view_errors() }
             </div>
         }
@@ -135,12 +181,17 @@ impl Model {
     fn update_websocket(&mut self, msg: MsgWebSocket) -> ShouldRender {
         match msg {
             MsgWebSocket::Connect => {
-                log!("WEBSOCKET: Connecting...");
-                match self.websocket.connect() {
-                    Ok(_) => true,
-                    Err(err) => {
-                        self.push_error("websocket connect", err);
-                        true
+                if self.websocket.is_started() {
+                    error!("refusing to connect websocket, already connected");
+                    false
+                } else {
+                    log!("WEBSOCKET: Connecting...");
+                    match self.websocket.connect() {
+                        Ok(_) => true,
+                        Err(err) => {
+                            self.push_error("websocket connect", err);
+                            true
+                        }
                     }
                 }
             }
@@ -150,18 +201,20 @@ impl Model {
             }
             MsgWebSocket::ReceiveMessage(message) => {
                 log!("<- {:#?}", message);
+                self.websocket.on_message();
                 match message {
-                    shared::ServerResponse::Success => false,
+                    shared::ServerResponse::Heartbeat | shared::ServerResponse::Success => {}
                     shared::ServerResponse::ServerError(err_message) => {
                         self.push_error("server", err_message);
-                        true
+                        //true
                     }
                     shared::ServerResponse::PlaybackStatus(playback) => {
                         let now = chrono::Utc::now();
                         self.playback = Some((playback, now));
-                        true
+                        //true
                     }
                 }
+                true
             }
             MsgWebSocket::ReceiveError(err) => {
                 error!("ERROR: {:?}", err);
@@ -190,36 +243,11 @@ impl Model {
         }
     }
 }
-fn create_websocket(
-    link: &ComponentLink<Model>,
-) -> websocket::Helper<shared::ClientRequest, shared::ServerResponse> {
-    const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws"; //TODO: generalize this url... not always local!
-    let on_message = link.callback(|msg| match msg {
-        Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
-        Err(e) => MsgWebSocket::ReceiveError(e),
-    });
-    let on_notification = link.callback(MsgWebSocket::Notify);
-    websocket::Helper::new(URL_WEBSOCKET, &on_message, on_notification)
-}
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
     fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let websocket = create_websocket(&link);
-        link.send_message(MsgWebSocket::Connect);
-        let interval = {
-            let callback = link.callback(|_| MsgUser::IntervalTick);
-            Interval::new(500, move || {
-                callback.emit(());
-            })
-        };
-        Self {
-            link,
-            websocket,
-            playback: None,
-            errors: vec![],
-            _interval: interval,
-        }
+        Self::new(link)
     }
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         msg.update_on(self)
