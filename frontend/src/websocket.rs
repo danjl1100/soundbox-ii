@@ -15,7 +15,7 @@ pub(crate) struct Notify(NotifyMsg);
 struct NotifyMsg(WebSocketStatus);
 
 pub(crate) struct Helper<T: Serialize, U: DeserializeOwned, B: Backoff> {
-    url: &'static str,
+    url: String,
     on_message: Callback<Json<anyhow::Result<U>>>,
     on_notification: Callback<Notify>,
     /// Websocket task, and server heartbeat
@@ -24,7 +24,7 @@ pub(crate) struct Helper<T: Serialize, U: DeserializeOwned, B: Backoff> {
 }
 impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
     pub(crate) fn new(
-        url: &'static str,
+        url: String,
         on_message: &Callback<Result<U, anyhow::Error>>,
         on_notification: Callback<Notify>,
         reconnect: Callback<()>,
@@ -72,7 +72,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
             .clone()
             .reform(|event| Notify(NotifyMsg(event)));
         let task =
-            WebSocketService::connect_text(self.url, self.on_message.clone(), on_notification)?;
+            WebSocketService::connect_text(&self.url, self.on_message.clone(), on_notification)?;
         self.task.replace((SocketTask::new(task), None));
         Ok(self.get_task().expect("replaced `task` option is some"))
     }

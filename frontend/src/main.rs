@@ -58,7 +58,13 @@ struct Model {
 impl Model {
     fn new(link: ComponentLink<Self>) -> Self {
         let websocket = {
-            const URL_WEBSOCKET: &str = "ws://127.0.0.1:3030/ws"; //TODO: generalize this url... not always local!
+            let host = web_sys::window()
+                .expect("window exists")
+                .location()
+                .host()
+                .expect("window.location has host");
+            log!("Window::location()::host() = {:?}", host);
+            let url_websocket = format!("ws://{}/ws", host);
             let on_message = link.callback(|msg| match msg {
                 Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
                 Err(e) => MsgWebSocket::ReceiveError(e),
@@ -77,7 +83,7 @@ impl Model {
                 }
             };
             websocket::Helper::new(
-                URL_WEBSOCKET,
+                url_websocket,
                 &on_message,
                 on_notification,
                 on_reconnect,
