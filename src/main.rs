@@ -1,3 +1,19 @@
+//! Binary crate for running the soundbox-ii logic
+
+// TODO: only while building
+#![allow(dead_code)]
+// teach me
+#![deny(clippy::pedantic)]
+// no unsafe
+#![forbid(unsafe_code)]
+// no unwrap
+#![deny(clippy::unwrap_used)]
+// no panic
+#![deny(clippy::panic)]
+// docs!
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, watch};
 
@@ -99,7 +115,7 @@ mod web {
                 .and(warp::ws())
                 .map(move |ws: warp::ws::Ws| {
                     let config = config.clone();
-                    ws.on_upgrade(|websocket| ClientHandler { websocket, config }.run())
+                    ws.on_upgrade(|websocket| ClientHandler { websocket, config }.run_ignore_err())
                 })
         }
         struct ClientHandler {
@@ -107,13 +123,16 @@ mod web {
             config: Config,
         }
         impl ClientHandler {
-            async fn run(mut self) {
+            async fn run_ignore_err(self) {
+                let _ = self.run().await;
+            }
+            async fn run(mut self) -> Result<(), ()> {
                 // invalidate pending "changed" values
                 {
                     self.config.playback_status_rx.borrow_and_update();
                     self.config.playlist_info_rx.borrow_and_update();
                 }
-                self.send_response(ServerResponse::Heartbeat).await;
+                self.send_response(ServerResponse::Heartbeat).await?;
                 loop {
                     let send_message = tokio::select! {
                         Some(body) = self.websocket.next() => {
@@ -142,9 +161,10 @@ mod web {
                         }
                     };
                     if let Some(message) = send_message {
-                        self.send_response(message).await;
+                        self.send_response(message).await?;
                     }
                 }
+                Ok(())
             }
             async fn handle_message(&mut self, message: Message) -> Option<ServerResponse> {
                 // Skip any non-Text messages...
@@ -164,13 +184,14 @@ mod web {
                 };
                 Some(response)
             }
-            async fn send_response(&mut self, message: ServerResponse) {
-                let response_str = serde_json::to_string(&message).unwrap();
+            async fn send_response(&mut self, message: ServerResponse) -> Result<(), ()> {
+                let response_str = serde_json::to_string(&message).map_err(|_| ())?;
 
                 self.websocket
                     .send(Message::text(response_str))
                     .await
-                    .unwrap();
+                    .map(|_| ())
+                    .map_err(|_| ())
             }
             async fn process_request(&mut self, request: ClientRequest) -> ServerResponse {
                 match request {
@@ -211,6 +232,10 @@ mod args;
 
 #[tokio::main]
 async fn main() {
+    // bug in clippy and/or tokio proc macro
+    //  ref:  https://github.com/rust-lang/rust-clippy/issues/7438
+    #![allow(clippy::semicolon_if_nothing_returned)]
+
     let args = args::parse_or_exit();
 
     println!("\nHello, soundbox-ii!\n");
@@ -289,6 +314,7 @@ mod task {
                     biased; // poll in-order (shutdown first)
                     Some(Shutdown) = shutdown_rx.is_shutdown(task_name) => {}
                     Err(Shutdown) = task => {}
+                    else => {}
                 };
                 println!("ended: {}", task_name);
             });
@@ -307,10 +333,11 @@ mod task {
     }
 }
 
+#[allow(clippy::too_many_lines)] //TODO: modularize this init script
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
-    let (playback_status_tx, playback_status_rx) = watch::channel(Default::default());
-    let (playlist_info_tx, playlist_info_rx) = watch::channel(Default::default());
+    let (playback_status_tx, playback_status_rx) = watch::channel(Option::default());
+    let (playlist_info_tx, playlist_info_rx) = watch::channel(Option::default());
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
 
     println!(
@@ -336,7 +363,7 @@ async fn launch(args: args::Config) {
             }
             .build()
             .run_until(move || shutdown_rx.poll_shutdown(TASK_NAME))
-            .unwrap();
+            .expect("cli free from IO errors");
             let _ = cli_shutdown_tx.send(Some(Shutdown));
             println!("{} ended", TASK_NAME);
         });
@@ -347,6 +374,7 @@ async fn launch(args: args::Config) {
 
     // spawn server
     let warp_graceful_handle = {
+        const TASK_NAME: &str = "warp";
         let api = web::filter(
             action_tx.clone(),
             playback_status_rx.clone(),
@@ -354,7 +382,6 @@ async fn launch(args: args::Config) {
             shutdown_rx.clone(),
             args.static_assets,
         );
-        const TASK_NAME: &str = "warp";
         let shutdown_rx = shutdown_rx.clone();
         let (_addr, server) =
             warp::serve(api).bind_with_graceful_shutdown(args.bind_address, async move {
@@ -376,21 +403,21 @@ async fn launch(args: args::Config) {
             action_tx: mpsc::Sender<vlc_http::Action>,
             playback_status_rx: watch::Receiver<Option<vlc_http::PlaybackStatus>>,
         ) -> Result<Never, Shutdown> {
+            use tokio::time::Duration;
             use vlc_http::vlc_responses::PlaybackState;
             const DELAY_SEC_MIN: u64 = 1;
             const DELAY_SEC_SHORT: u64 = 20;
             const DELAY_SEC_LONG: u64 = 90;
             loop {
                 let (cmd, result_rx) = vlc_http::Action::query_playback_status();
-                let () = action_tx.send(cmd).await.map_err(|err| {
+                action_tx.send(cmd).await.map_err(|err| {
                     eprintln!("error auto-requesting PlaylistStatus: {}", err);
                     Shutdown
                 })?;
-                use tokio::time::Duration;
                 print!("fetching PlaybackStatus...  ");
                 {
                     use std::io::Write;
-                    let _ = std::io::stdout().lock().flush();
+                    drop(std::io::stdout().lock().flush());
                 }
                 let sleep_duration = match result_rx.await {
                     Err(err) => {
@@ -409,9 +436,9 @@ async fn launch(args: args::Config) {
                             }
                             _ => None,
                         };
-                        let delay = remaining
-                            .map(|remaining| remaining.min(DELAY_SEC_SHORT).max(DELAY_SEC_MIN))
-                            .unwrap_or(DELAY_SEC_SHORT);
+                        let delay = remaining.map_or(DELAY_SEC_SHORT, |remaining| {
+                            remaining.min(DELAY_SEC_SHORT).max(DELAY_SEC_MIN)
+                        });
                         Ok(Duration::from_secs(delay))
                     }
                 };
@@ -441,10 +468,10 @@ async fn launch(args: args::Config) {
     }
 
     // join all async tasks and thread(s)
-    tasks.join_all().await.unwrap();
-    warp_graceful_handle.await.unwrap();
+    tasks.join_all().await.expect("tasks end with no panics");
+    warp_graceful_handle.await.expect("warp ends with no panic");
     if let Some(cli_handle) = cli_handle {
-        cli_handle.join().unwrap();
+        cli_handle.join().expect("cli ends with no panic");
     }
 
     // end of MAIN

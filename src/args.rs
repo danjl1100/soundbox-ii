@@ -118,9 +118,9 @@ fn build_vlc_credentials(matches: &clap::ArgMatches<'_>) -> Result<vlc_http::Cre
     let port = unwrap_val(VLC_PORT);
     let password = unwrap_val(VLC_PASSWORD);
     let arg_config = PartialConfig {
+        password,
         host,
         port,
-        password,
     };
     let merge_with_env = |arg_config| {
         let env_config = PartialConfig::from_env();

@@ -99,17 +99,21 @@ impl Prompt {
         };
         if let Some(action_and_rx) = parsed {
             // execute action and print result
-            match action_and_rx {
+            let result = match action_and_rx {
                 Ok(ActionAndReceiver::Command(action, result_rx)) => {
-                    self.send_and_print_result(action, result_rx);
+                    self.send_and_print_result(action, result_rx)
                 }
                 Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
-                    self.send_and_print_result(action, result_rx);
+                    self.send_and_print_result(action, result_rx)
                 }
                 Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
-                    self.send_and_print_result(action, result_rx);
+                    self.send_and_print_result(action, result_rx)
                 }
-                Err(message) => eprintln!("Input error: {}", message),
+                Err(message) => Err(format!("Input error: {}", message)),
+            };
+            if let Err(message) = result {
+                eprintln!("ERROR: {}", message);
+                return false;
             }
         }
         // poll and print status
@@ -127,7 +131,7 @@ impl Prompt {
         &mut self,
         action: Action,
         result_rx: ResultReceiver<T>,
-    ) -> Option<T>
+    ) -> Result<(), String>
     where
         T: std::fmt::Debug,
     {
@@ -144,7 +148,10 @@ impl Prompt {
             Action::Command(_, _) => false,
             _ => true,
         };
-        self.action_tx.blocking_send(action).unwrap();
+        let send_result = self.action_tx.blocking_send(action);
+        if send_result.is_err() {
+            return Err("Failed to send command result".to_string());
+        }
         // wait for result
         match blocking_recv(
             result_rx,
@@ -156,16 +163,13 @@ impl Prompt {
                 if print_result {
                     dbg!(&action_result);
                 }
-                Some(action_result)
+                Ok(())
             }
             Some(Err(action_err)) => {
                 dbg!(action_err);
-                None
+                Err("Action returned error".to_string())
             }
-            None => {
-                println!("Failed to obtain command result");
-                None
-            }
+            None => Err("Failed to obtain command result".to_string()),
         }
     }
 }
@@ -253,7 +257,7 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
         CMD_PAUSE => Ok(Command::PlaybackPause.into()),
         CMD_STOP => Ok(Command::PlaybackStop.into()),
         CMD_ADD => match args.split_first() {
-            Some((uri, extra)) if extra.is_empty() => Ok(Command::PlaylistAdd {
+            Some((&uri, extra)) if extra.is_empty() => Ok(Command::PlaylistAdd {
                 uri: uri.to_string(),
             }
             .into()),
@@ -261,7 +265,7 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
         },
         CMD_START => match args.split_first() {
             None => Ok(Command::PlaylistPlay { item_id: None }.into()),
-            Some((item_id, extra)) if extra.is_empty() => Ok(Command::PlaylistPlay {
+            Some((&item_id, extra)) if extra.is_empty() => Ok(Command::PlaylistPlay {
                 item_id: Some(item_id.to_string()),
             }
             .into()),
