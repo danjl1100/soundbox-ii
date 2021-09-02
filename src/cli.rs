@@ -111,9 +111,8 @@ impl Prompt {
                 }
                 Err(message) => Err(format!("Input error: {}", message)),
             };
-            if let Err(message) = result {
-                eprintln!("ERROR: {}", message);
-                return false;
+            if let Err(nonfatal_message) = result {
+                eprintln!("ERROR: {}", nonfatal_message);
             }
         }
         // poll and print status
