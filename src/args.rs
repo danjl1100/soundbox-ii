@@ -10,6 +10,7 @@ pub struct Config {
     pub bind_address: SocketAddr,
     pub vlc_http_credentials: vlc_http::Credentials,
     pub static_assets: PathBuf,
+    pub watch_assets: bool,
 }
 
 static INTERACTIVE: &str = "interactive";
@@ -18,6 +19,7 @@ static VLC_HOST: &str = "vlc-host";
 static VLC_PORT: &str = "vlc-port";
 static VLC_PASSWORD: &str = "vlc-password";
 static STATIC_ASSETS: &str = "static-assets";
+static WATCH_ASSETS: &str = "watch-assets";
 
 pub fn parse_or_exit() -> Config {
     use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
@@ -61,6 +63,12 @@ pub fn parse_or_exit() -> Config {
                 .default_value("dist/")
                 .help("static asserts folder path (created by frontend)"),
         )
+        .arg(
+            Arg::with_name(WATCH_ASSETS)
+                .long(WATCH_ASSETS)
+                .short("w")
+                .help("watches the assets folder path and refreshes frontend clients when changed"),
+        )
         .get_matches();
 
     match build_config(&matches) {
@@ -100,6 +108,7 @@ fn build_config(matches: &clap::ArgMatches<'_>) -> Result<Config, String> {
         bind_address,
         vlc_http_credentials,
         static_assets,
+        watch_assets: matches.is_present(WATCH_ASSETS),
     })
 }
 fn build_vlc_credentials(matches: &clap::ArgMatches<'_>) -> Result<vlc_http::Credentials, String> {

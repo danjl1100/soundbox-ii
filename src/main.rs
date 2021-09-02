@@ -33,6 +33,7 @@ mod web {
             playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
             playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
             shutdown_rx: crate::ShutdownReceiver,
+            reload_rx: watch::Receiver<u32>,
             assets_dir: PathBuf,
         ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
             root_redirect()
@@ -43,6 +44,7 @@ mod web {
                     playback_status_rx,
                     playlist_info_rx,
                     shutdown_rx,
+                    reload_rx,
                 }))
         }
 
@@ -107,6 +109,7 @@ mod web {
             pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
             pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>, //TODO use this field, or remove it!
             pub shutdown_rx: ShutdownReceiver,
+            pub reload_rx: watch::Receiver<u32>,
         }
         pub fn filter(
             config: Config,
@@ -132,9 +135,19 @@ mod web {
                     self.config.playback_status_rx.borrow_and_update();
                     self.config.playlist_info_rx.borrow_and_update();
                 }
+                let reload_base_value = *self.config.reload_rx.borrow_and_update();
                 self.send_response(ServerResponse::Heartbeat).await?;
                 loop {
                     let send_message = tokio::select! {
+                        Ok(_) = self.config.reload_rx.changed() => {
+                            if reload_base_value == *self.config.reload_rx.borrow() {
+                                // borrowed value was updated to identical value...  LOGIC ERROR!
+                                // however... silently proceed (non-critical ease-of-use feature)
+                                None
+                            } else {
+                                Some(ServerResponse::ClientCodeChanged)
+                            }
+                        }
                         Some(body) = self.websocket.next() => {
                             let message = match body {
                                 Ok(msg) => msg,
@@ -336,16 +349,21 @@ mod task {
 #[allow(clippy::too_many_lines)] //TODO: modularize this init script
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
-    let (playback_status_tx, playback_status_rx) = watch::channel(Option::default());
-    let (playlist_info_tx, playlist_info_rx) = watch::channel(Option::default());
+    let (playback_status_tx, playback_status_rx) = watch::channel(None);
+    let (playlist_info_tx, playlist_info_rx) = watch::channel(None);
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
+    let (reload_tx, reload_rx) = watch::channel(0_u32);
 
     println!(
         "  - VLC-HTTP will connect to server: {}",
         args.vlc_http_credentials.authority_str()
     );
     println!("  - Serving static assets from {:?}", args.static_assets);
+    if args.watch_assets {
+        println!("    - Watching for changes, will notify clients");
+    }
     println!("  - Listening on: {}", args.bind_address);
+    println!();
     // ^^^ listen URL is last (for easy skimming)
 
     let cli_handle = if args.interactive {
@@ -372,6 +390,32 @@ async fn launch(args: args::Config) {
         None
     };
 
+    let _hotwatch_handle = if args.watch_assets {
+        let mut hotwatch = hotwatch::Hotwatch::new().expect("hotwatch failed to initialize");
+        hotwatch
+            .watch(args.static_assets.clone(), move |event| {
+                use hotwatch::Event;
+                match event {
+                    Event::NoticeWrite(_) | Event::NoticeRemove(_) => {
+                        // ignore "Notice" events, files are not actively reading
+                        // println!("ignoring {:?}", event);
+                    }
+                    _ => {
+                        // println!("changed! {:?}", event);
+                        let prev_value = *reload_tx.borrow();
+                        let next_value = prev_value.wrapping_add(1);
+                        reload_tx
+                            .send(next_value)
+                            .expect("reload receiver is alive");
+                    }
+                }
+            })
+            .expect("static assets folder not found");
+        Some(hotwatch)
+    } else {
+        None
+    };
+
     // spawn server
     let warp_graceful_handle = {
         const TASK_NAME: &str = "warp";
@@ -380,6 +424,7 @@ async fn launch(args: args::Config) {
             playback_status_rx.clone(),
             playlist_info_rx,
             shutdown_rx.clone(),
+            reload_rx,
             args.static_assets,
         );
         let shutdown_rx = shutdown_rx.clone();
@@ -393,7 +438,6 @@ async fn launch(args: args::Config) {
             println!("ended: {}", TASK_NAME);
         })
     };
-    //TODO: use HotWatch to check for changes in `static_assets dir, command websocket clients to refresh
 
     let mut tasks = AsyncTasks::new(shutdown_rx);
 

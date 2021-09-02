@@ -53,16 +53,14 @@ struct Model {
     websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse, ExponentialBackoff>,
     playback: Option<(shared::PlaybackStatus, Time)>,
     errors: Vec<String>,
+    location: web_sys::Location,
     _interval: Interval,
 }
 impl Model {
     fn new(link: ComponentLink<Self>) -> Self {
+        let location = web_sys::window().expect("window exists").location();
         let websocket = {
-            let host = web_sys::window()
-                .expect("window exists")
-                .location()
-                .host()
-                .expect("window.location has host");
+            let host = location.host().expect("window.location has host");
             log!("Window::location()::host() = {:?}", host);
             let url_websocket = format!("ws://{}/ws", host);
             let on_message = link.callback(|msg| match msg {
@@ -102,6 +100,7 @@ impl Model {
             websocket,
             playback: None,
             errors: vec![],
+            location,
             _interval: interval,
         }
     }
@@ -210,6 +209,12 @@ impl Model {
                 self.websocket.on_message();
                 match message {
                     shared::ServerResponse::Heartbeat | shared::ServerResponse::Success => {}
+                    shared::ServerResponse::ClientCodeChanged => {
+                        let reload_result = self.location.reload();
+                        if let Err(reload_err) = reload_result {
+                            error!("Error reloading: {:?}", reload_err);
+                        }
+                    }
                     shared::ServerResponse::ServerError(err_message) => {
                         self.push_error("server", err_message);
                         //true

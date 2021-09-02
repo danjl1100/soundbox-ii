@@ -96,6 +96,8 @@ serde_derive_unidirectional! {
             Heartbeat,
             /// Success performing a command
             Success,
+            /// Notification that the Client sourcecode changed
+            ClientCodeChanged,
             /// Error message, internal to the server
             ServerError(String),
             /// Playback Status
