@@ -50,63 +50,74 @@ enum MsgUser {
     IntervalTick,
 }
 
+type WebsocketHelper =
+    websocket::Helper<shared::ClientRequest, shared::ServerResponse, ExponentialBackoff>;
 struct Model {
-    link: ComponentLink<Self>,
-    websocket: websocket::Helper<shared::ClientRequest, shared::ServerResponse, ExponentialBackoff>,
+    websocket: WebsocketHelper,
     playback: Option<(shared::PlaybackStatus, Time)>,
     errors: Vec<String>,
     location: web_sys::Location,
     _interval: Interval,
+    link: ComponentLink<Self>,
 }
 impl Model {
     fn new(link: ComponentLink<Self>) -> Self {
         let location = web_sys::window().expect("window exists").location();
-        let websocket = {
-            let host = location.host().expect("window.location has host");
-            log!("Window::location()::host() = {:?}", host);
-            let url_websocket = format!("ws://{}/ws", host);
-            let on_message = link.callback(|msg| match msg {
-                Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
-                Err(e) => MsgWebSocket::ReceiveError(e),
-            });
-            let on_notification = link.callback(MsgWebSocket::Notify);
-            let on_reconnect = link.callback(|_| MsgWebSocket::Connect);
-            let reconnect_backoff = {
-                use std::time::Duration;
-                ExponentialBackoff {
-                    current_interval: Duration::from_secs(2),
-                    initial_interval: Duration::from_secs(2),
-                    multiplier: 2.0,
-                    max_interval: Duration::from_secs(20 * 60),
-                    max_elapsed_time: Some(Duration::from_secs(30 * 60)),
-                    ..ExponentialBackoff::default()
-                }
-            };
-            websocket::Helper::new(
-                url_websocket,
-                &on_message,
-                on_notification,
-                on_reconnect,
-                reconnect_backoff,
-            )
-        };
         link.send_message(MsgWebSocket::Connect);
-        let interval = {
-            let callback = link.callback(|_| MsgUser::IntervalTick);
-            Interval::new(500, move || {
-                callback.emit(());
-            })
-        };
         Self {
-            link,
-            websocket,
+            websocket: Self::new_websocket(&link, &location),
             playback: None,
             errors: vec![],
             location,
-            _interval: interval,
+            _interval: Self::new_interval_tick(&link),
+            link,
         }
     }
+    fn new_websocket(link: &ComponentLink<Self>, location: &web_sys::Location) -> WebsocketHelper {
+        let host = location.host().expect("window.location has host");
+        let url_websocket = format!("ws://{}/ws", host);
+        let on_message = link.callback(|msg| match msg {
+            Ok(msg) => MsgWebSocket::ReceiveMessage(msg),
+            Err(e) => MsgWebSocket::ReceiveError(e),
+        });
+        let on_notification = link.callback(MsgWebSocket::Notify);
+        let on_reconnect = link.callback(|_| MsgWebSocket::Connect);
+        let reconnect_backoff = Self::new_reconnect_backoff();
+        WebsocketHelper::new(
+            url_websocket,
+            &on_message,
+            on_notification,
+            on_reconnect,
+            reconnect_backoff,
+        )
+    }
+    fn new_reconnect_backoff() -> backoff::ExponentialBackoff {
+        use std::time::Duration;
+        ExponentialBackoff {
+            current_interval: Duration::from_secs(2),
+            initial_interval: Duration::from_secs(2),
+            multiplier: 2.0,
+            max_interval: Duration::from_secs(20 * 60),
+            max_elapsed_time: Some(Duration::from_secs(30 * 60)),
+            ..ExponentialBackoff::default()
+        }
+    }
+    fn new_interval_tick(link: &ComponentLink<Self>) -> Interval {
+        let callback = link.callback(|_| MsgUser::IntervalTick);
+        Interval::new(500, move || {
+            callback.emit(());
+        })
+    }
+}
+impl Model {
     fn view_disconnected(&self) -> Html {
+        let reconnect_btn = |label| {
+            html! {
+                <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
+                    { label }
+                </button>
+            }
+        };
         let reconnect_msg = if self.websocket.is_started() {
             html! { {"Connecting..."}}
         } else if let Some(millis) = self.websocket.get_reconnect_timeout_millis() {
@@ -119,13 +130,11 @@ impl Model {
                     { "Trying to reconnect in " }
                     { fmt::fmt_duration_seconds_long(seconds) }
                     <br/>
-                    <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
-                        { "Reconnect Now" }
-                    </button>
+                    { reconnect_btn("Reconnect Now") }
                 </p>
             }
         } else {
-            html! {}
+            reconnect_btn("Reconnect")
         };
         html! {
             <div>
