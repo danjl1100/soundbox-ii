@@ -1185,6 +1185,7 @@ dependencies = [
 name = "soundbox-ii"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
  "futures",
  "hotwatch",
@@ -1490,6 +1491,7 @@ version = "0.1.0"
 dependencies = [
  "backoff",
  "base64",
+ "chrono",
  "form_urlencoded",
  "http",
  "hyper",

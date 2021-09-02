@@ -4,7 +4,7 @@
 
 pub use playback::{PlaybackInfo, PlaybackState, PlaybackStatus};
 mod playback {
-    use crate::command;
+    use crate::{command, Time};
 
     use serde::Deserialize;
     use std::collections::HashMap;
@@ -37,15 +37,20 @@ mod playback {
         pub version: String,
         /// Volume percentage
         pub volume_percent: u16,
+        /// Received Time
+        pub received_time: Time,
     }
     impl PlaybackStatus {
-        pub(crate) fn from_slice(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        pub(crate) fn from_slice(
+            bytes: &[u8],
+            received_time: Time,
+        ) -> Result<Self, serde_json::Error> {
             let json_struct: PlaybackStatusJSON = serde_json::from_slice(bytes)?;
-            Ok(Self::from(json_struct))
+            Ok(Self::from((json_struct, received_time)))
         }
     }
-    impl From<PlaybackStatusJSON> for PlaybackStatus {
-        fn from(other: PlaybackStatusJSON) -> Self {
+    impl From<(PlaybackStatusJSON, Time)> for PlaybackStatus {
+        fn from((other, received_time): (PlaybackStatusJSON, Time)) -> Self {
             let PlaybackStatusJSON {
                 apiversion,
                 playlist_item_id,
@@ -79,6 +84,7 @@ mod playback {
                 time,
                 version,
                 volume_percent: command::decode_volume_to_percent(volume),
+                received_time,
             }
         }
     }
@@ -196,23 +202,29 @@ mod playback {
 
 pub use playlist::{PlaylistInfo, PlaylistItem};
 mod playlist {
+    use crate::Time;
     use serde::Deserialize;
     use std::convert::TryInto;
 
     /// Playlist information
     #[derive(Clone, PartialEq, Eq)]
-    #[allow(missing_docs)]
     pub struct PlaylistInfo {
+        /// Items in the playlist
         pub items: Vec<PlaylistItem>,
+        /// Received Time
+        pub received_time: Time,
     }
     impl PlaylistInfo {
-        pub(crate) fn from_slice(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        pub(crate) fn from_slice(
+            bytes: &[u8],
+            received_time: Time,
+        ) -> Result<Self, serde_json::Error> {
             let json_struct: PlaylistRootJSON = serde_json::from_slice(bytes)?;
-            Ok(Self::from(json_struct))
+            Ok(Self::from((json_struct, received_time)))
         }
     }
-    impl From<PlaylistRootJSON> for PlaylistInfo {
-        fn from(other: PlaylistRootJSON) -> Self {
+    impl From<(PlaylistRootJSON, Time)> for PlaylistInfo {
+        fn from((other, received_time): (PlaylistRootJSON, Time)) -> Self {
             const GROUP_NAME_PLAYLIST: &str = "Playlist";
             let PlaylistRootJSON { groups } = other;
             let playlist_group = groups
@@ -221,7 +233,10 @@ mod playlist {
             let items = playlist_group.map_or_else(Vec::new, |group| {
                 group.children.into_iter().map(PlaylistItem::from).collect()
             });
-            Self { items }
+            Self {
+                items,
+                received_time,
+            }
         }
     }
 
@@ -271,8 +286,11 @@ mod playlist {
     }
     impl std::fmt::Debug for PlaylistInfo {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            let PlaylistInfo { items } = self;
-            writeln!(f, "Playlist items [")?;
+            let PlaylistInfo {
+                items,
+                received_time,
+            } = self;
+            writeln!(f, "Playlist items @ {:?} [", received_time)?;
             for item in items {
                 let PlaylistItem {
                     duration,
@@ -306,12 +324,14 @@ mod playlist {
 
 mod external_conversions {
     use super::{PlaybackInfo, PlaybackState, PlaybackStatus};
+    use crate::Time;
     impl PlaybackStatus {
-        /// Clones the [`PlaybackStatus`] to a [`shared::PlaybackStatus`]
+        /// Clones the [`PlaybackStatus`] to a [`shared::PlaybackStatus`], modifying all
+        /// time values as appropriate for the given now [`Time`].
         //TODO: eliminate needless clone prior to serializing
         //  from: `vlc_http` type --clone--> `shared` type --copy into--> serde string
         //  to:   `vlc_http` type --reference--> shared reference type --copy into --> serde string
-        pub fn clone_to_shared(&self) -> shared::PlaybackStatus {
+        pub fn clone_to_shared(&self, now: Time) -> shared::PlaybackStatus {
             let Self {
                 information,
                 duration,
@@ -320,15 +340,40 @@ mod external_conversions {
                 state,
                 time,
                 volume_percent,
+                received_time,
                 ..
             } = self;
+            let duration = *duration;
+            let (position, time) = {
+                // calculate age of the information
+                let age = now - *received_time;
+                #[allow(clippy::cast_precision_loss)]
+                let age_seconds_float = (age.num_milliseconds() as f64) / 1000.0;
+                #[allow(clippy::cast_possible_truncation)]
+                #[allow(clippy::cast_sign_loss)]
+                let age_seconds = age_seconds_float.ceil().abs() as u64;
+                //
+                let position = {
+                    #[allow(clippy::cast_precision_loss)]
+                    let duration = duration as f64;
+                    let stored = f64::from(*position);
+                    let predict = stored + (age_seconds_float / (duration as f64));
+                    predict.min(1.0)
+                };
+                let time = {
+                    let stored = *time;
+                    let predict = stored + age_seconds;
+                    predict.min(duration)
+                };
+                (position, time)
+            };
             shared::PlaybackStatus {
                 information: information.as_ref().map(PlaybackInfo::clone_to_shared),
-                duration: *duration,
-                position: (*position).into(),
+                duration,
+                position,
                 rate: (*rate).into(),
                 state: (*state).into(),
-                time: *time,
+                time,
                 volume_percent: *volume_percent,
             }
         }

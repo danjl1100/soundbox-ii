@@ -96,11 +96,6 @@ mod web_socket {
             let _ = self.run().await;
         }
         async fn run(mut self) -> Result<(), ()> {
-            // invalidate pending "changed" values
-            {
-                self.config.playback_status_rx.borrow_and_update();
-                self.config.playlist_info_rx.borrow_and_update();
-            }
             let reload_base_value = *self.config.reload_rx.borrow_and_update();
             self.send_response(ServerResponse::Heartbeat).await?;
             loop {
@@ -126,9 +121,10 @@ mod web_socket {
                         self.handle_message(message).await
                     }
                     Ok(_) = self.config.playback_status_rx.changed() => {
+                        let now = chrono::Utc::now();
                         let playback = (*self.config.playback_status_rx.borrow())
                             .as_ref()
-                            .map(vlc_http::PlaybackStatus::clone_to_shared)
+                            .map(|s| vlc_http::PlaybackStatus::clone_to_shared(s, now))
                             .map(ServerResponse::from);
                         playback
                     }

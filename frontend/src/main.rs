@@ -103,8 +103,9 @@ impl Model {
         }
     }
     fn new_interval_tick(link: &ComponentLink<Self>) -> Interval {
+        const INTERVAL_MS: u32 = 500;
         let callback = link.callback(|_| MsgUser::IntervalTick);
-        Interval::new(500, move || {
+        Interval::new(INTERVAL_MS, move || {
             callback.emit(());
         })
     }

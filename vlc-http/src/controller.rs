@@ -139,7 +139,7 @@ fn replace_option_changed<T: PartialEq>(option: &mut Option<T>, new_value: T) ->
 }
 
 mod response {
-    use crate::{Error, PlaybackStatus, PlaylistInfo, RequestType};
+    use crate::{Error, PlaybackStatus, PlaylistInfo, RequestType, Time};
     #[derive(Debug)]
     #[allow(clippy::large_enum_variant)]
     pub(crate) enum Typed {
@@ -151,15 +151,16 @@ mod response {
     pub(crate) async fn try_parse(
         response: Result<(RequestType, hyper::Response<hyper::Body>), hyper::Error>,
     ) -> Result<Typed, Error> {
+        let now = chrono::Utc::now();
         match response {
             Ok((RequestType::Art, _)) => todo!(),
             Ok((RequestType::Status, response)) => {
-                parse_typed(response, PlaybackStatus::from_slice)
+                parse_typed(response, PlaybackStatus::from_slice, now)
                     .await
                     .map(Typed::Playback)
             }
             Ok((RequestType::Playlist, response)) => {
-                parse_typed(response, PlaylistInfo::from_slice)
+                parse_typed(response, PlaylistInfo::from_slice, now)
                     .await
                     .map(Typed::Playlist)
             }
@@ -169,32 +170,16 @@ mod response {
     pub(crate) async fn parse_typed<F, T, E>(
         response: hyper::Response<hyper::Body>,
         map_fn: F,
+        now: Time,
     ) -> Result<T, Error>
     where
-        F: FnOnce(&[u8]) -> Result<T, E>,
+        F: FnOnce(&[u8], Time) -> Result<T, E>,
         Error: From<E>,
     {
         hyper::body::to_bytes(response.into_body())
             .await
             .map_err(|err| err.into())
-            .and_then(|bytes| Ok(map_fn(&bytes)?))
-    }
-    //TODO: deleteme
-    pub(crate) async fn parse_body_json<F, T, E>(
-        result: Result<hyper::Response<hyper::Body>, hyper::Error>,
-        map_fn: F,
-    ) -> Result<T, Error>
-    where
-        F: FnOnce(&[u8]) -> Result<T, E>,
-        Error: From<E>,
-    {
-        match result {
-            Ok(response) => hyper::body::to_bytes(response.into_body())
-                .await
-                .map_err(|err| err.into())
-                .and_then(|bytes| Ok(map_fn(&bytes)?)),
-            Err(err) => Err(err.into()),
-        }
+            .and_then(|bytes| Ok(map_fn(&bytes, now)?))
     }
 }
 

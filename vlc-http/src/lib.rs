@@ -35,6 +35,9 @@ pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
 /// Receiver for an action result
 pub type ResultReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 
+/// Timestamp for receiving or sending a message
+pub type Time = chrono::DateTime<chrono::offset::Utc>;
+
 /// Action available to be `run()`, with `Sender<T>` for returning the result
 #[must_use]
 #[derive(Debug)]
