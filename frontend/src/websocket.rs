@@ -32,7 +32,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
     ) -> Self {
         let on_message = on_message.reform(|Json(message)| message);
         let reconnector = ReconnectLogic {
-            timeout: None,
+            timeout_millis: None,
             backoff: reconnect_backoff,
             reconnect,
         };
@@ -62,6 +62,9 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
             Some((_, Some(heartbeat))) => Some(*heartbeat),
             _ => None,
         }
+    }
+    pub(crate) fn get_reconnect_timeout_millis(&self) -> Option<u32> {
+        self.reconnector.get_timeout_millis()
     }
     pub(crate) fn get_task(&mut self) -> Option<&mut SocketTask<T, U>> {
         self.task.as_mut().map(|(task, _)| task)
@@ -115,20 +118,23 @@ impl<T: Serialize, U: DeserializeOwned> SocketTask<T, U> {
 }
 
 struct ReconnectLogic<B: Backoff> {
-    timeout: Option<Timeout>,
+    timeout_millis: Option<(Timeout, u32)>,
     backoff: B,
     reconnect: Callback<()>,
 }
 impl<B: Backoff> ReconnectLogic<B> {
     fn clear_timeout(&mut self) {
-        self.timeout = None;
+        self.timeout_millis = None;
     }
     fn reset_all(&mut self) {
         self.clear_timeout();
         self.backoff.reset();
     }
+    fn get_timeout_millis(&self) -> Option<u32> {
+        self.timeout_millis.as_ref().map(|(_, millis)| *millis)
+    }
     fn set_timeout(&mut self) {
-        if self.timeout.is_some() {
+        if self.timeout_millis.is_some() {
             return;
         }
         if let Some(delay) = self.backoff.next_backoff() {
@@ -138,7 +144,7 @@ impl<B: Backoff> ReconnectLogic<B> {
             let timeout = Timeout::new(delay_millis, move || {
                 reconnect.emit(());
             });
-            self.timeout = Some(timeout);
+            self.timeout_millis = Some((timeout, delay_millis));
         }
     }
 }

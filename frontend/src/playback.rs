@@ -1,4 +1,4 @@
-use crate::Time;
+use crate::{fmt, Time};
 use shared::{Command, PlaybackInfo, PlaybackStatus};
 use yew::prelude::*;
 
@@ -93,8 +93,8 @@ impl Component for PlaybackPosition {
             }
             _ => unreachable!("range input gives Value"),
         });
-        let position_fmt = fmt_duration_seconds(position);
-        let remaining_fmt = fmt_duration_seconds(remaining);
+        let position_fmt = fmt::fmt_duration_seconds(position);
+        let remaining_fmt = fmt::fmt_duration_seconds(remaining);
         html! {
             <div class="playback time">
                 { position_fmt }
@@ -117,16 +117,5 @@ impl PlaybackMeta {
                 <p>{ &info.artist }{ " - " }{ &info.album }</p>
             </div>
         }
-    }
-}
-
-fn fmt_duration_seconds(seconds: u64) -> String {
-    let duration_hour = (seconds / 60) / 60;
-    let duration_min = (seconds / 60) % 60;
-    let duration_sec = seconds % 60;
-    if duration_hour == 0 {
-        format!("{}:{:02}", duration_min, duration_sec)
-    } else {
-        format!("{}:{:02}:{:02}", duration_hour, duration_min, duration_sec)
     }
 }

@@ -19,6 +19,8 @@ use gloo_timers::callback::Interval;
 use yew::prelude::*;
 type Time = chrono::DateTime<chrono::offset::Utc>;
 
+mod fmt;
+
 const LOG_RENDERS: bool = false;
 #[macro_use]
 mod macros;
@@ -105,13 +107,34 @@ impl Model {
         }
     }
     fn view_disconnected(&self) -> Html {
+        let reconnect_msg = if self.websocket.is_started() {
+            html! { {"Connecting..."}}
+        } else if let Some(millis) = self.websocket.get_reconnect_timeout_millis() {
+            let seconds = f64::from(millis) / 1000.0;
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_sign_loss)]
+            let seconds = seconds.abs().trunc() as u64;
+            html! {
+                <p>
+                    { "Trying to reconnect in " }
+                    { fmt::fmt_duration_seconds_long(seconds) }
+                    <br/>
+                    <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
+                        { "Reconnect Now" }
+                    </button>
+                </p>
+            }
+        } else {
+            html! {}
+        };
         html! {
             <div>
-                { "Disconnected from server, that's sad :/" }
-                <br/>
-                <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
-                    { "Connect" }
-                </button>
+                <h3>
+                    { "Connecting to "}
+                    <span>{ "soundbox-ii" }</span>
+                    {" server..."}
+                </h3>
+                { reconnect_msg }
             </div>
         }
     }
