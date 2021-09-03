@@ -1,8 +1,8 @@
 //! Controller for VLC-HTTP, with associated helper types
 
-use crate::{Action, Credentials, Error, PlaybackStatus, PlaylistInfo, Query, ResultSender};
+use crate::{Action, Credentials, PlaybackStatus, PlaylistInfo, Query};
 use shared::{Never, Shutdown};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 /// Configuration for [`Controller`]
 pub struct Config {
@@ -98,10 +98,42 @@ impl Controller {
                         Self::send_result(result, tx);
                     }
                 }
+                Action::QueryArt(result_tx) => {
+                    let request = Query::Art.into();
+                    let result = self.context.run(&request).await;
+                    let response = match result {
+                        Ok((_, response)) => {
+                            // DETECT plain-text error message
+                            match response.headers().get("content-type") {
+                                Some(content_type) if content_type == "text/plain" => {
+                                    let body = response.into_body();
+                                    let content = hyper::body::to_bytes(body).await.map(|bytes| {
+                                        String::from_utf8(bytes.to_vec())
+                                            .expect("valid utf8 from VLC")
+                                    });
+                                    // use futures::StreamExt;
+                                    // let body = response.into_body()
+                                    //     .expect("it just works flawlessly")
+                                    //     .concat()
+                                    //     .and_then(|&c| std::str::from_utf8(c).map(str::to_owned))
+                                    //     .await;
+                                    match content {
+                                        Ok(text) => crate::Art::VlcError(text),
+                                        Err(e) => crate::Art::Error(e),
+                                    }
+                                }
+                                _ => crate::Art::Data(response),
+                            }
+                        }
+                        Err(e) => crate::Art::Error(e),
+                    };
+                    // NOT GENERIC ENOUGH:
+                    Self::send_result(response, result_tx);
+                }
             }
         }
     }
-    fn send_result<T>(result: Result<T, Error>, result_tx: ResultSender<T>)
+    fn send_result<T>(result: T, result_tx: oneshot::Sender<T>)
     where
         T: std::fmt::Debug,
     {

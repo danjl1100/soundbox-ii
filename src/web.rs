@@ -2,38 +2,51 @@ pub use filter::root as filter;
 mod filter {
     use http::uri::Uri;
     use std::path::PathBuf;
-    use warp::Filter;
+    use tokio::sync::mpsc;
+    use warp::{Filter, Reply};
 
     pub fn root(
         config: super::web_socket::Config,
         assets_dir: PathBuf,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
+        let action_tx = config.action_tx.clone();
+
         root_redirect()
-            .or(warp::path("v1").and(api_v1::root()))
+            .or(api_v1::root(action_tx))
             .or(static_files(assets_dir))
             .or(super::web_socket::filter(config))
     }
 
-    fn root_redirect() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn with_sender<T: Send + Sync>(
+        sender: mpsc::Sender<T>,
+    ) -> impl Filter<Extract = (mpsc::Sender<T>,), Error = std::convert::Infallible> + Clone {
+        warp::any().map(move || sender.clone())
+    }
+
+    fn root_redirect() -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
         // NOTE: temporary, in case we change it later
         warp::path::end().map(|| warp::redirect::temporary(Uri::from_static("/app/")))
     }
 
     fn static_files(
         assets_dir: PathBuf,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
         warp::get()
             .and(warp::path("app"))
             .and(warp::fs::dir(assets_dir))
     }
 
     mod api_v1 {
-        use warp::Filter;
+        use super::with_sender;
+        use warp::{Filter, Reply};
+        type ActionTx = tokio::sync::mpsc::Sender<vlc_http::Action>;
 
         pub fn root(
-        ) -> impl Filter<Extract = (String,) /*impl warp::Reply*/, Error = warp::Rejection> + Clone
-        {
-            warp::get().and(test_number_random())
+            action_tx: ActionTx,
+        ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
+            warp::path("v1")
+                .and(warp::get())
+                .and(test_number_random().or(album_art(action_tx)))
         }
         fn test_number_random() -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone
         {
@@ -56,6 +69,50 @@ mod filter {
                 serde_json::to_string(&number).expect("Serializes Number without error")
             })
         }
+
+        fn album_art(
+            action_tx: ActionTx,
+        ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
+            warp::path("art") //
+                .and(with_sender(action_tx)) //
+                .and_then(|action_tx| async move {
+                    let response = query_album_art(action_tx)
+                        .await
+                        .map_or_else(build_response, |r| r);
+                    Ok::<_, std::convert::Infallible>(response)
+                })
+        }
+        async fn query_album_art(
+            action_tx: ActionTx,
+        ) -> Result<hyper::Response<hyper::Body>, (String, hyper::StatusCode)> {
+            let (action, result_rx) = vlc_http::Action::query_art();
+            action_tx.send(action).await.map_err(|e| {
+                let text = format!(r#"internal error with vlc_http module: "{}""#, e);
+                (text, hyper::StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+            match result_rx.await {
+                Ok(vlc_http::Art::Data(response)) => Ok(response),
+                Ok(vlc_http::Art::VlcError(message)) => {
+                    let text = format!(r#"VLC reported error: "{}" (missing album art?)"#, message);
+                    Err((text, hyper::StatusCode::NOT_FOUND))
+                }
+                Ok(vlc_http::Art::Error(e)) => {
+                    let text = format!("VLC-art Error: {}", e.to_string());
+                    Err((text, hyper::StatusCode::INTERNAL_SERVER_ERROR))
+                }
+                Err(e) => {
+                    let text = format!("Error: {}", e.to_string());
+                    Err((text, hyper::StatusCode::INTERNAL_SERVER_ERROR))
+                }
+            }
+        }
+        fn build_response(
+            (text, status_code): (String, hyper::StatusCode),
+        ) -> hyper::Response<hyper::Body> {
+            let mut response = text.into_response();
+            *response.status_mut() = status_code;
+            response
+        }
     }
 }
 
@@ -67,7 +124,7 @@ mod web_socket {
     use tokio::sync::{mpsc, watch};
     use vlc_http::{Action, IntoAction, PlaybackStatus, PlaylistInfo};
     use warp::ws::Message;
-    use warp::Filter;
+    use warp::{Filter, Reply};
 
     #[derive(Clone)]
     pub struct Config {
@@ -79,7 +136,7 @@ mod web_socket {
     }
     pub fn filter(
         config: Config,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
         warp::path("ws")
             .and(warp::ws())
             .map(move |ws: warp::ws::Ws| {
