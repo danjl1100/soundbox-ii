@@ -139,11 +139,7 @@ impl Model {
         };
         html! {
             <div>
-                <h3>
-                    { "Connecting to "}
-                    <span>{ "soundbox-ii" }</span>
-                    {" server..."}
-                </h3>
+                <h3>{ "Connecting to server..."}</h3>
                 { reconnect_msg }
             </div>
         }
@@ -152,17 +148,12 @@ impl Model {
         let heartbeat_str = format!("Server last seen: {:?}", self.websocket.last_heartbeat());
         html! {
             <div>
-                <p>{ "This is generated in Yew!" }</p>
-                { self.view_album_art() }
                 <NumFetcher />
                 { self.view_playback() }
-                <Controls
-                    on_command=self.link.callback(MsgUser::SendCommand)
-                    playback_state=self.playback.as_ref().map(|(playback, _)| playback.state)
-                    />
                 <br/>
                 <p style="font-size: 0.7em;">{ heartbeat_str }</p>
                 { self.view_errors() }
+                { self.view_album_art() }
             </div>
         }
     }
@@ -189,7 +180,9 @@ impl Model {
             });
         let image_src = format!("/v1/art?trick_reload_key={}", trick_reload_key);
         html! {
-            <img src=image_src alt="Album Art" />
+            <div class="playback art">
+                <img src=image_src alt="Album Art" />
+            </div>
         }
     }
     fn view_playback(&self) -> Html {
@@ -200,13 +193,17 @@ impl Model {
                 html! {}
             };
             html! {
-                <>
+                <div>
                     { meta_html }
                     <PlaybackPosition
                         position_info=PositionInfo::from((playback, playback_received))
                         on_command=self.link.callback(MsgUser::SendCommand)
                         />
-                </>
+                    <Controls
+                        on_command=self.link.callback(MsgUser::SendCommand)
+                        playback_state=self.playback.as_ref().map(|(playback, _)| playback.state)
+                        />
+                </div>
             }
         } else {
             html! { "No playback status... yet." }
@@ -329,10 +326,19 @@ impl Component for Model {
     }
     fn view(&self) -> Html {
         log_render!("Model");
-        if self.websocket.is_connected() {
+        let content = if self.websocket.is_connected() {
             self.view_connected()
         } else {
             self.view_disconnected()
+        };
+        html! {
+            <>
+                <header class="monospace">{ "soundbox-ii" }</header>
+                <div class="content">
+                    { content }
+                </div>
+                <footer>{ "(c) 2021 - don't keep your sounds boxed up" }</footer>
+            </>
         }
     }
 }
@@ -342,11 +348,140 @@ mod controls {
     use shared::Command;
     use yew::prelude::*;
 
-    // reference table: https://stackoverflow.com/a/27053825/5742216
-    const SYMBOL_PREVIOUS: &str = "\u{23EE}";
-    const SYMBOL_NEXT: &str = "\u{23ED}";
-    const SYMBOL_PLAY: &str = "\u{23F5}";
-    const SYMBOL_PAUSE: &str = "\u{23F8}";
+    macro_rules! svg_paths {
+        (
+            struct $struct:ident { path, width, height }
+            $(
+                const $name:ident = {
+                    [ $width:expr , $height:expr $(,)?];
+                    $(
+                        $cmd:tt $($arg:expr),*
+                    );+ $(;)?
+                };
+            )+
+        ) => {
+            struct $struct {
+                path: &'static str,
+                width: &'static str,
+                height: &'static str,
+                view_box: &'static str,
+            }
+            $(
+                const $name : $struct = $struct {
+                    path: concat!(
+                        $(
+                            svg_paths!(@path_d $cmd $($arg),*)
+                        ),+
+                    ),
+                    width: stringify!($width),
+                    height: stringify!($height),
+                    view_box: svg_paths!(@str_cat 0, 0, $width, $height),
+                };
+            )+
+        };
+        (@path_d $cmd:tt $($arg:expr),*) => {
+            concat!(
+                svg_paths!(@valid_cmd $cmd $($arg),*),
+                svg_paths!(@str_cat $cmd, $($arg),*)
+            )
+        };
+        (@str_cat $($arg:tt),+ $(,)?) => {
+            concat!( $( " ", stringify!($arg)),+ )
+        };
+        (@valid_cmd M $_x:expr, $_y:expr) => { "" };
+        (@valid_cmd l $_x:expr, $_y:expr) => { "" };
+        (@valid_cmd h $_x:expr) => { "" };
+        (@valid_cmd v $_y:expr) => { "" };
+        (@valid_cmd z) => { "" };
+    }
+
+    svg_paths! {
+        struct SvgDef { path, width, height }
+        const SVG_PLAY = {
+            [12, 12]; // 1-10, with extra margin
+            // triangle (x,y = 1-10)
+            M 1, 1;
+            v 10;
+            l 10, -5;
+            z;
+        };
+        const SVG_PAUSE = {
+            [10, 10]; // 1-8, with extra margin
+            // left box (x = 1-4)
+            M 1, 1;
+            v 8;
+            h 3;
+            v -8;
+            z;
+            // right box (x = 6-9)
+            M 6, 1;
+            v 8;
+            h 3;
+            v -8;
+            z;
+        };
+        const SVG_NEXT = {
+            [16, 8]; // width 14, with extra margin, square axes
+            // right-ward triangle 1
+            M 1, 1;
+            v 6;
+            l 6, -3;
+            z;
+            // right-ward triangle 2
+            M 7, 1;
+            v 6;
+            l 6, -3;
+            z;
+            // right-most bar
+            M 13, 1;
+            v 6;
+            h 2;
+            v -6;
+            z;
+        };
+        const SVG_PREV = {
+            [16, 8]; // width 14, with extra margin, square axes
+            // left-ward triangle 1
+            M 15, 1;
+            v 6;
+            l -6, -3;
+            z;
+            // left-ward triangle 2
+            M 9, 1;
+            v 6;
+            l -6, -3;
+            z;
+            // left-most bar
+            M 3, 1;
+            v 6;
+            h -2;
+            v -6;
+            z;
+        };
+        const SVG_EMPTY = {
+            [1, 1];
+            M 0, 0;
+        };
+    }
+
+    struct SvgRenderer {
+        stroke: &'static str,
+        fill: &'static str,
+    }
+    impl SvgRenderer {
+        fn render(&self, svg_def: &SvgDef) -> Html {
+            html! {
+                <svg viewBox=svg_def.view_box>
+                    <path d=svg_def.path stroke=self.stroke fill=self.fill />
+                </svg>
+            }
+        }
+    }
+
+    const LABEL_PREVIOUS: (&str, &SvgDef) = ("Previous", &SVG_PREV);
+    const LABEL_NEXT: (&str, &SvgDef) = ("Next", &SVG_NEXT);
+    const LABEL_PLAY: (&str, &SvgDef) = ("Play", &SVG_PLAY);
+    const LABEL_PAUSE: (&str, &SvgDef) = ("Pause", &SVG_PAUSE);
 
     #[derive(Properties, Clone)]
     pub(crate) struct Properties {
@@ -365,24 +500,25 @@ mod controls {
         fn view_buttons(&self) -> Html {
             let is_paused = self.playback_state == Some(shared::PlaybackState::Paused);
             let is_playing = self.playback_state == Some(shared::PlaybackState::Playing);
-            //
-            let fetch_button = |text, cmd: Command, enable| {
-                if enable {
-                    html! {
-                        <button onclick=self.on_command.reform(move |_| cmd.clone())>
-                            { text }
-                        </button>
-                    }
-                } else {
-                    html! {}
+            let fetch_button = |(text, svg_def), cmd: Command, enable| {
+                const BLACK: SvgRenderer = SvgRenderer {
+                    stroke: "none",
+                    fill: "black",
+                };
+                let style = if enable { "" } else { "display: none;" };
+                html! {
+                    <button onclick=self.on_command.reform(move |_| cmd.clone()) style=style>
+                        { BLACK.render(svg_def) }
+                        { text }
+                    </button>
                 }
             };
             html! {
                 <>
-                    { fetch_button(SYMBOL_PREVIOUS, Command::SeekPrevious, true) }
-                    { fetch_button(SYMBOL_PLAY, Command::PlaybackResume, !is_playing) }
-                    { fetch_button(SYMBOL_PAUSE, Command::PlaybackPause, !is_paused) }
-                    { fetch_button(SYMBOL_NEXT, Command::SeekNext, true) }
+                    { fetch_button(LABEL_PREVIOUS, Command::SeekPrevious, true) }
+                    { fetch_button(LABEL_PLAY, Command::PlaybackResume, !is_playing) }
+                    { fetch_button(LABEL_PAUSE, Command::PlaybackPause, !is_paused) }
+                    { fetch_button(LABEL_NEXT, Command::SeekNext, true) }
                 </>
             }
         }

@@ -1,0 +1,80 @@
+/* --------------------------------- */
+
+@mixin align-center {
+  display: flex;
+  align-items: center;
+}
+
+@mixin align-center-horiz {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+@mixin border-box($color: black) {
+  border: solid 2pt $color;
+}
+
+/* --------------------------------- */
+$tablet_width: 600px;
+$desktop_width: 768px;
+/* --------------------------------- */
+
+header, footer {
+  text-align: center;
+  font-size: 1em;
+  border: dashed 1pt gray;
+  margin: 2px;
+  @media only screen and (min-width: $desktop_width) {
+    margin: 20px;
+  }
+}
+footer {
+  color: #222;
+}
+
+img {
+  max-width: 100%;
+}
+
+.monospace {
+  font-size: 1.7em;
+  font-family: monospace;
+}
+
+svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* --------------------------------- */
+
+.playback {
+  &.control {
+    @include align-center;
+    button {
+      @include align-center-horiz;
+      flex-basis: 100%; // equally-size all buttons
+      height: 60px;
+      @media only screen and (min-width: $desktop_width) {
+        height: 50px;
+      }
+    }
+  }
+  &.time {
+    @include align-center
+    input {
+      flex-grow: 1;
+    }
+  }
+  &.meta {
+    @include align-center-horiz;
+    @include border-box;
+  }
+  &.art {
+    @include align-center-horiz;
+    img {
+      @include border-box;
+    }
+  }
+}

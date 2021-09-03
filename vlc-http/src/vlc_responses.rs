@@ -344,7 +344,9 @@ mod external_conversions {
                 ..
             } = self;
             let duration = *duration;
-            let (position, time) = {
+            let position = f64::from(*position);
+            let time = *time;
+            let (position, time) = if *state == PlaybackState::Playing {
                 // calculate age of the information
                 let age = now - *received_time;
                 #[allow(clippy::cast_precision_loss)]
@@ -356,15 +358,17 @@ mod external_conversions {
                 let position = {
                     #[allow(clippy::cast_precision_loss)]
                     let duration = duration as f64;
-                    let stored = f64::from(*position);
-                    let predict = stored + (age_seconds_float / (duration as f64));
+                    let stored = position;
+                    let predict = stored + (age_seconds_float / duration);
                     predict.min(1.0)
                 };
                 let time = {
-                    let stored = *time;
+                    let stored = time;
                     let predict = stored + age_seconds;
                     predict.min(duration)
                 };
+                (position, time)
+            } else {
                 (position, time)
             };
             shared::PlaybackStatus {

@@ -18,7 +18,7 @@ impl From<(&PlaybackStatus, &Time)> for PositionInfo {
     fn from((playback, &received_time): (&PlaybackStatus, &Time)) -> Self {
         Self {
             duration: playback.duration,
-            position: playback.time,
+            position: playback.time, //TODO: ELIMINATE this confusing equality: "time" != "position" (!!!)
             playback_state: playback.state,
             received_time,
         }
