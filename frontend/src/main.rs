@@ -153,6 +153,7 @@ impl Model {
         html! {
             <div>
                 <p>{ "This is generated in Yew!" }</p>
+                { self.view_album_art() }
                 <NumFetcher />
                 { self.view_playback() }
                 <Controls
@@ -163,6 +164,32 @@ impl Model {
                 <p style="font-size: 0.7em;">{ heartbeat_str }</p>
                 { self.view_errors() }
             </div>
+        }
+    }
+    fn view_album_art(&self) -> Html {
+        let trick_reload_key = self
+            .playback
+            .as_ref()
+            .and_then(|(playback, _)| playback.information.as_ref())
+            .map_or(0, |info| {
+                use std::hash::Hasher;
+                let mut hasher = twox_hash::XxHash64::with_seed(0);
+                let fields = [
+                    &info.title,
+                    &info.artist,
+                    &info.album,
+                    &info.date,
+                    &info.track_number,
+                ];
+                for (idx, field) in fields.iter().enumerate() {
+                    hasher.write(field.as_bytes());
+                    hasher.write_usize(idx);
+                }
+                hasher.finish()
+            });
+        let image_src = format!("/v1/art?trick_reload_key={}", trick_reload_key);
+        html! {
+            <img src=image_src alt="Album Art" />
         }
     }
     fn view_playback(&self) -> Html {

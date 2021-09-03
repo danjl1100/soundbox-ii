@@ -16,3 +16,4 @@ gloo-timers = "0.2.1"
 chrono = { version = "0.4.19", features = ["wasmbind"] }
 backoff = { version = "0.3.0", features = ["wasm-bindgen"] }
 web-sys = { version = "0.3.53", features = ["Location", "Window"] }
+twox-hash = "1.6.1"
