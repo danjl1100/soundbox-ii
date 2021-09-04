@@ -21,9 +21,9 @@
 //   https://www.cssportal.com/style-input-range/
 @mixin input_range($background, $height, $radius, $thumb, $thumb_width, $thumb_height, $thumb_radius) {
   $vertical_padding: ($thumb_height - $height) / 2;
-  padding-top: $vertical_padding;
-  padding-bottom: $vertical_padding;
   input[type=range] {
+    margin-top: $vertical_padding;
+    margin-bottom: $vertical_padding;
     -webkit-appearance: none;
     background: $background;
     height: $height;
@@ -149,7 +149,7 @@ svg {
     text-align: center;
     padding: 10px;
   }
-  &.control {
+  &.control { //for upper-level controls (ONLY)
     @include align-center;
     button {
       @include align-center-horiz;
@@ -177,6 +177,7 @@ svg {
     div {
       flex-grow: 1;
       @include align-center;
+      margin: 5px;
     }
     @include media_only(font-size, 1.2em, $desktop_width);
     .title {
@@ -186,6 +187,30 @@ svg {
     }
     .artist {
       font-weight: bolder;
+    }
+    .control { //for controls NESTED-IN-meta (ONLY)
+      @include align-center;
+      @include media_only(flex-direction, column, $tablet_width);
+      label {
+        display: none;
+        @include media_only(display, inherit, $tablet_width);
+        // font-size: 1.3em;
+        margin-left: 12px;
+        margin-right: 12px;
+      }
+      span, button {
+        height: 40px;
+      }
+      span {
+        @include align-center;
+        flex-basis: 40%;
+        margin: 5px;
+      }
+      button {
+        flex-basis: 20%;
+        font-size: 0.7em;
+        @include media_only(font-size, 0px, $tablet_width);
+      }
     }
   }
   &.art {

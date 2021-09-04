@@ -21,15 +21,25 @@ pub enum Command {
     SeekNext,
     /// Seek to the previous item
     SeekPrevious,
-    /// Seek within the current item
+    /// Seek absolutely within the current item
     SeekTo {
         /// Seconds within the current item
         seconds: u32,
+    },
+    /// Seek relatively within the current item
+    SeekRelative {
+        /// Seconds delta within the current item
+        seconds_delta: i32,
     },
     /// Set the playback volume
     Volume {
         /// Percentage for the volume (clamped at 300, which means 300% volume)
         percent: u16,
+    },
+    /// Adjust the playback volume
+    VolumeRelative {
+        /// Percentage delta for the volume
+        percent_delta: i16,
     },
     // /// Set the item selection mode
     // /// TODO: deleteme in Phase 2
@@ -121,6 +131,15 @@ pub(crate) fn decode_volume_to_percent(based_256: u32) -> u16 {
         based_100.round() as u16
     }
 }
+fn fmt_seconds_delta(seconds_delta: i32) -> String {
+    format!("{:+}", seconds_delta)
+}
+fn fmt_volume_delta(volume_delta: i16) -> String {
+    let sign_char = if volume_delta < 0 { '-' } else { '+' };
+    let magnitude: u16 = volume_delta.abs() as u16;
+    let magnitude = encode_volume_val(magnitude);
+    format!("{}{}", sign_char, magnitude)
+}
 impl<'a, 'b> From<Command> for RequestIntent<'a, 'b> {
     /// Creates a request for the specified command
     fn from(command: Command) -> Self {
@@ -142,9 +161,17 @@ impl<'a, 'b> From<Command> for RequestIntent<'a, 'b> {
                 command: "seek",
                 args: vec![("val", seconds.to_string())],
             })),
+            Command::SeekRelative { seconds_delta } => RequestIntent::Status(Some(CmdArgs {
+                command: "seek",
+                args: vec![("val", fmt_seconds_delta(seconds_delta))],
+            })),
             Command::Volume { percent } => RequestIntent::Status(Some(CmdArgs {
                 command: "volume",
                 args: vec![("val", encode_volume_val(percent).to_string())],
+            })),
+            Command::VolumeRelative { percent_delta } => RequestIntent::Status(Some(CmdArgs {
+                command: "volume",
+                args: vec![("val", fmt_volume_delta(percent_delta))],
             })),
             Command::PlaybackSpeed { speed } => RequestIntent::Status(Some(CmdArgs {
                 command: "rate",
@@ -173,7 +200,9 @@ impl From<shared::Command> for Command {
             Command::SeekNext => Self::SeekNext,
             Command::SeekPrevious => Self::SeekPrevious,
             Command::SeekTo { seconds } => Self::SeekTo { seconds },
+            Command::SeekRelative { seconds_delta } => Self::SeekRelative { seconds_delta },
             Command::Volume { percent } => Self::Volume { percent },
+            Command::VolumeRelative { percent_delta } => Self::VolumeRelative { percent_delta },
             Command::PlaybackSpeed { speed } => Self::PlaybackSpeed { speed },
         }
     }
@@ -240,6 +269,27 @@ mod tests {
             })),
         );
         assert_encode(
+            Command::SeekRelative { seconds_delta: 32 },
+            RequestIntent::Status(Some(CmdArgs {
+                command: "seek",
+                args: vec![("val", "+32".to_string())],
+            })),
+        );
+        assert_encode(
+            Command::SeekRelative { seconds_delta: -57 },
+            RequestIntent::Status(Some(CmdArgs {
+                command: "seek",
+                args: vec![("val", "-57".to_string())],
+            })),
+        );
+        assert_encode(
+            Command::SeekRelative { seconds_delta: 0 },
+            RequestIntent::Status(Some(CmdArgs {
+                command: "seek",
+                args: vec![("val", "+0".to_string())],
+            })),
+        );
+        assert_encode(
             Command::PlaybackSpeed { speed: 0.21 },
             RequestIntent::Status(Some(CmdArgs {
                 command: "rate",
@@ -272,6 +322,7 @@ mod tests {
     }
     #[test]
     fn exec_volume() {
+        use std::convert::TryFrom;
         let percent_vals = [
             (100, 256),
             (0, 0),
@@ -291,6 +342,22 @@ mod tests {
                     args: vec![("val", format!("{}", val))],
                 })),
             );
+            let percent_signed = i16::try_from(*percent).expect("test values within range");
+            let check_relative = |sign, percent_delta| {
+                assert_encode(
+                    Command::VolumeRelative { percent_delta },
+                    RequestIntent::Status(Some(CmdArgs {
+                        command: "volume",
+                        args: vec![("val", format!("{}{}", sign, val))],
+                    })),
+                );
+            };
+            if percent_signed == 0 {
+                check_relative("+", percent_signed);
+            } else {
+                check_relative("+", percent_signed);
+                check_relative("-", -percent_signed);
+            }
         }
     }
     #[test]

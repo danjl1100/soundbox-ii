@@ -245,7 +245,9 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
     const CMD_NEXT: &str = "next";
     const CMD_PREV: &str = "prev";
     const CMD_SEEK: &str = "seek";
+    const CMD_SEEK_REL: &str = "seek-rel";
     const CMD_VOL: &str = "vol";
+    const CMD_VOL_REL: &str = "vol-rel";
     const CMD_SPEED: &str = "speed";
     const QUERY_STATUS: &str = "status";
     const QUERY_PLAYLIST: &str = "playlist";
@@ -279,12 +281,26 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
                 .map_err(err_invalid_int),
             _ => Err("expected 1 argument (seconds)".to_string()),
         },
+        CMD_SEEK_REL => match args.split_first() {
+            Some((seconds_str, extra)) if extra.is_empty() => seconds_str
+                .parse()
+                .map(|seconds_delta| Command::SeekRelative { seconds_delta }.into())
+                .map_err(err_invalid_int),
+            _ => Err("expected 1 argument (seconds_delta)".to_string()),
+        },
         CMD_VOL => match args.split_first() {
             Some((percent_str, extra)) if extra.is_empty() => percent_str
                 .parse()
                 .map(|percent| Command::Volume { percent }.into())
                 .map_err(err_invalid_int),
             _ => Err("expected 1 argument (percent)".to_string()),
+        },
+        CMD_VOL_REL => match args.split_first() {
+            Some((percent_str, extra)) if extra.is_empty() => percent_str
+                .parse()
+                .map(|percent_delta| Command::VolumeRelative { percent_delta }.into())
+                .map_err(err_invalid_int),
+            _ => Err("expected 1 argument (percent_delta)".to_string()),
         },
         CMD_SPEED => match args.split_first() {
             Some((speed_str, extra)) if extra.is_empty() => speed_str

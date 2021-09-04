@@ -74,7 +74,7 @@ svg_paths! {
         z;
     };
     pub(crate) const NEXT = {
-        [16, 8]; // width 14, with extra margin, square axes
+        [16, 8]; // width 14, with extra margin
         // right-ward triangle 1
         M 1, 1;
         v 6;
@@ -93,7 +93,7 @@ svg_paths! {
         z;
     };
     pub(crate) const PREV = {
-        [16, 8]; // width 14, with extra margin, square axes
+        [16, 8]; // width 14, with extra margin
         // left-ward triangle 1
         M 15, 1;
         v 6;
@@ -111,6 +111,32 @@ svg_paths! {
         v -6;
         z;
     };
+    pub(crate) const FORWARD = {
+        [14, 8]; // width 12, with extra margin
+        // right-ward triangle 1
+        M 1, 1;
+        v 6;
+        l 6, -3;
+        z;
+        // right-ward triangle 2
+        M 7, 1;
+        v 6;
+        l 6, -3;
+        z;
+    };
+    pub(crate) const BACKWARD = {
+        [14, 8]; // width 12, with extra margin
+        // left-ward triangle 1
+        M 13, 1;
+        v 6;
+        l -6, -3;
+        z;
+        // left-ward triangle 2
+        M 7, 1;
+        v 6;
+        l -6, -3;
+        z;
+    };
     pub(crate) const X_CROSS = {
         [8, 8];
         M 1, 2;
@@ -122,6 +148,27 @@ svg_paths! {
         l 5, -5;
         l -1, -1;
         l -5, 5;
+        z;
+    };
+    pub(crate) const PLUS = {
+        [8, 8];
+        M 5, 1;
+        v 6;
+        h -2;
+        v -6;
+        z;
+        M 1, 3;
+        h 6;
+        v 2;
+        h -6;
+        z;
+    };
+    pub(crate) const MINUS = {
+        [8, 8];
+        M 1, 3;
+        h 6;
+        v 2;
+        h -6;
         z;
     };
     pub(crate) const EMPTY = {

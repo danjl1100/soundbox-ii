@@ -216,18 +216,44 @@ impl Model {
             } else {
                 html! {}
             };
-            html! {
-                <div class="playback container col-5 col-s-7">
+            let playback_state = self.playback.as_ref().map(|(playback, _)| playback.state);
+            let controls = |ty| {
+                html! {
                     <Controls
                         on_command=self.link.callback(MsgUser::SendCommand)
-                        playback_state=self.playback.as_ref().map(|(playback, _)| playback.state)
+                        playback_state=playback_state
+                        ty=ty
                         />
+                }
+            };
+            let volume_str = format!(
+                "{}%",
+                self.playback
+                    .as_ref()
+                    .map_or(0, |(playback, _)| playback.volume_percent)
+            );
+            html! {
+                <div class="playback container col-5 col-s-7">
+                    <div class="playback control">
+                        { controls(controls::Type::TrackPause) }
+                    </div>
                     <div class="playback meta">
                         { meta_html }
                         <PlaybackPosition
                             position_info=PositionInfo::from((playback, playback_received))
                             on_command=self.link.callback(MsgUser::SendCommand)
                             />
+                        <div class="playback control">
+                            <span>
+                                <label>{"Seek"}</label>
+                                { controls(controls::Type::Seek) }
+                            </span>
+                            <span>
+                                <label>{"Volume"}</label>
+                                { controls(controls::Type::Volume) }
+                                <label>{ volume_str }</label>
+                            </span>
+                        </div>
                     </div>
                 </div>
             }
@@ -379,11 +405,22 @@ mod controls {
     const LABEL_NEXT: (&str, &svg::Def) = ("Next", svg::NEXT);
     const LABEL_PLAY: (&str, &svg::Def) = ("Play", svg::PLAY);
     const LABEL_PAUSE: (&str, &svg::Def) = ("Pause", svg::PAUSE);
+    const LABEL_FORWARD: (&str, &svg::Def) = ("Forward", svg::FORWARD);
+    const LABEL_BACKWARD: (&str, &svg::Def) = ("Backward", svg::BACKWARD);
+    const LABEL_LOUDER: (&str, &svg::Def) = ("Louder", svg::PLUS);
+    const LABEL_SOFTER: (&str, &svg::Def) = ("Softer", svg::MINUS);
 
     #[derive(Properties, Clone)]
     pub(crate) struct Properties {
         pub on_command: Callback<Command>,
         pub playback_state: Option<shared::PlaybackState>,
+        pub ty: Type,
+    }
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum Type {
+        TrackPause,
+        Seek,
+        Volume,
     }
 
     pub(crate) enum Msg {}
@@ -392,31 +429,55 @@ mod controls {
         on_command: Callback<Command>,
         link: ComponentLink<Self>,
         playback_state: Option<shared::PlaybackState>,
+        ty: Type,
     }
     impl Controls {
         fn view_buttons(&self) -> Html {
+            const SEEK_BACKWARD: shared::Command = Command::SeekRelative { seconds_delta: -5 };
+            const SEEK_FORWARD: shared::Command = Command::SeekRelative { seconds_delta: 5 };
+            const VOL_DOWN: shared::Command = Command::VolumeRelative { percent_delta: -5 };
+            const VOL_UP: shared::Command = Command::VolumeRelative { percent_delta: 5 };
             let is_paused = self.playback_state == Some(shared::PlaybackState::Paused);
             let is_playing = self.playback_state == Some(shared::PlaybackState::Playing);
-            let fetch_button = |(text, svg_def), cmd: Command, enable| {
-                const BLACK: svg::Renderer = svg::Renderer {
-                    stroke: "none",
-                    fill: "black",
-                };
-                let style = if enable { "" } else { "display: none;" };
-                html! {
-                    <button onclick=self.on_command.reform(move |_| cmd.clone()) style=style>
-                        { BLACK.render(svg_def) }
-                        { text }
-                    </button>
-                }
+            match self.ty {
+                Type::TrackPause => html! {
+                    <>
+                        { self.fetch_button(LABEL_PREVIOUS, Command::SeekPrevious, true) }
+                        { self.fetch_button(LABEL_PLAY, Command::PlaybackResume, !is_playing) }
+                        { self.fetch_button(LABEL_PAUSE, Command::PlaybackPause, !is_paused) }
+                        { self.fetch_button(LABEL_NEXT, Command::SeekNext, true) }
+                    </>
+                },
+                Type::Seek => html! {
+                    <>
+                        { self.fetch_button(LABEL_BACKWARD, SEEK_BACKWARD, true) }
+                        { self.fetch_button(LABEL_FORWARD, SEEK_FORWARD, true) }
+                    </>
+                },
+                Type::Volume => html! {
+                    <>
+                        { self.fetch_button(LABEL_SOFTER, VOL_DOWN, true) }
+                        { self.fetch_button(LABEL_LOUDER, VOL_UP, true) }
+                    </>
+                },
+            }
+        }
+        fn fetch_button(
+            &self,
+            (text, svg_def): (&str, &svg::Def),
+            cmd: Command,
+            enable: bool,
+        ) -> Html {
+            const BLACK: svg::Renderer = svg::Renderer {
+                stroke: "none",
+                fill: "black",
             };
+            let style = if enable { "" } else { "display: none;" };
             html! {
-                <>
-                    { fetch_button(LABEL_PREVIOUS, Command::SeekPrevious, true) }
-                    { fetch_button(LABEL_PLAY, Command::PlaybackResume, !is_playing) }
-                    { fetch_button(LABEL_PAUSE, Command::PlaybackPause, !is_paused) }
-                    { fetch_button(LABEL_NEXT, Command::SeekNext, true) }
-                </>
+                <button onclick=self.on_command.reform(move |_| cmd.clone()) style=style>
+                    { BLACK.render(svg_def) }
+                    { text }
+                </button>
             }
         }
     }
@@ -427,11 +488,13 @@ mod controls {
             let Properties {
                 on_command,
                 playback_state,
+                ty,
             } = props;
             Self {
                 on_command,
                 link,
                 playback_state,
+                ty,
             }
         }
         fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -441,19 +504,17 @@ mod controls {
             let Properties {
                 on_command,
                 playback_state,
+                ty,
             } = props;
             self.on_command = on_command; // Callback's `PartialEq` implementation is empirically useless
             set_detect_change! {
+                self.ty = ty;
                 self.playback_state = playback_state;
             }
         }
         fn view(&self) -> Html {
-            log_render!("Controls");
-            html! {
-                <div class="playback control">
-                    { self.view_buttons() }
-                </div>
-            }
+            log_render!(format!("Controls {:?}", self.ty));
+            self.view_buttons()
         }
     }
 }

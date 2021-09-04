@@ -70,15 +70,25 @@ serde_derive_unidirectional! {
             SeekNext,
             /// Seek to the previous item
             SeekPrevious,
-            /// Seek within the current item
+            /// Seek absolutely within the current item
             SeekTo {
                 /// Seconds within the current item
                 seconds: u32,
+            },
+            /// Seek relatively within the current item
+            SeekRelative {
+                /// Seconds delta within the current item
+                seconds_delta: i32,
             },
             /// Set the playback volume
             Volume {
                 /// Percentage for the volume (clamped at 300, which means 300% volume)
                 percent: u16,
+            },
+            /// Adjust the playback volume
+            VolumeRelative {
+                /// Percentage delta for the volume
+                percent_delta: i16,
             },
             /// Set the playback speed
             PlaybackSpeed {
