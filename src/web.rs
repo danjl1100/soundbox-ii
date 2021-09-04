@@ -39,41 +39,21 @@ mod filter {
     mod api_v1 {
         use super::with_sender;
         use warp::{Filter, Reply};
+
         type ActionTx = tokio::sync::mpsc::Sender<vlc_http::Action>;
+        type Response = hyper::Response<hyper::Body>;
 
         pub fn root(
             action_tx: ActionTx,
         ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
-            warp::path("v1")
-                .and(warp::get())
-                .and(test_number_random().or(album_art(action_tx)))
-        }
-        //TODO: deleteme, just a proof of concept, not useful anymore
-        fn test_number_random() -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone
-        {
-            use std::sync::atomic::{AtomicU32, Ordering};
-            use std::sync::Arc;
-            let atomic_num = Arc::new(AtomicU32::new(27));
-            warp::path("number").map(move || {
-                let value = atomic_num.fetch_add(1, Ordering::Relaxed);
-                let title = if value % 3 == 0 {
-                    "the BEST number"
-                } else {
-                    "an OKAY number"
-                }
-                .to_string();
-                let number = shared::Number {
-                    value,
-                    title,
-                    is_even: value % 2 == 0,
-                };
-                serde_json::to_string(&number).expect("Serializes Number without error")
-            })
+            warp::path("v1") //
+                .and(warp::get()) //
+                .and(album_art(action_tx))
         }
 
         fn album_art(
             action_tx: ActionTx,
-        ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
+        ) -> impl Filter<Extract = (Response,), Error = warp::Rejection> + Clone {
             warp::path("art") //
                 .and(with_sender(action_tx)) //
                 .and_then(|action_tx| async move {
@@ -85,7 +65,7 @@ mod filter {
         }
         async fn query_album_art(
             action_tx: ActionTx,
-        ) -> Result<hyper::Response<hyper::Body>, (String, hyper::StatusCode)> {
+        ) -> Result<Response, (String, hyper::StatusCode)> {
             let (action, result_rx) = vlc_http::Action::query_art();
             action_tx.send(action).await.map_err(|e| {
                 let text = format!(r#"internal error with vlc_http module: "{}""#, e);
