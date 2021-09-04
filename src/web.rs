@@ -48,6 +48,7 @@ mod filter {
                 .and(warp::get())
                 .and(test_number_random().or(album_art(action_tx)))
         }
+        //TODO: deleteme, just a proof of concept, not useful anymore
         fn test_number_random() -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone
         {
             use std::sync::atomic::{AtomicU32, Ordering};

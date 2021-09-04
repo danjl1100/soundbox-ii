@@ -21,6 +21,8 @@ type Time = chrono::DateTime<chrono::offset::Utc>;
 
 mod fmt;
 
+mod svg;
+
 const LOG_RENDERS: bool = false;
 #[macro_use]
 mod macros;
@@ -112,35 +114,57 @@ impl Model {
 }
 impl Model {
     fn view_disconnected(&self) -> Html {
-        let reconnect_btn = |label| {
-            html! {
-                <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
-                    { label }
-                </button>
-            }
+        const RED: svg::Renderer = svg::Renderer {
+            stroke: "none",
+            fill: "#e13e3e", // "red",
         };
         let reconnect_msg = if self.websocket.is_started() {
             html! { {"Connecting..."}}
-        } else if let Some(millis) = self.websocket.get_reconnect_timeout_millis() {
-            let seconds = f64::from(millis) / 1000.0;
-            #[allow(clippy::cast_possible_truncation)]
-            #[allow(clippy::cast_sign_loss)]
-            let seconds = seconds.abs().trunc() as u64;
-            html! {
-                <p>
-                    { "Trying to reconnect in " }
-                    { fmt::fmt_duration_seconds_long(seconds) }
-                    <br/>
-                    { reconnect_btn("Reconnect Now") }
-                </p>
-            }
         } else {
-            reconnect_btn("Reconnect")
+            let auto_reconnect_status = self.websocket.get_reconnect_timeout_millis().map_or_else(
+                || {
+                    html! { {"Auto-reconnect has given up (not scheduled)."} }
+                },
+                |millis| {
+                    let seconds = f64::from(millis) / 1000.0;
+                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(clippy::cast_sign_loss)]
+                    let seconds = seconds.abs().trunc() as u64;
+                    html! {
+                        <>
+                        { "Trying to reconnect in " }
+                        { fmt::fmt_duration_seconds_long(seconds) }
+                        </>
+                    }
+                },
+            );
+            html! {
+                <div>
+                    <span>{ auto_reconnect_status }</span>
+                    <span>
+                        <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
+                            { "Reconnect Now" }
+                        </button>
+                    </span>
+                </div>
+            }
+        };
+        let svg_image = if self.websocket.is_before_first_connect() {
+            html! {}
+        } else {
+            html! {
+                <div class="disconnected col-s-2">
+                    { RED.render(svg::X_CROSS) }
+                </div>
+            }
         };
         html! {
-            <div>
-                <h3>{ "Connecting to server..."}</h3>
-                { reconnect_msg }
+            <div class="row">
+                { svg_image }
+                <div class="disconnected col-s-10">
+                    <span class="title">{ "Connecting to server..."}</span>
+                    { reconnect_msg }
+                </div>
             </div>
         }
     }
@@ -148,12 +172,12 @@ impl Model {
         let heartbeat_str = format!("Server last seen: {:?}", self.websocket.last_heartbeat());
         html! {
             <div>
-                <NumFetcher />
-                { self.view_playback() }
-                <br/>
+                <div class="row">
+                    { self.view_playback() }
+                    { self.view_album_art() }
+                </div>
                 <p style="font-size: 0.7em;">{ heartbeat_str }</p>
                 { self.view_errors() }
-                { self.view_album_art() }
             </div>
         }
     }
@@ -180,7 +204,7 @@ impl Model {
             });
         let image_src = format!("/v1/art?trick_reload_key={}", trick_reload_key);
         html! {
-            <div class="playback art">
+            <div class="playback art col-7 col-s-5">
                 <img src=image_src alt="Album Art" />
             </div>
         }
@@ -193,16 +217,18 @@ impl Model {
                 html! {}
             };
             html! {
-                <div>
-                    { meta_html }
-                    <PlaybackPosition
-                        position_info=PositionInfo::from((playback, playback_received))
-                        on_command=self.link.callback(MsgUser::SendCommand)
-                        />
+                <div class="playback container col-5 col-s-7">
                     <Controls
                         on_command=self.link.callback(MsgUser::SendCommand)
                         playback_state=self.playback.as_ref().map(|(playback, _)| playback.state)
                         />
+                    <div class="playback meta">
+                        { meta_html }
+                        <PlaybackPosition
+                            position_info=PositionInfo::from((playback, playback_received))
+                            on_command=self.link.callback(MsgUser::SendCommand)
+                            />
+                    </div>
                 </div>
             }
         } else {
@@ -345,143 +371,14 @@ impl Component for Model {
 
 use controls::Controls;
 mod controls {
+    use crate::svg;
     use shared::Command;
     use yew::prelude::*;
 
-    macro_rules! svg_paths {
-        (
-            struct $struct:ident { path, width, height }
-            $(
-                const $name:ident = {
-                    [ $width:expr , $height:expr $(,)?];
-                    $(
-                        $cmd:tt $($arg:expr),*
-                    );+ $(;)?
-                };
-            )+
-        ) => {
-            struct $struct {
-                path: &'static str,
-                width: &'static str,
-                height: &'static str,
-                view_box: &'static str,
-            }
-            $(
-                const $name : $struct = $struct {
-                    path: concat!(
-                        $(
-                            svg_paths!(@path_d $cmd $($arg),*)
-                        ),+
-                    ),
-                    width: stringify!($width),
-                    height: stringify!($height),
-                    view_box: svg_paths!(@str_cat 0, 0, $width, $height),
-                };
-            )+
-        };
-        (@path_d $cmd:tt $($arg:expr),*) => {
-            concat!(
-                svg_paths!(@valid_cmd $cmd $($arg),*),
-                svg_paths!(@str_cat $cmd, $($arg),*)
-            )
-        };
-        (@str_cat $($arg:tt),+ $(,)?) => {
-            concat!( $( " ", stringify!($arg)),+ )
-        };
-        (@valid_cmd M $_x:expr, $_y:expr) => { "" };
-        (@valid_cmd l $_x:expr, $_y:expr) => { "" };
-        (@valid_cmd h $_x:expr) => { "" };
-        (@valid_cmd v $_y:expr) => { "" };
-        (@valid_cmd z) => { "" };
-    }
-
-    svg_paths! {
-        struct SvgDef { path, width, height }
-        const SVG_PLAY = {
-            [12, 12]; // 1-10, with extra margin
-            // triangle (x,y = 1-10)
-            M 1, 1;
-            v 10;
-            l 10, -5;
-            z;
-        };
-        const SVG_PAUSE = {
-            [10, 10]; // 1-8, with extra margin
-            // left box (x = 1-4)
-            M 1, 1;
-            v 8;
-            h 3;
-            v -8;
-            z;
-            // right box (x = 6-9)
-            M 6, 1;
-            v 8;
-            h 3;
-            v -8;
-            z;
-        };
-        const SVG_NEXT = {
-            [16, 8]; // width 14, with extra margin, square axes
-            // right-ward triangle 1
-            M 1, 1;
-            v 6;
-            l 6, -3;
-            z;
-            // right-ward triangle 2
-            M 7, 1;
-            v 6;
-            l 6, -3;
-            z;
-            // right-most bar
-            M 13, 1;
-            v 6;
-            h 2;
-            v -6;
-            z;
-        };
-        const SVG_PREV = {
-            [16, 8]; // width 14, with extra margin, square axes
-            // left-ward triangle 1
-            M 15, 1;
-            v 6;
-            l -6, -3;
-            z;
-            // left-ward triangle 2
-            M 9, 1;
-            v 6;
-            l -6, -3;
-            z;
-            // left-most bar
-            M 3, 1;
-            v 6;
-            h -2;
-            v -6;
-            z;
-        };
-        const SVG_EMPTY = {
-            [1, 1];
-            M 0, 0;
-        };
-    }
-
-    struct SvgRenderer {
-        stroke: &'static str,
-        fill: &'static str,
-    }
-    impl SvgRenderer {
-        fn render(&self, svg_def: &SvgDef) -> Html {
-            html! {
-                <svg viewBox=svg_def.view_box>
-                    <path d=svg_def.path stroke=self.stroke fill=self.fill />
-                </svg>
-            }
-        }
-    }
-
-    const LABEL_PREVIOUS: (&str, &SvgDef) = ("Previous", &SVG_PREV);
-    const LABEL_NEXT: (&str, &SvgDef) = ("Next", &SVG_NEXT);
-    const LABEL_PLAY: (&str, &SvgDef) = ("Play", &SVG_PLAY);
-    const LABEL_PAUSE: (&str, &SvgDef) = ("Pause", &SVG_PAUSE);
+    const LABEL_PREVIOUS: (&str, &svg::Def) = ("Previous", svg::PREV);
+    const LABEL_NEXT: (&str, &svg::Def) = ("Next", svg::NEXT);
+    const LABEL_PLAY: (&str, &svg::Def) = ("Play", svg::PLAY);
+    const LABEL_PAUSE: (&str, &svg::Def) = ("Pause", svg::PAUSE);
 
     #[derive(Properties, Clone)]
     pub(crate) struct Properties {
@@ -501,7 +398,7 @@ mod controls {
             let is_paused = self.playback_state == Some(shared::PlaybackState::Paused);
             let is_playing = self.playback_state == Some(shared::PlaybackState::Playing);
             let fetch_button = |(text, svg_def), cmd: Command, enable| {
-                const BLACK: SvgRenderer = SvgRenderer {
+                const BLACK: svg::Renderer = svg::Renderer {
                     stroke: "none",
                     fill: "black",
                 };
@@ -562,6 +459,7 @@ mod controls {
 }
 
 use num_fetcher::NumFetcher;
+//TODO: deleteme, just a proof-of-concept, not useful anymore
 mod num_fetcher {
     use yew::format::{Json, Nothing};
     use yew::prelude::*;

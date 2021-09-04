@@ -111,11 +111,29 @@ impl Component for PlaybackPosition {
 pub(crate) enum PlaybackMeta {}
 impl PlaybackMeta {
     pub fn render(info: &PlaybackInfo) -> Html {
+        let artist = if info.artist.is_empty() {
+            "[No Artist]"
+        } else {
+            &info.artist
+        };
+        let album = if info.album.is_empty() {
+            "[No Album]"
+        } else {
+            &info.album
+        };
         html! {
-            <div class="playback meta">
-                <p>{ &info.title }</p>
-                <p>{ &info.artist }{ " - " }{ &info.album }</p>
-            </div>
+            <>
+                <div>
+                    <span class="title">{ &info.title }</span>
+                </div>
+                <div>
+                    <span>
+                        <span class="artist">{ artist }</span>
+                        { " \u{2014} " }
+                        <span class="album">{ album }</span>
+                    </span>
+                </div>
+            </>
         }
     }
 }

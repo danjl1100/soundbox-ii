@@ -21,6 +21,8 @@ pub(crate) struct Helper<T: Serialize, U: DeserializeOwned, B: Backoff> {
     /// Websocket task, and server heartbeat
     task: Option<(SocketTask<T, U>, Option<Time>)>,
     reconnector: ReconnectLogic<B>,
+    /// True prior to receiving first message
+    before_first_connect: bool,
 }
 impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
     pub(crate) fn new(
@@ -42,6 +44,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
             on_notification,
             task: None,
             reconnector,
+            before_first_connect: true,
         }
     }
     pub(crate) fn connect(&mut self) -> Result<(), WebSocketError> {
@@ -56,6 +59,9 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
         self.task
             .as_ref()
             .map_or(false, |(_, heartbeat)| heartbeat.is_some())
+    }
+    pub(crate) fn is_before_first_connect(&self) -> bool {
+        self.before_first_connect
     }
     pub(crate) fn last_heartbeat(&self) -> Option<Time> {
         match &self.task {
@@ -95,6 +101,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
         should_render
     }
     pub(crate) fn on_message(&mut self) {
+        self.before_first_connect = false;
         self.reconnector.reset_all();
         if let Some((_, heartbeat)) = &mut self.task {
             *heartbeat = Some(chrono::Utc::now());
