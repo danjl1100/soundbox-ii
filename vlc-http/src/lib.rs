@@ -28,6 +28,8 @@ mod command;
 
 mod request;
 
+mod http_client;
+
 pub use vlc_responses::{PlaybackStatus, PlaylistInfo};
 pub mod vlc_responses;
 
