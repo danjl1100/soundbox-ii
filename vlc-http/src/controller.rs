@@ -1,6 +1,9 @@
 //! Controller for VLC-HTTP, with associated helper types
 
-use crate::{Action, Credentials, PlaybackStatus, PlaylistInfo, Query};
+use crate::{
+    command::{ArtRequestIntent, RequestIntent},
+    Action, Credentials, Error, PlaybackStatus, PlaylistInfo, Query,
+};
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -51,21 +54,15 @@ impl Controller {
             let action = self.action_rx.recv().await.ok_or(Shutdown)?;
             match action {
                 Action::Command(command, result_tx) => {
-                    let request = command.into();
-                    let parse_result = response::try_parse(self.context.run(&request).await).await;
-                    let send_result = match parse_result {
-                        Ok(typed) => {
-                            self.update_status(typed);
-                            Ok(())
-                        }
-                        Err(e) => Err(e),
-                    };
+                    let parse_result = self.run_and_parse_text(command).await;
+                    let send_result = parse_result.map(|typed| {
+                        self.update_status(typed);
+                    });
                     Self::send_result(send_result, result_tx);
                 }
                 Action::QueryPlaybackStatus(result_tx) => {
-                    let request = Query::PlaybackStatus.into();
-                    let result = response::try_parse(self.context.run(&request).await).await;
-                    let cloned_result = match result {
+                    let parse_result = self.run_and_parse_text(Query::PlaybackStatus).await;
+                    let cloned_result = match parse_result {
                         Ok(response::Typed::Playback(playback)) => {
                             // (optional clone)
                             let cloned = result_tx.map(|tx| (Ok(playback.clone()), tx));
@@ -81,9 +78,8 @@ impl Controller {
                     }
                 }
                 Action::QueryPlaylistInfo(result_tx) => {
-                    let request = Query::PlaylistInfo.into();
-                    let result = response::try_parse(self.context.run(&request).await).await;
-                    let cloned_result = match result {
+                    let parse_result = self.run_and_parse_text(Query::PlaylistInfo).await;
+                    let cloned_result = match parse_result {
                         Ok(response::Typed::Playlist(playlist)) => {
                             // (optional clone)
                             let cloned = result_tx.map(|tx| (Ok(playlist.clone()), tx));
@@ -99,39 +95,21 @@ impl Controller {
                     }
                 }
                 Action::QueryArt(result_tx) => {
-                    let request = Query::Art.into();
-                    let result = self.context.run(&request).await;
-                    let response = match result {
-                        Ok((_, response)) => {
-                            // DETECT plain-text error message
-                            match response.headers().get("content-type") {
-                                Some(content_type) if content_type == "text/plain" => {
-                                    let body = response.into_body();
-                                    let content = hyper::body::to_bytes(body).await.map(|bytes| {
-                                        String::from_utf8(bytes.to_vec())
-                                            .expect("valid utf8 from VLC")
-                                    });
-                                    // use futures::StreamExt;
-                                    // let body = response.into_body()
-                                    //     .expect("it just works flawlessly")
-                                    //     .concat()
-                                    //     .and_then(|&c| std::str::from_utf8(c).map(str::to_owned))
-                                    //     .await;
-                                    match content {
-                                        Ok(text) => crate::Art::VlcError(text),
-                                        Err(e) => crate::Art::Error(e),
-                                    }
-                                }
-                                _ => crate::Art::Data(response),
-                            }
-                        }
-                        Err(e) => crate::Art::Error(e),
-                    };
-                    // NOT GENERIC ENOUGH:
-                    Self::send_result(response, result_tx);
+                    let request = ArtRequestIntent { id: None };
+                    let result = response::try_parse(self.context.run(&request).await).await;
+                    Self::send_result(result, result_tx);
                 }
             }
         }
+    }
+    async fn run_and_parse_text<'a, 'b, T>(&mut self, request: T) -> Result<response::Typed, Error>
+    where
+        RequestIntent<'a, 'b>: From<T>,
+    {
+        let request = RequestIntent::from(request);
+        let req_type = request.get_type();
+        let result = self.context.run(&request).await;
+        response::try_parse_body_text(result.map(|r| (req_type, r))).await
     }
     fn send_result<T>(result: T, result_tx: oneshot::Sender<T>)
     where
@@ -144,7 +122,6 @@ impl Controller {
     }
     fn update_status(&mut self, typed_response: response::Typed) {
         match typed_response {
-            response::Typed::Art => {}
             response::Typed::Playback(playback) => {
                 send_if_changed(&mut self.playback_status_tx, playback);
             }
@@ -171,35 +148,33 @@ fn replace_option_changed<T: PartialEq>(option: &mut Option<T>, new_value: T) ->
 }
 
 mod response {
-    use crate::{Error, PlaybackStatus, PlaylistInfo, RequestType, Time};
+    use crate::{command::TextResponseType, Error, PlaybackStatus, PlaylistInfo, Time};
     #[derive(Debug)]
     #[allow(clippy::large_enum_variant)]
-    pub(crate) enum Typed {
-        Art,
+    pub enum Typed {
         Playback(PlaybackStatus),
         Playlist(PlaylistInfo),
     }
 
-    pub(crate) async fn try_parse(
-        response: Result<(RequestType, hyper::Response<hyper::Body>), hyper::Error>,
+    pub async fn try_parse_body_text(
+        response: Result<(TextResponseType, hyper::Response<hyper::Body>), hyper::Error>,
     ) -> Result<Typed, Error> {
         let now = chrono::Utc::now();
         match response {
-            Ok((RequestType::Art, _)) => todo!(),
-            Ok((RequestType::Status, response)) => {
-                parse_typed(response, PlaybackStatus::from_slice, now)
+            Ok((TextResponseType::Status, response)) => {
+                parse_typed_body(response, PlaybackStatus::from_slice, now)
                     .await
                     .map(Typed::Playback)
             }
-            Ok((RequestType::Playlist, response)) => {
-                parse_typed(response, PlaylistInfo::from_slice, now)
+            Ok((TextResponseType::Playlist, response)) => {
+                parse_typed_body(response, PlaylistInfo::from_slice, now)
                     .await
                     .map(Typed::Playlist)
             }
             Err(e) => Err(e.into()),
         }
     }
-    pub(crate) async fn parse_typed<F, T, E>(
+    async fn parse_typed_body<F, T, E>(
         response: hyper::Response<hyper::Body>,
         map_fn: F,
         now: Time,
@@ -213,15 +188,36 @@ mod response {
             .map_err(|err| err.into())
             .and_then(|bytes| Ok(map_fn(&bytes, now)?))
     }
+
+    pub async fn try_parse(
+        result: Result<hyper::Response<hyper::Body>, hyper::Error>,
+    ) -> Result<Result<hyper::Response<hyper::Body>, String>, hyper::Error> {
+        match result {
+            Ok(response) => {
+                // DETECT plain-text error message
+                match response.headers().get("content-type") {
+                    Some(content_type) if content_type == "text/plain" => {
+                        let body = response.into_body();
+                        let content = hyper::body::to_bytes(body).await.map(|bytes| {
+                            String::from_utf8(bytes.to_vec()).expect("valid utf8 from VLC")
+                            //TODO can this become a Hyper error? no... :/
+                        });
+                        match content {
+                            Ok(text) => Ok(Err(text)),
+                            Err(e) => Err(e),
+                        }
+                    }
+                    _ => Ok(Ok(response)),
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
 }
 
 use context::Context;
 mod context {
-    use crate::{
-        auth::Credentials,
-        command::{RequestIntent, RequestType},
-        request::RequestInfo,
-    };
+    use crate::{auth::Credentials, request::RequestInfo};
     use hyper::{
         body::Body, client::Builder as ClientBuilder, Client as HyperClient,
         Request as HyperRequest,
@@ -236,13 +232,15 @@ mod context {
             let client = ClientBuilder::default().build_http();
             Self(client, credentials)
         }
-        pub async fn run<'a, 'b>(
+        pub async fn run<'a, 'b, T>(
             &self,
-            request_intent: &RequestIntent<'a, 'b>,
-        ) -> Result<(RequestType, hyper::Response<Body>), hyper::Error> {
-            let request_type = request_intent.get_type();
+            request_intent: T,
+        ) -> Result<hyper::Response<Body>, hyper::Error>
+        where
+            RequestInfo: From<T>,
+        {
             let request_info = RequestInfo::from(request_intent);
-            Ok((request_type, self.run_retry_loop(request_info).await?))
+            Ok(self.run_retry_loop(request_info).await?)
         }
         async fn run_retry_loop(
             &self,

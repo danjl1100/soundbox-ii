@@ -22,7 +22,8 @@ pub mod auth;
 pub use controller::Controller;
 pub mod controller;
 
-pub use command::{Command, Query, RequestType};
+pub use command::Command;
+use command::Query;
 mod command;
 
 mod request;
@@ -38,16 +39,13 @@ pub type ResultReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 /// Timestamp for receiving or sending a message
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
 
-/// Response for [`Query::Art`]
-#[derive(Debug)]
-pub enum Art {
-    /// Response
-    Data(hyper::Response<hyper::Body>),
-    /// Text error from VLC
-    VlcError(String),
-    /// Internal error
-    Error(hyper::Error),
-}
+/// Response for [`Action::QueryArt`].
+///
+/// # Variants:
+/// - `Err(hyper_err)` - internal error
+/// - `Ok(Err(message))` - text error from VLC
+/// - `Ok(Ok(respnse))` - Art response from VLC
+pub type Art = Result<Result<hyper::Response<hyper::Body>, String>, hyper::Error>;
 
 /// Action available to be `run()`, with `Sender<T>` for returning the result
 #[must_use]
@@ -55,37 +53,37 @@ pub enum Art {
 pub enum Action {
     /// [`Command`] with `Sender` for the result
     Command(Command, ResultSender<()>),
-    /// [`Query::PlaybackStatus`] with a `Sender` for the result
+    /// [`PlaybackStatus`] query, with a `Sender` for the result
     QueryPlaybackStatus(Option<ResultSender<PlaybackStatus>>),
-    /// [`Query::PlaylistInfo`] with a `Sender` for the result
+    /// [`PlaylistInfo`] query, with a `Sender` for the result
     QueryPlaylistInfo(Option<ResultSender<PlaylistInfo>>),
-    /// [`Query::Art`] with a `Sender` for the result
+    /// Art query, with a `Sender` for the result
     QueryArt(oneshot::Sender<Art>),
 }
 impl Action {
-    /// Constructs a [`Query::PlaybackStatus`] action variant, with no receiver
+    /// Constructs a [`PlaybackStatus`] action variant, with no receiver
     pub fn fetch_playback_status() -> Self {
         Self::QueryPlaybackStatus(None)
     }
-    /// Constructs a [`Query::PlaybackStatus`] action variant, with no receiver
+    /// Constructs a [`PlaybackStatus`] action variant, with no receiver
     pub fn fetch_playlist_info() -> Self {
         Self::QueryPlaylistInfo(None)
     }
-    /// Constructs a [`Query::PlaybackStatus`] action variant, with the corresponding
+    /// Constructs a [`PlaybackStatus`] action variant, with the corresponding
     /// [`ResultReceiver`]
     pub fn query_playback_status() -> (Self, ResultReceiver<PlaybackStatus>) {
         let (result_tx, result_rx) = oneshot::channel();
         let action = Self::QueryPlaybackStatus(Some(result_tx));
         (action, result_rx)
     }
-    /// Constructs a [`Query::PlaylistInfo`] action variant, with the corresponding
+    /// Constructs a [`PlaylistInfo`] action variant, with the corresponding
     /// [`ResultReceiver`]
     pub fn query_playlist_info() -> (Self, ResultReceiver<PlaylistInfo>) {
         let (result_tx, result_rx) = oneshot::channel();
         let action = Self::QueryPlaylistInfo(Some(result_tx));
         (action, result_rx)
     }
-    /// Constructs a [`Query::Art`] action variant, with the corresponding
+    /// Constructs a Art action variant, with the corresponding
     /// [`ResultReceiver`]
     pub fn query_art() -> (Self, oneshot::Receiver<Art>) {
         let (result_tx, result_rx) = oneshot::channel();
@@ -114,7 +112,7 @@ impl std::fmt::Display for Action {
             Self::Command(command, _) => write!(f, "{:?}", command),
             Self::QueryPlaybackStatus(_) => write!(f, "{:?}", Query::PlaybackStatus),
             Self::QueryPlaylistInfo(_) => write!(f, "{:?}", Query::PlaylistInfo),
-            Self::QueryArt(_) => write!(f, "{:?}", Query::Art),
+            Self::QueryArt(_) => write!(f, "QueryArt"),
         }
     }
 }

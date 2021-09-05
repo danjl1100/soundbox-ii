@@ -66,26 +66,26 @@ mod filter {
         async fn query_album_art(
             action_tx: ActionTx,
         ) -> Result<Response, (String, hyper::StatusCode)> {
-            let (action, result_rx) = vlc_http::Action::query_art();
-            action_tx.send(action).await.map_err(|e| {
-                let text = format!(r#"internal error with vlc_http module: "{}""#, e);
+            fn internal_err<E: std::fmt::Display>(err: E) -> (String, hyper::StatusCode) {
+                let text = format!(r#"internal error with vlc_http art module: "{}""#, err);
                 (text, hyper::StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-            match result_rx.await {
-                Ok(vlc_http::Art::Data(response)) => Ok(response),
-                Ok(vlc_http::Art::VlcError(message)) => {
-                    let text = format!(r#"VLC reported error: "{}" (missing album art?)"#, message);
-                    Err((text, hyper::StatusCode::NOT_FOUND))
-                }
-                Ok(vlc_http::Art::Error(e)) => {
-                    let text = format!("VLC-art Error: {}", e.to_string());
-                    Err((text, hyper::StatusCode::INTERNAL_SERVER_ERROR))
-                }
-                Err(e) => {
-                    let text = format!("Error: {}", e.to_string());
-                    Err((text, hyper::StatusCode::INTERNAL_SERVER_ERROR))
-                }
             }
+            #[allow(clippy::needless_pass_by_value)] // helpful, to clarify Result<_, String> signature
+            fn vlc_error(err_message: String) -> (String, hyper::StatusCode) {
+                let text = format!(
+                    r#"VLC reported error: "{}" (missing album art?)"#,
+                    err_message
+                );
+                (text, hyper::StatusCode::NOT_FOUND)
+            }
+            // send Action
+            let (action, result_rx) = vlc_http::Action::query_art();
+            action_tx.send(action).await.map_err(internal_err)?;
+            // poll result
+            let result = result_rx.await.map_err(internal_err)?;
+            // parse result
+            let response: Result<Response, String> = result.map_err(internal_err)?;
+            response.map_err(vlc_error)
         }
         fn build_response(
             (text, status_code): (String, hyper::StatusCode),

@@ -57,9 +57,7 @@ pub enum Command {
 }
 /// Information queries for VLC
 #[derive(Debug, Clone)]
-pub enum Query {
-    /// Album Artwork for the current item
-    Art,
+pub(crate) enum Query {
     /// Playback status for the current playing item
     PlaybackStatus,
     /// Playlist items
@@ -78,10 +76,9 @@ pub enum RepeatMode {
     One,
 }
 
-/// Type of a request
+/// Type of a response
 #[allow(missing_docs)]
-pub enum RequestType {
-    Art,
+pub enum TextResponseType {
     Status,
     Playlist,
 }
@@ -91,7 +88,6 @@ pub enum RequestType {
 #[allow(missing_docs)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum RequestIntent<'a, 'b> {
-    Art { id: Option<String> },
     Status(Option<CmdArgs<'a, 'b>>),
     Playlist(Option<CmdArgs<'a, 'b>>),
 }
@@ -107,14 +103,18 @@ impl<'a, 'b> RequestIntent<'a, 'b> {
             args: vec![],
         }))
     }
-    pub fn get_type(&self) -> RequestType {
+    pub fn get_type(&self) -> TextResponseType {
         match self {
-            Self::Art { .. } => RequestType::Art,
-            Self::Status(_) => RequestType::Status,
-            Self::Playlist(_) => RequestType::Playlist,
+            Self::Status(_) => TextResponseType::Status,
+            Self::Playlist(_) => TextResponseType::Playlist,
         }
     }
 }
+/// Query for Album Artwork for the current item
+pub(crate) struct ArtRequestIntent {
+    pub id: Option<String>,
+}
+
 pub(crate) fn encode_volume_val(percent: u16) -> u32 {
     let based_256 = f32::from(percent * 256) / 100.0;
     #[allow(clippy::cast_possible_truncation)] // target size comfortably fits `u16 * 2.56`
@@ -183,7 +183,6 @@ impl<'a, 'b> From<Command> for RequestIntent<'a, 'b> {
 impl<'a, 'b> From<Query> for RequestIntent<'a, 'b> {
     fn from(query: Query) -> Self {
         match query {
-            Query::Art => RequestIntent::Art { id: None },
             Query::PlaybackStatus => RequestIntent::Status(None),
             Query::PlaylistInfo => RequestIntent::Playlist(None),
         }
@@ -362,7 +361,6 @@ mod tests {
     }
     #[test]
     fn execs_simple_queries() {
-        assert_encode(Query::Art, RequestIntent::Art { id: None });
         assert_encode(Query::PlaybackStatus, RequestIntent::Status(None));
         assert_encode(Query::PlaylistInfo, RequestIntent::Playlist(None));
     }

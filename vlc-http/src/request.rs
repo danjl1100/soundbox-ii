@@ -1,6 +1,6 @@
 //! HTTP-specific primitives (interchange for test purposes)
 
-use super::command::{CmdArgs, RequestIntent};
+use super::command::{ArtRequestIntent, CmdArgs, RequestIntent};
 
 pub use http::{
     uri::{Authority, InvalidUri, PathAndQuery, Uri},
@@ -18,7 +18,6 @@ impl From<&RequestIntent<'_, '_>> for RequestInfo {
     fn from(intent: &RequestIntent<'_, '_>) -> Self {
         const STATUS_JSON: &str = "/requests/status.json";
         const PLAYLIST_JSON: &str = "/requests/playlist.json";
-        const ART: &str = "/art";
         let path_and_query = match intent {
             RequestIntent::Status(Some(CmdArgs { command, args })) => {
                 Self::format_cmd_args(STATUS_JSON, command, args)
@@ -26,14 +25,28 @@ impl From<&RequestIntent<'_, '_>> for RequestInfo {
             RequestIntent::Playlist(Some(CmdArgs { command, args })) => {
                 Self::format_cmd_args(PLAYLIST_JSON, command, args)
             }
-            RequestIntent::Art { id: Some(id) } => Self::format_path_query(
-                ART,
-                &Self::query_builder().append_pair("item", id).finish(),
-            ),
-            RequestIntent::Art { id: None } => PathAndQuery::from_static(ART),
             RequestIntent::Status(None) => PathAndQuery::from_static(STATUS_JSON),
             RequestIntent::Playlist(None) => PathAndQuery::from_static(PLAYLIST_JSON),
         };
+        Self {
+            path_and_query,
+            method: Method::GET,
+        }
+    }
+}
+impl From<&ArtRequestIntent> for RequestInfo {
+    fn from(intent: &ArtRequestIntent) -> Self {
+        const ART: &str = "/art";
+        let ArtRequestIntent { id } = intent;
+        let path_and_query = id.as_ref().map_or_else(
+            || PathAndQuery::from_static(ART),
+            |id| {
+                Self::format_path_query(
+                    ART,
+                    &Self::query_builder().append_pair("item", id).finish(),
+                )
+            },
+        );
         Self {
             path_and_query,
             method: Method::GET,
@@ -125,7 +138,7 @@ mod tests {
     }
     #[test]
     fn encodes_art_request() {
-        let empty = RequestIntent::Art { id: None };
+        let empty = ArtRequestIntent { id: None };
         assert_eq!(
             RequestInfo::from(&empty),
             RequestInfo {
@@ -134,7 +147,7 @@ mod tests {
             }
         );
         //
-        let with_id = RequestIntent::Art {
+        let with_id = ArtRequestIntent {
             id: Some("sentinel_ID".to_string()),
         };
         assert_eq!(

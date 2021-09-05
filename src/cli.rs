@@ -1,5 +1,5 @@
 use shared::Shutdown;
-use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, Query, ResultReceiver};
+use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -221,19 +221,14 @@ impl From<Command> for ActionAndReceiver {
         Self::Command(action, result_rx)
     }
 }
-impl From<Query> for ActionAndReceiver {
-    fn from(query: Query) -> Self {
-        match query {
-            Query::Art => todo!(),
-            Query::PlaybackStatus => {
-                let (action, result_rx) = Action::query_playback_status();
-                Self::QueryPlaybackStatus(action, result_rx)
-            }
-            Query::PlaylistInfo => {
-                let (action, result_rx) = Action::query_playlist_info();
-                Self::QueryPlaylistInfo(action, result_rx)
-            }
-        }
+impl ActionAndReceiver {
+    fn query_playback_status() -> Self {
+        let (action, result_rx) = Action::query_playback_status();
+        Self::QueryPlaybackStatus(action, result_rx)
+    }
+    fn query_playlist_info() -> Self {
+        let (action, result_rx) = Action::query_playlist_info();
+        Self::QueryPlaylistInfo(action, result_rx)
     }
 }
 fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, String> {
@@ -309,8 +304,8 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
                 .map_err(err_invalid_float),
             _ => Err("expected 1 argument (decimal)".to_string()),
         },
-        "." | QUERY_STATUS => Ok(Query::PlaybackStatus.into()),
-        "p" | QUERY_PLAYLIST => Ok(Query::PlaylistInfo.into()),
+        "." | QUERY_STATUS => Ok(ActionAndReceiver::query_playback_status()),
+        "p" | QUERY_PLAYLIST => Ok(ActionAndReceiver::query_playlist_info()),
         _ => Err(format!("Unknown command: \"{}\"", action_str)),
     }
 }
