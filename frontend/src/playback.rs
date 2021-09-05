@@ -1,4 +1,4 @@
-use crate::{fmt, Time};
+use crate::fmt;
 use shared::{Command, PlaybackInfo, PlaybackStatus};
 use yew::prelude::*;
 
@@ -12,10 +12,10 @@ pub(crate) struct PositionInfo {
     pub duration: u64,
     pub position: u64,
     pub playback_state: shared::PlaybackState,
-    pub received_time: Time,
+    pub received_time: shared::Time,
 }
-impl From<(&PlaybackStatus, &Time)> for PositionInfo {
-    fn from((playback, &received_time): (&PlaybackStatus, &Time)) -> Self {
+impl From<(&PlaybackStatus, &shared::Time)> for PositionInfo {
+    fn from((playback, &received_time): (&PlaybackStatus, &shared::Time)) -> Self {
         Self {
             duration: playback.duration,
             position: playback.time, //TODO: ELIMINATE this confusing equality: "time" != "position" (!!!)
@@ -29,7 +29,7 @@ impl PositionInfo {
         use std::convert::TryFrom;
         if self.playback_state == shared::PlaybackState::Playing {
             // playing, forecast current position
-            let forecast_time = (chrono::Utc::now() - self.received_time).num_seconds();
+            let forecast_time = (shared::time_now() - self.received_time).num_seconds();
             let forecast_time = u64::try_from(forecast_time).unwrap_or(0);
             (self.position + forecast_time).min(self.duration)
         } else {

@@ -9,11 +9,10 @@ edition = "2018"
 [dependencies]
 yew = "0.18"
 anyhow = "^1"
-shared = { path = "../shared", features = ["client"] }
+shared = { path = "../shared", features = ["client", "time_now", "wasm"] }
 serde = { version = "1.0.126" }
 serde_json = "1.0.64"
 gloo-timers = "0.2.1"
-chrono = { version = "0.4.19", features = ["wasmbind"] }
 backoff = { version = "0.3.0", features = ["wasm-bindgen"] }
 web-sys = { version = "0.3.53", features = ["Location", "Window"] }
 twox-hash = "1.6.1"

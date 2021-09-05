@@ -1,7 +1,7 @@
 //! HTTP-Client specific functions
 
 pub(crate) mod response {
-    use crate::{command::TextResponseType, Error, PlaybackStatus, PlaylistInfo, Time};
+    use crate::{command::TextResponseType, Error, PlaybackStatus, PlaylistInfo};
     #[derive(Debug)]
     #[allow(clippy::large_enum_variant)]
     pub enum Typed {
@@ -12,7 +12,7 @@ pub(crate) mod response {
     pub async fn try_parse_body_text(
         response: Result<(TextResponseType, hyper::Response<hyper::Body>), hyper::Error>,
     ) -> Result<Typed, Error> {
-        let now = chrono::Utc::now();
+        let now = shared::time_now();
         match response {
             Ok((TextResponseType::Status, response)) => {
                 parse_typed_body(response, PlaybackStatus::from_slice, now)
@@ -30,10 +30,10 @@ pub(crate) mod response {
     async fn parse_typed_body<F, T, E>(
         response: hyper::Response<hyper::Body>,
         map_fn: F,
-        now: Time,
+        now: shared::Time,
     ) -> Result<T, Error>
     where
-        F: FnOnce(&[u8], Time) -> Result<T, E>,
+        F: FnOnce(&[u8], shared::Time) -> Result<T, E>,
         Error: From<E>,
     {
         hyper::body::to_bytes(response.into_body())

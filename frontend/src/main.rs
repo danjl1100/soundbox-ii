@@ -17,7 +17,6 @@
 use backoff::ExponentialBackoff;
 use gloo_timers::callback::Interval;
 use yew::prelude::*;
-type Time = chrono::DateTime<chrono::offset::Utc>;
 
 mod fmt;
 
@@ -56,7 +55,7 @@ type WebsocketHelper =
     websocket::Helper<shared::ClientRequest, shared::ServerResponse, ExponentialBackoff>;
 struct Model {
     websocket: WebsocketHelper,
-    playback: Option<(shared::PlaybackStatus, Time)>,
+    playback: Option<(shared::PlaybackStatus, shared::Time)>,
     errors: Vec<String>,
     location: web_sys::Location,
     _interval: Interval,
@@ -329,7 +328,7 @@ impl Model {
                         //true
                     }
                     shared::ServerResponse::PlaybackStatus(playback) => {
-                        let now = chrono::Utc::now();
+                        let now = shared::time_now();
                         self.playback = Some((playback, now));
                         //true
                     }

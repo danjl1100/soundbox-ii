@@ -38,9 +38,6 @@ pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
 /// Receiver for an action result
 pub type ResultReceiver<T> = oneshot::Receiver<Result<T, Error>>;
 
-/// Timestamp for receiving or sending a message
-pub type Time = chrono::DateTime<chrono::offset::Utc>;
-
 /// Response for [`Action::QueryArt`].
 ///
 /// # Variants:

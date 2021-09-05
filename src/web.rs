@@ -159,7 +159,7 @@ mod web_socket {
                         self.handle_message(message).await
                     }
                     Ok(_) = self.config.playback_status_rx.changed() => {
-                        let now = chrono::Utc::now();
+                        let now = shared::time_now();
                         let playback = (*self.config.playback_status_rx.borrow())
                             .as_ref()
                             .map(|s| vlc_http::PlaybackStatus::clone_to_shared(s, now))

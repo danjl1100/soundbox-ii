@@ -1,4 +1,3 @@
-use crate::Time;
 use backoff::backoff::Backoff;
 use gloo_timers::callback::Timeout;
 use serde::{de::DeserializeOwned, Serialize};
@@ -19,7 +18,7 @@ pub(crate) struct Helper<T: Serialize, U: DeserializeOwned, B: Backoff> {
     on_message: Callback<Json<anyhow::Result<U>>>,
     on_notification: Callback<Notify>,
     /// Websocket task, and server heartbeat
-    task: Option<(SocketTask<T, U>, Option<Time>)>,
+    task: Option<(SocketTask<T, U>, Option<shared::Time>)>,
     reconnector: ReconnectLogic<B>,
     /// True prior to receiving first message
     before_first_connect: bool,
@@ -63,7 +62,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
     pub(crate) fn is_before_first_connect(&self) -> bool {
         self.before_first_connect
     }
-    pub(crate) fn last_heartbeat(&self) -> Option<Time> {
+    pub(crate) fn last_heartbeat(&self) -> Option<shared::Time> {
         match &self.task {
             Some((_, Some(heartbeat))) => Some(*heartbeat),
             _ => None,
@@ -104,7 +103,7 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
         self.before_first_connect = false;
         self.reconnector.reset_all();
         if let Some((_, heartbeat)) = &mut self.task {
-            *heartbeat = Some(chrono::Utc::now());
+            *heartbeat = Some(shared::time_now());
         }
     }
 }

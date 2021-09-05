@@ -35,6 +35,16 @@ pub struct Shutdown;
 /// Un-instantiable type
 pub enum Never {}
 
+/// Timestamp for receiving or sending a message
+pub type Time = chrono::DateTime<chrono::offset::Utc>;
+
+#[cfg(feature = "time_now")]
+/// Current timestamp
+#[must_use]
+pub fn time_now() -> Time {
+    chrono::Utc::now()
+}
+
 /// Testing "awesome number" type
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Number {

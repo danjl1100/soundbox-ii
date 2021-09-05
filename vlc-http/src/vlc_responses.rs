@@ -4,7 +4,8 @@
 
 pub use playback::{PlaybackInfo, PlaybackState, PlaybackStatus};
 mod playback {
-    use crate::{command, Time};
+    use crate::command;
+    use shared::Time;
 
     use serde::Deserialize;
     use std::collections::HashMap;
@@ -202,8 +203,8 @@ mod playback {
 
 pub use playlist::{PlaylistInfo, PlaylistItem};
 mod playlist {
-    use crate::Time;
     use serde::Deserialize;
+    use shared::Time;
     use std::convert::TryInto;
 
     /// Playlist information
@@ -324,7 +325,7 @@ mod playlist {
 
 mod external_conversions {
     use super::{PlaybackInfo, PlaybackState, PlaybackStatus};
-    use crate::Time;
+    use shared::Time;
     impl PlaybackStatus {
         /// Clones the [`PlaybackStatus`] to a [`shared::PlaybackStatus`], modifying all
         /// time values as appropriate for the given now [`Time`].
