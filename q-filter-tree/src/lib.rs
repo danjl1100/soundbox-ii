@@ -27,7 +27,10 @@ pub use order::Type as OrderType;
 pub mod order;
 
 mod iter;
-mod serde;
+mod serde {
+    mod node_path;
+    mod tree;
+}
 
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
