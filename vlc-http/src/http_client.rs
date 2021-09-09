@@ -111,7 +111,13 @@ mod context {
             };
             backoff::future::retry(backoff_config, || async {
                 let request = self.request_from(request.clone()); //TODO: avoid expensive clone?
-                Ok(self.0.request(request).await?)
+                println!("  -> {}: {}", request.method(), request.uri());
+                let result = self.0.request(request).await;
+                match &result {
+                    Ok(response) => println!("    <- {:?}", response.status()),
+                    Err(error) => println!("  !! {:?}", error),
+                }
+                Ok(result?)
             })
             .await
         }

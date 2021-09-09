@@ -187,7 +187,6 @@ mod web_socket {
                 println!("ping-pong");
                 return None;
             };
-            dbg!(&msg);
             let response = match serde_json::from_str(msg) {
                 Ok(request) => self.process_request(request).await,
                 Err(err) => {
@@ -210,7 +209,6 @@ mod web_socket {
             match request {
                 ClientRequest::Heartbeat => ServerResponse::Heartbeat,
                 ClientRequest::Command(command) => {
-                    dbg!(&command);
                     let command = vlc_http::Command::from(command);
                     self.process_action(command).await
                 }
@@ -225,7 +223,6 @@ mod web_socket {
             match send_result {
                 Ok(()) => {
                     let recv_result = result_rx.await;
-                    dbg!(&recv_result);
                     match recv_result {
                         Ok(result) => ServerResponse::from_result(result),
                         Err(recv_err) => ServerResponse::from_result(Err(recv_err)),

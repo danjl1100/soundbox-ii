@@ -124,10 +124,10 @@ mod playback {
         }
     }
     cheap_float_eq! {
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Default, Clone, Copy)]
         pub struct Position(pub f64);
 
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Default, Clone, Copy)]
         pub struct Rate(pub f64);
     }
 
@@ -173,7 +173,7 @@ mod playback {
         meta: PlaybackInfo,
     }
     /// Information about the current (playing/paused) item
-    #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
     pub struct PlaybackInfo {
         #[serde(default)]
@@ -416,6 +416,46 @@ mod external_conversions {
                 track_number: track_number.clone(),
                 track_total: track_total.clone(),
                 playlist_item_id: *playlist_item_id,
+            }
+        }
+    }
+    #[cfg(test)]
+    mod for_tests {
+        use super::{super::PlaylistInfo, PlaybackStatus};
+        fn fake_received_time() -> shared::Time {
+            shared::time_from_secs(0)
+        }
+        impl Default for PlaybackStatus {
+            fn default() -> Self {
+                PlaybackStatus {
+                    apiversion: Default::default(),
+                    information: Default::default(),
+                    duration: Default::default(),
+                    is_loop: Default::default(),
+                    position: Default::default(),
+                    is_random: Default::default(),
+                    rate: Default::default(),
+                    is_repeat: Default::default(),
+                    state: Default::default(),
+                    time: Default::default(),
+                    version: Default::default(),
+                    volume_percent: Default::default(),
+                    received_time: fake_received_time(),
+                }
+            }
+        }
+        impl Default for super::PlaybackState {
+            fn default() -> Self {
+                Self::Playing
+            }
+        }
+        //
+        impl Default for PlaylistInfo {
+            fn default() -> Self {
+                PlaylistInfo {
+                    items: vec![],
+                    received_time: fake_received_time(),
+                }
             }
         }
     }

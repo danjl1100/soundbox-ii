@@ -8,6 +8,9 @@ use crate::{
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, oneshot, watch};
 
+use rules::Rules;
+mod rules;
+
 /// Configuration for [`Controller`]
 pub struct Config {
     /// Receiver for [`Action`]s
@@ -25,6 +28,7 @@ pub struct Controller {
     playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
     playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
     context: Context,
+    rules: Rules,
 }
 impl Config {
     /// Creates a [`Controller`] form the specified [`Config`]
@@ -36,11 +40,17 @@ impl Config {
             credentials,
         } = self;
         let context = Context::new(credentials);
+        let rules = {
+            let playback_status = playback_status_tx.subscribe();
+            let playlist_info = playlist_info_tx.subscribe();
+            Rules::new(playback_status, playlist_info)
+        };
         Controller {
             action_rx,
             playback_status_tx,
             playlist_info_tx,
             context,
+            rules,
         }
     }
 }
@@ -52,54 +62,77 @@ impl Controller {
     ///
     pub async fn run(mut self) -> Result<Never, Shutdown> {
         loop {
-            let action = self.action_rx.recv().await.ok_or(Shutdown)?;
-            match action {
-                Action::Command(command, result_tx) => {
-                    let parse_result = self.run_and_parse_text(command).await;
-                    let send_result = parse_result.map(|typed| {
-                        self.update_status(typed);
-                    });
-                    Self::send_result(send_result, result_tx);
-                }
-                Action::QueryPlaybackStatus(result_tx) => {
-                    let parse_result = self.run_and_parse_text(Query::PlaybackStatus).await;
-                    let cloned_result = match parse_result {
-                        Ok(response::Typed::Playback(playback)) => {
-                            // (optional clone)
-                            let cloned = result_tx.map(|tx| (Ok(playback.clone()), tx));
-                            // send status
-                            self.update_status(response::Typed::Playback(playback));
-                            cloned
-                        }
-                        Err(e) => result_tx.map(|tx| (Err(e), tx)),
-                        Ok(_) => unreachable!("PlaybackRequest should be type Playback"),
-                    };
-                    if let Some((result, tx)) = cloned_result {
-                        Self::send_result(result, tx);
+            let decision_time = shared::time_now();
+            dbg!(decision_time);
+            let action = {
+                tokio::select! {
+                    biased; // prioritize External over Internal actions
+                    external_action = self.action_rx.recv() => {
+                        external_action.ok_or(Shutdown)?
+                    }
+                    Some(internal_action) = self.rules.next_action(decision_time) => {
+                        internal_action
+                    }
+                    else => {
+                        return Err(Shutdown);
                     }
                 }
-                Action::QueryPlaylistInfo(result_tx) => {
-                    let parse_result = self.run_and_parse_text(Query::PlaylistInfo).await;
-                    let cloned_result = match parse_result {
-                        Ok(response::Typed::Playlist(playlist)) => {
-                            // (optional clone)
-                            let cloned = result_tx.map(|tx| (Ok(playlist.clone()), tx));
-                            // send status
-                            self.update_status(response::Typed::Playlist(playlist));
-                            cloned
-                        }
-                        Err(e) => result_tx.map(|tx| (Err(e), tx)),
-                        Ok(_) => unreachable!("PlaylistInfo should be type Playlist"),
-                    };
-                    if let Some((result, tx)) = cloned_result {
-                        Self::send_result(result, tx);
+            };
+            let action_time = shared::time_now();
+            if let Action::Command(command, _) = &action {
+                self.rules.notify_command(action_time, command);
+            }
+            println!("VLC-RUN {}", &action);
+            self.run_action(action).await;
+        }
+    }
+    async fn run_action(&mut self, action: Action) {
+        match action {
+            Action::Command(command, result_tx) => {
+                let parse_result = self.run_and_parse_text(command).await;
+                let send_result = parse_result.map(|typed| {
+                    self.update_status(typed);
+                });
+                Self::send_result(send_result, result_tx);
+            }
+            Action::QueryPlaybackStatus(result_tx) => {
+                let parse_result = self.run_and_parse_text(Query::PlaybackStatus).await;
+                let cloned_result = match parse_result {
+                    Ok(response::Typed::Playback(playback)) => {
+                        // (optional clone)
+                        let cloned = result_tx.map(|tx| (Ok(playback.clone()), tx));
+                        // send status
+                        self.update_status(response::Typed::Playback(playback));
+                        cloned
                     }
+                    Err(e) => result_tx.map(|tx| (Err(e), tx)),
+                    Ok(_) => unreachable!("PlaybackRequest should be type Playback"),
+                };
+                if let Some((result, tx)) = cloned_result {
+                    Self::send_result(result, tx);
                 }
-                Action::QueryArt(result_tx) => {
-                    let request = ArtRequestIntent { id: None };
-                    let result = response::try_parse(self.context.run(&request).await).await;
-                    Self::send_result(result, result_tx);
+            }
+            Action::QueryPlaylistInfo(result_tx) => {
+                let parse_result = self.run_and_parse_text(Query::PlaylistInfo).await;
+                let cloned_result = match parse_result {
+                    Ok(response::Typed::Playlist(playlist)) => {
+                        // (optional clone)
+                        let cloned = result_tx.map(|tx| (Ok(playlist.clone()), tx));
+                        // send status
+                        self.update_status(response::Typed::Playlist(playlist));
+                        cloned
+                    }
+                    Err(e) => result_tx.map(|tx| (Err(e), tx)),
+                    Ok(_) => unreachable!("PlaylistInfo should be type Playlist"),
+                };
+                if let Some((result, tx)) = cloned_result {
+                    Self::send_result(result, tx);
                 }
+            }
+            Action::QueryArt(result_tx) => {
+                let request = ArtRequestIntent { id: None };
+                let result = response::try_parse(self.context.run(&request).await).await;
+                Self::send_result(result, result_tx);
             }
         }
     }

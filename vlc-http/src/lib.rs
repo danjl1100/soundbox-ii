@@ -115,6 +115,24 @@ impl std::fmt::Display for Action {
         }
     }
 }
+impl std::cmp::PartialEq for Action {
+    fn eq(&self, rhs: &Self) -> bool {
+        match (self, rhs) {
+            (Self::Command(..), Self::Command(..))
+            | (Self::QueryPlaybackStatus(_), Self::QueryPlaybackStatus(_))
+            | (Self::QueryPlaylistInfo(_), Self::QueryPlaylistInfo(_))
+            | (Self::QueryArt(_), Self::QueryArt(_)) => true,
+            (
+                Self::Command(..)
+                | Self::QueryPlaybackStatus(_)
+                | Self::QueryPlaylistInfo(_)
+                | Self::QueryArt(_),
+                _,
+            ) => false,
+        }
+    }
+}
+impl std::cmp::Eq for Action {}
 
 /// Error from the `run()` function
 #[derive(Debug)]

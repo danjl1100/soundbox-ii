@@ -37,12 +37,21 @@ pub enum Never {}
 
 /// Timestamp for receiving or sending a message
 pub type Time = chrono::DateTime<chrono::offset::Utc>;
+/// Difference between timestamps
+pub type TimeDifference = chrono::Duration;
 
 #[cfg(feature = "time_now")]
 /// Current timestamp
 #[must_use]
 pub fn time_now() -> Time {
     chrono::Utc::now()
+}
+
+/// Timestamp from specified seconds sinch epoch (useful for tests)
+#[must_use]
+pub fn time_from_secs(secs: i64) -> Time {
+    use chrono::{offset::Utc, DateTime, NaiveDateTime};
+    DateTime::from_utc(NaiveDateTime::from_timestamp(secs, 0), Utc)
 }
 
 /// Testing "awesome number" type
