@@ -2,40 +2,29 @@ use crate::{Action, Command, PlaybackStatus, PlaylistInfo};
 use shared::{Time, TimeDifference};
 use std::cmp::Ordering;
 use std::time::Duration;
-use tokio::sync::watch;
 
 type Need = Option<(Option<Duration>, Action)>;
 fn ord_need(lhs: &Need, rhs: &Need) -> Ordering {
     use Ordering::{Equal, Greater, Less};
     match (lhs, rhs) {
         (None, None) => Equal,
-        (Some(_), None) => Less,
+        (Some(_), None) => Less, // Some(need) is always sooner
         (None, Some(_)) => Greater,
         (Some(lhs), Some(rhs)) => match (lhs, rhs) {
             ((None, _), (None, _)) => Equal,
-            ((Some(_), _), (None, _)) => Less,
-            ((None, _), (Some(_), _)) => Greater,
+            ((Some(_), _), (None, _)) => Greater, // Some(duration) is always LATER! than no delay
+            ((None, _), (Some(_), _)) => Less,
             ((Some(lhs), _), (Some(rhs), _)) => lhs.cmp(rhs),
         },
     }
 }
 
-type Playback = Option<PlaybackStatus>;
-type Playlist = Option<PlaylistInfo>;
-
 pub(crate) struct Rules {
-    playback_status: watch::Receiver<Playback>,
-    playlist_info: watch::Receiver<Playlist>,
     rules: Vec<Box<dyn Rule>>,
 }
 impl Rules {
-    pub fn new(
-        playback_status: watch::Receiver<Playback>,
-        playlist_info: watch::Receiver<Playlist>,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
-            playback_status,
-            playlist_info,
             rules: vec![
                 Box::new(FillPlayback::default()),
                 Box::new(FillPlaylist::default()),
@@ -54,17 +43,20 @@ impl Rules {
         Some(action)
     }
     fn calc_immediate_need(&mut self, now: Time) -> Need {
-        //  (1) calculate all `Need`s (TODO: can short-circuit on first no-delay item)
-        let needs = {
-            let playback = self.playback_status.borrow().clone(); //TODO: remove this expensive clone?
-            let playlist = self.playlist_info.borrow().clone();
-            self.rules.iter_mut().map(move |rule| {
-                rule.notify_info(&playback, &playlist);
-                rule.get_need(now)
-            })
-        };
+        //  (1) calculate all needs
+        let needs = self.rules.iter().map(move |rule| rule.get_need(now));
         //  (2) pick most-immediate option
         needs.min_by(ord_need).flatten()
+    }
+    pub fn notify_playback(&mut self, playback: &PlaybackStatus) {
+        for rule in &mut self.rules {
+            rule.notify_playback(playback);
+        }
+    }
+    pub fn notify_playlist(&mut self, playlist: &PlaylistInfo) {
+        for rule in &mut self.rules {
+            rule.notify_playlist(playlist);
+        }
     }
     pub fn notify_command(&mut self, now: Time, cmd: &Command) {
         for rule in &mut self.rules {
@@ -74,16 +66,17 @@ impl Rules {
 }
 
 trait Rule: Send + Sync {
-    fn notify_info(&mut self, playback: &Playback, playlist: &Playlist);
     fn get_need(&self, now: Time) -> Need;
+    fn notify_playback(&mut self, _playback: &PlaybackStatus) {}
+    fn notify_playlist(&mut self, _playlist: &PlaylistInfo) {}
     fn notify_command(&mut self, _now: Time, _command: &Command) {}
 }
 
 #[derive(Default)]
 struct FillPlayback(Option<()>);
 impl Rule for FillPlayback {
-    fn notify_info(&mut self, playback: &Playback, _: &Playlist) {
-        self.0 = playback.as_ref().map(|_| ());
+    fn notify_playback(&mut self, _: &PlaybackStatus) {
+        self.0 = Some(());
     }
     fn get_need(&self, _: Time) -> Need {
         if self.0.is_none() {
@@ -97,8 +90,8 @@ impl Rule for FillPlayback {
 #[derive(Default)]
 struct FillPlaylist(Option<()>);
 impl Rule for FillPlaylist {
-    fn notify_info(&mut self, _: &Playback, playlist: &Playlist) {
-        self.0 = playlist.as_ref().map(|_| ());
+    fn notify_playlist(&mut self, _: &PlaylistInfo) {
+        self.0 = Some(());
     }
     fn get_need(&self, _: Time) -> Need {
         if self.0.is_none() {
@@ -119,30 +112,27 @@ impl FetchAfterSeek {
     const DELAY_MILLIS: u64 = 50;
 }
 impl Rule for FetchAfterSeek {
-    fn notify_info(&mut self, playback: &Playback, _: &Playlist) {
-        let item_time_and_info = playback.as_ref().map(|playback| {
-            let received_time = playback.received_time;
+    fn notify_playback(&mut self, playback: &PlaybackStatus) {
+        let item_time = playback.received_time;
+        let item_info = {
             let duration = playback.duration;
             let item_id = playback
                 .information
                 .as_ref()
                 .and_then(|info| info.playlist_item_id);
-            (received_time, (duration, item_id))
-        });
-        self.change_time = match (item_time_and_info, self.item_info.take()) {
-            (Some((item_time, item_info)), Some(prev_item_info)) => {
-                if item_info == prev_item_info {
-                    println!("IDENTICAL: {:?} ===> {:?}", prev_item_info, item_info);
-                    self.change_time
-                } else {
-                    println!("CHANGED: {:?} ===> {:?}", prev_item_info, item_info);
-                    Some(item_time)
-                }
-            }
-            (None, _) => None,
-            (Some((item_change_time, _)), None) => Some(item_change_time),
+            (duration, item_id)
         };
-        self.item_info = item_time_and_info.map(|(_time, info)| info);
+        self.change_time = match self.item_info.take() {
+            Some(prev_item_info) if prev_item_info == item_info => {
+                println!("IDENTICAL: {:?} ===> {:?}", prev_item_info, item_info);
+                self.change_time
+            }
+            prev => {
+                println!("CHANGED: {:?} ===> {:?}", prev, item_info);
+                Some(item_time)
+            }
+        };
+        self.item_info = Some(item_info);
     }
     fn get_need(&self, now: Time) -> Need {
         match (&self.seek_time, &self.change_time) {
@@ -196,6 +186,32 @@ mod tests {
     fn some_millis(millis: u64, action: Action) -> Need {
         Some((Some(Duration::from_millis(millis)), action))
     }
+    fn some_millis_action(millis: u64) -> Need {
+        some_millis(millis, Action::fetch_playlist_info())
+    }
+    fn immediate_action() -> Need {
+        immediate(Action::fetch_playlist_info())
+    }
+
+    #[test]
+    fn sorts_need_before_none() {
+        let some_need = some_millis_action(1);
+        assert_eq!(ord_need(&some_need, &None), Ordering::Less);
+        assert_eq!(ord_need(&None, &some_need), Ordering::Greater);
+    }
+    #[test]
+    fn sorts_need_immediate_before_delay() {
+        let now = immediate_action();
+        let sooner = some_millis_action(5);
+        let later = some_millis_action(50);
+        assert_eq!(ord_need(&now, &sooner), Ordering::Less);
+        assert_eq!(ord_need(&sooner, &later), Ordering::Less);
+        assert_eq!(ord_need(&now, &later), Ordering::Less);
+        //
+        assert_eq!(ord_need(&sooner, &now), Ordering::Greater);
+        assert_eq!(ord_need(&later, &sooner), Ordering::Greater);
+        assert_eq!(ord_need(&later, &now), Ordering::Greater);
+    }
 
     #[test]
     fn fills_playback() {
@@ -206,22 +222,10 @@ mod tests {
             uut.get_need(dummy_time),
             immediate(Action::fetch_playback_status())
         );
-        // cleared -> fetch
-        uut.notify_info(&None, &None);
-        assert_eq!(
-            uut.get_need(dummy_time),
-            immediate(Action::fetch_playback_status())
-        );
         // set -> no action
         let playback = PlaybackStatus::default();
-        uut.notify_info(&Some(playback), &None);
+        uut.notify_playback(&playback);
         assert_eq!(uut.get_need(dummy_time), None);
-        // cleared -> fetch
-        uut.notify_info(&None, &None);
-        assert_eq!(
-            uut.get_need(dummy_time),
-            immediate(Action::fetch_playback_status())
-        );
     }
     #[test]
     fn fills_playlist() {
@@ -232,29 +236,14 @@ mod tests {
             uut.get_need(dummy_time),
             immediate(Action::fetch_playlist_info())
         );
-        // cleared -> fetch
-        uut.notify_info(&None, &None);
-        assert_eq!(
-            uut.get_need(dummy_time),
-            immediate(Action::fetch_playlist_info())
-        );
         // set -> no action
         let playlist = PlaylistInfo::default();
-        uut.notify_info(&None, &Some(playlist));
+        uut.notify_playlist(&playlist);
         assert_eq!(uut.get_need(dummy_time), None);
-        // cleared -> fetch
-        uut.notify_info(&None, &None);
-        assert_eq!(
-            uut.get_need(dummy_time),
-            immediate(Action::fetch_playlist_info())
-        );
     }
     fn assert_none_initial_cleared(uut: &mut dyn Rule) {
         let time_0 = time(0);
         // initial state -> no output
-        assert_eq!(uut.get_need(time_0), None);
-        // cleared state -> no output
-        uut.notify_info(&None, &None);
         assert_eq!(uut.get_need(time_0), None);
     }
     #[test]
@@ -262,66 +251,51 @@ mod tests {
         let mut fas = FetchAfterSeek::default();
         assert_eq!(fas.change_time, None);
         // notify [first] (t=0)
-        fas.notify_info(&Some(PlaybackStatus::default()), &None);
+        fas.notify_playback(&PlaybackStatus::default());
         assert_eq!(fas.change_time, Some(time(0)));
         // notify [duration 0->1] (t=1)
-        fas.notify_info(
-            &Some(PlaybackStatus {
-                received_time: time(1),
-                duration: 2,
-                ..PlaybackStatus::default()
-            }),
-            &None,
-        );
+        fas.notify_playback(&PlaybackStatus {
+            received_time: time(1),
+            duration: 2,
+            ..PlaybackStatus::default()
+        });
         assert_eq!(fas.change_time, Some(time(1)));
         // notify [identical] (t=1, still)
-        fas.notify_info(
-            &Some(PlaybackStatus {
-                received_time: time(3),
-                duration: 2,
-                ..PlaybackStatus::default()
-            }),
-            &None,
-        );
+        fas.notify_playback(&PlaybackStatus {
+            received_time: time(3),
+            duration: 2,
+            ..PlaybackStatus::default()
+        });
         assert_eq!(fas.change_time, Some(time(1)));
         // notify [info None->Some(id=None)] (t=1, still)
-        fas.notify_info(
-            &Some(PlaybackStatus {
-                received_time: time(4),
-                duration: 2,
-                information: Some(PlaybackInfo::default()),
-                ..PlaybackStatus::default()
-            }),
-            &None,
-        );
+        fas.notify_playback(&PlaybackStatus {
+            received_time: time(4),
+            duration: 2,
+            information: Some(PlaybackInfo::default()),
+            ..PlaybackStatus::default()
+        });
         assert_eq!(fas.change_time, Some(time(1)));
         // notify [id None -> Some(10)] (t=5)
-        fas.notify_info(
-            &Some(PlaybackStatus {
-                received_time: time(5),
-                duration: 2,
-                information: Some(PlaybackInfo {
-                    playlist_item_id: Some(10),
-                    ..PlaybackInfo::default()
-                }),
-                ..PlaybackStatus::default()
+        fas.notify_playback(&PlaybackStatus {
+            received_time: time(5),
+            duration: 2,
+            information: Some(PlaybackInfo {
+                playlist_item_id: Some(10),
+                ..PlaybackInfo::default()
             }),
-            &None,
-        );
+            ..PlaybackStatus::default()
+        });
         assert_eq!(fas.change_time, Some(time(5)));
         // notify [id Some(10) -> Some(22)] (t=6)
-        fas.notify_info(
-            &Some(PlaybackStatus {
-                received_time: time(6),
-                duration: 2,
-                information: Some(PlaybackInfo {
-                    playlist_item_id: Some(22),
-                    ..PlaybackInfo::default()
-                }),
-                ..PlaybackStatus::default()
+        fas.notify_playback(&PlaybackStatus {
+            received_time: time(6),
+            duration: 2,
+            information: Some(PlaybackInfo {
+                playlist_item_id: Some(22),
+                ..PlaybackInfo::default()
             }),
-            &None,
-        );
+            ..PlaybackStatus::default()
+        });
         assert_eq!(fas.change_time, Some(time(6)));
     }
     #[test]

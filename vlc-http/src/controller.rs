@@ -40,11 +40,7 @@ impl Config {
             credentials,
         } = self;
         let context = Context::new(credentials);
-        let rules = {
-            let playback_status = playback_status_tx.subscribe();
-            let playlist_info = playlist_info_tx.subscribe();
-            Rules::new(playback_status, playlist_info)
-        };
+        let rules = Rules::new();
         Controller {
             action_rx,
             playback_status_tx,
@@ -155,28 +151,41 @@ impl Controller {
         }
     }
     fn update_status(&mut self, typed_response: response::Typed) {
+        let Self {
+            rules,
+            playback_status_tx,
+            playlist_info_tx,
+            ..
+        } = self;
         match typed_response {
             response::Typed::Playback(playback) => {
-                send_if_changed(&mut self.playback_status_tx, playback);
+                send_if_changed(playback, playback_status_tx, move |p| {
+                    rules.notify_playback(p);
+                });
             }
             response::Typed::Playlist(playlist) => {
-                send_if_changed(&mut self.playlist_info_tx, playlist);
+                send_if_changed(playlist, playlist_info_tx, move |p| {
+                    rules.notify_playlist(p);
+                });
             }
         }
     }
 }
-fn send_if_changed<T: PartialEq + Clone>(sender: &mut watch::Sender<Option<T>>, new_value: T) {
-    if !sender.is_closed() {
-        let mut option = sender.borrow().clone();
-        let should_send = replace_option_changed(&mut option, new_value);
-        if should_send {
-            let _ignore_err = sender.send(option);
+fn send_if_changed<T, F>(new_value: T, sender: &mut watch::Sender<Option<T>>, notify_fn: F)
+where
+    T: PartialEq + Clone,
+    F: FnOnce(&T),
+{
+    match &*sender.borrow() {
+        Some(prev) if *prev == new_value => {
+            // identical, no change to publish
+            return;
         }
+        _ => {}
     }
-}
-fn replace_option_changed<T: PartialEq>(option: &mut Option<T>, new_value: T) -> bool {
-    let identical = matches!(option, Some(prev) if *prev == new_value);
-    let changed = !identical;
-    *option = Some(new_value);
-    changed
+    // changed!
+    notify_fn(&new_value);
+    if !sender.is_closed() {
+        let _ignore_err = sender.send(Some(new_value));
+    }
 }
