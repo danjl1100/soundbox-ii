@@ -39,15 +39,26 @@ impl PositionInfo {
     }
 }
 
+pub(crate) enum Msg {
+    PreviewPosition(u32),
+}
+
 pub(crate) struct PlaybackPosition {
     link: ComponentLink<Self>,
+    // Callback to send `shared::Command`s
     on_command: Callback<Command>,
+    // Duration of current item
     duration: u64,
+    // Time status was received from server
+    received_time: shared::Time,
+    // Current forecast position
     forecast_position: u64,
+    // Preview slider position (while sliding)
+    preview_position: Option<u64>,
 }
 impl Component for PlaybackPosition {
     type Properties = Properties;
-    type Message = ();
+    type Message = Msg;
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
         let Properties {
             on_command,
@@ -59,11 +70,18 @@ impl Component for PlaybackPosition {
             link,
             on_command,
             duration,
+            received_time: position_info.received_time,
             forecast_position,
+            preview_position: None,
         }
     }
-    fn update(&mut self, _: Self::Message) -> ShouldRender {
-        false
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        match msg {
+            Msg::PreviewPosition(position) => {
+                self.preview_position = Some(u64::from(position));
+                true
+            }
+        }
     }
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         let Properties {
@@ -71,28 +89,34 @@ impl Component for PlaybackPosition {
             position_info,
         } = props;
         self.on_command = on_command; // Callback's `PartialEq` implementation is empirically useless
+        if position_info.received_time != self.received_time {
+            self.preview_position = None;
+        }
         let forecast_position = position_info.calc_forecast_position();
         let duration = position_info.duration;
         set_detect_change! {
             self.duration = duration;
             self.forecast_position = forecast_position;
+            self.received_time = position_info.received_time;
         }
     }
     fn view(&self) -> Html {
-        use std::str::FromStr;
         log_render!("PlaybackPosition");
         let duration = self.duration;
-        let position = self.forecast_position;
+        let position = self.preview_position.unwrap_or(self.forecast_position);
         let remaining = duration.saturating_sub(position);
         let duration_str = duration.to_string();
         let position_str = position.to_string();
         let on_change = self.on_command.reform(|change| match change {
             ChangeData::Value(s) => {
-                let seconds = u32::from_str(&s).expect("range input gives integer value");
+                let seconds = parse_position_str(&s);
                 shared::Command::SeekTo { seconds }
             }
             _ => unreachable!("range input gives Value"),
         });
+        let on_input = self
+            .link
+            .callback(|event: InputData| Msg::PreviewPosition(parse_position_str(&event.value)));
         let position_fmt = fmt::fmt_duration_seconds(position);
         let remaining_fmt = fmt::fmt_duration_seconds(remaining);
         html! {
@@ -101,11 +125,16 @@ impl Component for PlaybackPosition {
                 <input type="range"
                     min="0" max=duration_str value=position_str
                     onchange=on_change
+                    oninput=on_input
                     />
                 { "-" }{ remaining_fmt }
             </div>
         }
     }
+}
+fn parse_position_str(seconds: &str) -> u32 {
+    use std::str::FromStr;
+    u32::from_str(seconds).expect("range input gives integer value")
 }
 
 pub(crate) enum PlaybackMeta {}

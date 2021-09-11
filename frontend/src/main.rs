@@ -168,7 +168,11 @@ impl Model {
         }
     }
     fn view_connected(&self) -> Html {
-        let heartbeat_str = format!("Server last seen: {:?}", self.websocket.last_heartbeat());
+        let heartbeat_str = if let Some(time) = self.websocket.last_heartbeat() {
+            format!("Server last seen: {:?}", time)
+        } else {
+            "Server last seen: Never".to_string()
+        };
         html! {
             <div>
                 <div class="row">

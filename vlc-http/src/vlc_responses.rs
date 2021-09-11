@@ -52,6 +52,7 @@ mod playback {
     }
     impl From<(PlaybackStatusJSON, Time)> for PlaybackStatus {
         fn from((other, received_time): (PlaybackStatusJSON, Time)) -> Self {
+            use std::convert::TryFrom;
             let PlaybackStatusJSON {
                 apiversion,
                 playlist_item_id,
@@ -67,6 +68,8 @@ mod playback {
                 version,
                 volume,
             } = other;
+            // convert signed time to unsigned
+            let time = u64::try_from(time.max(0)).expect("non-negative i64 can convert to u64");
             // convert PlaybackInfoJSON to PlaybackInfo, and attach `playlist_item_id` if present
             let meta = information.map(PlaybackInfo::from).map(|mut meta| {
                 meta.playlist_item_id = playlist_item_id.try_into().ok();
@@ -148,7 +151,7 @@ mod playback {
         #[serde(rename = "repeat")]
         is_repeat: bool,
         state: PlaybackState,
-        time: u64,
+        time: i64,
         version: String,
         /// 256-scale
         volume: u32,
@@ -360,8 +363,8 @@ mod external_conversions {
                     #[allow(clippy::cast_precision_loss)]
                     let duration = duration as f64;
                     let stored = position;
-                    let predict = stored + (age_seconds_float / duration);
-                    predict.min(1.0)
+                    // predict
+                    stored + (age_seconds_float / duration)
                 };
                 let time = {
                     let stored = time;
