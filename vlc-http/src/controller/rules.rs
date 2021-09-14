@@ -124,8 +124,7 @@ where
     T: Send + Sync + PartialEq,
     S: FetchAfterSpec<T>,
 {
-    change_time: Option<Time>, //TODO: combine to Option<(T, Time)>, since never have ChangeTime=Some when Info=None
-    info: Option<T>,
+    info_time: Option<(T, Time)>,
     cmd_time: Option<Time>,
     spec: S,
 }
@@ -136,18 +135,16 @@ where
 {
     fn from_spec(spec: S) -> Self {
         Self {
-            change_time: None,
-            info: None,
+            info_time: None,
             cmd_time: None,
             spec,
         }
     }
-    fn notify_info(&mut self, info: T, info_time: Time) {
-        self.change_time = match self.info.take() {
-            Some(prev_info) if prev_info == info => self.change_time,
-            _ => Some(info_time),
+    fn notify_info(&mut self, info: T, time: Time) {
+        self.info_time = match self.info_time.take() {
+            Some((prev_info, prev_time)) if prev_info == info => Some((prev_info, prev_time)),
+            _ => Some((info, time)),
         };
-        self.info = Some(info);
     }
 }
 impl<T, S> Rule for FetchAfterRule<T, S>
@@ -171,9 +168,9 @@ where
         }
     }
     fn get_need(&self, now: Time) -> Need {
-        match (&self.cmd_time, &self.change_time) {
+        match (&self.cmd_time, &self.info_time) {
             (None, _) => None, // never commanded
-            (Some(cmd_time), Some(change_time)) if cmd_time < change_time => None, // cmd before change
+            (Some(cmd_time), Some((_, change_time))) if cmd_time < change_time => None, // cmd before change
             (Some(cmd_time), _) => {
                 let since_cmd = now - *cmd_time;
                 let allowed_delay = {
@@ -425,59 +422,61 @@ mod tests {
         {
             //PlaybackStatus
             let mut far = FetchAfterRule::from_spec(DurationPauseSpec);
-            assert_eq!(far.change_time, None);
+            let t = |(_, t)| t;
+            assert_eq!(far.info_time.map(t), None);
             // notify [first] (t=0)
             far.notify_playback(&PlaybackStatus::default());
-            assert_eq!(far.change_time, Some(time(0)));
+            assert_eq!(far.info_time.map(t), Some(time(0)));
             // notify [info change] (t=1)
             far.notify_playback(&PlaybackStatus {
                 received_time: time(1),
                 duration: 1, // -> Some(())
                 ..PlaybackStatus::default()
             });
-            assert_eq!(far.change_time, Some(time(1)));
+            assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [identical] (t=1, still)
             far.notify_playback(&PlaybackStatus {
                 received_time: time(3),
                 duration: 20, // -> Some(())
                 ..PlaybackStatus::default()
             });
-            assert_eq!(far.change_time, Some(time(1)));
+            assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [info change] (t=5)
             far.notify_playback(&PlaybackStatus {
                 received_time: time(5),
                 duration: 0, // -> None
                 ..PlaybackStatus::default()
             });
-            assert_eq!(far.change_time, Some(time(5)));
+            assert_eq!(far.info_time.map(t), Some(time(5)));
         }
         {
             //PlaylistInfo
             let mut far = FetchAfterRule::from_spec(ItemsStopSpec);
-            assert_eq!(far.change_time, None);
+            let t = |(_, t)| t;
+            assert_eq!(far.info_time.map(t), None);
             // notify [first] (t=0)
             far.notify_playlist(&PlaylistInfo::default());
-            assert_eq!(far.change_time, Some(time(0)));
+            assert_eq!(far.info_time.map(t), Some(time(0)));
             // notify [info change] (t=1)
             far.notify_playlist(&PlaylistInfo {
                 received_time: time(1),
                 items: vec![dummy_playlist_item()],
                 ..PlaylistInfo::default()
             });
-            assert_eq!(far.change_time, Some(time(1)));
+            assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [identical] (t=1, still)
             far.notify_playlist(&PlaylistInfo {
                 received_time: time(3),
                 items: vec![dummy_playlist_item()],
                 ..PlaylistInfo::default()
             });
-            assert_eq!(far.change_time, Some(time(1)));
+            assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [info change] (t=5)
             far.notify_playlist(&PlaylistInfo {
                 received_time: time(5),
                 ..PlaylistInfo::default()
             });
-            assert_eq!(far.change_time, Some(time(5)));
+            assert_eq!(far.info_time.map(t), Some(time(5)));
         }
     }
     #[test]
@@ -516,11 +515,8 @@ mod tests {
     }
     #[test]
     fn fetch_after_rule_gets_need() {
-        #[derive(PartialEq)]
-        enum Never {}
-
         struct NeverSpec(bool);
-        impl FetchAfterSpec<Never> for NeverSpec {
+        impl FetchAfterSpec<()> for NeverSpec {
             fn is_trigger(&self, _command: &Command) -> bool {
                 false
             }
@@ -542,21 +538,20 @@ mod tests {
             let mut far = FetchAfterRule::from_spec(NeverSpec(spec_arg));
             // default -> None
             assert_eq!(far.get_need(time(0)), None);
-            far.change_time = None;
-            far.cmd_time = None;
+            far.info_time = None;
             assert_eq!(far.get_need(time(0)), None);
             // no cmd_time -> None
             far.cmd_time = None;
             for t in 0..10 {
-                far.change_time = Some(time(t));
+                far.info_time = Some(((), time(t)));
                 assert_eq!(far.get_need(time(100)), None);
             }
             // cmd_time only, no change time
             far.cmd_time = Some(time(0));
-            far.change_time = None;
+            far.info_time = None;
             assert_eq!(far.get_need(time(100)), immediate(action_fn()));
             // manually activate (tie!)
-            far.change_time = Some(time(1));
+            far.info_time = Some(((), time(1)));
             far.cmd_time = Some(time(1));
             assert_eq!(far.get_need(time(2)), immediate(action_fn()));
             assert_eq!(
@@ -568,7 +563,7 @@ mod tests {
                 some_millis(1000 + allowed_delay_millis, action_fn())
             );
             // manually activate (cmd after change)
-            far.change_time = Some(time(0));
+            far.info_time = Some(((), time(0)));
             far.cmd_time = Some(time(1));
             assert_eq!(far.get_need(time(2)), immediate(action_fn()));
             assert_eq!(
