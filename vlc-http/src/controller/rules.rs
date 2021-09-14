@@ -341,73 +341,56 @@ mod tests {
         uut.notify_playlist(&playlist);
         assert_eq!(uut.get_need(dummy_time), None);
     }
-    fn assert_none_initial_cleared(uut: &mut dyn Rule) {
-        let time_0 = time(0);
-        // initial state -> no output
-        assert_eq!(uut.get_need(time_0), None);
+    #[test]
+    fn fetch_after_seek_gets_info() {
+        let fas = FetchAfterSeek;
+        assert_eq!(
+            fas.info_from_playback(&PlaybackStatus::default()),
+            Some((0, None))
+        );
+        assert_eq!(
+            fas.info_from_playback(&PlaybackStatus {
+                duration: 2,
+                ..PlaybackStatus::default()
+            }),
+            Some((2, None))
+        );
+        assert_eq!(
+            fas.info_from_playback(&PlaybackStatus {
+                duration: 2,
+                information: Some(PlaybackInfo::default()),
+                ..PlaybackStatus::default()
+            }),
+            Some((2, None))
+        );
+        assert_eq!(
+            fas.info_from_playback(&PlaybackStatus {
+                duration: 2,
+                information: Some(PlaybackInfo {
+                    playlist_item_id: Some(10),
+                    ..PlaybackInfo::default()
+                }),
+                ..PlaybackStatus::default()
+            }),
+            Some((2, Some(10)))
+        );
+        assert_eq!(
+            fas.info_from_playback(&PlaybackStatus {
+                duration: 2,
+                information: Some(PlaybackInfo {
+                    playlist_item_id: Some(22),
+                    ..PlaybackInfo::default()
+                }),
+                ..PlaybackStatus::default()
+            }),
+            Some((2, Some(22)))
+        );
     }
     #[test]
-    fn fetch_after_seek_sets_change_time() {
-        let mut fas = FetchAfterRule::from_spec(FetchAfterSeek);
-        assert_eq!(fas.change_time, None);
-        // notify [first] (t=0)
-        fas.notify_playback(&PlaybackStatus::default());
-        assert_eq!(fas.change_time, Some(time(0)));
-        // notify [duration 0->1] (t=1)
-        fas.notify_playback(&PlaybackStatus {
-            received_time: time(1),
-            duration: 2,
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fas.change_time, Some(time(1)));
-        // notify [identical] (t=1, still)
-        fas.notify_playback(&PlaybackStatus {
-            received_time: time(3),
-            duration: 2,
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fas.change_time, Some(time(1)));
-        // notify [info None->Some(id=None)] (t=1, still)
-        fas.notify_playback(&PlaybackStatus {
-            received_time: time(4),
-            duration: 2,
-            information: Some(PlaybackInfo::default()),
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fas.change_time, Some(time(1)));
-        // notify [id None -> Some(10)] (t=5)
-        fas.notify_playback(&PlaybackStatus {
-            received_time: time(5),
-            duration: 2,
-            information: Some(PlaybackInfo {
-                playlist_item_id: Some(10),
-                ..PlaybackInfo::default()
-            }),
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fas.change_time, Some(time(5)));
-        // notify [id Some(10) -> Some(22)] (t=6)
-        fas.notify_playback(&PlaybackStatus {
-            received_time: time(6),
-            duration: 2,
-            information: Some(PlaybackInfo {
-                playlist_item_id: Some(22),
-                ..PlaybackInfo::default()
-            }),
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fas.change_time, Some(time(6)));
-    }
-    #[test]
-    fn fetch_after_seek_captures_cmd() {
-        let mut fas = FetchAfterRule::from_spec(FetchAfterSeek);
-        // default None
-        assert_eq!(fas.cmd_time, None);
-        // seek commands
-        fas.notify_command(time(1), &Command::SeekNext);
-        assert_eq!(fas.cmd_time, Some(time(1)));
-        fas.notify_command(time(2), &Command::SeekPrevious);
-        assert_eq!(fas.cmd_time, Some(time(2)));
+    fn fetch_after_seek_triggers_on_cmd() {
+        let fas = FetchAfterSeek;
+        assert!(fas.is_trigger(&Command::SeekNext));
+        assert!(fas.is_trigger(&Command::SeekPrevious));
         // ignores non-seek commands
         let ignored_cmds = &[
             Command::PlaylistAdd {
@@ -428,52 +411,13 @@ mod tests {
             Command::PlaybackSpeed { speed: 0.7 },
         ];
         for ignored_cmd in ignored_cmds {
-            fas.notify_command(time(3), ignored_cmd); // ignore-cmd at t=3
-            assert_eq!(fas.cmd_time, Some(time(2))); // unchanged (t=2)
+            assert_eq!(fas.is_trigger(ignored_cmd), false);
         }
     }
     #[test]
-    fn fetch_after_seek_gets_need() {
-        let mut fas = FetchAfterRule::from_spec(FetchAfterSeek);
-        // default -> None
-        assert_eq!(fas.get_need(time(0)), None);
-        fas.change_time = None;
-        fas.cmd_time = None;
-        assert_eq!(fas.get_need(time(0)), None);
-        // no cmd time -> None
-        fas.cmd_time = None;
-        for t in 0..10 {
-            fas.change_time = Some(time(t));
-            assert_eq!(fas.get_need(time(100)), None);
-        }
-        // cmd time only, no change time
-        fas.cmd_time = Some(time(0));
-        fas.change_time = None;
-        assert_eq!(
-            fas.get_need(time(100)),
-            immediate(Action::fetch_playback_status())
-        );
-        // manually activate (tie!)
-        fas.change_time = Some(time(1));
-        fas.cmd_time = Some(time(1));
-        assert_eq!(
-            fas.get_need(time(2)),
-            immediate(Action::fetch_playback_status())
-        );
-        assert_eq!(
-            fas.get_need(time(1)),
-            some_millis(
-                FetchAfterSeek.allowed_delay_millis().into(),
-                Action::fetch_playback_status()
-            )
-        );
-        assert_eq!(
-            fas.get_need(time(0)),
-            some_millis(
-                1000 + u64::from(FetchAfterSeek.allowed_delay_millis()),
-                Action::fetch_playback_status()
-            )
-        );
+    fn fetch_after_seek_gens_need() {
+        let fas = FetchAfterSeek;
+        assert_eq!(fas.gen_action(), Action::fetch_playback_status());
     }
 
     #[test]
@@ -637,46 +581,37 @@ mod tests {
             );
         }
     }
-    // TODO: simplify all tests by using FetchAfterRule<T, S>
     #[test]
-    fn fetch_after_volume_sets_change_time() {
-        let mut fav = FetchAfterRule::from_spec(FetchAfterVolume);
-        assert_eq!(fav.change_time, None);
-        // notify [first] (t=0)
-        fav.notify_playback(&PlaybackStatus::default());
-        assert_eq!(fav.change_time, Some(time(0)));
-        // notify [volume 0->50%] (t=1)
-        fav.notify_playback(&PlaybackStatus {
-            received_time: time(1),
-            volume_percent: 50,
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fav.change_time, Some(time(1)));
-        // notify [identical] (t=1, still)
-        fav.notify_playback(&PlaybackStatus {
-            received_time: time(3),
-            volume_percent: 50,
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fav.change_time, Some(time(1)));
-        // notify [volume 50->100%] (t=5)
-        fav.notify_playback(&PlaybackStatus {
-            received_time: time(5),
-            volume_percent: 100,
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(fav.change_time, Some(time(5)));
+    fn fetch_after_volume_gets_info() {
+        let fav = FetchAfterVolume;
+        assert_eq!(fav.info_from_playback(&PlaybackStatus::default()), Some(0));
+        assert_eq!(
+            fav.info_from_playback(&PlaybackStatus {
+                volume_percent: 50,
+                ..PlaybackStatus::default()
+            }),
+            Some(50)
+        );
+        assert_eq!(
+            fav.info_from_playback(&PlaybackStatus {
+                volume_percent: 50,
+                ..PlaybackStatus::default()
+            }),
+            Some(50)
+        );
+        assert_eq!(
+            fav.info_from_playback(&PlaybackStatus {
+                volume_percent: 100,
+                ..PlaybackStatus::default()
+            }),
+            Some(100)
+        );
     }
     #[test]
-    fn fetch_after_volume_captures_cmd() {
-        let mut fav = FetchAfterRule::from_spec(FetchAfterVolume);
-        // default None
-        assert_eq!(fav.cmd_time, None);
-        // volume commands
-        fav.notify_command(time(1), &Command::Volume { percent: 20 });
-        assert_eq!(fav.cmd_time, Some(time(1)));
-        fav.notify_command(time(2), &Command::VolumeRelative { percent_delta: -30 });
-        assert_eq!(fav.cmd_time, Some(time(2)));
+    fn fetch_after_volume_triggers_on_cmd() {
+        let fav = FetchAfterVolume;
+        assert!(fav.is_trigger(&Command::Volume { percent: 20 }));
+        assert!(fav.is_trigger(&Command::VolumeRelative { percent_delta: -30 }));
         // ignores non-volume commands
         let ignored_cmds = &[
             Command::PlaylistAdd {
@@ -697,51 +632,12 @@ mod tests {
             Command::PlaybackSpeed { speed: 0.7 },
         ];
         for ignored_cmd in ignored_cmds {
-            fav.notify_command(time(3), ignored_cmd); // ignore-cmd at t=3
-            assert_eq!(fav.cmd_time, Some(time(2))); // unchanged (t=2)
+            assert_eq!(fav.is_trigger(ignored_cmd), false);
         }
     }
     #[test]
-    fn fetch_after_volume_gets_need() {
-        let mut fav = FetchAfterRule::from_spec(FetchAfterVolume);
-        // default -> None;
-        assert_eq!(fav.get_need(time(0)), None);
-        fav.change_time = None;
-        fav.cmd_time = None;
-        assert_eq!(fav.get_need(time(0)), None);
-        // no cmd_time -> None
-        fav.cmd_time = None;
-        for t in 0..10 {
-            fav.change_time = Some(time(t));
-            assert_eq!(fav.get_need(time(100)), None);
-        }
-        // cmd_time only, no change time
-        fav.cmd_time = Some(time(0));
-        fav.change_time = None;
-        assert_eq!(
-            fav.get_need(time(100)),
-            immediate(Action::fetch_playback_status())
-        );
-        // manually activate (tie!)
-        fav.change_time = Some(time(1));
-        fav.cmd_time = Some(time(1));
-        assert_eq!(
-            fav.get_need(time(2)),
-            immediate(Action::fetch_playback_status())
-        );
-        assert_eq!(
-            fav.get_need(time(1)),
-            some_millis(
-                FetchAfterVolume.allowed_delay_millis().into(),
-                Action::fetch_playback_status()
-            )
-        );
-        assert_eq!(
-            fav.get_need(time(0)),
-            some_millis(
-                1000 + u64::from(FetchAfterVolume.allowed_delay_millis()),
-                Action::fetch_playback_status()
-            )
-        );
+    fn fetch_after_volume_gens_need() {
+        let fav = FetchAfterVolume;
+        assert_eq!(fav.gen_action(), Action::fetch_playback_status());
     }
 }
