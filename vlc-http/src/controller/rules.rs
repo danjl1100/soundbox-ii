@@ -29,6 +29,7 @@ impl Rules {
                 Box::new(FillPlayback::default()),
                 Box::new(FillPlaylist::default()),
                 Box::new(FetchAfterRule::from_spec(FetchAfterSeek)),
+                Box::new(FetchAfterRule::from_spec(FetchAfterVolume)),
             ],
         }
     }
@@ -115,7 +116,7 @@ where
     fn is_trigger(&self, command: &Command) -> bool;
     fn gen_action(&self) -> Action;
     fn allowed_delay_millis(&self) -> u32 {
-        1000
+        50
     }
 }
 struct FetchAfterRule<T, S>
@@ -211,61 +212,21 @@ impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
     fn gen_action(&self) -> Action {
         Action::fetch_playback_status()
     }
-    fn allowed_delay_millis(&self) -> u32 {
-        50
-    }
 }
 
-#[derive(Default)]
-struct FetchAfterVolume {
-    change_time: Option<Time>,
-    volume: Option<u16>,
-    cmd_time: Option<Time>,
-}
-impl FetchAfterVolume {
-    const DELAY_MILLIS: u64 = 500;
-}
-impl Rule for FetchAfterVolume {
-    fn notify_playback(&mut self, playback: &PlaybackStatus) {
-        let volume = playback.volume_percent;
-        let received_time = playback.received_time;
-        self.change_time = match self.volume {
-            Some(prev_vol) if prev_vol == volume => self.change_time,
-            _ => Some(received_time),
-        };
-        self.volume = Some(volume);
+struct FetchAfterVolume;
+impl FetchAfterSpec<u16> for FetchAfterVolume {
+    fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<u16> {
+        Some(playback.volume_percent)
     }
-    fn get_need(&self, now: Time) -> Need {
-        match (&self.cmd_time, &self.change_time) {
-            (None, _) => None, // no command
-            (Some(cmd_time), Some(change_time)) if cmd_time < change_time => None, // command before change
-            (Some(cmd_time), _) => {
-                let since_cmd = now - *cmd_time;
-                let allowed_delay = {
-                    let allowed_delay = Duration::from_millis(Self::DELAY_MILLIS);
-                    TimeDifference::from_std(allowed_delay).expect("millis within bounds")
-                };
-                let delay = allowed_delay - since_cmd;
-                let delay = if delay > TimeDifference::zero() {
-                    Some(
-                        delay
-                            .to_std()
-                            .expect("positive duration conversion succeeds"),
-                    )
-                } else {
-                    None
-                };
-                Some((delay, Action::fetch_playback_status()))
-            }
-        }
+    fn is_trigger(&self, command: &Command) -> bool {
+        matches!(
+            command,
+            Command::Volume { .. } | Command::VolumeRelative { .. }
+        )
     }
-    fn notify_command(&mut self, now: Time, command: &Command) {
-        match command {
-            Command::Volume { .. } | Command::VolumeRelative { .. } => {
-                self.cmd_time = Some(now);
-            }
-            _ => {}
-        }
+    fn gen_action(&self) -> Action {
+        Action::fetch_playback_status()
     }
 }
 
@@ -679,7 +640,7 @@ mod tests {
     // TODO: simplify all tests by using FetchAfterRule<T, S>
     #[test]
     fn fetch_after_volume_sets_change_time() {
-        let mut fav = FetchAfterVolume::default();
+        let mut fav = FetchAfterRule::from_spec(FetchAfterVolume);
         assert_eq!(fav.change_time, None);
         // notify [first] (t=0)
         fav.notify_playback(&PlaybackStatus::default());
@@ -708,7 +669,7 @@ mod tests {
     }
     #[test]
     fn fetch_after_volume_captures_cmd() {
-        let mut fav = FetchAfterVolume::default();
+        let mut fav = FetchAfterRule::from_spec(FetchAfterVolume);
         // default None
         assert_eq!(fav.cmd_time, None);
         // volume commands
@@ -742,7 +703,7 @@ mod tests {
     }
     #[test]
     fn fetch_after_volume_gets_need() {
-        let mut fav = FetchAfterVolume::default();
+        let mut fav = FetchAfterRule::from_spec(FetchAfterVolume);
         // default -> None;
         assert_eq!(fav.get_need(time(0)), None);
         fav.change_time = None;
@@ -771,14 +732,14 @@ mod tests {
         assert_eq!(
             fav.get_need(time(1)),
             some_millis(
-                FetchAfterVolume::DELAY_MILLIS,
+                FetchAfterVolume.allowed_delay_millis().into(),
                 Action::fetch_playback_status()
             )
         );
         assert_eq!(
             fav.get_need(time(0)),
             some_millis(
-                1000 + FetchAfterVolume::DELAY_MILLIS,
+                1000 + u64::from(FetchAfterVolume.allowed_delay_millis()),
                 Action::fetch_playback_status()
             )
         );
