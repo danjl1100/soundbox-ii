@@ -28,7 +28,7 @@ impl Rules {
             rules: vec![
                 Box::new(FillPlayback::default()),
                 Box::new(FillPlaylist::default()),
-                Box::new(FetchAfterSeek::default()),
+                Box::new(FetchAfterRule::from_spec(FetchAfterSeek)),
             ],
         }
     }
@@ -195,63 +195,24 @@ where
     }
 }
 
-#[derive(Default, Debug)]
-struct FetchAfterSeek {
-    change_time: Option<Time>,
-    item_info: Option<(u64, Option<u64>)>,
-    seek_time: Option<Time>,
-}
-impl FetchAfterSeek {
-    const DELAY_MILLIS: u64 = 50;
-}
-impl Rule for FetchAfterSeek {
-    fn notify_playback(&mut self, playback: &PlaybackStatus) {
-        let item_time = playback.received_time;
-        let item_info = {
-            let duration = playback.duration;
-            let item_id = playback
-                .information
-                .as_ref()
-                .and_then(|info| info.playlist_item_id);
-            (duration, item_id)
-        };
-        self.change_time = match self.item_info.take() {
-            Some(prev_item_info) if prev_item_info == item_info => self.change_time,
-            _ => Some(item_time),
-        };
-        self.item_info = Some(item_info);
+struct FetchAfterSeek;
+impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
+    fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<(u64, Option<u64>)> {
+        let duration = playback.duration;
+        let item_id = playback
+            .information
+            .as_ref()
+            .and_then(|info| info.playlist_item_id);
+        Some((duration, item_id))
     }
-    fn get_need(&self, now: Time) -> Need {
-        match (&self.seek_time, &self.change_time) {
-            (None, _) => None, // never seeked
-            (Some(seek_time), Some(change_time)) if seek_time < change_time => None, // seek before change
-            (Some(seek_time), _) => {
-                let since_seek = now - *seek_time;
-                let allowed_delay = {
-                    let allowed_delay = Duration::from_millis(Self::DELAY_MILLIS);
-                    TimeDifference::from_std(allowed_delay).expect("millis within bounds")
-                };
-                let delay = allowed_delay - since_seek;
-                let delay = if delay > TimeDifference::zero() {
-                    Some(
-                        delay
-                            .to_std()
-                            .expect("positive duration conversion succeeds"),
-                    )
-                } else {
-                    None
-                };
-                Some((delay, Action::fetch_playback_status()))
-            }
-        }
+    fn is_trigger(&self, command: &Command) -> bool {
+        matches!(command, Command::SeekNext | Command::SeekPrevious)
     }
-    fn notify_command(&mut self, now: Time, command: &Command) {
-        match command {
-            Command::SeekNext | Command::SeekPrevious => {
-                self.seek_time = Some(now);
-            }
-            _ => {}
-        }
+    fn gen_action(&self) -> Action {
+        Action::fetch_playback_status()
+    }
+    fn allowed_delay_millis(&self) -> u32 {
+        50
     }
 }
 
@@ -426,7 +387,7 @@ mod tests {
     }
     #[test]
     fn fetch_after_seek_sets_change_time() {
-        let mut fas = FetchAfterSeek::default();
+        let mut fas = FetchAfterRule::from_spec(FetchAfterSeek);
         assert_eq!(fas.change_time, None);
         // notify [first] (t=0)
         fas.notify_playback(&PlaybackStatus::default());
@@ -478,14 +439,14 @@ mod tests {
     }
     #[test]
     fn fetch_after_seek_captures_cmd() {
-        let mut fas = FetchAfterSeek::default();
+        let mut fas = FetchAfterRule::from_spec(FetchAfterSeek);
         // default None
-        assert_eq!(fas.seek_time, None);
+        assert_eq!(fas.cmd_time, None);
         // seek commands
         fas.notify_command(time(1), &Command::SeekNext);
-        assert_eq!(fas.seek_time, Some(time(1)));
+        assert_eq!(fas.cmd_time, Some(time(1)));
         fas.notify_command(time(2), &Command::SeekPrevious);
-        assert_eq!(fas.seek_time, Some(time(2)));
+        assert_eq!(fas.cmd_time, Some(time(2)));
         // ignores non-seek commands
         let ignored_cmds = &[
             Command::PlaylistAdd {
@@ -507,25 +468,25 @@ mod tests {
         ];
         for ignored_cmd in ignored_cmds {
             fas.notify_command(time(3), ignored_cmd); // ignore-cmd at t=3
-            assert_eq!(fas.seek_time, Some(time(2))); // unchanged (t=2)
+            assert_eq!(fas.cmd_time, Some(time(2))); // unchanged (t=2)
         }
     }
     #[test]
     fn fetch_after_seek_gets_need() {
-        let mut fas = FetchAfterSeek::default();
+        let mut fas = FetchAfterRule::from_spec(FetchAfterSeek);
         // default -> None
         assert_eq!(fas.get_need(time(0)), None);
         fas.change_time = None;
-        fas.seek_time = None;
+        fas.cmd_time = None;
         assert_eq!(fas.get_need(time(0)), None);
-        // no seek time -> None
-        fas.seek_time = None;
+        // no cmd time -> None
+        fas.cmd_time = None;
         for t in 0..10 {
             fas.change_time = Some(time(t));
             assert_eq!(fas.get_need(time(100)), None);
         }
-        // seek time only, no change time
-        fas.seek_time = Some(time(0));
+        // cmd time only, no change time
+        fas.cmd_time = Some(time(0));
         fas.change_time = None;
         assert_eq!(
             fas.get_need(time(100)),
@@ -533,7 +494,7 @@ mod tests {
         );
         // manually activate (tie!)
         fas.change_time = Some(time(1));
-        fas.seek_time = Some(time(1));
+        fas.cmd_time = Some(time(1));
         assert_eq!(
             fas.get_need(time(2)),
             immediate(Action::fetch_playback_status())
@@ -541,14 +502,14 @@ mod tests {
         assert_eq!(
             fas.get_need(time(1)),
             some_millis(
-                FetchAfterSeek::DELAY_MILLIS,
+                FetchAfterSeek.allowed_delay_millis().into(),
                 Action::fetch_playback_status()
             )
         );
         assert_eq!(
             fas.get_need(time(0)),
             some_millis(
-                1000 + FetchAfterSeek::DELAY_MILLIS,
+                1000 + u64::from(FetchAfterSeek.allowed_delay_millis()),
                 Action::fetch_playback_status()
             )
         );
