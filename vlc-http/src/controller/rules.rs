@@ -76,6 +76,7 @@ impl Rules {
                 Box::new(FillPlaylist::default()),
                 Box::new(FetchAfterRule::from_spec(FetchAfterSeek)),
                 Box::new(FetchAfterRule::from_spec(FetchAfterVolume)),
+                Box::new(FetchAfterTrackEnd::default()),
             ],
         }
     }
@@ -273,11 +274,33 @@ impl FetchAfterSpec<u16> for FetchAfterVolume {
     }
 }
 
-// TODO!  delay until end of song, then update status!  (minimum delay of 1.0 second)
-// struct FetchAfterTrackEnd {
-//     todo: (),
-// }
-// impl Rule for FetchAfterTrackEnd {}
+#[derive(Default)]
+struct FetchAfterTrackEnd {
+    playback_timing: Option<(PlaybackTiming, Time)>,
+}
+impl FetchAfterTrackEnd {
+    const DELAY_MS: u64 = 500;
+}
+impl Rule for FetchAfterTrackEnd {
+    fn notify_playback(&mut self, playback: &PlaybackStatus) {
+        self.playback_timing = Some((playback.timing, playback.received_time));
+    }
+    fn get_need(&self, now: Time) -> Need {
+        use std::time::Duration;
+        match self.playback_timing {
+            Some((timing, received_time)) if timing.duration_secs > 0 => {
+                let timing = timing.predict_change(now - received_time);
+                let delay = timing
+                    .duration_secs
+                    .checked_sub(timing.position_secs)
+                    .map(Duration::from_secs)
+                    .map(|remaining| remaining + Duration::from_millis(Self::DELAY_MS));
+                Some((Some(delay?), Action::fetch_playback_status()))
+            }
+            _ => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -285,6 +308,63 @@ mod tests {
     use super::*;
     use crate::vlc_responses::{PlaybackInfo, PlaylistItem};
     use shared::time_from_secs as time;
+
+    // TODO move this test to the end....
+    //  or co-locate Rule structs in sub-modules, with their tests?
+    //  goals: ease of navigation, and secondary ~200 lines per module guideline
+    #[test]
+    fn fetch_after_track_end() {
+        let mut fate = FetchAfterTrackEnd::default();
+        assert_eq!(fate.get_need(time(0)), None);
+        fate.notify_playback(&PlaybackStatus {
+            ..PlaybackStatus::default()
+        });
+        assert_eq!(fate.get_need(time(0)), None); //TODO: is this really desired?  i.e. does Duration=0 mean "never fetch"?
+        fate.notify_playback(&PlaybackStatus {
+            timing: PlaybackTiming {
+                duration_secs: 30,
+                ..PlaybackTiming::default()
+            },
+            ..PlaybackStatus::default()
+        });
+        assert_eq!(
+            fate.get_need(time(0)),
+            some_millis(
+                30_000 + FetchAfterTrackEnd::DELAY_MS,
+                Action::fetch_playback_status()
+            )
+        );
+        fate.notify_playback(&PlaybackStatus {
+            timing: PlaybackTiming {
+                duration_secs: 30,
+                position_secs: 25,
+                ..PlaybackTiming::default()
+            },
+            ..PlaybackStatus::default()
+        });
+        assert_eq!(
+            fate.get_need(time(0)),
+            some_millis(
+                5_000 + FetchAfterTrackEnd::DELAY_MS,
+                Action::fetch_playback_status()
+            )
+        );
+        fate.notify_playback(&PlaybackStatus {
+            timing: PlaybackTiming {
+                duration_secs: 30,
+                position_secs: 30,
+                ..PlaybackTiming::default()
+            },
+            ..PlaybackStatus::default()
+        });
+        assert_eq!(
+            fate.get_need(time(0)),
+            some_millis(
+                FetchAfterTrackEnd::DELAY_MS,
+                Action::fetch_playback_status()
+            )
+        );
+    }
 
     struct DurationPauseSpec;
     impl FetchAfterSpec<Option<()>> for DurationPauseSpec {
