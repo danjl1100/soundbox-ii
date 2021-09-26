@@ -286,7 +286,9 @@ mod playlist {
 }
 
 mod external_conversions {
-    use super::{playback, PlaybackInfo, PlaybackStatus};
+    use super::playback;
+    #[allow(unused)]
+    use super::{PlaybackInfo, PlaybackStatus}; // for doc-comments
     use shared::Time;
     impl playback::Status {
         /// Clones the [`PlaybackStatus`] to a [`shared::PlaybackStatus`], modifying all

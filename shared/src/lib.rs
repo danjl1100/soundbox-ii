@@ -261,7 +261,7 @@ impl PlaybackTiming {
             let age_seconds_float = (age.num_milliseconds() as f64) / 1000.0;
             #[allow(clippy::cast_possible_truncation)]
             #[allow(clippy::cast_sign_loss)]
-            let age_seconds = age_seconds_float.ceil().abs() as u64;
+            let age_seconds = age_seconds_float.round().abs() as u64;
             //
             let position_fraction = {
                 #[allow(clippy::cast_precision_loss)]
