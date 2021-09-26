@@ -138,18 +138,24 @@ serde_derive_unidirectional! {
         pub struct PlaybackStatus {
             /// Information about the current item
             pub information: Option<PlaybackInfo>,
+            /// Volume percentage
+            pub volume_percent: u16,
+            /// Playback Timing information
+            pub timing: PlaybackTiming,
+        }
+        /// Time-related information of playback
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct PlaybackTiming {
             /// Duration of the current song in seconds
-            pub duration: u64,
+            pub duration_secs: u64,
             /// Fractional position within the current item (unit scale)
-            pub position: f64,
+            pub position_fraction: PositionFraction,
             /// Playback rate (unit scale)
-            pub rate: f64,
+            pub rate_ratio: RateRatio,
             /// State of playback
             pub state: PlaybackState,
             /// Position within the current time (seconds)
-            pub time: u64,
-            /// Volume percentage
-            pub volume_percent: u16,
+            pub position_secs: u64,
         }
         /// Information about the current (playing/paused) item
         #[must_use]
@@ -177,6 +183,49 @@ serde_derive_unidirectional! {
         }
     }
 }
+macro_rules! cheap_float_eq {
+    (
+        $(
+            $(#[$attr:meta])*
+            $vis:vis struct $name:ident (pub $float_ty:ty );
+        )+
+    ) => {
+        $(
+            $(#[$attr])*
+            #[derive(PartialOrd)]
+            #[serde(transparent)]
+            $vis struct $name ( pub $float_ty );
+            impl PartialEq for $name {
+                fn eq(&self, rhs: &Self) -> bool {
+                    let Self(lhs) = self;
+                    let Self(rhs) = rhs;
+                    let max = lhs.abs().max(rhs.abs());
+                    (lhs - rhs).abs() <= (max * <$float_ty>::EPSILON)
+                }
+            }
+            impl Eq for $name {}
+            impl From<$float_ty> for $name {
+                fn from(val: $float_ty) -> Self {
+                    Self(val)
+                }
+            }
+            impl From<$name> for $float_ty {
+                fn from($name(val): $name) -> Self {
+                    val
+                }
+            }
+        )+
+    }
+}
+cheap_float_eq! {
+    #[derive(Debug, Default, Clone, Copy, serde::Serialize, serde::Deserialize)]
+    /// Fractional position within the current item (unit scale)
+    pub struct PositionFraction(pub f64);
+
+    /// Fraction Rate (unit scale)
+    #[derive(Debug, Default, Clone, Copy, serde::Serialize, serde::Deserialize)]
+    pub struct RateRatio(pub f64);
+}
 impl ServerResponse {
     /// Constructs a `ServerRespone` from a result type
     ///
@@ -202,6 +251,58 @@ impl From<Shutdown> for ServerResponse {
     }
 }
 
+impl PlaybackTiming {
+    /// Predicts the position and time changed by the specified [`TimeDifference`]
+    #[must_use]
+    pub fn predict_change(self, age: TimeDifference) -> Self {
+        if self.state == PlaybackState::Playing {
+            // calculate age of the information
+            #[allow(clippy::cast_precision_loss)]
+            let age_seconds_float = (age.num_milliseconds() as f64) / 1000.0;
+            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_sign_loss)]
+            let age_seconds = age_seconds_float.ceil().abs() as u64;
+            //
+            let position_fraction = {
+                #[allow(clippy::cast_precision_loss)]
+                let duration = self.duration_secs as f64;
+                let stored = f64::from(self.position_fraction);
+                // predict
+                let predict = stored + (age_seconds_float / duration);
+                PositionFraction(predict.min(1.0))
+            };
+            let position_secs = {
+                let stored = self.position_secs;
+                let predict = stored + age_seconds;
+                predict.min(self.duration_secs)
+            };
+            Self {
+                position_fraction,
+                position_secs,
+                ..self
+            }
+        } else {
+            self
+        }
+    }
+}
+
+impl Default for PlaybackTiming {
+    fn default() -> Self {
+        Self {
+            duration_secs: Default::default(),
+            rate_ratio: RateRatio::default(),
+            position_fraction: PositionFraction::default(),
+            state: PlaybackState::default(),
+            position_secs: Default::default(),
+        }
+    }
+}
+impl Default for PlaybackState {
+    fn default() -> Self {
+        Self::Playing
+    }
+}
 // // no logic in this crate, just data types!
 // #[cfg(test)]
 // mod tests {

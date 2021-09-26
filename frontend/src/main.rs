@@ -26,7 +26,7 @@ const LOG_RENDERS: bool = false;
 #[macro_use]
 mod macros;
 
-use playback::{PlaybackMeta, PlaybackPosition, PositionInfo};
+use playback::{PlaybackMeta, PlaybackPosition};
 mod playback;
 
 mod websocket;
@@ -219,7 +219,10 @@ impl Model {
             } else {
                 html! {}
             };
-            let playback_state = self.playback.as_ref().map(|(playback, _)| playback.state);
+            let playback_state = self
+                .playback
+                .as_ref()
+                .map(|(playback, _)| playback.timing.state);
             let controls = |ty| {
                 html! {
                     <Controls
@@ -243,7 +246,8 @@ impl Model {
                     <div class="playback meta">
                         { meta_html }
                         <PlaybackPosition
-                            position_info=PositionInfo::from((playback, playback_received))
+                            timing=playback.timing
+                            received_time=*playback_received
                             on_command=self.link.callback(MsgUser::SendCommand)
                             />
                         <div class="playback control">

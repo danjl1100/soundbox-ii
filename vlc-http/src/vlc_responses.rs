@@ -1,11 +1,11 @@
 //! Response data types from the VLC HTTP endpoint
 
-#![allow(clippy::module_name_repetitions)]
-
-pub use playback::{PlaybackInfo, PlaybackState, PlaybackStatus};
+pub use playback::Info as PlaybackInfo;
+pub use playback::Status as PlaybackStatus;
+pub use shared::{PlaybackState, PlaybackTiming};
 mod playback {
     use crate::command;
-    use shared::Time;
+    use shared::{PlaybackTiming, PositionFraction, RateRatio, Time};
 
     use serde::Deserialize;
     use std::collections::HashMap;
@@ -13,153 +13,110 @@ mod playback {
 
     /// Status of the current playback
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct PlaybackStatus {
+    pub struct Status {
         /// version of the VLC-HTTP interface api
         pub apiversion: u32,
         /// Information about the current item
-        pub information: Option<PlaybackInfo>,
-        /// Duration of the current song in seconds
-        pub duration: u64,
+        pub information: Option<Info>,
         /// True if playlist-loop is enabled
         pub is_loop: bool,
-        /// Fractional position within the current item (unit scale)
-        pub position: Position,
         /// True if playlist-randomize is enabled
         pub is_random: bool,
-        /// Playback rate (unit scale)
-        pub rate: Rate,
         /// True if single-item-repeat is enabled
         pub is_repeat: bool,
-        /// State of playback
-        pub state: PlaybackState,
-        /// Position within the current time (seconds)
-        pub time: u64,
         /// VLC version string
         pub version: String,
         /// Volume percentage
         pub volume_percent: u16,
+        /// Playback Timing information
+        pub timing: shared::PlaybackTiming,
         /// Received Time
         pub received_time: Time,
     }
-    impl PlaybackStatus {
+    impl Status {
         pub(crate) fn from_slice(
             bytes: &[u8],
             received_time: Time,
         ) -> Result<Self, serde_json::Error> {
-            let json_struct: PlaybackStatusJSON = serde_json::from_slice(bytes)?;
+            let json_struct: StatusJSON = serde_json::from_slice(bytes)?;
             Ok(Self::from((json_struct, received_time)))
         }
     }
-    impl From<(PlaybackStatusJSON, Time)> for PlaybackStatus {
-        fn from((other, received_time): (PlaybackStatusJSON, Time)) -> Self {
+    impl From<(StatusJSON, Time)> for Status {
+        fn from((other, received_time): (StatusJSON, Time)) -> Self {
             use std::convert::TryFrom;
-            let PlaybackStatusJSON {
+            let StatusJSON {
                 apiversion,
                 playlist_item_id,
                 information,
-                duration,
+                duration_secs,
                 is_loop,
-                position,
+                position_fraction,
                 is_random,
-                rate,
+                rate_ratio,
                 is_repeat,
                 state,
-                time,
+                position_secs,
                 version,
                 volume,
             } = other;
             // convert signed time to unsigned
-            let time = u64::try_from(time.max(0)).expect("non-negative i64 can convert to u64");
-            // convert PlaybackInfoJSON to PlaybackInfo, and attach `playlist_item_id` if present
-            let meta = information.map(PlaybackInfo::from).map(|mut meta| {
+            let position_secs = u64::try_from(position_secs).unwrap_or(0);
+            // convert InfoJSON to Info, and attach `playlist_item_id` if present
+            let meta = information.map(Info::from).map(|mut meta| {
                 meta.playlist_item_id = playlist_item_id.try_into().ok();
                 meta
             });
+            let state = shared::PlaybackState::from(state);
             Self {
                 apiversion,
                 information: meta,
-                duration,
                 is_loop,
-                position,
                 is_random,
-                rate,
                 is_repeat,
-                state,
-                time,
                 version,
                 volume_percent: command::decode_volume_to_percent(volume),
+                timing: PlaybackTiming {
+                    duration_secs,
+                    position_fraction,
+                    rate_ratio,
+                    state,
+                    position_secs,
+                },
                 received_time,
             }
         }
     }
-    macro_rules! cheap_float_eq {
-        (
-            $(
-                #[$($attr:meta)*]
-                $vis:vis struct $name:ident (pub $float_ty:ty );
-            )+
-        ) => {
-            $(
-                $(#[$attr])*
-                #[derive(PartialOrd, Deserialize)]
-                #[serde(transparent)]
-                $vis struct $name ( pub $float_ty );
-                impl PartialEq for $name {
-                    fn eq(&self, rhs: &Self) -> bool {
-                        let Self(lhs) = self;
-                        let Self(rhs) = rhs;
-                        let max = lhs.abs().max(rhs.abs());
-                        (lhs - rhs).abs() <= (max * <$float_ty>::EPSILON)
-                    }
-                }
-                impl Eq for $name {}
-                impl From<$float_ty> for $name {
-                    fn from(val: $float_ty) -> Self {
-                        Self(val)
-                    }
-                }
-                impl From<$name> for $float_ty {
-                    fn from($name(val): $name) -> Self {
-                        val
-                    }
-                }
-            )+
-        }
-    }
-    cheap_float_eq! {
-        #[derive(Debug, Default, Clone, Copy)]
-        pub struct Position(pub f64);
-
-        #[derive(Debug, Default, Clone, Copy)]
-        pub struct Rate(pub f64);
-    }
 
     #[derive(Deserialize, Debug)]
-    pub(crate) struct PlaybackStatusJSON {
+    pub(crate) struct StatusJSON {
         apiversion: u32,
         #[serde(rename = "currentplid")]
         playlist_item_id: i64,
-        information: Option<PlaybackInfoJSON>,
+        information: Option<InfoJSON>,
         #[serde(rename = "length")]
-        duration: u64,
+        duration_secs: u64,
         #[serde(rename = "loop")]
         is_loop: bool,
-        position: Position, //f64,
+        #[serde(rename = "position")]
+        position_fraction: PositionFraction, //f64,
         #[serde(rename = "random")]
         is_random: bool,
-        rate: Rate, //f64,
+        #[serde(rename = "rate")]
+        rate_ratio: RateRatio, //f64,
         #[serde(rename = "repeat")]
         is_repeat: bool,
-        state: PlaybackState,
-        time: i64,
+        state: StateJSON,
+        #[serde(rename = "time")]
+        position_secs: i64,
         version: String,
         /// 256-scale
         volume: u32,
     }
     /// Mode of the playback
-    #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Deserialize, Debug)]
     #[serde(rename_all = "lowercase")]
-    pub enum PlaybackState {
+    pub(crate) enum StateJSON {
         /// Paused
         Paused,
         /// Playing
@@ -168,17 +125,17 @@ mod playback {
         Stopped,
     }
     #[derive(Deserialize, Debug)]
-    pub(crate) struct PlaybackInfoJSON {
-        category: PlaybackCategoryJSON,
+    pub(crate) struct InfoJSON {
+        category: CategoryJSON,
     }
     #[derive(Deserialize, Debug)]
-    pub(crate) struct PlaybackCategoryJSON {
-        meta: PlaybackInfo,
+    pub(crate) struct CategoryJSON {
+        meta: Info,
     }
     /// Information about the current (playing/paused) item
     #[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
-    pub struct PlaybackInfo {
+    pub struct Info {
         #[serde(default)]
         pub title: String,
         #[serde(default)]
@@ -197,14 +154,15 @@ mod playback {
         #[serde(default)]
         pub playlist_item_id: Option<u64>,
     }
-    impl From<PlaybackInfoJSON> for PlaybackInfo {
-        fn from(other: PlaybackInfoJSON) -> Self {
+    impl From<InfoJSON> for Info {
+        fn from(other: InfoJSON) -> Self {
             other.category.meta
         }
     }
 }
 
-pub use playlist::{PlaylistInfo, PlaylistItem};
+pub use playlist::Info as PlaylistInfo;
+pub use playlist::Item as PlaylistItem;
 mod playlist {
     use serde::Deserialize;
     use shared::Time;
@@ -212,30 +170,30 @@ mod playlist {
 
     /// Playlist information
     #[derive(Clone, PartialEq, Eq)]
-    pub struct PlaylistInfo {
+    pub struct Info {
         /// Items in the playlist
-        pub items: Vec<PlaylistItem>,
+        pub items: Vec<Item>,
         /// Received Time
         pub received_time: Time,
     }
-    impl PlaylistInfo {
+    impl Info {
         pub(crate) fn from_slice(
             bytes: &[u8],
             received_time: Time,
         ) -> Result<Self, serde_json::Error> {
-            let json_struct: PlaylistRootJSON = serde_json::from_slice(bytes)?;
+            let json_struct: RootJSON = serde_json::from_slice(bytes)?;
             Ok(Self::from((json_struct, received_time)))
         }
     }
-    impl From<(PlaylistRootJSON, Time)> for PlaylistInfo {
-        fn from((other, received_time): (PlaylistRootJSON, Time)) -> Self {
+    impl From<(RootJSON, Time)> for Info {
+        fn from((other, received_time): (RootJSON, Time)) -> Self {
             const GROUP_NAME_PLAYLIST: &str = "Playlist";
-            let PlaylistRootJSON { groups } = other;
+            let RootJSON { groups } = other;
             let playlist_group = groups
                 .into_iter()
                 .find(|group| group.name == GROUP_NAME_PLAYLIST);
             let items = playlist_group.map_or_else(Vec::new, |group| {
-                group.children.into_iter().map(PlaylistItem::from).collect()
+                group.children.into_iter().map(Item::from).collect()
             });
             Self {
                 items,
@@ -245,18 +203,19 @@ mod playlist {
     }
 
     #[derive(Deserialize, Debug)]
-    struct PlaylistRootJSON {
+    struct RootJSON {
         #[serde(rename = "children")]
         groups: Vec<GroupNodeJSON>,
     }
     #[derive(Deserialize, Debug)]
     struct GroupNodeJSON {
         name: String,
-        children: Vec<PlaylistItemJSON>,
+        children: Vec<ItemJSON>,
     }
     #[derive(Deserialize, Debug)]
-    struct PlaylistItemJSON {
-        duration: i64,
+    struct ItemJSON {
+        #[serde(rename = "duration")]
+        duration_secs: i64,
         id: String,
         name: String,
         uri: String,
@@ -264,40 +223,40 @@ mod playlist {
     /// Item in the playlist (track, playlist, folder, etc.)
     #[derive(Debug, Clone, PartialEq, Eq)]
     #[allow(missing_docs)]
-    pub struct PlaylistItem {
+    pub struct Item {
         /// Duration of the current song in seconds
-        pub duration: Option<u64>,
+        pub duration_secs: Option<u64>,
         /// Playlist ID
         pub id: String,
         pub name: String,
         pub uri: String,
     }
-    impl From<PlaylistItemJSON> for PlaylistItem {
-        fn from(other: PlaylistItemJSON) -> Self {
-            let PlaylistItemJSON {
-                duration,
+    impl From<ItemJSON> for Item {
+        fn from(other: ItemJSON) -> Self {
+            let ItemJSON {
+                duration_secs,
                 id,
                 name,
                 uri,
             } = other;
             Self {
-                duration: duration.try_into().ok(),
+                duration_secs: duration_secs.try_into().ok(),
                 id,
                 name,
                 uri,
             }
         }
     }
-    impl std::fmt::Debug for PlaylistInfo {
+    impl std::fmt::Debug for Info {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            let PlaylistInfo {
+            let Info {
                 items,
                 received_time,
             } = self;
             writeln!(f, "Playlist items @ {:?} [", received_time)?;
             for item in items {
-                let PlaylistItem {
-                    duration,
+                let Item {
+                    duration_secs,
                     id,
                     name,
                     uri,
@@ -305,10 +264,10 @@ mod playlist {
                 //
                 write!(f, r#"   [{id}] "{name}""#, id = id, name = name)?;
                 //
-                if let Some(duration) = duration {
-                    let duration_hour = (duration / 60) / 60;
-                    let duration_min = (duration / 60) % 60;
-                    let duration_sec = duration % 60;
+                if let Some(duration_secs) = duration_secs {
+                    let duration_hour = (duration_secs / 60) / 60;
+                    let duration_min = (duration_secs / 60) % 60;
+                    let duration_sec = duration_secs % 60;
                     if duration_hour == 0 {
                         write!(f, " ({}:{:02})", duration_min, duration_sec)?;
                     } else {
@@ -327,9 +286,9 @@ mod playlist {
 }
 
 mod external_conversions {
-    use super::{PlaybackInfo, PlaybackState, PlaybackStatus};
+    use super::{playback, PlaybackInfo, PlaybackStatus};
     use shared::Time;
-    impl PlaybackStatus {
+    impl playback::Status {
         /// Clones the [`PlaybackStatus`] to a [`shared::PlaybackStatus`], modifying all
         /// time values as appropriate for the given now [`Time`].
         //TODO: eliminate needless clone prior to serializing
@@ -338,64 +297,28 @@ mod external_conversions {
         pub fn clone_to_shared(&self, now: Time) -> shared::PlaybackStatus {
             let Self {
                 information,
-                duration,
-                position,
-                rate,
-                state,
-                time,
                 volume_percent,
-                received_time,
+                timing,
                 ..
             } = self;
-            let duration = *duration;
-            let position = f64::from(*position);
-            let time = *time;
-            let (position, time) = if *state == PlaybackState::Playing {
-                // calculate age of the information
-                let age = now - *received_time;
-                #[allow(clippy::cast_precision_loss)]
-                let age_seconds_float = (age.num_milliseconds() as f64) / 1000.0;
-                #[allow(clippy::cast_possible_truncation)]
-                #[allow(clippy::cast_sign_loss)]
-                let age_seconds = age_seconds_float.ceil().abs() as u64;
-                //
-                let position = {
-                    #[allow(clippy::cast_precision_loss)]
-                    let duration = duration as f64;
-                    let stored = position;
-                    // predict
-                    stored + (age_seconds_float / duration)
-                };
-                let time = {
-                    let stored = time;
-                    let predict = stored + age_seconds;
-                    predict.min(duration)
-                };
-                (position, time)
-            } else {
-                (position, time)
-            };
+            let timing = timing.predict_change(now - self.received_time);
             shared::PlaybackStatus {
-                information: information.as_ref().map(PlaybackInfo::clone_to_shared),
-                duration,
-                position,
-                rate: (*rate).into(),
-                state: (*state).into(),
-                time,
+                information: information.as_ref().map(playback::Info::clone_to_shared),
                 volume_percent: *volume_percent,
+                timing,
             }
         }
     }
-    impl From<PlaybackState> for shared::PlaybackState {
-        fn from(other: PlaybackState) -> Self {
+    impl From<playback::StateJSON> for shared::PlaybackState {
+        fn from(other: playback::StateJSON) -> Self {
             match other {
-                PlaybackState::Paused => Self::Paused,
-                PlaybackState::Playing => Self::Playing,
-                PlaybackState::Stopped => Self::Stopped,
+                playback::StateJSON::Paused => Self::Paused,
+                playback::StateJSON::Playing => Self::Playing,
+                playback::StateJSON::Stopped => Self::Stopped,
             }
         }
     }
-    impl PlaybackInfo {
+    impl playback::Info {
         /// Clones the [`PlaybackInfo`] to a [`shared::PlaybackInfo`]
         //TODO: eliminate needless clone prior to serializing
         //  from: `vlc_http` type --clone--> `shared` type       --copy into--> serde string
@@ -422,43 +345,34 @@ mod external_conversions {
             }
         }
     }
-    #[cfg(test)]
-    mod for_tests {
-        use super::{super::PlaylistInfo, PlaybackStatus};
-        fn fake_received_time() -> shared::Time {
-            shared::time_from_secs(0)
-        }
-        impl Default for PlaybackStatus {
-            fn default() -> Self {
-                PlaybackStatus {
-                    apiversion: Default::default(),
-                    information: Default::default(),
-                    duration: Default::default(),
-                    is_loop: Default::default(),
-                    position: Default::default(),
-                    is_random: Default::default(),
-                    rate: Default::default(),
-                    is_repeat: Default::default(),
-                    state: Default::default(),
-                    time: Default::default(),
-                    version: Default::default(),
-                    volume_percent: Default::default(),
-                    received_time: fake_received_time(),
-                }
+}
+#[cfg(test)]
+mod for_tests {
+    use super::{playback, playlist};
+    fn fake_received_time() -> shared::Time {
+        shared::time_from_secs(0)
+    }
+    impl Default for playback::Status {
+        fn default() -> Self {
+            playback::Status {
+                apiversion: Default::default(),
+                information: Default::default(),
+                is_loop: Default::default(),
+                is_random: Default::default(),
+                is_repeat: Default::default(),
+                version: Default::default(),
+                volume_percent: Default::default(),
+                timing: Default::default(),
+                received_time: fake_received_time(),
             }
         }
-        impl Default for super::PlaybackState {
-            fn default() -> Self {
-                Self::Playing
-            }
-        }
-        //
-        impl Default for PlaylistInfo {
-            fn default() -> Self {
-                PlaylistInfo {
-                    items: vec![],
-                    received_time: fake_received_time(),
-                }
+    }
+    //
+    impl Default for playlist::Info {
+        fn default() -> Self {
+            playlist::Info {
+                items: vec![],
+                received_time: fake_received_time(),
             }
         }
     }

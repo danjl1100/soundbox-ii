@@ -1,4 +1,5 @@
-use crate::{Action, Command, PlaybackStatus, PlaylistInfo};
+use crate::vlc_responses::{PlaybackStatus, PlaybackTiming, PlaylistInfo};
+use crate::{Action, Command};
 use shared::{Time, TimeDifference};
 
 use need::ord as ord_need;
@@ -241,7 +242,7 @@ where
 struct FetchAfterSeek;
 impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
     fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<(u64, Option<u64>)> {
-        let duration = playback.duration;
+        let duration = playback.timing.duration_secs;
         let item_id = playback
             .information
             .as_ref()
@@ -288,7 +289,7 @@ mod tests {
     struct DurationPauseSpec;
     impl FetchAfterSpec<Option<()>> for DurationPauseSpec {
         fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<Option<()>> {
-            Some(if playback.duration == 0 {
+            Some(if playback.timing.duration_secs == 0 {
                 None
             } else {
                 Some(())
@@ -316,7 +317,7 @@ mod tests {
 
     fn dummy_playlist_item() -> PlaylistItem {
         PlaylistItem {
-            duration: None,
+            duration_secs: None,
             id: "".to_string(),
             name: "".to_string(),
             uri: "".to_string(),
@@ -360,14 +361,20 @@ mod tests {
         );
         assert_eq!(
             fas.info_from_playback(&PlaybackStatus {
-                duration: 2,
+                timing: PlaybackTiming {
+                    duration_secs: 2,
+                    ..Default::default()
+                },
                 ..PlaybackStatus::default()
             }),
             Some((2, None))
         );
         assert_eq!(
             fas.info_from_playback(&PlaybackStatus {
-                duration: 2,
+                timing: PlaybackTiming {
+                    duration_secs: 2,
+                    ..PlaybackTiming::default()
+                },
                 information: Some(PlaybackInfo::default()),
                 ..PlaybackStatus::default()
             }),
@@ -375,7 +382,10 @@ mod tests {
         );
         assert_eq!(
             fas.info_from_playback(&PlaybackStatus {
-                duration: 2,
+                timing: PlaybackTiming {
+                    duration_secs: 2,
+                    ..PlaybackTiming::default()
+                },
                 information: Some(PlaybackInfo {
                     playlist_item_id: Some(10),
                     ..PlaybackInfo::default()
@@ -386,7 +396,10 @@ mod tests {
         );
         assert_eq!(
             fas.info_from_playback(&PlaybackStatus {
-                duration: 2,
+                timing: PlaybackTiming {
+                    duration_secs: 2,
+                    ..PlaybackTiming::default()
+                },
                 information: Some(PlaybackInfo {
                     playlist_item_id: Some(22),
                     ..PlaybackInfo::default()
@@ -442,22 +455,31 @@ mod tests {
             assert_eq!(far.info_time.map(t), Some(time(0)));
             // notify [info change] (t=1)
             far.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 1, // -> Some(())
+                    ..PlaybackTiming::default()
+                },
                 received_time: time(1),
-                duration: 1, // -> Some(())
                 ..PlaybackStatus::default()
             });
             assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [identical] (t=1, still)
             far.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 20, // -> Some(())
+                    ..PlaybackTiming::default()
+                },
                 received_time: time(3),
-                duration: 20, // -> Some(())
                 ..PlaybackStatus::default()
             });
             assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [info change] (t=5)
             far.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 0, // -> None
+                    ..PlaybackTiming::default()
+                },
                 received_time: time(5),
-                duration: 0, // -> None
                 ..PlaybackStatus::default()
             });
             assert_eq!(far.info_time.map(t), Some(time(5)));
