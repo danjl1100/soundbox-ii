@@ -160,7 +160,7 @@ where
     fn info_from_playlist(&self, _playlist: &PlaylistInfo) -> Option<T> {
         None
     }
-    fn is_trigger(&self, command: &Command) -> bool;
+    fn is_trigger(&self, command: &Command, info: Option<&T>) -> bool;
     fn gen_action(&self) -> Action;
     fn allowed_delay_millis(&self) -> u32 {
         50
@@ -194,6 +194,9 @@ where
             _ => Some((info, time)),
         };
     }
+    fn info(&self) -> Option<&T> {
+        self.info_time.as_ref().map(|(info, _)| info)
+    }
 }
 impl<T, S> Rule for FetchAfterRule<T, S>
 where
@@ -211,7 +214,7 @@ where
         }
     }
     fn notify_command(&mut self, now: Time, command: &Command) {
-        if self.spec.is_trigger(command) {
+        if self.spec.is_trigger(command, self.info()) {
             self.cmd_time = Some(now);
         }
     }
@@ -252,7 +255,7 @@ impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
             .and_then(|info| info.playlist_item_id);
         Some((duration, item_id))
     }
-    fn is_trigger(&self, command: &Command) -> bool {
+    fn is_trigger(&self, command: &Command, _: Option<&(u64, Option<u64>)>) -> bool {
         matches!(command, Command::SeekNext | Command::SeekPrevious)
     }
     fn gen_action(&self) -> Action {
@@ -266,11 +269,16 @@ impl FetchAfterSpec<u16> for FetchAfterVolume {
     fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<u16> {
         Some(playback.volume_percent)
     }
-    fn is_trigger(&self, command: &Command) -> bool {
-        matches!(
-            command,
-            Command::Volume { .. } | Command::VolumeRelative { .. }
-        )
+    fn is_trigger(&self, command: &Command, volume_percent: Option<&u16>) -> bool {
+        match (command, volume_percent) {
+            (Command::VolumeRelative { percent_delta }, Some(volume_percent))
+                if *percent_delta < 0 && *volume_percent == 0 =>
+            {
+                false
+            }
+            (Command::Volume { .. } | Command::VolumeRelative { .. }, _) => true,
+            _ => false,
+        }
     }
     fn gen_action(&self) -> Action {
         Action::fetch_playback_status()
@@ -379,7 +387,7 @@ mod tests {
                 Some(())
             })
         }
-        fn is_trigger(&self, command: &Command) -> bool {
+        fn is_trigger(&self, command: &Command, _: Option<&Option<()>>) -> bool {
             matches!(command, Command::PlaybackPause)
         }
         fn gen_action(&self) -> Action {
@@ -392,7 +400,7 @@ mod tests {
         fn info_from_playlist(&self, playlist: &PlaylistInfo) -> Option<usize> {
             Some(playlist.items.len())
         }
-        fn is_trigger(&self, command: &Command) -> bool {
+        fn is_trigger(&self, command: &Command, _: Option<&usize>) -> bool {
             matches!(command, Command::PlaybackStop)
         }
         fn gen_action(&self) -> Action {
@@ -497,8 +505,8 @@ mod tests {
     #[test]
     fn fetch_after_seek_triggers_on_cmd() {
         let fas = FetchAfterSeek;
-        assert!(fas.is_trigger(&Command::SeekNext));
-        assert!(fas.is_trigger(&Command::SeekPrevious));
+        assert!(fas.is_trigger(&Command::SeekNext, None));
+        assert!(fas.is_trigger(&Command::SeekPrevious, None));
         // ignores non-seek commands
         let ignored_cmds = &[
             Command::PlaylistAdd {
@@ -518,8 +526,10 @@ mod tests {
             Command::VolumeRelative { percent_delta: -5 },
             Command::PlaybackSpeed { speed: 0.7 },
         ];
+        let dummy_state = (0, None);
         for ignored_cmd in ignored_cmds {
-            assert_eq!(fas.is_trigger(ignored_cmd), false);
+            assert_eq!(fas.is_trigger(ignored_cmd, None), false);
+            assert_eq!(fas.is_trigger(ignored_cmd, Some(&dummy_state)), false);
         }
     }
     #[test]
@@ -638,7 +648,7 @@ mod tests {
         #[derive(Debug)]
         struct NeverSpec(bool);
         impl FetchAfterSpec<()> for NeverSpec {
-            fn is_trigger(&self, _command: &Command) -> bool {
+            fn is_trigger(&self, _command: &Command, _: Option<&()>) -> bool {
                 false
             }
             fn gen_action(&self) -> Action {
@@ -726,8 +736,8 @@ mod tests {
     #[test]
     fn fetch_after_volume_triggers_on_cmd() {
         let fav = FetchAfterVolume;
-        assert!(fav.is_trigger(&Command::Volume { percent: 20 }));
-        assert!(fav.is_trigger(&Command::VolumeRelative { percent_delta: -30 }));
+        assert!(fav.is_trigger(&Command::Volume { percent: 20 }, None));
+        assert!(fav.is_trigger(&Command::VolumeRelative { percent_delta: -30 }, None));
         // ignores non-volume commands
         let ignored_cmds = &[
             Command::PlaylistAdd {
@@ -747,13 +757,27 @@ mod tests {
             // * Command::VolumeRelative { percent_delta: -5 },
             Command::PlaybackSpeed { speed: 0.7 },
         ];
+        let dummy_state = 0;
         for ignored_cmd in ignored_cmds {
-            assert_eq!(fav.is_trigger(ignored_cmd), false);
+            assert_eq!(fav.is_trigger(ignored_cmd, None), false);
+            assert_eq!(fav.is_trigger(ignored_cmd, Some(&dummy_state)), false);
         }
     }
     #[test]
     fn fetch_after_volume_gens_need() {
         let fav = FetchAfterVolume;
         assert_eq!(fav.gen_action(), Action::fetch_playback_status());
+    }
+    #[test]
+    fn fetch_after_volume_ignores_below_zero() {
+        let fav = FetchAfterVolume;
+        let down_command = Command::VolumeRelative { percent_delta: -1 };
+        let state_default = 100;
+        let state_0 = 0;
+        assert_eq!(fav.is_trigger(&down_command, None), true);
+        assert_eq!(fav.is_trigger(&down_command, Some(&state_default)), true);
+        assert_eq!(fav.is_trigger(&down_command, Some(&state_0)), false);
+        let down_command_more = Command::VolumeRelative { percent_delta: -19 };
+        assert_eq!(fav.is_trigger(&down_command_more, Some(&state_0)), false);
     }
 }
