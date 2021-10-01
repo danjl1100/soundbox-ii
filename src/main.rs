@@ -106,54 +106,6 @@ fn launch_hotwatch(
     hotwatch
 }
 
-//TODO - remove, superceded by `vlc_http::controller::rules`
-// async fn playback_status_requestor(
-//     action_tx: mpsc::Sender<vlc_http::Action>,
-//     playback_status_rx: watch::Receiver<Option<vlc_http::PlaybackStatus>>,
-// ) -> Result<Never, Shutdown> {
-//     use tokio::time::Duration;
-//     use vlc_http::vlc_responses::PlaybackState;
-//     const DELAY_SEC_MIN: u64 = 1;
-//     const DELAY_SEC_SHORT: u64 = 20;
-//     const DELAY_SEC_LONG: u64 = 90;
-//     loop {
-//         let (cmd, result_rx) = vlc_http::Action::query_playback_status();
-//         action_tx.send(cmd).await.map_err(|err| {
-//             eprintln!("error auto-requesting PlaylistStatus: {}", err);
-//             Shutdown
-//         })?;
-//         print!("fetching PlaybackStatus...  ");
-//         {
-//             use std::io::Write;
-//             drop(std::io::stdout().lock().flush());
-//         }
-//         let sleep_duration = match result_rx.await {
-//             Err(err) => {
-//                 eprintln!("vlc_http module did not respond :/  {}", err);
-//                 Err(Shutdown)
-//             }
-//             Ok(Err(err)) => {
-//                 eprintln!("error in result: {:?}", err);
-//                 Ok(Duration::from_secs(DELAY_SEC_LONG))
-//             }
-//             Ok(Ok(_)) => {
-//                 println!("fetch done");
-//                 let remaining = match &*playback_status_rx.borrow() {
-//                     Some(playback) if playback.state == PlaybackState::Playing => {
-//                         Some(playback.duration.saturating_sub(playback.time))
-//                     }
-//                     _ => None,
-//                 };
-//                 let delay = remaining.map_or(DELAY_SEC_SHORT, |remaining| {
-//                     remaining.min(DELAY_SEC_SHORT).max(DELAY_SEC_MIN)
-//                 });
-//                 Ok(Duration::from_secs(delay))
-//             }
-//         };
-//         tokio::time::sleep(sleep_duration?).await;
-//     }
-// }
-
 async fn launch(args: args::Config) {
     let (action_tx, action_rx) = mpsc::channel(1);
     let (playback_status_tx, playback_status_rx) = watch::channel(None);
@@ -218,12 +170,6 @@ async fn launch(args: args::Config) {
     };
 
     let mut tasks = AsyncTasks::new(shutdown_rx);
-
-    //TODO - remove, superceded by `vlc_http::controller::rules`
-    // // spawn PlaybackStatus requestor
-    // tasks.spawn("PlaybackStatus-requestor", async {
-    //     playback_status_requestor(action_tx, playback_status_rx).await
-    // });
 
     // run controller
     tasks.spawn(

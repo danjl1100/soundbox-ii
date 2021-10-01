@@ -113,14 +113,14 @@ impl Rules {
     }
 }
 
-trait Rule: Send + Sync {
+trait Rule: Send + Sync + core::fmt::Debug {
     fn get_need(&self, now: Time) -> Need;
     fn notify_playback(&mut self, _playback: &PlaybackStatus) {}
     fn notify_playlist(&mut self, _playlist: &PlaylistInfo) {}
     fn notify_command(&mut self, _now: Time, _command: &Command) {}
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct FillPlayback(Option<()>);
 impl Rule for FillPlayback {
     fn notify_playback(&mut self, _: &PlaybackStatus) {
@@ -135,7 +135,7 @@ impl Rule for FillPlayback {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct FillPlaylist(Option<()>);
 impl Rule for FillPlaylist {
     fn notify_playlist(&mut self, _: &PlaylistInfo) {
@@ -150,9 +150,9 @@ impl Rule for FillPlaylist {
     }
 }
 
-trait FetchAfterSpec<T>: Send + Sync
+trait FetchAfterSpec<T>: Send + Sync + std::fmt::Debug
 where
-    T: Send + Sync + PartialEq,
+    T: Send + Sync + PartialEq + std::fmt::Debug,
 {
     fn info_from_playback(&self, _playback: &PlaybackStatus) -> Option<T> {
         None
@@ -166,9 +166,10 @@ where
         50
     }
 }
+#[derive(Debug)]
 struct FetchAfterRule<T, S>
 where
-    T: Send + Sync + PartialEq,
+    T: Send + Sync + PartialEq + std::fmt::Debug,
     S: FetchAfterSpec<T>,
 {
     info_time: Option<(T, Time)>,
@@ -177,7 +178,7 @@ where
 }
 impl<T, S> FetchAfterRule<T, S>
 where
-    T: Send + Sync + PartialEq,
+    T: Send + Sync + PartialEq + std::fmt::Debug,
     S: FetchAfterSpec<T>,
 {
     fn from_spec(spec: S) -> Self {
@@ -196,7 +197,7 @@ where
 }
 impl<T, S> Rule for FetchAfterRule<T, S>
 where
-    T: Send + Sync + PartialEq,
+    T: Send + Sync + PartialEq + std::fmt::Debug,
     S: FetchAfterSpec<T>,
 {
     fn notify_playback(&mut self, playback: &PlaybackStatus) {
@@ -240,6 +241,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct FetchAfterSeek;
 impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
     fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<(u64, Option<u64>)> {
@@ -258,6 +260,7 @@ impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
     }
 }
 
+#[derive(Debug)]
 struct FetchAfterVolume;
 impl FetchAfterSpec<u16> for FetchAfterVolume {
     fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<u16> {
@@ -274,7 +277,7 @@ impl FetchAfterSpec<u16> for FetchAfterVolume {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct FetchAfterTrackEnd {
     playback_timing: Option<(PlaybackTiming, Time)>,
 }
@@ -366,6 +369,7 @@ mod tests {
         );
     }
 
+    #[derive(Debug)]
     struct DurationPauseSpec;
     impl FetchAfterSpec<Option<()>> for DurationPauseSpec {
         fn info_from_playback(&self, playback: &PlaybackStatus) -> Option<Option<()>> {
@@ -382,6 +386,7 @@ mod tests {
             Action::fetch_playback_status()
         }
     }
+    #[derive(Debug)]
     struct ItemsStopSpec;
     impl FetchAfterSpec<usize> for ItemsStopSpec {
         fn info_from_playlist(&self, playlist: &PlaylistInfo) -> Option<usize> {
@@ -630,6 +635,7 @@ mod tests {
     }
     #[test]
     fn fetch_after_rule_gets_need() {
+        #[derive(Debug)]
         struct NeverSpec(bool);
         impl FetchAfterSpec<()> for NeverSpec {
             fn is_trigger(&self, _command: &Command) -> bool {

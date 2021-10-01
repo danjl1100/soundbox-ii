@@ -57,7 +57,9 @@ impl Controller {
     /// Returns a [`Shutdown`] error when no [`Action`] senders remain
     ///
     pub async fn run(mut self) -> Result<Never, Shutdown> {
+        // let mut last_act_time = None;
         loop {
+            // decide action
             let decision_time = shared::time_now();
             dbg!(decision_time);
             let action = {
@@ -74,12 +76,27 @@ impl Controller {
                     }
                 }
             };
+            // TODO: is this worth it?   ideally need to rate-limit commands, but allow fetches unimpeded
+            // // sleep (rate limiting)
+            // if let Some(last_act_time) = last_act_time {
+            //     const RATE_LIMIT_MS: u32 = 90;
+            //     let since_last_act: shared::TimeDifference = shared::time_now() - last_act_time;
+            //     let remaining_delay = shared::TimeDifference::milliseconds(RATE_LIMIT_MS.into()) - since_last_act;
+            //     if let Ok(delay) = remaining_delay.to_std() {
+            //         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            //         println!("WAITING!!!!!!!!!!!!!!!! {:?}", delay);
+            //         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            //         tokio::time::sleep(delay).await;
+            //     }
+            // }
+            // run action
             let action_time = shared::time_now();
             if let Action::Command(command, _) = &action {
                 self.rules.notify_command(action_time, command);
             }
             println!("VLC-RUN {}", &action);
             self.run_action(action).await;
+            // last_act_time = Some(action_time);
         }
     }
     async fn run_action(&mut self, action: Action) {
