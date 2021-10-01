@@ -3,13 +3,11 @@
 use crate::{
     command::{ArtRequestIntent, RequestIntent},
     http_client::{response, Context},
+    rules::Rules,
     Action, Credentials, Error, PlaybackStatus, PlaylistInfo, Query,
 };
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, oneshot, watch};
-
-use rules::Rules;
-mod rules;
 
 /// Configuration for [`Controller`]
 pub struct Config {
