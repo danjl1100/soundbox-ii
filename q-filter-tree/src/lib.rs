@@ -68,37 +68,45 @@ fn tree_add_to_doc_tests() {
     let mut root_ref = tree.get_mut(&root).expect("root exists");
     assert_eq!(root_ref.pop_item(), Ok("apple"));
     assert_eq!(root_ref.pop_item(), Ok("cashews"));
+    assert_eq!(root_ref.pop_item(), Err(PopError::Empty((*root).clone())));
 }
 /// Tree data structure, consisting of [`Node`]s with queues of items `T`, filter `F`
 ///
 /// # Example
 /// ```
 /// use q_filter_tree::{Tree, error::PopError};
-/// let mut tree: Tree<_,()> = Tree::new();
+/// let mut tree: Tree<_, _> = Tree::new();
 /// let root = tree.root_id();
 /// //
-/// let child_blocked = tree.add_child(&root, None).expect("root exists");
-/// let child = tree.add_child(&root, Some(1)).expect("root exists");
+/// assert!(tree.get_child_mut(&root).is_err());
+/// let mut root_ref = tree.get_mut(&root).expect("root exists");
+/// *root_ref.filter() = Some("filter value".to_string());
+/// let child_blocked = root_ref.add_child(None);
+/// let child = root_ref.add_child(Some(1));
 /// // initial weight `None` (0)
-/// tree.push_item(&child_blocked, "apple").expect("childBlocked exists");
+/// tree.get_mut(&child_blocked)
+///     .expect("child_blocked exists")
+///     .push_item("apple");
 /// // initial weight `1`
-/// tree.push_item(&child, "banana").expect("child exists");
+/// tree.get_mut(&child)
+///     .expect("child exists")
+///     .push_item("banana");
 /// //
-/// assert_eq!(
-///     tree.pop_item_from(&root).expect("root exists"),
-///     Ok("banana")
-/// );
-/// assert_eq!(
-///     tree.pop_item_from(&root).expect("root exists"),
-///     Err(PopError::Empty((*root).clone()))
-/// );
+/// let mut root_ref = tree.get_mut(&root).expect("root exists");
+/// assert_eq!(root_ref.pop_item(), Ok("banana"));
+/// assert_eq!(root_ref.pop_item(), Err(PopError::Empty((*root).clone())));
 /// // unblock "child_blocked"
-/// tree.set_weight(&child_blocked, 2);
+/// tree.get_child_mut(&child_blocked)
+///     .expect("child_blocked exists")
+///     .set_weight(2);
 /// let child_unblocked = child_blocked;
-/// assert_eq!(
-///     tree.pop_item_from(&root).expect("root exists"),
-///     Ok("apple"),
-/// );
+/// tree.get_child_mut(&child_unblocked)
+///     .expect("child_unblocked exists")
+///     .push_item("cashews");
+/// let mut root_ref = tree.get_mut(&root).expect("root exists");
+/// assert_eq!(root_ref.pop_item(), Ok("apple"));
+/// assert_eq!(root_ref.pop_item(), Ok("cashews"));
+/// assert_eq!(root_ref.pop_item(), Err(PopError::Empty((*root).clone())));
 /// ```
 ///
 pub struct Tree<T, F> {
@@ -120,12 +128,14 @@ impl<T, F> Tree<T, F> {
         #![allow(clippy::unused_self)]
         id::ROOT
     }
+    //TODO: remove this non-external getter
     fn get_node<'a, P>(&self, node_path: &'a P) -> Result<&Node<T, F>, InvalidNodePath>
     where
         &'a P: Into<&'a [NodePathElem]>,
     {
         self.root.get_child(node_path.into())
     }
+    //TODO: remove this non-external getter
     fn get_node_mut<'a, P>(&mut self, node_path: &'a P) -> Result<&mut Node<T, F>, InvalidNodePath>
     where
         &'a P: Into<&'a [NodePathElem]>,
@@ -180,133 +190,20 @@ impl<T, F> Tree<T, F> {
         &'a P: Into<&'a NodePath>,
     {
         let path = path.into();
-        let (node, weight) = self.root.get_child_and_weight_mut(path.into())?;
-        let weight = weight.ok_or(path)?;
+        let (node, wpo) = self
+            .root
+            .get_child_and_weight_parent_order_mut(path.into())?;
+        let (weight, parent_order) = wpo.ok_or(path)?;
         let sequence_counter = &mut self.sequence_counter;
-        Ok(NodeRefMutWeighted(
-            NodeRefMut {
+        Ok(NodeRefMutWeighted {
+            weight,
+            parent_order,
+            inner: NodeRefMut {
                 node,
                 path,
                 sequence_counter,
             },
-            weight,
-        ))
-    }
-    /// Adds an empty child node to the specified node, with optional weight
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn add_child<'a, P>(
-        &mut self,
-        node_path: &'a P,
-        weight: Option<Weight>,
-    ) -> Result<NodeId, InvalidNodePath>
-    where
-        &'a P: Into<&'a NodePath>,
-    {
-        Ok(self.get_mut(node_path)?.add_child(weight))
-    }
-    /// Sets the weight of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn set_weight<'a, P>(
-        &mut self,
-        node_path: &'a P,
-        weight: Weight,
-    ) -> Result<(), InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        self.root.set_weight(node_path.into(), weight)
-    }
-    /// Returns the filter of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn get_filter<'a, P>(&self, node_path: &'a P) -> Result<Option<&F>, InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        let node = self.get_node(node_path)?;
-        Ok(node.filter.as_ref())
-    }
-    /// Sets the filter of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn set_filter<'a, P>(&mut self, node_path: &'a P, filter: F) -> Result<(), InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        let node = self.get_node_mut(node_path)?;
-        node.filter.replace(filter);
-        Ok(())
-    }
-    /// Removes the filter of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn clear_filter<'a, P>(&mut self, node_path: &'a P) -> Result<(), InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        let node = self.get_node_mut(node_path)?;
-        node.filter.take();
-        Ok(())
-    }
-    /// Sets the [`OrderType`] of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn set_order<'a, P>(
-        &mut self,
-        node_path: &'a P,
-        order: OrderType,
-    ) -> Result<(), InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        let node = self.get_node_mut(node_path)?;
-        node.set_order(order);
-        Ok(())
-    }
-    /// Appends an item to the queue of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn push_item<'a, P>(&mut self, node_path: &'a P, item: T) -> Result<(), InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        let node = self.get_node_mut(node_path)?;
-        node.queue.push_back(item);
-        Ok(())
-    }
-    /// Pops an item to the queue of the specified node
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn pop_item_from<'a, P>(
-        &mut self,
-        node_path: &'a P,
-    ) -> Result<Result<T, PopError<NodePath>>, InvalidNodePath>
-    where
-        &'a P: Into<&'a NodePath>,
-    {
-        let node_path = node_path.into();
-        let node = self.get_node_mut(node_path)?;
-        Ok(node
-            .pop_item()
-            .map_err(|e| e.map_inner(|_| node_path.clone())))
+        })
     }
     /// Removes an empty node
     ///
@@ -373,24 +270,38 @@ impl<'a, 'b, T, F> NodeRefMut<'a, 'b, T, F> {
             .pop_item()
             .map_err(|e| e.map_inner(|_| self.path.clone()))
     }
+    /// Sets the [`OrderType`]
+    pub fn set_order(&mut self, order: OrderType) {
+        self.node.set_order(order);
+    }
 }
 
 /// Mutable reference to a [`Node`] with an associated [`Weight`]
-pub struct NodeRefMutWeighted<'a, 'b, T, F>(NodeRefMut<'a, 'b, T, F>, &'a mut Weight);
+pub struct NodeRefMutWeighted<'a, 'b, T, F> {
+    weight: &'a mut Weight,
+    parent_order: &'a mut order::State,
+    inner: NodeRefMut<'a, 'b, T, F>,
+}
 impl<'a, 'b, T, F> NodeRefMutWeighted<'a, 'b, T, F> {
     /// Sets the weight
     pub fn set_weight(&mut self, weight: Weight) {
-        *self.1 = weight;
+        *self.weight = weight;
+        self.parent_order.clear();
+    }
+    /// Gets the weight
+    #[must_use]
+    pub fn get_weight(&self) -> Weight {
+        *self.weight
     }
 }
 impl<'a, 'b, T, F> std::ops::Deref for NodeRefMutWeighted<'a, 'b, T, F> {
     type Target = NodeRefMut<'a, 'b, T, F>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.inner
     }
 }
 impl<'a, 'b, T, F> std::ops::DerefMut for NodeRefMutWeighted<'a, 'b, T, F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.inner
     }
 }

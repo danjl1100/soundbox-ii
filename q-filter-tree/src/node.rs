@@ -219,7 +219,8 @@ impl<T, F> Node<T, F> {
         if id_elems.is_empty() {
             Ok(self)
         } else {
-            self.get_child_entry_mut(id_elems).map(|(_, child)| child)
+            self.get_child_entry_mut(id_elems)
+                .map(|((_, child), _)| child)
         }
     }
     pub(crate) fn get_child_and_next_id(
@@ -241,20 +242,21 @@ impl<T, F> Node<T, F> {
             Ok((self, builder))
         }
     }
+    #[allow(clippy::type_complexity)] //TODO make return type more... straightforward
     /// Returns the child `Node` and associated `Weight` of the specified ID elements path
     ///
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub(crate) fn get_child_and_weight_mut(
+    pub(crate) fn get_child_and_weight_parent_order_mut(
         &mut self,
         id_elems: &[NodePathElem],
-    ) -> Result<(&mut Node<T, F>, Option<&mut Weight>), InvalidNodePath> {
+    ) -> Result<(&mut Node<T, F>, Option<(&mut Weight, &mut order::State)>), InvalidNodePath> {
         if id_elems.is_empty() {
             Ok((self, None))
         } else {
             self.get_child_entry_mut(id_elems)
-                .map(|(weight, child)| (child, Some(weight)))
+                .map(|((weight, child), order)| (child, Some((weight, order))))
         }
     }
     fn gen_id_builder_from(
@@ -299,14 +301,15 @@ impl<T, F> Node<T, F> {
             Err(id_elems.into())
         }
     }
+    #[allow(clippy::type_complexity)] //TODO make return type more... straightforward
     fn get_child_entry_mut(
         &mut self,
         id_elems: &[NodePathElem],
-    ) -> Result<(&mut Weight, &mut Node<T, F>), InvalidNodePath> {
+    ) -> Result<((&mut Weight, &mut Node<T, F>), &mut order::State), InvalidNodePath> {
         if let Some((&this_idx, remainder)) = id_elems.split_first() {
             let child = self.children.get_mut(this_idx).ok_or(id_elems)?;
             if remainder.is_empty() {
-                Ok(child)
+                Ok((child, &mut self.order))
             } else {
                 let (_, child_node) = child;
                 child_node.get_child_entry_mut(remainder)
@@ -325,7 +328,7 @@ impl<T, F> Node<T, F> {
         node_id: &[NodePathElem],
         weight: Weight,
     ) -> Result<(), InvalidNodePath> {
-        let (c_weight, _) = self.get_child_entry_mut(node_id)?;
+        let ((c_weight, _), _) = self.get_child_entry_mut(node_id)?;
         *c_weight = weight;
         self.order.clear();
         Ok(())

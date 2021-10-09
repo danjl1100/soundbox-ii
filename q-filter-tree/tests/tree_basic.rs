@@ -9,55 +9,58 @@ fn creates_single() {
     // verify count
     assert_eq!(t.sum_node_count(), 1);
     // item
+    let mut root_ref = t.get_mut(&root).expect("root exists");
     const N: usize = 10;
     for i in 0..N {
-        t.push_item(&root, i).expect("root exists");
+        root_ref.push_item(i);
     }
     for i in 0..N {
-        assert_eq!(t.pop_item_from(&root).expect("root exists"), Ok(i));
+        assert_eq!(root_ref.pop_item(), Ok(i));
     }
     assert_eq!(
-        t.pop_item_from(&root).expect("root exists"),
+        root_ref.pop_item(),
         Err(PopError::Empty(root.clone().into()))
     );
     // filter
-    assert_eq!(t.get_filter(&root).expect("root exists"), None);
-    t.set_filter(&root, String::from("my root"))
-        .expect("root exists");
-    assert_eq!(
-        t.get_filter(&root).expect("root exists"),
-        Some(&String::from("my root"))
-    );
+    let root_filter = root_ref.filter();
+    assert_eq!(*root_filter, None);
+    *root_filter = Some(String::from("my filter"));
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    assert_eq!(root_ref.filter(), &mut Some(String::from("my filter")));
 }
 #[test]
 fn two_nodes() {
     let mut t = Tree::new();
     let root = t.root_id();
     //
-    let child = t.add_child(&root, None).expect("root exists");
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    let child = root_ref.add_child(None);
     // verify count
     assert_eq!(t.sum_node_count(), 2);
     // filter
-    t.set_filter(&child, String::from("child_filter"))
-        .expect("child exists");
-    t.set_filter(&root, String::from("root_filter"))
-        .expect("root exists");
+    let mut child_ref = t.get_mut(&child).expect("child exists");
+    *child_ref.filter() = Some(String::from("child_filter"));
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    *root_ref.filter() = Some(String::from("root_filter"));
     // item
     const N: usize = 5;
     for i in 0..N {
-        t.push_item(&child, i).expect("child exists");
-        t.push_item(&root, i + 500).expect("root exists");
+        t.get_mut(&child).expect("child exists").push_item(i);
+        t.get_mut(&root).expect("root exists").push_item(i + 500);
     }
     for i in 0..N {
-        assert_eq!(t.pop_item_from(&child).expect("child exists"), Ok(i));
-        assert_eq!(t.pop_item_from(&root).expect("root exists"), Ok(i + 500));
+        assert_eq!(t.get_mut(&child).expect("child exists").pop_item(), Ok(i));
+        assert_eq!(
+            t.get_mut(&root).expect("root exists").pop_item(),
+            Ok(i + 500)
+        );
     }
     assert_eq!(
-        t.pop_item_from(&child).expect("child exists"),
+        t.get_mut(&child).expect("child exists").pop_item(),
         Err(PopError::Empty(child.into()))
     );
     assert_eq!(
-        t.pop_item_from(&root).expect("root exists"),
+        t.get_mut(&root).expect("root exists").pop_item(),
         Err(PopError::Blocked(root.into()))
     );
 }
@@ -66,31 +69,34 @@ fn node_pop_chain() {
     let mut t: Tree<_, ()> = Tree::new();
     let root = t.root_id();
     //
-    let child1 = t.add_child(&root, None).expect("root exists");
-    let child2 = t.add_child(&child1, None).expect("child1 exists");
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    let child1 = root_ref.add_child(None);
+    let mut child1_ref = t.get_mut(&child1).expect("child1 exists");
+    let child2 = child1_ref.add_child(None);
     // verify count
     assert_eq!(t.sum_node_count(), 3);
     // fill child2
+    let mut child2_ref = t.get_mut(&child2).expect("child2 exists");
     for i in 0..4 {
-        t.push_item(&child2, i).expect("child2 exists");
+        child2_ref.push_item(i);
     }
     // verify child2 pop
-    assert_eq!(t.pop_item_from(&child2).expect("child2 exists"), Ok(0));
-    assert_eq!(t.pop_item_from(&child2).expect("child2 exists"), Ok(1));
+    assert_eq!(child2_ref.pop_item(), Ok(0));
+    assert_eq!(child2_ref.pop_item(), Ok(1));
     // verify child1 not popping
+    let mut child1_ref = t.get_mut(&child1).expect("child1 exists");
     assert_eq!(
-        t.pop_item_from(&child1).expect("child2 exists"),
+        child1_ref.pop_item(),
         Err(PopError::Blocked((*child1).clone()))
     );
     // allow child1 <- child2
-    t.set_weight(&child2, 1).expect("child2 exists");
+    let mut child2_ref = t.get_child_mut(&child2).expect("child2 exists");
+    child2_ref.set_weight(1);
     // verify child1 chain from child2
-    assert_eq!(t.pop_item_from(&child1).expect("child2 exists"), Ok(2));
-    assert_eq!(t.pop_item_from(&child1).expect("child2 exists"), Ok(3));
-    assert_eq!(
-        t.pop_item_from(&child1).expect("child2 exists"),
-        Err(PopError::Empty(child1.into()))
-    );
+    let mut child1_ref = t.get_mut(&child1).expect("child2 exists");
+    assert_eq!(child1_ref.pop_item(), Ok(2));
+    assert_eq!(child1_ref.pop_item(), Ok(3));
+    assert_eq!(child1_ref.pop_item(), Err(PopError::Empty(child1.into())));
 }
 #[test]
 fn node_removal() {
@@ -107,24 +113,30 @@ fn node_removal() {
     //    |--\ child4
     //       |--  child4_child
     //    |--  child5
-    let base = t.add_child(&root, None).expect("root exists");
-    let child1 = t.add_child(&base, None).expect("base exists");
-    let child2 = t.add_child(&base, None).expect("base exists");
-    let child3 = t.add_child(&base, None).expect("base exists");
-    let child4 = t.add_child(&base, None).expect("base exists");
-    let child5 = t.add_child(&base, None).expect("base exists");
-    let child4_child = t.add_child(&child4, None).expect("child4 exists");
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    let base = root_ref.add_child(None);
+    let mut base_ref = t.get_mut(&base).expect("base exists");
+    let child1 = base_ref.add_child(None);
+    let child2 = base_ref.add_child(None);
+    let child3 = base_ref.add_child(None);
+    let child4 = base_ref.add_child(None);
+    let child5 = base_ref.add_child(None);
+    let mut child4_ref = t.get_mut(&child4).expect("child4 exists");
+    let child4_child = child4_ref.add_child(None);
     // fill child4
     for i in 0..10 {
-        t.push_item(&child4, i).expect("child4 exists");
+        child4_ref.push_item(i);
     }
     // verify count
     assert_eq!(t.sum_node_count(), 8);
     // verify root pop
-    t.set_weight(&base, 1).expect("base exists");
-    t.set_weight(&child4, 1).expect("child4 exists");
-    assert_eq!(t.pop_item_from(&root).expect("root exists"), Ok(0));
-    assert_eq!(t.pop_item_from(&root).expect("root exists"), Ok(1));
+    t.get_child_mut(&base).expect("base exists").set_weight(1);
+    t.get_child_mut(&child4)
+        .expect("child4 exists")
+        .set_weight(1);
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    assert_eq!(root_ref.pop_item(), Ok(0));
+    assert_eq!(root_ref.pop_item(), Ok(1));
     // fails - remove root
     assert_eq!(
         t.remove_node(&root),
@@ -161,8 +173,6 @@ fn node_removal() {
         Err(RemoveError::SequenceMismatch(child4, child5.sequence()))
     );
     // verify root pop empty
-    assert_eq!(
-        t.pop_item_from(&root).expect("root exists"),
-        Err(PopError::Blocked(root.into()))
-    );
+    let mut root_ref = t.get_mut(&root).expect("root exists");
+    assert_eq!(root_ref.pop_item(), Err(PopError::Blocked(root.into())));
 }

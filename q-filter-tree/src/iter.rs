@@ -50,8 +50,9 @@ mod tests {
     fn single() {
         let mut t: Tree<(), ()> = Tree::default();
         let root = t.root_id();
+        let mut root_ref = t.get_mut(&root).expect("root exists");
         //
-        let child1 = t.add_child(&root, None).expect("root exists");
+        let child1 = root_ref.add_child(None);
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root));
@@ -72,13 +73,16 @@ mod tests {
         //    |--\ child4
         //       |--  child4_child
         //    |--  child5
-        let base = t.add_child(&root, None).expect("root exists");
-        let child1 = t.add_child(&base, None).expect("base exists");
-        let child2 = t.add_child(&base, None).expect("base exists");
-        let child3 = t.add_child(&base, None).expect("base exists");
-        let child4 = t.add_child(&base, None).expect("base exists");
-        let child5 = t.add_child(&base, None).expect("base exists");
-        let child4_child = t.add_child(&child4, None).expect("child4 exists");
+        let mut root_ref = t.get_mut(&root).expect("root exists");
+        let base = root_ref.add_child(None);
+        let mut base_ref = t.get_mut(&base).expect("base exists");
+        let child1 = base_ref.add_child(None);
+        let child2 = base_ref.add_child(None);
+        let child3 = base_ref.add_child(None);
+        let child4 = base_ref.add_child(None);
+        let child5 = base_ref.add_child(None);
+        let mut child4_ref = t.get_mut(&child4).expect("child4 exists");
+        let child4_child = child4_ref.add_child(None);
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root));

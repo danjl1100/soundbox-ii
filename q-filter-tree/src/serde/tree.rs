@@ -61,12 +61,13 @@ where
             // get NodeId (ROOT, or INSERT)
             let node_id = if let Some((parent_path, _)) = node_path.parent() {
                 // create node
-                tree.add_child(&parent_path, None).map_err(|_| {
+                let mut parent_ref = tree.get_mut(&parent_path).map_err(|_| {
                     M::Error::custom(format!(
                         "failed to create node at path {}, parent {:?} does not exist",
                         node_path, parent_path
                     ))
-                })?
+                })?;
+                parent_ref.add_child(None)
             } else {
                 // root node already exists
                 tree.root_id()
