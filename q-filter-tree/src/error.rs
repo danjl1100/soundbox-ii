@@ -6,6 +6,11 @@ use crate::id::{NodeId, NodeIdBuilder, NodePath, NodePathElem, Sequence};
 /// Error for an invalid [`NodeId`] path
 #[derive(Debug, PartialEq, Eq)]
 pub struct InvalidNodePath(NodePath);
+impl From<&NodePath> for InvalidNodePath {
+    fn from(node_path: &NodePath) -> Self {
+        Self(node_path.clone())
+    }
+}
 impl From<&[NodePathElem]> for InvalidNodePath {
     fn from(node_id: &[NodePathElem]) -> Self {
         Self(node_id.to_vec().into())

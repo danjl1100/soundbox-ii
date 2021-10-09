@@ -1,6 +1,6 @@
 use crate::{
     error::{InvalidNodePath, PopError, RemoveErrorInner},
-    id::{NodeId, NodeIdBuilder, NodePath, NodePathElem, Sequence},
+    id::{self, NodeId, NodeIdBuilder, NodePathElem, Sequence},
     order, Weight,
 };
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,16 @@ pub struct Node<T, F> {
     sequence: Sequence,
 }
 impl<T, F> Node<T, F> {
-    pub(crate) fn new(sequence: Sequence) -> Self {
+    pub(crate) fn new(counter: &mut SequenceCounter) -> Self {
+        Self::new_with_seq(counter.next())
+    }
+    pub(crate) fn new_root() -> (Self, SequenceCounter) {
+        const ROOT_ID: NodeId = id::ROOT;
+        let root = Self::new_with_seq(ROOT_ID.sequence());
+        let counter = SequenceCounter::new(&ROOT_ID);
+        (root, counter)
+    }
+    fn new_with_seq(sequence: Sequence) -> Self {
         Self {
             queue: VecDeque::new(),
             filter: None,
@@ -135,21 +144,21 @@ impl<T, F> Node<T, F> {
     /// Adds a child to the specified `Node`, with an optional `Weight`
     pub(crate) fn add_child(
         &mut self,
-        node_path: &NodePath,
         weight: Option<Weight>,
-        sequence: Sequence,
-    ) -> NodeId {
+        counter: &mut SequenceCounter,
+    ) -> (NodePathElem, Sequence) {
         let weight = weight.unwrap_or(0);
-        let new_child = (weight, Node::new(sequence));
+        let child_node = Node::new(counter);
+        let sequence = child_node.sequence();
         let child_part = {
             let child_part = self.children.len() as NodePathElem;
             // push AFTER recording length ^
-            self.children.push(new_child);
+            self.children.push((weight, child_node));
             child_part
         };
         self.order.clear();
         // return new NodeId
-        node_path.extend(child_part).with_sequence(sequence)
+        (child_part, sequence)
     }
     /// Removes the specified child node
     ///
@@ -230,6 +239,22 @@ impl<T, F> Node<T, F> {
             // process request - self is the destination!
             let builder = self.gen_id_builder_from(None);
             Ok((self, builder))
+        }
+    }
+    /// Returns the child `Node` and associated `Weight` of the specified ID elements path
+    ///
+    /// # Errors
+    /// Returns an error if the specified `NodeId` does not point to a valid node
+    ///
+    pub(crate) fn get_child_and_weight_mut(
+        &mut self,
+        id_elems: &[NodePathElem],
+    ) -> Result<(&mut Node<T, F>, Option<&mut Weight>), InvalidNodePath> {
+        if id_elems.is_empty() {
+            Ok((self, None))
+        } else {
+            self.get_child_entry_mut(id_elems)
+                .map(|(weight, child)| (child, Some(weight)))
         }
     }
     fn gen_id_builder_from(
@@ -371,5 +396,18 @@ impl SequenceSource for NodeId {
 impl<T, F> SequenceSource for Node<T, F> {
     fn sequence(&self) -> Sequence {
         self.sequence
+    }
+}
+
+/// Counter for a `Sequence`
+pub struct SequenceCounter(Sequence);
+impl SequenceCounter {
+    fn new(from_id: &NodeId) -> Self {
+        Self(from_id.sequence())
+    }
+    /// Returns the next Sequence value in the counter
+    fn next(&mut self) -> Sequence {
+        self.0 += 1;
+        self.0
     }
 }
