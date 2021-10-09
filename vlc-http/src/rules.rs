@@ -33,7 +33,11 @@ impl Rules {
     }
     fn calc_immediate_need(&mut self, now: Time) -> Need {
         //  (1) calculate all needs
-        let needs = self.rules.iter().map(move |rule| rule.get_need(now));
+        let needs = self.rules.iter().map(move |rule| {
+            let need = rule.get_need(now);
+            dbg!(rule, &need);
+            need
+        });
         //  (2) pick most-immediate option
         needs.min_by(ord_need).flatten()
     }
@@ -240,6 +244,7 @@ impl Rule for FetchAfterTrackEnd {
     fn get_need(&self, now: Time) -> Need {
         use std::time::Duration;
         match self.playback_timing {
+            Some((timing, _)) if !timing.state.is_playing() => None,
             Some((timing, received_time)) if timing.duration_secs > 0 => {
                 let timing = timing.predict_change(now - received_time);
                 let delay = timing
@@ -268,54 +273,80 @@ mod tests {
     fn fetch_after_track_end() {
         let mut fate = FetchAfterTrackEnd::default();
         assert_eq!(fate.get_need(time(0)), None);
+        // verify Duration=0 never fetches
         fate.notify_playback(&PlaybackStatus {
             ..PlaybackStatus::default()
         });
-        assert_eq!(fate.get_need(time(0)), None); //TODO: is this really desired?  i.e. does Duration=0 mean "never fetch"?
-        fate.notify_playback(&PlaybackStatus {
-            timing: PlaybackTiming {
-                duration_secs: 30,
-                ..PlaybackTiming::default()
-            },
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(
-            fate.get_need(time(0)),
-            some_millis(
-                30_000 + FetchAfterTrackEnd::DELAY_MS,
-                Action::fetch_playback_status()
-            )
-        );
-        fate.notify_playback(&PlaybackStatus {
-            timing: PlaybackTiming {
-                duration_secs: 30,
-                position_secs: 25,
-                ..PlaybackTiming::default()
-            },
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(
-            fate.get_need(time(0)),
-            some_millis(
-                5_000 + FetchAfterTrackEnd::DELAY_MS,
-                Action::fetch_playback_status()
-            )
-        );
-        fate.notify_playback(&PlaybackStatus {
-            timing: PlaybackTiming {
-                duration_secs: 30,
-                position_secs: 30,
-                ..PlaybackTiming::default()
-            },
-            ..PlaybackStatus::default()
-        });
-        assert_eq!(
-            fate.get_need(time(0)),
-            some_millis(
-                FetchAfterTrackEnd::DELAY_MS,
-                Action::fetch_playback_status()
-            )
-        );
+        assert_eq!(fate.get_need(time(0)), None);
+        let mut count_playing = 0; // verify test is not broken
+        for state in [
+            shared::PlaybackState::Paused,
+            shared::PlaybackState::Playing,
+        ] {
+            if state.is_playing() {
+                count_playing += 1;
+            }
+            fate.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 30,
+                    state,
+                    ..PlaybackTiming::default()
+                },
+                ..PlaybackStatus::default()
+            });
+            assert_eq!(
+                fate.get_need(time(0)),
+                if state.is_playing() {
+                    some_millis(
+                        30_000 + FetchAfterTrackEnd::DELAY_MS,
+                        Action::fetch_playback_status(),
+                    )
+                } else {
+                    None
+                }
+            );
+            fate.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 30,
+                    position_secs: 25,
+                    state,
+                    ..PlaybackTiming::default()
+                },
+                ..PlaybackStatus::default()
+            });
+            assert_eq!(
+                fate.get_need(time(0)),
+                if state.is_playing() {
+                    some_millis(
+                        5_000 + FetchAfterTrackEnd::DELAY_MS,
+                        Action::fetch_playback_status(),
+                    )
+                } else {
+                    None
+                }
+            );
+            fate.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 30,
+                    position_secs: 30,
+                    state,
+                    ..PlaybackTiming::default()
+                },
+                ..PlaybackStatus::default()
+            });
+            assert_eq!(
+                fate.get_need(time(0)),
+                if state.is_playing() {
+                    some_millis(
+                        FetchAfterTrackEnd::DELAY_MS,
+                        Action::fetch_playback_status(),
+                    )
+                } else {
+                    None
+                }
+            );
+        }
+        assert_eq!(count_playing, 1);
     }
 
     #[derive(Debug)]

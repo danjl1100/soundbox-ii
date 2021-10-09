@@ -303,6 +303,13 @@ impl Default for PlaybackState {
         Self::Playing
     }
 }
+impl PlaybackState {
+    /// Returns `true` if the state is `PlaybackState::Playing`
+    #[must_use]
+    pub fn is_playing(&self) -> bool {
+        matches!(self, Self::Playing)
+    }
+}
 // // no logic in this crate, just data types!
 // #[cfg(test)]
 // mod tests {
