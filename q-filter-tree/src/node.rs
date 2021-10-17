@@ -1,6 +1,6 @@
 use crate::{
     error::{InvalidNodePath, PopError, RemoveErrorInner},
-    id::{self, NodeId, NodeIdBuilder, NodePathElem, Sequence},
+    id::{self, ty, NodeId, NodePathElem, Sequence, SequenceSource},
     order, Weight,
 };
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,9 @@ impl<T, F> WeightNodeVec<T, F> {
     }
     fn remove(&mut self, index: usize) -> (Weight, Node<T, F>) {
         (self.0.remove(index), self.1.remove(index))
+    }
+    fn iter(&self) -> impl Iterator<Item = (&Weight, &Node<T, F>)> {
+        self.weights().iter().zip(self.nodes().iter())
     }
 }
 
@@ -107,7 +110,7 @@ impl<'a, T: Clone, F: Clone> From<&'a Node<T, F>> for NodeInfo<T, F> {
 
 /// Internal representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
 #[must_use]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct Node<T, F> {
     /// Items queue
     pub queue: VecDeque<T>,
@@ -125,7 +128,7 @@ impl<T, F> Node<T, F> {
         Self::new_with_seq(counter.next())
     }
     pub(crate) fn new_root() -> (Self, SequenceCounter) {
-        const ROOT_ID: NodeId = id::ROOT;
+        const ROOT_ID: NodeId<ty::Root> = id::ROOT;
         let root = Self::new_with_seq(ROOT_ID.sequence());
         let counter = SequenceCounter::new(&ROOT_ID);
         (root, counter)
@@ -146,19 +149,18 @@ impl<T, F> Node<T, F> {
         &mut self,
         weight: Option<Weight>,
         counter: &mut SequenceCounter,
-    ) -> (NodePathElem, Sequence) {
+    ) -> (NodePathElem, &Self) {
         let weight = weight.unwrap_or(0);
         let child_node = Node::new(counter);
-        let sequence = child_node.sequence();
-        let child_part = {
+        let child = {
             let child_part = self.children.len() as NodePathElem;
             // push AFTER recording length ^
             self.children.push((weight, child_node));
-            child_part
+            let child_node = self.children.nodes().last().expect("pushed element exists");
+            (child_part, child_node)
         };
         self.order.clear();
-        // return new NodeId
-        (child_part, sequence)
+        child
     }
     /// Removes the specified child node
     ///
@@ -223,25 +225,6 @@ impl<T, F> Node<T, F> {
                 .map(|((_, child), _)| child)
         }
     }
-    pub(crate) fn get_child_and_next_id(
-        &self,
-        id_elems: &[NodePathElem],
-    ) -> Result<(&Node<T, F>, Option<NodeIdBuilder>), InvalidNodePath> {
-        if let Some((&this_idx, remainder)) = id_elems.split_first() {
-            // forward request to child
-            let (_, child_node) = self.children.get(this_idx).ok_or(id_elems)?;
-            child_node
-                .get_child_and_next_id(remainder)
-                .map(|(node, builder)| {
-                    let builder = self.gen_id_builder_from(Some((this_idx, builder)));
-                    (node, builder)
-                })
-        } else {
-            // process request - self is the destination!
-            let builder = self.gen_id_builder_from(None);
-            Ok((self, builder))
-        }
-    }
     #[allow(clippy::type_complexity)] //TODO make return type more... straightforward
     /// Returns the child `Node` and associated `Weight` of the specified ID elements path
     ///
@@ -259,27 +242,14 @@ impl<T, F> Node<T, F> {
                 .map(|((weight, child), order)| (child, Some((weight, order))))
         }
     }
-    fn gen_id_builder_from(
+    /// Returns the child `Node` and index (if any), after the specified index
+    pub(crate) fn get_idx_and_child_after(
         &self,
-        this_idx_and_builder: Option<(usize, Option<NodeIdBuilder>)>,
-    ) -> Option<NodeIdBuilder> {
-        let next_idx = this_idx_and_builder.as_ref().map_or(0, |(idx, _)| *idx + 1);
-        this_idx_and_builder
-            .and_then(|(this_idx, builder)| {
-                // prepend `this_idx` to builder
-                builder.map(|mut builder| {
-                    builder.prepend(this_idx);
-                    builder
-                })
-            })
-            .or_else(|| {
-                // create builder starting with next child
-                self.children.get(next_idx).map(|(_, next_child)| {
-                    let mut builder = NodeIdBuilder::new(next_child.sequence());
-                    builder.prepend(next_idx);
-                    builder
-                })
-            })
+        after_idx: Option<usize>,
+    ) -> Option<(usize, &Self)> {
+        let idx = after_idx.map_or(0, |i| i + 1);
+        let child = self.children.nodes().get(idx);
+        child.map(|c| (idx, c))
     }
     pub(crate) fn sum_node_count(&self) -> usize {
         let child_sum: usize = self.children.nodes().iter().map(Self::sum_node_count).sum();
@@ -388,24 +358,36 @@ impl<T, F> Node<T, F> {
         }
     }
 }
-pub(crate) trait SequenceSource {
-    fn sequence(&self) -> Sequence;
-}
-impl SequenceSource for NodeId {
-    fn sequence(&self) -> Sequence {
-        self.sequence()
-    }
-}
 impl<T, F> SequenceSource for Node<T, F> {
     fn sequence(&self) -> Sequence {
         self.sequence
     }
 }
+impl<T, F> std::fmt::Debug for Node<T, F>
+where
+    T: std::fmt::Debug,
+    F: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "Node(#{}, q={:?}, f={:?}, {:?}, w={:?})",
+            self.sequence,
+            self.queue,
+            self.filter,
+            order::Type::from(&self.order),
+            self.children.weights()
+        )
+        // f.debug_map()
+        //     .entries(self.children.nodes().iter().enumerate())
+        //     .finish()
+    }
+}
 
 /// Counter for a `Sequence`
-pub struct SequenceCounter(Sequence);
+pub(crate) struct SequenceCounter(Sequence);
 impl SequenceCounter {
-    fn new(from_id: &NodeId) -> Self {
+    fn new(from_id: &NodeId<ty::Root>) -> Self {
         Self(from_id.sequence())
     }
     /// Returns the next Sequence value in the counter

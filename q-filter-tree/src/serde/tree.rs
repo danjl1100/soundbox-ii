@@ -1,4 +1,6 @@
-use crate::{id::NodePath, node::NodeInfo, Tree};
+use crate::id::{NodeIdTyped, NodePathTyped};
+use crate::node::NodeInfo;
+use crate::Tree;
 
 use core::marker::PhantomData;
 use serde::de::{Deserialize, Deserializer, Error, MapAccess, Visitor};
@@ -16,7 +18,7 @@ where
         let node_count = self.sum_node_count();
         let mut map = serializer.serialize_map(Some(node_count))?;
         for (node_id, node) in self.enumerate() {
-            let node_path = NodePath::from(node_id);
+            let node_path = NodePathTyped::from(node_id);
             let node_info = NodeInfo::from(node);
             map.serialize_entry(&node_path, &node_info)?;
         }
@@ -57,24 +59,31 @@ where
         let mut tree = Tree::new();
         let mut weights = std::collections::HashMap::new();
 
-        while let Some((node_path, node_info)) = access.next_entry::<NodePath, NodeInfo<T, F>>()? {
+        while let Some((node_path, node_info)) =
+            access.next_entry::<NodePathTyped, NodeInfo<T, F>>()?
+        {
             // get NodeId (ROOT, or INSERT)
-            let node_id = if let Some((parent_path, _)) = node_path.parent() {
-                // create node
-                let mut parent_ref = tree.get_mut(&parent_path).map_err(|_| {
-                    M::Error::custom(format!(
-                        "failed to create node at path {}, parent {:?} does not exist",
-                        node_path, parent_path
-                    ))
-                })?;
-                parent_ref.add_child(None)
-            } else {
-                // root node already exists
-                tree.root_id()
+            let node_id = match &node_path {
+                NodePathTyped::Child(node_path) => {
+                    let (parent_path, _) = node_path.clone().parent();
+                    // create node
+                    let mut parent_ref = parent_path.try_ref(&mut tree).map_err(|_| {
+                        M::Error::custom(format!(
+                            "failed to create node at path {}, parent {:?} does not exist",
+                            NodePathTyped::from(node_path.clone()),
+                            parent_path
+                        ))
+                    })?;
+                    NodeIdTyped::from(parent_ref.add_child(None))
+                }
+                NodePathTyped::Root(_) => {
+                    // root node already exists (intrinsic in tree)
+                    NodeIdTyped::from(tree.root_id())
+                }
             };
 
             // get Node
-            let node = tree.get_node_mut(&node_id).map_err(|_| {
+            let mut node = node_id.try_ref(&mut tree).map_err(|_| {
                 M::Error::custom(format!("newly-created node_id is invalid: {:?}", node_id))
             })?;
 

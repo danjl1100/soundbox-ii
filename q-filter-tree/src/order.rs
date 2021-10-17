@@ -9,24 +9,24 @@
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
-//! let mut root_ref = t.get_mut(&root).unwrap();
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! //
 //! root_ref.set_order(OrderType::InOrder);
 //! //
 //! let childA = root_ref.add_child(Some(2));
 //! let childB = root_ref.add_child(Some(1));
 //! let childC = root_ref.add_child(Some(3));
-//! let mut childA_ref = t.get_mut(&childA).unwrap();
+//! let mut childA_ref = childA.try_ref(&mut t).unwrap();
 //! childA_ref.push_item("A1");
 //! childA_ref.push_item("A2");
-//! let mut childB_ref = t.get_mut(&childB).unwrap();
+//! let mut childB_ref = childB.try_ref(&mut t).unwrap();
 //! childB_ref.push_item("B1");
-//! let mut childC_ref = t.get_mut(&childC).unwrap();
+//! let mut childC_ref = childC.try_ref(&mut t).unwrap();
 //! childC_ref.push_item("C1");
 //! childC_ref.push_item("C2");
 //! childC_ref.push_item("C3");
 //! //
-//! let mut root_ref = t.get_mut(&root).unwrap();
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! assert_eq!(root_ref.pop_item(), Ok("A1"));
 //! assert_eq!(root_ref.pop_item(), Ok("A2"));
 //! assert_eq!(root_ref.pop_item(), Ok("B1"));
@@ -43,24 +43,24 @@
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
-//! let mut root_ref = t.get_mut(&root).unwrap();
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! //
 //! root_ref.set_order(OrderType::RoundRobin);
 //! //
 //! let childA = root_ref.add_child(Some(2));
 //! let childB = root_ref.add_child(Some(1));
 //! let childC = root_ref.add_child(Some(3));
-//! let mut childA_ref = t.get_mut(&childA).unwrap();
+//! let mut childA_ref = childA.try_ref(&mut t).unwrap();
 //! childA_ref.push_item("A1");
 //! childA_ref.push_item("A2");
-//! let mut childB_ref = t.get_mut(&childB).unwrap();
+//! let mut childB_ref = childB.try_ref(&mut t).unwrap();
 //! childB_ref.push_item("B1");
-//! let mut childC_ref = t.get_mut(&childC).unwrap();
+//! let mut childC_ref = childC.try_ref(&mut t).unwrap();
 //! childC_ref.push_item("C1");
 //! childC_ref.push_item("C2");
 //! childC_ref.push_item("C3");
 //! //
-//! let mut root_ref = t.get_mut(&root).unwrap();
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! assert_eq!(root_ref.pop_item(), Ok("A1"));
 //! assert_eq!(root_ref.pop_item(), Ok("B1"));
 //! assert_eq!(root_ref.pop_item(), Ok("C1"));
