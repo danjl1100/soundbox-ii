@@ -161,7 +161,6 @@ mod tests {
     use super::super::tests::{assert_peek_next, check_all};
     use super::super::{State, Type, Weight};
 
-    // Type::RoundRobin
     #[test]
     fn all() {
         let ty = Type::RoundRobin;
