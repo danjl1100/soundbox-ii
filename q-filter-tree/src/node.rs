@@ -1,52 +1,11 @@
 use crate::{
     error::{InvalidNodePath, PopError, RemoveErrorInner},
     id::{self, ty, NodeId, NodePathElem, Sequence, SequenceSource},
-    order, Weight,
+    order::{self, weight_vec, WeightVec},
+    Weight,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct WeightNodeVec<T, F>(Vec<Weight>, Vec<Node<T, F>>);
-impl<T, F> WeightNodeVec<T, F> {
-    fn new() -> Self {
-        Self(vec![], vec![])
-    }
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-    fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-    fn get(&self, index: usize) -> Option<(Weight, &Node<T, F>)> {
-        match (self.0.get(index), self.1.get(index)) {
-            (Some(&weight), Some(node)) => Some((weight, node)),
-            _ => None,
-        }
-    }
-    fn get_mut(&mut self, index: usize) -> Option<(&mut Weight, &mut Node<T, F>)> {
-        match (self.0.get_mut(index), self.1.get_mut(index)) {
-            (Some(weight), Some(node)) => Some((weight, node)),
-            _ => None,
-        }
-    }
-    fn weights(&self) -> &[Weight] {
-        &self.0
-    }
-    fn nodes(&self) -> &[Node<T, F>] {
-        &self.1
-    }
-    fn push(&mut self, (weight, node): (Weight, Node<T, F>)) {
-        self.0.push(weight);
-        self.1.push(node);
-    }
-    fn remove(&mut self, index: usize) -> (Weight, Node<T, F>) {
-        (self.0.remove(index), self.1.remove(index))
-    }
-    fn iter(&self) -> impl Iterator<Item = (&Weight, &Node<T, F>)> {
-        self.weights().iter().zip(self.nodes().iter())
-    }
-}
 
 /// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
 #[must_use]
@@ -119,7 +78,7 @@ pub struct Node<T, F> {
     // TODO
     // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
     // pub retain_count: usize,
-    children: WeightNodeVec<T, F>,
+    children: WeightVec<Node<T, F>>,
     order: order::State,
     sequence: Sequence,
 }
@@ -139,7 +98,7 @@ impl<T, F> Node<T, F> {
             filter: None,
             // TODO
             // retain_count: 0,
-            children: WeightNodeVec::new(),
+            children: WeightVec::new(),
             order: order::Type::InOrder.into(),
             sequence,
         }
@@ -155,8 +114,10 @@ impl<T, F> Node<T, F> {
         let child = {
             let child_part = self.children.len() as NodePathElem;
             // push AFTER recording length ^
-            self.children.push((weight, child_node));
-            let child_node = self.children.nodes().last().expect("pushed element exists");
+            self.children
+                .ref_mut(&mut self.order)
+                .push((weight, child_node));
+            let child_node = self.children.elems().last().expect("pushed element exists");
             (child_part, child_node)
         };
         self.order.clear();
@@ -179,7 +140,11 @@ impl<T, F> Node<T, F> {
                 let child_children = child.get_child_nodes();
                 if child_children.is_empty() {
                     self.order.clear();
-                    Ok(self.children.remove(id_elem))
+                    Ok(self
+                        .children
+                        .ref_mut(&mut self.order)
+                        .remove(id_elem)
+                        .expect("indexed child still present for removal"))
                 } else {
                     let child_id_elems = (0..child_children.len()).collect();
                     Err(RemoveErrorInner::NonEmpty((), child_id_elems))
@@ -192,7 +157,7 @@ impl<T, F> Node<T, F> {
         }
     }
     fn get_child_nodes(&self) -> &[Node<T, F>] {
-        self.children.nodes()
+        self.children.elems()
     }
     /// Returns the child `Node` at the specified ID elements path
     ///
@@ -221,8 +186,7 @@ impl<T, F> Node<T, F> {
         if id_elems.is_empty() {
             Ok(self)
         } else {
-            self.get_child_entry_mut(id_elems)
-                .map(|((_, child), _)| child)
+            self.get_child_entry_mut(id_elems).map(|(_, node)| node)
         }
     }
     #[allow(clippy::type_complexity)] //TODO make return type more... straightforward
@@ -234,12 +198,14 @@ impl<T, F> Node<T, F> {
     pub(crate) fn get_child_and_weight_parent_order_mut(
         &mut self,
         id_elems: &[NodePathElem],
-    ) -> Result<(&mut Node<T, F>, Option<(&mut Weight, &mut order::State)>), InvalidNodePath> {
+    ) -> Result<
+        Result<weight_vec::RefMutElem<'_, '_, Node<T, F>>, &'_ mut Node<T, F>>,
+        InvalidNodePath,
+    > {
         if id_elems.is_empty() {
-            Ok((self, None))
+            Ok(Err(self))
         } else {
-            self.get_child_entry_mut(id_elems)
-                .map(|((weight, child), order)| (child, Some((weight, order))))
+            self.get_child_entry_mut(id_elems).map(Ok)
         }
     }
     /// Returns the child `Node` and index (if any), after the specified index
@@ -248,11 +214,11 @@ impl<T, F> Node<T, F> {
         after_idx: Option<usize>,
     ) -> Option<(usize, &Self)> {
         let idx = after_idx.map_or(0, |i| i + 1);
-        let child = self.children.nodes().get(idx);
+        let child = self.children.elems().get(idx);
         child.map(|c| (idx, c))
     }
     pub(crate) fn sum_node_count(&self) -> usize {
-        let child_sum: usize = self.children.nodes().iter().map(Self::sum_node_count).sum();
+        let child_sum: usize = self.children.elems().iter().map(Self::sum_node_count).sum();
         child_sum + 1
     }
     fn get_child_entry(
@@ -271,17 +237,20 @@ impl<T, F> Node<T, F> {
             Err(id_elems.into())
         }
     }
-    #[allow(clippy::type_complexity)] //TODO make return type more... straightforward
     fn get_child_entry_mut(
         &mut self,
         id_elems: &[NodePathElem],
-    ) -> Result<((&mut Weight, &mut Node<T, F>), &mut order::State), InvalidNodePath> {
+    ) -> Result<weight_vec::RefMutElem<'_, '_, Node<T, F>>, InvalidNodePath> {
         if let Some((&this_idx, remainder)) = id_elems.split_first() {
-            let child = self.children.get_mut(this_idx).ok_or(id_elems)?;
+            let child_ref = self
+                .children
+                .ref_mut(&mut self.order)
+                .into_elem_ref(this_idx)
+                .or(Err(id_elems))?;
             if remainder.is_empty() {
-                Ok((child, &mut self.order))
+                Ok(child_ref)
             } else {
-                let (_, child_node) = child;
+                let child_node = child_ref.1;
                 child_node.get_child_entry_mut(remainder)
             }
         } else {
@@ -298,9 +267,8 @@ impl<T, F> Node<T, F> {
         node_id: &[NodePathElem],
         weight: Weight,
     ) -> Result<(), InvalidNodePath> {
-        let ((c_weight, _), _) = self.get_child_entry_mut(node_id)?;
-        *c_weight = weight;
-        self.order.clear();
+        let (mut weight_ref, _) = self.get_child_entry_mut(node_id)?;
+        weight_ref.set_weight(weight);
         Ok(())
     }
     /// Sets the [`OrderType`](`crate::order::Type`) of this node
@@ -318,11 +286,13 @@ impl<T, F> Node<T, F> {
                 Err(PopError::Empty(()))
             } else {
                 let weights = self.children.weights();
-                let child = self
-                    .order
-                    .next(weights)
-                    .and_then(|index| self.children.get_mut(index));
-                if let Some((_, child)) = child {
+                let child_idx = self.order.next(weights);
+                let child = if let Some(child_idx) = child_idx {
+                    self.children.get_elem_mut(child_idx)
+                } else {
+                    None
+                };
+                if let Some(child) = child {
                     child.pop_item()
                 } else {
                     Err(PopError::Blocked(()))
@@ -344,18 +314,9 @@ impl<T, F> Node<T, F> {
         &mut self,
         weights: Vec<Weight>,
     ) -> Result<(), (Vec<Weight>, usize)> {
-        let orig_len = self.children.len();
-        if weights.len() == orig_len {
-            self.children.0 = weights;
-            assert_eq!(
-                self.children.0.len(),
-                self.children.1.len(),
-                "child-weights and -nodes lists length equal after overwrite_child_weights"
-            );
-            Ok(())
-        } else {
-            Err((weights, orig_len))
-        }
+        self.children
+            .ref_mut(&mut self.order)
+            .overwrite_weights(weights)
     }
 }
 impl<T, F> SequenceSource for Node<T, F> {
@@ -379,12 +340,13 @@ where
             self.children.weights()
         )
         // f.debug_map()
-        //     .entries(self.children.nodes().iter().enumerate())
+        //     .entries(self.children.elems().iter().enumerate())
         //     .finish()
     }
 }
 
 /// Counter for a `Sequence`
+#[derive(Debug)]
 pub(crate) struct SequenceCounter(Sequence);
 impl SequenceCounter {
     fn new(from_id: &NodeId<ty::Root>) -> Self {
