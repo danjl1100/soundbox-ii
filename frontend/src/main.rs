@@ -32,6 +32,7 @@ mod playback;
 mod websocket;
 
 derive_wrapper! {
+    #[allow(clippy::large_enum_variant)]
     enum Msg for Model {
         WebSocket(MsgWebSocket) for update_websocket(..),
         User(MsgUser) for update_user(..),

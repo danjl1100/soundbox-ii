@@ -53,13 +53,17 @@ macro_rules! set_detect_change {
 
 macro_rules! derive_wrapper {
     (
-        $( enum $name:ident for $target:ident {
-            $(
-                $variant:ident ( $inner:ty ) for $update_fn:ident (..)
-            ),+ $(,)?
-        })+
+        $(
+            $(#[$meta:meta])*
+            enum $name:ident for $target:ident {
+                $(
+                    $variant:ident ( $inner:ty ) for $update_fn:ident (..)
+                ),+ $(,)?
+            }
+        )+
     ) => {
         $(
+            $(#[$meta])*
             enum $name {
                 $(
                     $variant ( $inner )

@@ -144,7 +144,7 @@ serde_derive_unidirectional! {
             pub timing: PlaybackTiming,
         }
         /// Time-related information of playback
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
         pub struct PlaybackTiming {
             /// Duration of the current song in seconds
             pub duration_secs: u64,
@@ -287,17 +287,6 @@ impl PlaybackTiming {
     }
 }
 
-impl Default for PlaybackTiming {
-    fn default() -> Self {
-        Self {
-            duration_secs: Default::default(),
-            rate_ratio: RateRatio::default(),
-            position_fraction: PositionFraction::default(),
-            state: PlaybackState::default(),
-            position_secs: Default::default(),
-        }
-    }
-}
 impl Default for PlaybackState {
     fn default() -> Self {
         Self::Playing

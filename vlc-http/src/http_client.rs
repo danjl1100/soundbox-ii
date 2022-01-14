@@ -38,7 +38,7 @@ pub(crate) mod response {
     {
         hyper::body::to_bytes(response.into_body())
             .await
-            .map_err(|err| err.into())
+            .map_err(Into::into)
             .and_then(|bytes| Ok(map_fn(&bytes, now)?))
     }
 
