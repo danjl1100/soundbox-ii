@@ -36,40 +36,40 @@
 //! assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
 //! ```
 //!
-// //! 2. [`Type::RoundRobin`]
-// //!
-// //! Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
-// //! ```
-// //! use q_filter_tree::{Tree, error::PopError, OrderType};
-// //! let mut t: Tree<_, ()> = Tree::default();
-// //! let root = t.root_id();
-// //! let mut root_ref = root.try_ref(&mut t).unwrap();
-// //! //
-// //! root_ref.set_order(OrderType::RoundRobin);
-// //! //
-// //! let childA = root_ref.add_child(Some(2));
-// //! let childB = root_ref.add_child(Some(1));
-// //! let childC = root_ref.add_child(Some(3));
-// //! let mut childA_ref = childA.try_ref(&mut t).unwrap();
-// //! childA_ref.push_item("A1");
-// //! childA_ref.push_item("A2");
-// //! let mut childB_ref = childB.try_ref(&mut t).unwrap();
-// //! childB_ref.push_item("B1");
-// //! let mut childC_ref = childC.try_ref(&mut t).unwrap();
-// //! childC_ref.push_item("C1");
-// //! childC_ref.push_item("C2");
-// //! childC_ref.push_item("C3");
-// //! //
-// //! let mut root_ref = root.try_ref(&mut t).unwrap();
-// //! assert_eq!(root_ref.pop_item(), Ok("A1"));
-// //! assert_eq!(root_ref.pop_item(), Ok("B1"));
-// //! assert_eq!(root_ref.pop_item(), Ok("C1"));
-// //! assert_eq!(root_ref.pop_item(), Ok("A2"));
-// //! assert_eq!(root_ref.pop_item(), Ok("C2"));
-// //! assert_eq!(root_ref.pop_item(), Ok("C3"));
-// //! assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
-// //! ```
-// //!
+//! 2. [`Type::RoundRobin`]
+//!
+//! Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
+//! ```
+//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! let mut t: Tree<_, ()> = Tree::default();
+//! let root = t.root_id();
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! //
+//! root_ref.set_order(OrderType::RoundRobin);
+//! //
+//! let childA = root_ref.add_child(Some(2));
+//! let childB = root_ref.add_child(Some(1));
+//! let childC = root_ref.add_child(Some(3));
+//! let mut childA_ref = childA.try_ref(&mut t).unwrap();
+//! childA_ref.push_item("A1");
+//! childA_ref.push_item("A2");
+//! let mut childB_ref = childB.try_ref(&mut t).unwrap();
+//! childB_ref.push_item("B1");
+//! let mut childC_ref = childC.try_ref(&mut t).unwrap();
+//! childC_ref.push_item("C1");
+//! childC_ref.push_item("C2");
+//! childC_ref.push_item("C3");
+//! //
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! assert_eq!(root_ref.pop_item(), Ok("A1"));
+//! assert_eq!(root_ref.pop_item(), Ok("B1"));
+//! assert_eq!(root_ref.pop_item(), Ok("C1"));
+//! assert_eq!(root_ref.pop_item(), Ok("A2"));
+//! assert_eq!(root_ref.pop_item(), Ok("C2"));
+//! assert_eq!(root_ref.pop_item(), Ok("C3"));
+//! assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
+//! ```
+//!
 // //! 3. [`Type::Shuffle`]
 // //!
 // //! Shuffles the available nodes, visiting each node proportional to the child's `Weight`.  Weights
@@ -122,10 +122,10 @@ pub(crate) mod weight_vec;
 pub use in_order::InOrder;
 mod in_order;
 
+pub use round_robin::RoundRobin;
+mod round_robin;
+
 // TODO
-// pub use round_robin::State as RoundRobinState;
-// mod round_robin;
-//
 // pub use shuffle::State as ShuffleState;
 // mod shuffle;
 
@@ -135,8 +135,8 @@ mod in_order;
 pub enum Type {
     /// Picks [`Weight`] items from one node before moving to the next node
     InOrder,
-    // /// Picks items from each node in turn, up to maximum of [`Weight`] items per cycle.
-    // RoundRobin,
+    /// Picks items from each node in turn, up to maximum of [`Weight`] items per cycle.
+    RoundRobin,
     // /// Shuffles the order of items given by [`Self::InOrder`] for each cycle.
     // Shuffle,
     // // TODO
@@ -152,15 +152,15 @@ pub struct State {
 }
 enum Order {
     InOrder(InOrder),
-    // RoundRobin(RoundRobinState),
+    RoundRobin(RoundRobin),
     // Shuffle(ShuffleState),
 }
 impl From<Type> for State {
     fn from(ty: Type) -> Self {
         let order = match ty {
             Type::InOrder => Order::InOrder(InOrder::default()),
-            // Type::RoundRobin => Self::RoundRobin(RoundRobinState::default()),
-            // Type::Shuffle => Self::Shuffle(ShuffleState::default()),
+            Type::RoundRobin => Order::RoundRobin(RoundRobin::default()),
+            // Type::Shuffle => Order::Shuffle(ShuffleState::default()),
         };
         Self { order }
     }
@@ -169,7 +169,7 @@ impl From<&State> for Type {
     fn from(state: &State) -> Self {
         match state.order {
             Order::InOrder(_) => Self::InOrder,
-            // Order::RoundRobin(_) => Self::RoundRobin,
+            Order::RoundRobin(_) => Self::RoundRobin,
             // Order::Shuffle(_) => Self::Shuffle,
         }
     }
@@ -179,7 +179,7 @@ impl std::ops::Deref for State {
     fn deref(&self) -> &(dyn Orderer + 'static) {
         match &self.order {
             Order::InOrder(inner) => inner,
-            // Order::RoundRobin(inner) => inner,
+            Order::RoundRobin(inner) => inner,
             // Order::Shuffle(inner) => inner,
         }
     }
@@ -188,7 +188,7 @@ impl std::ops::DerefMut for State {
     fn deref_mut(&mut self) -> &mut (dyn Orderer + 'static) {
         match &mut self.order {
             Order::InOrder(inner) => inner,
-            // Order::RoundRobin(inner) => inner,
+            Order::RoundRobin(inner) => inner,
             // Order::Shuffle(inner) => inner,
         }
     }
@@ -269,6 +269,20 @@ mod tests {
     }
     pub(super) fn to_weight_vec(weights: &[Weight]) -> WeightVec<()> {
         weights.iter().copied().map(|w| (w, ())).collect()
+    }
+    pub(super) fn resize_vec_to_len(
+        weight_vec: &mut WeightVec<()>,
+        order_state: &mut State,
+        target_len: usize,
+        all_weights: &[super::Weight],
+    ) {
+        while weight_vec.len() > target_len {
+            weight_vec.ref_mut(order_state).pop();
+        }
+        while weight_vec.len() < target_len {
+            let weight = all_weights[weight_vec.len()];
+            weight_vec.ref_mut(order_state).push((weight, ()));
+        }
     }
     pub(super) fn check_all(ty: Type) {
         check_type(ty);

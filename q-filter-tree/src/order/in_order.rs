@@ -111,6 +111,8 @@ impl Orderer for InOrder {
 
 #[cfg(test)]
 mod tests {
+    use crate::order::tests::resize_vec_to_len;
+
     use super::super::tests::{assert_peek_next, check_all, to_weight_vec};
     use super::super::{State, Type, WeightVec};
 
@@ -142,17 +144,7 @@ mod tests {
         let mut s = State::from(ty);
         for i in 0..100 {
             let target_len = i % (all_weights.len() + 1);
-            while weight_vec.len() > target_len {
-                let remove_index = weight_vec.len() - 1;
-                weight_vec
-                    .ref_mut(&mut s)
-                    .remove(remove_index)
-                    .expect("removal index in range");
-            }
-            while weight_vec.len() < target_len {
-                let weight = all_weights[weight_vec.len()];
-                weight_vec.ref_mut(&mut s).push((weight, ()));
-            }
+            resize_vec_to_len(&mut weight_vec, &mut s, target_len, all_weights);
             let weight_vec = to_weight_vec(&all_weights[0..target_len]);
             for (index, &weight) in weight_vec.weights().iter().enumerate() {
                 for _ in 0..weight {

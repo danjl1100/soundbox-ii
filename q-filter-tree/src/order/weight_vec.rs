@@ -85,7 +85,24 @@ impl<'vec, 'order, T> RefMut<'vec, 'order, T> {
         self.weights.push(weight);
         self.elems.push(item);
     }
+    pub fn pop(&mut self) -> Option<(Weight, T)> {
+        assert_eq!(
+            self.weights.len(),
+            self.elems.len(),
+            "weights and items lists length equal before pop"
+        );
+        match (self.weights.pop(), self.elems.pop()) {
+            (Some(weight), Some(elem)) => Some((weight, elem)),
+            (None, None) => None,
+            _ => unreachable!("equal length weights/elems Vecs pop equivalently"),
+        }
+    }
     pub fn remove(&mut self, index: usize) -> Result<(Weight, T), usize> {
+        assert_eq!(
+            self.weights.len(),
+            self.elems.len(),
+            "weights and items lists length equal before removal"
+        );
         if index < self.weights.len() {
             let removed = (self.weights.remove(index), self.elems.remove(index));
             if let Some(order) = &mut self.order {

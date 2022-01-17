@@ -245,11 +245,11 @@ mod refs {
 
     /// Mutable reference to a [`Node`] with an associated [`Weight`]
     #[must_use]
-    pub struct NodeRefMutWeighted<'tree, 'order, 'path, T, F> {
-        weight_ref: weight_vec::RefMutWeight<'tree, 'order>,
+    pub struct NodeRefMutWeighted<'tree, 'path, T, F> {
+        weight_ref: weight_vec::RefMutWeight<'tree, 'tree>,
         inner: NodeRefMut<'tree, 'path, T, F>,
     }
-    impl<'tree, 'order, 'path, T, F> NodeRefMutWeighted<'tree, 'order, 'path, T, F> {
+    impl<'tree, 'path, T, F> NodeRefMutWeighted<'tree, 'path, T, F> {
         /// Sets the weight
         pub fn set_weight(&mut self, weight: Weight) {
             self.weight_ref.set_weight(weight);
@@ -264,17 +264,13 @@ mod refs {
             self.inner
         }
     }
-    impl<'tree, 'order, 'path, T, F> std::ops::Deref
-        for NodeRefMutWeighted<'tree, 'order, 'path, T, F>
-    {
+    impl<'tree, 'path, T, F> std::ops::Deref for NodeRefMutWeighted<'tree, 'path, T, F> {
         type Target = NodeRefMut<'tree, 'path, T, F>;
         fn deref(&self) -> &Self::Target {
             &self.inner
         }
     }
-    impl<'tree, 'order, 'path, T, F> std::ops::DerefMut
-        for NodeRefMutWeighted<'tree, 'order, 'path, T, F>
-    {
+    impl<T, F> std::ops::DerefMut for NodeRefMutWeighted<'_, '_, T, F> {
         fn deref_mut(&mut self) -> &mut Self::Target {
             &mut self.inner
         }
@@ -310,7 +306,7 @@ mod refs {
         pub fn try_ref<'tree, T, F>(
             &self,
             tree: &'tree mut Tree<T, F>,
-        ) -> Result<NodeRefMutWeighted<'tree, 'tree, '_, T, F>, InvalidNodePath> {
+        ) -> Result<NodeRefMutWeighted<'tree, '_, T, F>, InvalidNodePath> {
             let path = self;
             let ref_else_root_node = tree
                 .root
