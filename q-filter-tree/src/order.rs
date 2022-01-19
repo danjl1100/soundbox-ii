@@ -70,46 +70,46 @@
 //! assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
 //! ```
 //!
-// //! 3. [`Type::Shuffle`]
-// //!
-// //! Shuffles the available nodes, visiting each node proportional to the child's `Weight`.  Weights
-// //! `[2, 1, 0, 4]` will yield, in some **shuffled** order, two 0's, one 1, no 2's, and four 3's.
-// //! ```
-// //! use q_filter_tree::{Tree, error::PopError, OrderType};
-// //! let mut t: Tree<_, ()> = Tree::default();
-// //! let root = t.root_id();
-// //! let mut root_ref = root.try_ref(&mut t).unwrap();
-// //! //
-// //! root_ref.set_order(OrderType::Shuffle);
-// //! //
-// //! let childA = root_ref.add_child(Some(2));
-// //! let childB = root_ref.add_child(Some(1));
-// //! let childC = root_ref.add_child(Some(3));
-// //! let mut childA_ref = childA.try_ref(&mut t).unwrap();
-// //! childA_ref.push_item("A");
-// //! childA_ref.push_item("A");
-// //! childA_ref.push_item("NEVER");
-// //! let mut childB_ref = childB.try_ref(&mut t).unwrap();
-// //! childB_ref.push_item("B");
-// //! childB_ref.push_item("NEVER");
-// //! let mut childC_ref = childC.try_ref(&mut t).unwrap();
-// //! childC_ref.push_item("C");
-// //! childC_ref.push_item("C");
-// //! childC_ref.push_item("C");
-// //! childC_ref.push_item("NEVER");
-// //! //
-// //! let mut root_ref = root.try_ref(&mut t).unwrap();
-// //! let mut popped = vec![];
-// //! for _ in 0..6 {
-// //!     popped.push(root_ref.pop_item().unwrap());
-// //! }
-// //! // non-deterministic ordering of `popped`, so instead
-// //! // check some properties of `popped`
-// //! assert_eq!(popped.iter().filter(|&val| val == &"A").count(), 2);
-// //! assert_eq!(popped.iter().filter(|&val| val == &"B").count(), 1);
-// //! assert_eq!(popped.iter().filter(|&val| val == &"C").count(), 3);
-// //! assert!(popped.iter().filter(|&val| val == &"NEVER").next().is_none());
-// //! ```
+//! 3. [`Type::Shuffle`]
+//!
+//! Shuffles the available nodes, visiting each node proportional to the child's `Weight`.  Weights
+//! `[2, 1, 0, 4]` will yield, in some **shuffled** order, two 0's, one 1, no 2's, and four 3's.
+//! ```
+//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! let mut t: Tree<_, ()> = Tree::default();
+//! let root = t.root_id();
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! //
+//! root_ref.set_order(OrderType::Shuffle);
+//! //
+//! let childA = root_ref.add_child(Some(2));
+//! let childB = root_ref.add_child(Some(1));
+//! let childC = root_ref.add_child(Some(3));
+//! let mut childA_ref = childA.try_ref(&mut t).unwrap();
+//! childA_ref.push_item("A");
+//! childA_ref.push_item("A");
+//! childA_ref.push_item("NEVER");
+//! let mut childB_ref = childB.try_ref(&mut t).unwrap();
+//! childB_ref.push_item("B");
+//! childB_ref.push_item("NEVER");
+//! let mut childC_ref = childC.try_ref(&mut t).unwrap();
+//! childC_ref.push_item("C");
+//! childC_ref.push_item("C");
+//! childC_ref.push_item("C");
+//! childC_ref.push_item("NEVER");
+//! //
+//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut popped = vec![];
+//! for _ in 0..6 {
+//!     popped.push(root_ref.pop_item().unwrap());
+//! }
+//! // non-deterministic ordering of `popped`, so instead
+//! // check some properties of `popped`
+//! assert_eq!(popped.iter().filter(|&val| val == &"A").count(), 2);
+//! assert_eq!(popped.iter().filter(|&val| val == &"B").count(), 1);
+//! assert_eq!(popped.iter().filter(|&val| val == &"C").count(), 3);
+//! assert!(popped.iter().filter(|&val| val == &"NEVER").next().is_none());
+//! ```
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -125,9 +125,8 @@ mod in_order;
 pub use round_robin::RoundRobin;
 mod round_robin;
 
-// TODO
-// pub use shuffle::State as ShuffleState;
-// mod shuffle;
+pub use shuffle::Shuffle;
+mod shuffle;
 
 /// Method of determining Order
 #[allow(clippy::module_name_repetitions)]
@@ -137,8 +136,8 @@ pub enum Type {
     InOrder,
     /// Picks items from each node in turn, up to maximum of [`Weight`] items per cycle.
     RoundRobin,
-    // /// Shuffles the order of items given by [`Self::InOrder`] for each cycle.
-    // Shuffle,
+    /// Shuffles the order of items given by [`Self::InOrder`] for each cycle.
+    Shuffle,
     // // TODO
     // // /// Randomly selects items based on the relative [`Weight`]s.
     // // Random,
@@ -150,18 +149,26 @@ pub enum Type {
 pub struct State {
     order: Order,
 }
+#[allow(clippy::enum_variant_names)] // TODO: consider renaming `InOrder` to not contain `Order`
+#[allow(clippy::large_enum_variant)] // TODO: consider boxing `Shuffle`
 enum Order {
     InOrder(InOrder),
     RoundRobin(RoundRobin),
-    // Shuffle(ShuffleState),
+    Shuffle(Shuffle),
 }
 impl From<Type> for State {
     fn from(ty: Type) -> Self {
         let order = match ty {
             Type::InOrder => Order::InOrder(InOrder::default()),
             Type::RoundRobin => Order::RoundRobin(RoundRobin::default()),
-            // Type::Shuffle => Order::Shuffle(ShuffleState::default()),
+            Type::Shuffle => Order::Shuffle(Shuffle::default()),
         };
+        Self { order }
+    }
+}
+impl From<Shuffle> for State {
+    fn from(shuffle: Shuffle) -> Self {
+        let order = Order::Shuffle(shuffle);
         Self { order }
     }
 }
@@ -170,7 +177,7 @@ impl From<&State> for Type {
         match state.order {
             Order::InOrder(_) => Self::InOrder,
             Order::RoundRobin(_) => Self::RoundRobin,
-            // Order::Shuffle(_) => Self::Shuffle,
+            Order::Shuffle(_) => Self::Shuffle,
         }
     }
 }
@@ -180,7 +187,7 @@ impl std::ops::Deref for State {
         match &self.order {
             Order::InOrder(inner) => inner,
             Order::RoundRobin(inner) => inner,
-            // Order::Shuffle(inner) => inner,
+            Order::Shuffle(inner) => inner,
         }
     }
 }
@@ -189,7 +196,7 @@ impl std::ops::DerefMut for State {
         match &mut self.order {
             Order::InOrder(inner) => inner,
             Order::RoundRobin(inner) => inner,
-            // Order::Shuffle(inner) => inner,
+            Order::Shuffle(inner) => inner,
         }
     }
 }
