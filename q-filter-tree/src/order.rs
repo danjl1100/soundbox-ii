@@ -128,6 +128,9 @@ mod round_robin;
 pub use shuffle::Shuffle;
 mod shuffle;
 
+pub use random::Random;
+mod random;
+
 /// Method of determining Order
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
@@ -138,9 +141,8 @@ pub enum Type {
     RoundRobin,
     /// Shuffles the order of items given by [`Self::InOrder`] for each cycle.
     Shuffle,
-    // // TODO
-    // // /// Randomly selects items based on the relative [`Weight`]s.
-    // // Random,
+    /// Randomly selects items based on the relative [`Weight`]s.
+    Random,
 }
 
 #[allow(missing_docs)]
@@ -155,6 +157,7 @@ enum Order {
     InOrder(InOrder),
     RoundRobin(RoundRobin),
     Shuffle(Shuffle),
+    Random(Random),
 }
 impl From<Type> for State {
     fn from(ty: Type) -> Self {
@@ -162,6 +165,7 @@ impl From<Type> for State {
             Type::InOrder => Order::InOrder(InOrder::default()),
             Type::RoundRobin => Order::RoundRobin(RoundRobin::default()),
             Type::Shuffle => Order::Shuffle(Shuffle::default()),
+            Type::Random => Order::Random(Random::default()),
         };
         Self { order }
     }
@@ -178,6 +182,7 @@ impl From<&State> for Type {
             Order::InOrder(_) => Self::InOrder,
             Order::RoundRobin(_) => Self::RoundRobin,
             Order::Shuffle(_) => Self::Shuffle,
+            Order::Random(_) => Self::Random,
         }
     }
 }
@@ -188,6 +193,7 @@ impl std::ops::Deref for State {
             Order::InOrder(inner) => inner,
             Order::RoundRobin(inner) => inner,
             Order::Shuffle(inner) => inner,
+            Order::Random(inner) => inner,
         }
     }
 }
@@ -197,6 +203,7 @@ impl std::ops::DerefMut for State {
             Order::InOrder(inner) => inner,
             Order::RoundRobin(inner) => inner,
             Order::Shuffle(inner) => inner,
+            Order::Random(inner) => inner,
         }
     }
 }

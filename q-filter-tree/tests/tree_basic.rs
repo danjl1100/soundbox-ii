@@ -150,7 +150,7 @@ fn node_removal() {
     assert_eq!(
         t.remove_node(&base),
         Err(RemoveError::NonEmpty(
-            base.clone().into(),
+            base.clone(),
             vec![
                 child1.clone().into(),
                 child2.clone().into(),
