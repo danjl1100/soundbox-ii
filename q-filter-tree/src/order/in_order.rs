@@ -113,8 +113,8 @@ impl Orderer for InOrder {
 mod tests {
     use crate::order::tests::resize_vec_to_len;
 
-    use super::super::tests::{assert_peek_next, check_all, to_weight_vec};
-    use super::super::{State, Type, WeightVec};
+    use super::super::tests::{assert_peek_next, check_all, to_weight_vec, WeightVec};
+    use super::super::{State, Type};
 
     #[test]
     fn all() {

@@ -116,9 +116,6 @@
 use super::Weight;
 use serde::{Deserialize, Serialize};
 
-pub(crate) use weight_vec::WeightVec;
-pub(crate) mod weight_vec;
-
 pub use in_order::InOrder;
 mod in_order;
 
@@ -264,7 +261,8 @@ pub trait Orderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, Type, Weight, WeightVec};
+    use super::{State, Type, Weight};
+    pub(super) use crate::weight_vec::WeightVec;
     pub(super) fn assert_peek_next<T>(
         s: &mut State,
         weight_vec: &WeightVec<T>,

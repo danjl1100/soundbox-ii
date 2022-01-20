@@ -23,6 +23,8 @@ pub mod id;
 pub use node::Node;
 mod node;
 
+mod weight_vec;
+
 pub use order::Type as OrderType;
 pub mod order;
 
@@ -192,7 +194,8 @@ mod refs {
         SequenceSource,
     };
     use crate::node::{self, Node, NodeInfoIntrinsic};
-    use crate::order::{weight_vec, Type as OrderType};
+    use crate::order::Type as OrderType;
+    use crate::weight_vec;
     use crate::{PopError, Tree, Weight};
 
     /// Mutable reference to a [`Node`]

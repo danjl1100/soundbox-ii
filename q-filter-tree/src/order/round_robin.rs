@@ -197,9 +197,8 @@ impl RoundRobin {
 #[cfg(test)]
 mod tests {
     use crate::order::tests::resize_vec_to_len;
-    use crate::order::WeightVec;
 
-    use super::super::tests::{assert_peek_next, check_all};
+    use super::super::tests::{assert_peek_next, check_all, WeightVec};
     use super::super::{State, Type, Weight};
 
     #[test]

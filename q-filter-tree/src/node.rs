@@ -1,7 +1,8 @@
 use crate::{
     error::{InvalidNodePath, PopError, RemoveErrorInner},
     id::{self, ty, NodeId, NodePathElem, Sequence, SequenceSource},
-    order::{self, weight_vec, WeightVec},
+    order,
+    weight_vec::{self, WeightVec},
     Weight,
 };
 use serde::{Deserialize, Serialize};
