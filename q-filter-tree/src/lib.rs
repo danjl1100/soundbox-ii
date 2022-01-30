@@ -80,7 +80,7 @@ fn tree_add_to_doc_tests() {
     assert_eq!(root_ref.pop_item(), Some("cashews"));
     assert_eq!(root_ref.pop_item(), None);
 }
-/// Tree data structure, consisting of [`Node`]s with queues of items `T`, filter `F`
+/// Tree data structure, consisting of nodes with queues of items `T`, filter `F`
 ///
 /// # Example
 /// ```
@@ -258,7 +258,7 @@ mod refs {
         }
     }
 
-    /// Mutable reference to a [`Node`] with an associated [`Weight`]
+    /// Mutable reference to a node with an associated [`Weight`]
     #[must_use]
     pub struct NodeRefMutWeighted<'tree, 'path, T, F> {
         weight_ref: weight_vec::RefMutWeight<'tree, 'tree>,
