@@ -8,7 +8,7 @@ struct Tally {
 }
 
 /// Tracks weights and items remaining for current index
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct InOrder(Option<Tally>);
 impl Orderer for InOrder {
     fn peek_unchecked(&self) -> Option<usize> {

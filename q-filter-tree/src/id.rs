@@ -20,10 +20,21 @@ mod sequence {
 
     pub(crate) trait SequenceSource {
         fn sequence(&self) -> Sequence;
+        fn sequence_keeper(&self) -> Keeper {
+            Keeper(self.sequence())
+        }
     }
     impl<T: ty::Type> SequenceSource for NodeId<T> {
         fn sequence(&self) -> Sequence {
             self.sequence()
+        }
+    }
+
+    /// Opaque wrapper of a Sequence (to allow storing, and re-use)
+    pub struct Keeper(Sequence);
+    impl SequenceSource for Keeper {
+        fn sequence(&self) -> Sequence {
+            self.0
         }
     }
 }
@@ -260,7 +271,7 @@ impl<T: Type> NodePath<T> {
 impl NodePath<Child> {
     /// Returns the parent path sequence (if it exists) and the last path element
     #[must_use]
-    pub fn parent(self) -> (NodePathTyped, NodePathElem) {
+    pub fn into_parent(self) -> (NodePathTyped, NodePathElem) {
         let mut parts = self.into_elems();
         let last_elem = parts.pop().expect("NodePath<Child> is not empty");
         (NodePathTyped::from(parts), last_elem)

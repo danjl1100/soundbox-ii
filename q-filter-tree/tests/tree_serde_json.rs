@@ -1,19 +1,16 @@
-use q_filter_tree::{error::PopError, id::NodePathTyped, Tree};
+use q_filter_tree::{id::NodePathTyped, Tree};
 use serde_json::Result;
 
-const EMPTY_NODE: &'static str =
-    r#"{"queue":[],"filter":null,"child_weights":[],"order":"InOrder"}"#;
-const ONE_CHILD: &'static str =
-    r#"{"queue":[],"filter":null,"child_weights":[0],"order":"InOrder"}"#;
-const FIVE_CHILD: &'static str =
-    r#"{"queue":[],"filter":null,"child_weights":[0,0,0,0,0],"order":"InOrder"}"#;
+const EMPTY_NODE: &str = r#"[[],{"queue":[],"filter":null,"order":"InOrder"}]"#;
+const ONE_CHILD: &str = r#"[[0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
+const FIVE_CHILD: &str = r#"[[0,0,0,0,0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
 #[test]
 fn simple_serialize() -> Result<()> {
     let mut t: Tree<(), ()> = Tree::new();
     let root = t.root_id();
     //
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    let _child = root_ref.add_child(None);
+    let _child = root_ref.add_child(0);
     //
     let json_str = serde_json::to_string(&t)?;
     assert_eq!(
@@ -40,15 +37,15 @@ fn complex_serialize() -> Result<()> {
     //       |--  child4_child
     //    |--  child5
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    let base = root_ref.add_child(None);
+    let base = root_ref.add_child(0);
     let mut base_ref = base.try_ref(&mut t).expect("base exists");
-    let _child1 = base_ref.add_child(None);
-    let _child2 = base_ref.add_child(None);
-    let _child3 = base_ref.add_child(None);
-    let child4 = base_ref.add_child(None);
-    let _child5 = base_ref.add_child(None);
+    let _child1 = base_ref.add_child(0);
+    let _child2 = base_ref.add_child(0);
+    let _child3 = base_ref.add_child(0);
+    let child4 = base_ref.add_child(0);
+    let _child5 = base_ref.add_child(0);
     let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-    let _child4_child = child4_ref.add_child(None);
+    let _child4_child = child4_ref.add_child(0);
     //
     let json_str = serde_json::to_string(&t)?;
     assert_eq!(
@@ -67,30 +64,32 @@ fn complex_serialize() -> Result<()> {
 fn simple_deserialize() -> Result<()> {
     let tree_json = r#"
         {
-          "": {
-            "queue": [],
-            "filter": null,
-            "child_weights": [
-              1
-            ],
-            "order": "InOrder"
-          },
-          "0": {
-            "queue": [],
-            "filter": null,
-            "child_weights": [
-              0
-            ],
-            "order": "InOrder"
-          },
-          "0,0": {
-            "queue": ["Alfalfa", "Oats"],
-            "filter": null,
-            "child_weights": [],
-            "order": "InOrder"
-          }
+          "": [
+            [ 1 ],
+            {
+              "queue": [],
+              "filter": null,
+              "order": "InOrder"
+            }
+          ],
+          "0": [
+            [ 0 ],
+            {
+              "queue": [],
+              "filter": null,
+              "order": "InOrder"
+            }
+          ],
+          "0,0": [
+            [],
+            {
+              "queue": ["Alfalfa", "Oats"],
+              "filter": null,
+              "order": "InOrder"
+            }
+          ]
         }"#;
-    let mut t: Tree<String, ()> = serde_json::from_str(tree_json)?;
+    let mut t: Tree<&str, ()> = serde_json::from_str(tree_json)?;
     //
     println!(
         "input:\n\t{}\ndeserialized to:\n\t{}",
@@ -99,10 +98,7 @@ fn simple_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(
-        root.try_ref(&mut t).expect("root exists").pop_item(),
-        Err(PopError::Blocked(root.clone().into()))
-    );
+    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
     let child: NodePathTyped = serde_json::from_str("\"0,0\"")?;
     let child = match child {
         NodePathTyped::Child(path) => path,
@@ -111,9 +107,9 @@ fn simple_deserialize() -> Result<()> {
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Ok(String::from("Alfalfa")));
-    assert_eq!(root_ref.pop_item(), Ok(String::from("Oats")));
-    assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
+    assert_eq!(root_ref.pop_item(), Some("Alfalfa"));
+    assert_eq!(root_ref.pop_item(), Some("Oats"));
+    assert_eq!(root_ref.pop_item(), None);
     Ok(())
 }
 

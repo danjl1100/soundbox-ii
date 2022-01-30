@@ -4,6 +4,7 @@ use super::{Orderer, Weight};
 use rand;
 use rand_chacha::ChaCha8Rng;
 
+#[derive(Clone)]
 /// Tracks the remaining (shuffled) indices to be returned
 pub struct Shuffle {
     remaining_shuffled: Vec<usize>,

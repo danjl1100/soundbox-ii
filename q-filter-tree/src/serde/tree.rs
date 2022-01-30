@@ -1,10 +1,11 @@
-use crate::id::{NodeIdTyped, NodePathTyped};
-use crate::node::NodeInfo;
-use crate::Tree;
+use crate::id::{ty, NodePath, NodePathTyped};
+use crate::node::meta::NodeInfo;
+use crate::{Tree, Weight};
 
 use core::marker::PhantomData;
 use serde::de::{Deserialize, Deserializer, Error, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::collections::HashMap;
 
 impl<T, F> Serialize for Tree<T, F>
 where
@@ -19,7 +20,7 @@ where
         let mut map = serializer.serialize_map(Some(node_count))?;
         for (node_id, node) in self.enumerate() {
             let node_path = NodePathTyped::from(node_id);
-            let node_info = NodeInfo::from(node);
+            let node_info = NodeInfo::from((*node).clone());
             map.serialize_entry(&node_path, &node_info)?;
         }
         map.end()
@@ -56,62 +57,83 @@ where
     where
         M: MapAccess<'de>,
     {
-        let mut tree = Tree::new();
-        let mut weights = std::collections::HashMap::new();
+        let mut tree = None;
+        let mut weights_root: Vec<Option<Weight>> = vec![];
+        let mut weights_children: HashMap<NodePath<ty::Child>, _> = HashMap::new();
 
         while let Some((node_path, node_info)) =
             access.next_entry::<NodePathTyped, NodeInfo<T, F>>()?
         {
-            // get NodeId (ROOT, or INSERT)
-            let node_id = match &node_path {
-                NodePathTyped::Child(node_path) => {
-                    let (parent_path, _) = node_path.clone().parent();
+            let (child_weights, info_intrinsic) = node_info.into();
+
+            // insert Node (if root, create tree)
+            match (&node_path, &mut tree) {
+                (NodePathTyped::Root(_), Some(_existing_tree)) => {
+                    return Err(M::Error::custom("double-defined root"));
+                }
+                (NodePathTyped::Child(_), None) => {
+                    return Err(M::Error::custom("child node defined before root"));
+                }
+                (NodePathTyped::Root(_), tree_opt) => {
+                    let tree = Tree::new_with_root(info_intrinsic);
+                    tree_opt.replace(tree);
+                }
+                (NodePathTyped::Child(node_path), Some(ref mut tree)) => {
+                    let (parent_path, path_elem) = node_path.clone().into_parent();
                     // create node
-                    let mut parent_ref = parent_path.try_ref(&mut tree).map_err(|_| {
+                    let mut parent_ref = parent_path.try_ref(tree).map_err(|_| {
                         M::Error::custom(format!(
                             "failed to create node at path {}, parent {:?} does not exist",
                             NodePathTyped::from(node_path.clone()),
                             parent_path
                         ))
                     })?;
-                    NodeIdTyped::from(parent_ref.add_child(None))
-                }
-                NodePathTyped::Root(_) => {
-                    // root node already exists (intrinsic in tree)
-                    NodeIdTyped::from(tree.root_id())
-                }
-            };
+                    let weight_opts = match &parent_path {
+                        NodePathTyped::Root(_) => &mut weights_root,
+                        NodePathTyped::Child(parent) => {
+                            weights_children.get_mut(parent).ok_or_else(|| {
+                                M::Error::custom(format!(
+                                        "parent path {:?} not found in weights_children (internal error?)",
+                                        parent_path,
+                                ))
+                            })?
+                        }
+                    };
+                    let weight = match weight_opts.get_mut(path_elem) {
+                        Some(weight_opt) => weight_opt.take().ok_or_else(|| {
+                            M::Error::custom(format!(
+                                "duplicate use of weight for path {:?}, child index {}",
+                                parent_path, path_elem,
+                            ))
+                        }),
+                        None => Err(M::Error::custom(format!(
+                            "path element out of bounds at {:?}, child index {}",
+                            parent_path, path_elem
+                        ))),
+                    }?;
 
-            // get Node
-            let mut node = node_id.try_ref(&mut tree).map_err(|_| {
-                M::Error::custom(format!("newly-created node_id is invalid: {:?}", node_id))
-            })?;
-
-            let (info_intrinsic, child_weights) = node_info.into();
-            // update Node
-            node.overwrite_from(info_intrinsic);
+                    let parent_child_count = parent_ref.child_nodes_len();
+                    if parent_child_count != path_elem {
+                        return Err(M::Error::custom(format!(
+                            "node declared out of order, parent has {} children, but desired destination {:?}",
+                            parent_child_count, node_path,
+                        )));
+                    }
+                    parent_ref.add_child_from(weight, Some(info_intrinsic));
+                }
+            }
 
             // record weights
-            weights.insert(node_path, child_weights);
+            let some_weights = child_weights.into_iter().map(Option::Some).collect();
+            match node_path {
+                NodePathTyped::Child(node_path) => {
+                    weights_children.insert(node_path, some_weights);
+                }
+                NodePathTyped::Root(_) => {
+                    weights_root = some_weights;
+                }
+            }
         }
-
-        // set child_weights (finishing pass)
-        for (node_path, child_weights) in weights {
-            let node = tree.get_node_mut(&node_path).map_err(|_| {
-                M::Error::custom(format!(
-                    "failed to locate node {} during finishing pass",
-                    node_path
-                ))
-            })?;
-            node.overwrite_child_weights(child_weights)
-                .map_err(|(weights, orig_len)| {
-                    M::Error::custom(format!(
-                        "failed to set node {} child weights (weights len = {}, but child nodes len = {})",
-                        node_path, weights.len(), orig_len,
-                    ))
-                })?;
-        }
-
-        Ok(tree)
+        tree.ok_or_else(|| M::Error::custom("no nodes defined"))
     }
 }

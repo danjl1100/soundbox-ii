@@ -1,6 +1,6 @@
 use super::{Orderer, Weight};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 /// Tracks count remaining for each element
 pub struct RoundRobin {
     count: Vec<Weight>,

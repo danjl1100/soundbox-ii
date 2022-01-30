@@ -1,8 +1,8 @@
 use std::iter::FromIterator;
 
-use crate::{order, Weight};
+use crate::{order, OrderType, Weight};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct WeightVec<T>(Vec<Weight>, Vec<T>);
 impl<T> WeightVec<T> {
     pub fn new() -> Self {
@@ -43,6 +43,38 @@ impl<T> WeightVec<T> {
             weights: &mut self.0,
             elems: &mut self.1,
             order,
+        }
+    }
+    pub fn into_parts(self) -> (Vec<Weight>, Vec<T>) {
+        (self.0, self.1)
+    }
+    pub fn next_index_with_order(&self, order: &mut order::State) -> Option<usize> {
+        order.next(&self.0)
+    }
+    pub fn next_with_order(&self, order: &mut order::State) -> Result<Option<&T>, (usize, usize)> {
+        if let Some(index) = self.next_index_with_order(order) {
+            if let Some(item) = self.1.get(index) {
+                Ok(Some(item))
+            } else {
+                Err((index, self.len()))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+    pub fn next_with_order_mut(
+        &mut self,
+        order: &mut order::State,
+    ) -> Result<Option<&mut T>, (usize, usize)> {
+        if let Some(index) = self.next_index_with_order(order) {
+            let self_len = self.len();
+            if let Some(item) = self.1.get_mut(index) {
+                Ok(Some(item))
+            } else {
+                Err((index, self_len))
+            }
+        } else {
+            Ok(None)
         }
     }
 }
@@ -182,5 +214,74 @@ impl<'vec, 'order> RefMutWeight<'vec, 'order> {
             .weights
             .get(self.index)
             .expect("valid index in created WeightVecMutElem")
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct OrderVec<T> {
+    order: order::State,
+    vec: WeightVec<T>,
+}
+impl<T> OrderVec<T> {
+    pub fn new(ty: order::Type) -> Self {
+        let order = order::State::from(ty);
+        let vec = WeightVec::new();
+        Self { order, vec }
+    }
+    pub fn get_order_type(&self) -> order::Type {
+        order::Type::from(&self.order)
+    }
+    pub fn ref_mut(&mut self) -> RefMut<'_, '_, T> {
+        self.vec.ref_mut(&mut self.order)
+    }
+    pub fn get_elem_mut(&mut self, index: usize) -> Option<&mut T> {
+        self.vec.get_elem_mut(index)
+    }
+    /// Sets the [`OrderType`](`crate::order::Type`)
+    pub fn set_order(&mut self, ty: order::Type) {
+        self.order.set_type(ty);
+    }
+    pub fn into_parts(self) -> (order::Type, (Vec<Weight>, Vec<T>)) {
+        ((&self.order).into(), self.vec.into_parts())
+    }
+    pub fn next(&mut self) -> Option<&T> {
+        self.vec
+            .next_with_order(&mut self.order)
+            .expect("order-provided index out of bounds")
+    }
+    pub fn next_mut(&mut self) -> Option<&mut T> {
+        self.vec
+            .next_with_order_mut(&mut self.order)
+            .expect("order-provided index out of bounds")
+    }
+    pub fn next_index(&mut self) -> Option<usize> {
+        self.vec.next_index_with_order(&mut self.order)
+    }
+}
+// NOTE: impl only Deref, provide custom methods for `mut` methods, to wrap in order::State
+impl<T> std::ops::Deref for OrderVec<T> {
+    type Target = WeightVec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.vec
+    }
+}
+impl<T> std::cmp::PartialEq for OrderVec<T>
+where
+    T: std::cmp::PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.get_order_type() == other.get_order_type() && self.vec == other.vec
+    }
+}
+impl<T> std::cmp::Eq for OrderVec<T> where T: std::cmp::Eq {}
+impl<T, I> From<(OrderType, I)> for OrderVec<T>
+where
+    I: IntoIterator<Item = (Weight, T)>,
+{
+    fn from((ty, iter): (OrderType, I)) -> Self {
+        let order = ty.into();
+        let vec = WeightVec::from_iter(iter);
+        Self { order, vec }
     }
 }

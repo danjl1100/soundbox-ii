@@ -1,5 +1,5 @@
 use crate::id::{NodeIdTyped, NodePathElem, NodePathTyped};
-use crate::node::Node;
+use crate::node::{Children, Node};
 use crate::Tree;
 
 impl<T, F> Tree<T, F> {
@@ -8,7 +8,7 @@ impl<T, F> Tree<T, F> {
         self.enumerate().map(|(id, _)| id)
     }
     /// Creates a depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
-    pub fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
+    pub(crate) fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
         Iter {
             parent_idxs: vec![],
             tail: Some((&self.root, None)),
@@ -35,22 +35,26 @@ impl<'a, T, F> Iter<'a, T, F> {
 impl<'a, T, F> Iterator for Iter<'a, T, F> {
     type Item = (NodeIdTyped, &'a Node<T, F>);
     fn next(&mut self) -> Option<Self::Item> {
-        let (tail, last_idx) = self.tail.take()?;
+        let (tail, mut last_idx) = self.tail.take()?;
         let parent_path = self.collect_parent_path();
         let tail_id = parent_path.with_sequence(tail);
         self.tail = {
-            let mut lookup_idx = last_idx;
             let mut parent_node = tail;
             loop {
-                let first_child = parent_node.get_idx_and_child_after(lookup_idx);
-                if let Some((child_idx, child)) = first_child {
-                    // found child
-                    self.parent_idxs.push((parent_node, child_idx));
-                    break Some((child, None));
+                let lookup_idx = last_idx.map_or(0, |x| x + 1);
+                match &parent_node.children {
+                    Children::Chain(chain) => {
+                        if let Some((_, child_node)) = chain.nodes.get(lookup_idx) {
+                            // found child
+                            self.parent_idxs.push((parent_node, lookup_idx));
+                            break Some((child_node, None));
+                        }
+                    }
+                    Children::Items(_) => {}
                 }
                 if let Some((node, idx)) = self.parent_idxs.pop() {
                     // re-lookup parent
-                    lookup_idx = Some(idx);
+                    last_idx = Some(idx);
                     parent_node = node;
                     continue;
                 }
@@ -83,7 +87,7 @@ mod tests {
         // \ root
         // |--  child1
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
-        let child1 = root_ref.add_child(None);
+        let child1 = root_ref.add_child_default();
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root.into()), "root");
@@ -102,11 +106,11 @@ mod tests {
         //       |-- child3
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
         //
-        let child1 = root_ref.add_child(None);
+        let child1 = root_ref.add_child_default();
         let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
-        let child2 = child1_ref.add_child(None);
+        let child2 = child1_ref.add_child_default();
         let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
-        let child3 = child2_ref.add_child(None);
+        let child3 = child2_ref.add_child_default();
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root.into()), "root");
@@ -125,8 +129,8 @@ mod tests {
         // |--  child1
         // |--  child2
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
-        let child1 = root_ref.add_child(None);
-        let child2 = root_ref.add_child(None);
+        let child1 = root_ref.add_child_default();
+        let child2 = root_ref.add_child_default();
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root.into()), "root");
@@ -149,15 +153,15 @@ mod tests {
         //       |--  child4_child
         //    |--  child5
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
-        let base = root_ref.add_child(None);
+        let base = root_ref.add_child_default();
         let mut base_ref = base.try_ref(&mut t).expect("base exists");
-        let child1 = base_ref.add_child(None);
-        let child2 = base_ref.add_child(None);
-        let child3 = base_ref.add_child(None);
-        let child4 = base_ref.add_child(None);
-        let child5 = base_ref.add_child(None);
+        let child1 = base_ref.add_child_default();
+        let child2 = base_ref.add_child_default();
+        let child3 = base_ref.add_child_default();
+        let child4 = base_ref.add_child_default();
+        let child5 = base_ref.add_child_default();
         let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-        let child4_child = child4_ref.add_child(None);
+        let child4_child = child4_ref.add_child_default();
         *root.try_ref(&mut t).expect("root exists").filter() = Some("root");
         *base.try_ref(&mut t).expect("base exists").filter() = Some("base");
         *child1.try_ref(&mut t).expect("child1 exists").filter() = Some("child1");
@@ -199,20 +203,20 @@ mod tests {
         //          |--  chil4_child_child
         //    |--  child5
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
-        let base = root_ref.add_child(None);
+        let base = root_ref.add_child_default();
         let mut base_ref = base.try_ref(&mut t).expect("base exists");
-        let child1 = base_ref.add_child(None);
-        let child2 = base_ref.add_child(None);
-        let child3 = base_ref.add_child(None);
-        let child4 = base_ref.add_child(None);
-        let child5 = base_ref.add_child(None);
+        let child1 = base_ref.add_child_default();
+        let child2 = base_ref.add_child_default();
+        let child3 = base_ref.add_child_default();
+        let child4 = base_ref.add_child_default();
+        let child5 = base_ref.add_child_default();
         let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
-        let child2_child = child2_ref.add_child(None);
-        let child2_child2 = child2_ref.add_child(None);
+        let child2_child = child2_ref.add_child_default();
+        let child2_child2 = child2_ref.add_child_default();
         let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-        let child4_child = child4_ref.add_child(None);
+        let child4_child = child4_ref.add_child_default();
         let mut child4_child_ref = child4_child.try_ref(&mut t).expect("child4_child exists");
-        let child4_child_child = child4_child_ref.add_child(None);
+        let child4_child_child = child4_child_ref.add_child_default();
         *root.try_ref(&mut t).expect("root exists").filter() = Some("root");
         *base.try_ref(&mut t).expect("base exists").filter() = Some("base");
         *child1.try_ref(&mut t).expect("child1 exists").filter() = Some("child1");
@@ -255,10 +259,10 @@ mod tests {
         // |-- child3
         // |-- child4
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
-        let child1 = root_ref.add_child(None);
-        let child2 = root_ref.add_child(None);
-        let child3 = root_ref.add_child(None);
-        let child4 = root_ref.add_child(None);
+        let child1 = root_ref.add_child_default();
+        let child2 = root_ref.add_child_default();
+        let child3 = root_ref.add_child_default();
+        let child4 = root_ref.add_child_default();
         *root_ref.filter() = Some("root");
         *child1.try_ref(&mut t).expect("child1 exists").filter() = Some("child1");
         *child2.try_ref(&mut t).expect("child2 exists").filter() = Some("child2");

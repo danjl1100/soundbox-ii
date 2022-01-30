@@ -1,7 +1,6 @@
-use q_filter_tree::{
-    error::{PopError, RemoveError},
-    Tree,
-};
+use std::{collections::VecDeque, iter::FromIterator};
+
+use q_filter_tree::{error::RemoveError, NodeInfo, OrderType, Tree};
 #[test]
 fn creates_single() {
     let mut t = Tree::new();
@@ -15,12 +14,9 @@ fn creates_single() {
         root_ref.push_item(i);
     }
     for i in 0..N {
-        assert_eq!(root_ref.pop_item(), Ok(i));
+        assert_eq!(root_ref.pop_item(), Some(i));
     }
-    assert_eq!(
-        root_ref.pop_item(),
-        Err(PopError::Empty(root.clone().into()))
-    );
+    assert_eq!(root_ref.pop_item(), None);
     // filter
     let root_filter = root_ref.filter();
     assert_eq!(*root_filter, None);
@@ -34,7 +30,7 @@ fn two_nodes() {
     let root = t.root_id();
     //
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    let child = root_ref.add_child(None);
+    let child = root_ref.add_child_default();
     // verify count
     assert_eq!(t.sum_node_count(), 2);
     // filter
@@ -53,21 +49,18 @@ fn two_nodes() {
     for i in 0..N {
         assert_eq!(
             child.try_ref(&mut t).expect("child exists").pop_item(),
-            Ok(i)
+            Some(i)
         );
         assert_eq!(
             root.try_ref(&mut t).expect("root exists").pop_item(),
-            Ok(i + 500)
+            Some(i + 500)
         );
     }
     assert_eq!(
         child.try_ref(&mut t).expect("child exists").pop_item(),
-        Err(PopError::Empty(child.into()))
+        None
     );
-    assert_eq!(
-        root.try_ref(&mut t).expect("root exists").pop_item(),
-        Err(PopError::Blocked(root.into()))
-    );
+    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
 }
 #[test]
 fn node_pop_chain() {
@@ -75,9 +68,9 @@ fn node_pop_chain() {
     let root = t.root_id();
     //
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    let child1 = root_ref.add_child(None);
+    let child1 = root_ref.add_child(0);
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
-    let child2 = child1_ref.add_child(None);
+    let child2 = child1_ref.add_child(0);
     // verify count
     assert_eq!(t.sum_node_count(), 3);
     // fill child2
@@ -86,22 +79,19 @@ fn node_pop_chain() {
         child2_ref.push_item(i);
     }
     // verify child2 pop
-    assert_eq!(child2_ref.pop_item(), Ok(0));
-    assert_eq!(child2_ref.pop_item(), Ok(1));
+    assert_eq!(child2_ref.pop_item(), Some(0));
+    assert_eq!(child2_ref.pop_item(), Some(1));
     // verify child1 not popping
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
-    assert_eq!(
-        child1_ref.pop_item(),
-        Err(PopError::Blocked(child1.clone().into()))
-    );
+    assert_eq!(child1_ref.pop_item(), None);
     // allow child1 <- child2
     let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
     child2_ref.set_weight(1);
     // verify child1 chain from child2
     let mut child1_ref = child1.try_ref(&mut t).expect("child2 exists");
-    assert_eq!(child1_ref.pop_item(), Ok(2));
-    assert_eq!(child1_ref.pop_item(), Ok(3));
-    assert_eq!(child1_ref.pop_item(), Err(PopError::Empty(child1.into())));
+    assert_eq!(child1_ref.pop_item(), Some(2));
+    assert_eq!(child1_ref.pop_item(), Some(3));
+    assert_eq!(child1_ref.pop_item(), None);
 }
 #[test]
 fn node_removal() {
@@ -119,15 +109,15 @@ fn node_removal() {
     //       |--  child4_child
     //    |--  child5
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    let base = root_ref.add_child(None);
+    let base = root_ref.add_child_default();
     let mut base_ref = base.try_ref(&mut t).expect("base exists");
-    let child1 = base_ref.add_child(None);
-    let child2 = base_ref.add_child(None);
-    let child3 = base_ref.add_child(None);
-    let child4 = base_ref.add_child(None);
-    let child5 = base_ref.add_child(None);
+    let _child1 = base_ref.add_child_default();
+    let _child2 = base_ref.add_child_default();
+    let _child3 = base_ref.add_child_default();
+    let child4 = base_ref.add_child_default();
+    let child5 = base_ref.add_child_default();
     let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-    let child4_child = child4_ref.add_child(None);
+    let child4_child = child4_ref.add_child_default();
     // fill child4
     for i in 0..10 {
         child4_ref.push_item(i);
@@ -138,8 +128,8 @@ fn node_removal() {
     base.try_ref(&mut t).expect("base exists").set_weight(1);
     child4.try_ref(&mut t).expect("child4 exists").set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Ok(0));
-    assert_eq!(root_ref.pop_item(), Ok(1));
+    assert_eq!(root_ref.pop_item(), Some(0));
+    assert_eq!(root_ref.pop_item(), Some(1));
     // this is enforced by the compiler, now!
     // // fails - remove root
     // assert_eq!(
@@ -149,34 +139,57 @@ fn node_removal() {
     // fails - remove base
     assert_eq!(
         t.remove_node(&base),
-        Err(RemoveError::NonEmpty(
+        Ok(Err(RemoveError::NonEmpty(
             base.clone(),
-            vec![
-                child1.clone().into(),
-                child2.clone().into(),
-                child3.clone().into(),
-                child4.clone().into(),
-                child5.clone().into(),
-            ]
-        ))
+            // vec![
+            //     child1.clone().into(),
+            //     child2.clone().into(),
+            //     child3.clone().into(),
+            //     child4.clone().into(),
+            //     child5.clone().into(),
+            // ]
+        )))
     );
     // fails - remove child4
     assert_eq!(
         t.remove_node(&child4),
-        Err(RemoveError::NonEmpty(
-            child4.clone().into(),
-            vec![child4_child.clone().into()]
-        ))
+        Ok(Err(RemoveError::NonEmpty(
+            child4.clone(),
+            // vec![child4_child.clone().into()]
+        )))
     );
     // success - remove child4_child, then child4
-    assert_eq!(t.remove_node(&child4_child), Ok(()));
-    assert_eq!(t.remove_node(&child4), Ok(()));
+    assert_eq!(
+        t.remove_node(&child4_child),
+        Ok(Ok((
+            1,
+            NodeInfo::Chain {
+                filter: None,
+                order: OrderType::InOrder,
+                queue: VecDeque::new(),
+            }
+        )))
+    );
+    assert_eq!(
+        t.remove_node(&child4),
+        Ok(Ok((
+            1,
+            NodeInfo::Chain {
+                filter: None,
+                order: OrderType::InOrder,
+                queue: VecDeque::from_iter(2..10),
+            }
+        )))
+    );
     // fails - remove child4 AGAIN
     assert_eq!(
         t.remove_node(&child4),
-        Err(RemoveError::SequenceMismatch(child4, child5.sequence()))
+        Ok(Err(RemoveError::SequenceMismatch(
+            child4,
+            child5.sequence()
+        )))
     );
     // verify root pop empty
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Err(PopError::Blocked(root.into())));
+    assert_eq!(root_ref.pop_item(), None);
 }

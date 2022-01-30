@@ -4,6 +4,7 @@ use crate::Weight;
 
 use super::Orderer;
 
+#[derive(Clone)]
 /// Random number generator and current index.
 pub struct Random {
     current: Option<usize>,

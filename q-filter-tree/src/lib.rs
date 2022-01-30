@@ -14,17 +14,19 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use error::{InvalidNodePath, PopError, RemoveError};
+use error::InvalidNodePath;
 pub mod error;
 
-use id::{ty, NodeId, NodePath, NodePathElem};
+use id::{ty, NodeId, NodePath};
 pub mod id;
 
-pub use node::Node;
+pub use node::meta::NodeInfoIntrinsic as NodeInfo;
+pub(crate) use node::Node;
 mod node;
 
 mod weight_vec;
 
+use node::RemoveResult;
 pub use order::Type as OrderType;
 pub mod order;
 
@@ -47,8 +49,8 @@ fn tree_add_to_doc_tests() {
     // compile error: assert!(tree.get_child_mut(&root).is_err());
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
     *root_ref.filter() = Some("filter value".to_string());
-    let child_blocked = root_ref.add_child(None);
-    let child = root_ref.add_child(Some(1));
+    let child_blocked = root_ref.add_child(0);
+    let child = root_ref.add_child_default();
     // initial weight `None` (0)
     child_blocked
         .try_ref(&mut tree)
@@ -61,11 +63,8 @@ fn tree_add_to_doc_tests() {
         .push_item("banana");
     //
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Ok("banana"));
-    assert_eq!(
-        root_ref.pop_item(),
-        Err(PopError::Empty(root.clone().into()))
-    );
+    assert_eq!(root_ref.pop_item(), Some("banana"));
+    assert_eq!(root_ref.pop_item(), None);
     // unblock "child_blocked"
     child_blocked
         .try_ref(&mut tree)
@@ -77,12 +76,9 @@ fn tree_add_to_doc_tests() {
         .expect("child_unblocked exists")
         .push_item("cashews");
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Ok("apple"));
-    assert_eq!(root_ref.pop_item(), Ok("cashews"));
-    assert_eq!(
-        root_ref.pop_item(),
-        Err(PopError::Empty(root.clone().into()))
-    );
+    assert_eq!(root_ref.pop_item(), Some("apple"));
+    assert_eq!(root_ref.pop_item(), Some("cashews"));
+    assert_eq!(root_ref.pop_item(), None);
 }
 /// Tree data structure, consisting of [`Node`]s with queues of items `T`, filter `F`
 ///
@@ -94,8 +90,8 @@ fn tree_add_to_doc_tests() {
 /// //
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
 /// *root_ref.filter() = Some("filter value".to_string());
-/// let child_blocked = root_ref.add_child(None);
-/// let child = root_ref.add_child(Some(1));
+/// let child_blocked = root_ref.add_child(0);
+/// let child = root_ref.add_child(1);
 /// // initial weight `None` (0)
 /// child_blocked.try_ref(&mut tree)
 ///     .expect("child_blocked exists")
@@ -106,8 +102,8 @@ fn tree_add_to_doc_tests() {
 ///     .push_item("banana");
 /// //
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-/// assert_eq!(root_ref.pop_item(), Ok("banana"));
-/// assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.clone().into())));
+/// assert_eq!(root_ref.pop_item(), Some("banana"));
+/// assert_eq!(root_ref.pop_item(), None);
 /// // unblock "child_blocked"
 /// child_blocked.try_ref(&mut tree)
 ///     .expect("child_blocked exists")
@@ -117,10 +113,9 @@ fn tree_add_to_doc_tests() {
 ///     .expect("child_unblocked exists")
 ///     .push_item("cashews");
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-// TODO
-// /// assert_eq!(root_ref.pop_item(), Ok("apple"));
-// /// assert_eq!(root_ref.pop_item(), Ok("cashews"));
-// /// assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.clone().into())));
+/// assert_eq!(root_ref.pop_item(), Some("apple"));
+/// assert_eq!(root_ref.pop_item(), Some("cashews"));
+/// assert_eq!(root_ref.pop_item(), None);
 /// ```
 ///
 #[derive(Debug)]
@@ -132,7 +127,11 @@ impl<T, F> Tree<T, F> {
     /// Creates a tree with a single root node
     #[must_use]
     pub fn new() -> Self {
-        let (root, sequence_counter) = Node::new_root();
+        Self::new_with_root(node::meta::NodeInfoIntrinsic::default())
+    }
+    /// Creates a tree with the specified root info
+    pub fn new_with_root(node_info: node::meta::NodeInfoIntrinsic<T, F>) -> Self {
+        let (root, sequence_counter) = node_info.construct_root();
         Tree {
             root,
             sequence_counter,
@@ -143,20 +142,6 @@ impl<T, F> Tree<T, F> {
         #![allow(clippy::unused_self)]
         id::ROOT
     }
-    //TODO: remove this non-external getter
-    fn get_node<'a, P>(&self, node_path: &'a P) -> Result<&Node<T, F>, InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        self.root.get_child(node_path.into())
-    }
-    //TODO: remove this non-external getter
-    fn get_node_mut<'a, P>(&mut self, node_path: &'a P) -> Result<&mut Node<T, F>, InvalidNodePath>
-    where
-        &'a P: Into<&'a [NodePathElem]>,
-    {
-        self.root.get_child_mut(node_path.into())
-    }
     /// Removes an empty node
     ///
     /// **Note:** Explicit [`NodeId`] is required to preserve idempotency.
@@ -166,18 +151,27 @@ impl<T, F> Tree<T, F> {
     /// Returns an error if the specified `NodeId` does not point to a valid node,
     ///  or if the node has existing children.
     ///
-    pub fn remove_node(&mut self, node_id: &NodeId<ty::Child>) -> Result<(), RemoveError> {
+    pub fn remove_node(
+        &mut self,
+        node_id: &NodeId<ty::Child>,
+    ) -> Result<RemoveResult<T, F, NodeId<ty::Child>>, InvalidNodePath> {
+        let err_child_path_invalid = || InvalidNodePath::from(node_id.clone().into_inner());
+        // calculate parent path
         let node_id_cloned = NodePath::from(node_id.clone());
-        let (parent_id, last_elem) = node_id_cloned.parent();
+        let (parent_id, last_elem) = node_id_cloned.into_parent();
+        // remove child from parent
         let mut parent = parent_id.try_ref(self)?;
-        parent
-            .remove_child(last_elem, node_id)
-            .map(|_| ())
-            .map_err(|e| e.attach_id(node_id))
+        match parent.children_mut() {
+            node::Children::Chain(chain) => chain
+                .remove_child(last_elem, node_id)
+                .map(|remove_result| remove_result.map_err(|e| e.map_id(|_| node_id.clone())))
+                .map_err(|_| err_child_path_invalid()),
+            node::Children::Items(_) => Err(err_child_path_invalid()),
+        }
     }
     /// Calculate the total node count (including the root)
     pub fn sum_node_count(&self) -> usize {
-        self.root.sum_node_count()
+        self.root.children.sum_node_count()
     }
 }
 impl<T, F> Default for Tree<T, F> {
@@ -188,17 +182,17 @@ impl<T, F> Default for Tree<T, F> {
 
 pub use refs::{NodeRefMut, NodeRefMutWeighted};
 mod refs {
-    use crate::error::{InvalidNodePath, RemoveErrorInner};
+    use crate::error::InvalidNodePath;
     use crate::id::{
-        ty, NodeId, NodeIdTyped, NodePath, NodePathElem, NodePathRefTyped, NodePathTyped,
-        SequenceSource,
+        ty, NodeId, NodeIdTyped, NodePath, NodePathRefTyped, NodePathTyped, SequenceSource,
     };
-    use crate::node::{self, Node, NodeInfoIntrinsic};
+    use crate::node::meta::NodeInfoIntrinsic;
+    use crate::node::{self, Children, Node};
     use crate::order::Type as OrderType;
     use crate::weight_vec;
-    use crate::{PopError, Tree, Weight};
+    use crate::{Tree, Weight};
 
-    /// Mutable reference to a [`Node`]
+    /// Mutable reference to a node in the [`Tree`]
     #[must_use]
     pub struct NodeRefMut<'tree, 'path, T, F> {
         node: &'tree mut Node<T, F>,
@@ -206,11 +200,35 @@ mod refs {
         sequence_counter: &'tree mut node::SequenceCounter,
     }
     impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
+        /// Adds an empty child node, with the default weight
+        pub fn add_child_default(&mut self) -> NodeId<ty::Child> {
+            const DEFAULT_WEIGHT: Weight = 1;
+            self.add_child_from(DEFAULT_WEIGHT, None)
+        }
         /// Adds an empty child node, with optional weight
-        pub fn add_child(&mut self, weight: Option<Weight>) -> NodeId<ty::Child> {
-            let (child_part, child_node) = self.node.add_child(weight, self.sequence_counter);
-            let path = self.path.clone_inner().append(child_part);
-            path.with_sequence(child_node)
+        pub fn add_child(&mut self, weight: Weight) -> NodeId<ty::Child> {
+            self.add_child_from(weight, None)
+        }
+        /// Adds an empty node from the (optional) specified info, with optional weight
+        pub(crate) fn add_child_from(
+            &mut self,
+            weight: Weight,
+            info: Option<NodeInfoIntrinsic<T, F>>,
+        ) -> NodeId<ty::Child> {
+            match &mut self.node.children {
+                Children::Chain(chain) => {
+                    let new_child = info.unwrap_or_default().construct(self.sequence_counter);
+                    let child_path_part = chain.nodes.len();
+                    let sequence = new_child.sequence_keeper();
+                    chain.nodes.ref_mut().push((weight, new_child));
+                    let path = self.path.clone_inner().append(child_path_part);
+                    path.with_sequence(&sequence)
+                }
+                Children::Items(_) => todo!(
+                    //TODO
+                    "type-system guarantee for disallowing adding children to an Items node"
+                ),
+            }
         }
         /// Mutable access to filter
         pub fn filter(&mut self) -> &mut Option<F> {
@@ -218,31 +236,25 @@ mod refs {
         }
         /// Appends an item to the queue
         pub fn push_item(&mut self, item: T) {
-            self.node.queue.push_back(item);
-        }
-        /// Pops an item from the queue
-        ///
-        /// # Errors
-        /// Returns an error if the pop failed
-        ///
-        pub fn pop_item(&mut self) -> Result<T, PopError<NodeIdTyped>> {
-            self.node
-                .pop_item()
-                .map_err(|e| e.map_inner(|()| self.path.clone_inner().with_sequence(self.node)))
+            self.node.push_item(item);
         }
         /// Sets the [`OrderType`]
         pub fn set_order(&mut self, order: OrderType) {
             self.node.set_order(order);
         }
-        pub(super) fn remove_child<S: SequenceSource>(
-            &mut self,
-            id_elem: NodePathElem,
-            sequence_source: &S,
-        ) -> Result<(Weight, Node<T, F>), RemoveErrorInner> {
-            self.node.remove_child(id_elem, sequence_source)
+        pub(super) fn children_mut(&mut self) -> &mut Children<T, F> {
+            &mut self.node.children
         }
-        pub(crate) fn overwrite_from(&mut self, info: NodeInfoIntrinsic<T, F>) {
-            self.node.overwrite_from(info);
+        /// Returns the number of child nodes
+        #[must_use]
+        pub fn child_nodes_len(&self) -> usize {
+            self.node.children.len_nodes()
+        }
+    }
+    impl<'tree, 'path, T: Copy, F> NodeRefMut<'tree, 'path, T, F> {
+        /// Pops an item from the queue
+        pub fn pop_item(&mut self) -> Option<T> {
+            self.node.pop_item()
         }
     }
 
@@ -311,20 +323,22 @@ mod refs {
             tree: &'tree mut Tree<T, F>,
         ) -> Result<NodeRefMutWeighted<'tree, '_, T, F>, InvalidNodePath> {
             let path = self;
-            let ref_else_root_node = tree
-                .root
-                .get_child_and_weight_parent_order_mut(path.into())?;
-            let (weight_ref, node) = ref_else_root_node.map_err(|_| path.clone())?;
-            let path = path.into();
-            let sequence_counter = &mut tree.sequence_counter;
-            Ok(NodeRefMutWeighted {
-                weight_ref,
-                inner: NodeRefMut {
-                    node,
-                    path,
-                    sequence_counter,
-                },
-            })
+            match &mut tree.root.children {
+                Children::Chain(chain) => {
+                    let (weight_ref, node) = chain.get_child_entry_mut(path.into())?;
+                    let path = path.into();
+                    let sequence_counter = &mut tree.sequence_counter;
+                    Ok(NodeRefMutWeighted {
+                        weight_ref,
+                        inner: NodeRefMut {
+                            node,
+                            path,
+                            sequence_counter,
+                        },
+                    })
+                }
+                Children::Items(_) => Err(path.clone().into()),
+            }
         }
     }
     impl NodePathTyped {

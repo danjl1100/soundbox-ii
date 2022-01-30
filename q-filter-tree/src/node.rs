@@ -1,323 +1,45 @@
-use crate::{
-    error::{InvalidNodePath, PopError, RemoveErrorInner},
-    id::{self, ty, NodeId, NodePathElem, Sequence, SequenceSource},
-    order,
-    weight_vec::{self, WeightVec},
-    Weight,
-};
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-/// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
-#[must_use]
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct NodeInfo<T, F> {
-    /// Items queue
-    queue: VecDeque<T>,
-    /// Filtering value
-    filter: Option<F>,
-    // TODO
-    // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
-    // pub retain_count: usize,
-    child_weights: Vec<Weight>,
-    order: order::Type,
-}
-/// Intrinsic fields of [`NodeInfo`]
-#[must_use]
-pub(crate) struct NodeInfoIntrinsic<T, F> {
-    /// Items queue
-    queue: VecDeque<T>,
-    /// Filtering value
-    filter: Option<F>,
-    // TODO
-    // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
-    // pub retain_count: usize,
-    order: order::Type,
-}
-impl<'a, T, F> From<NodeInfo<T, F>> for (NodeInfoIntrinsic<T, F>, Vec<Weight>) {
-    fn from(other: NodeInfo<T, F>) -> Self {
-        let NodeInfo {
-            queue,
-            filter,
-            child_weights,
-            order,
-        } = other;
-        let intrinsic = NodeInfoIntrinsic {
-            queue,
-            filter,
-            order,
-        };
-        (intrinsic, child_weights)
-    }
-}
-impl<'a, T: Clone, F: Clone> From<&'a Node<T, F>> for NodeInfo<T, F> {
-    fn from(node: &'a Node<T, F>) -> Self {
-        let Node {
-            queue,
-            filter,
-            children,
-            order,
-            ..
-        } = node;
-        Self {
-            queue: queue.clone(),
-            filter: filter.clone(),
-            child_weights: children.weights().into(),
-            order: order.into(),
-        }
-    }
-}
+use crate::{
+    error::{InvalidNodePath, RemoveError},
+    id::{NodePathElem, Sequence, SequenceSource},
+    order,
+    weight_vec::{self, OrderVec},
+    Weight,
+};
 
-/// Internal representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
-#[must_use]
-#[derive(PartialEq, Eq)]
-pub struct Node<T, F> {
-    /// Items queue
-    pub queue: VecDeque<T>,
-    /// Filtering value
+#[derive(Clone)]
+pub(crate) struct Node<T, F> {
+    pub children: Children<T, F>,
+    /// Items queue polled from child nodes/items
+    queue: VecDeque<T>,
     pub filter: Option<F>,
-    // TODO
-    // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
-    // pub retain_count: usize,
-    children: WeightVec<Node<T, F>>,
-    order: order::State,
-    sequence: Sequence,
+    pub sequence: Sequence,
 }
 impl<T, F> Node<T, F> {
-    pub(crate) fn new(counter: &mut SequenceCounter) -> Self {
-        Self::new_with_seq(counter.next())
-    }
-    pub(crate) fn new_root() -> (Self, SequenceCounter) {
-        const ROOT_ID: NodeId<ty::Root> = id::ROOT;
-        let root = Self::new_with_seq(ROOT_ID.sequence());
-        let counter = SequenceCounter::new(&ROOT_ID);
-        (root, counter)
-    }
-    fn new_with_seq(sequence: Sequence) -> Self {
-        Self {
-            queue: VecDeque::new(),
-            filter: None,
-            // TODO
-            // retain_count: 0,
-            children: WeightVec::new(),
-            order: order::Type::InOrder.into(),
-            sequence,
+    pub fn set_order(&mut self, order: order::Type) {
+        match &mut self.children {
+            Children::Chain(chain) => chain.nodes.set_order(order),
+            Children::Items(items) => items.set_order(order),
         }
     }
-    /// Adds a child to the specified `Node`, with an optional `Weight`
-    pub(crate) fn add_child(
-        &mut self,
-        weight: Option<Weight>,
-        counter: &mut SequenceCounter,
-    ) -> (NodePathElem, &Self) {
-        let weight = weight.unwrap_or(0);
-        let child_node = Node::new(counter);
-        let child = {
-            let child_part = self.children.len() as NodePathElem;
-            // push AFTER recording length ^
-            self.children
-                .ref_mut(&mut self.order)
-                .push((weight, child_node));
-            let child_node = self.children.elems().last().expect("pushed element exists");
-            (child_part, child_node)
-        };
-        self.order.clear();
-        child
+    pub fn push_item(&mut self, item: T) {
+        self.queue.push_back(item);
     }
-    /// Removes the specified child node
+    /// Pops an item from self-queue only
     ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node,
-    ///  or if the node has existing children.
-    ///
-    pub(crate) fn remove_child<S: SequenceSource>(
-        &mut self,
-        id_elem: NodePathElem,
-        sequence_source: &S,
-    ) -> Result<(Weight, Node<T, F>), RemoveErrorInner> {
-        if let Some((_, child)) = self.children.get(id_elem) {
-            let child_sequence = child.sequence();
-            if child_sequence == sequence_source.sequence() {
-                let child_children = child.get_child_nodes();
-                if child_children.is_empty() {
-                    self.order.clear();
-                    Ok(self
-                        .children
-                        .ref_mut(&mut self.order)
-                        .remove(id_elem)
-                        .expect("indexed child still present for removal"))
-                } else {
-                    let child_id_elems = (0..child_children.len()).collect();
-                    Err(RemoveErrorInner::NonEmpty((), child_id_elems))
-                }
-            } else {
-                Err(RemoveErrorInner::SequenceMismatch((), child_sequence))
-            }
-        } else {
-            Err(RemoveErrorInner::Invalid(()))
-        }
+    /// See: [`Self::pop_item`]
+    pub fn pop_only_from_self(&mut self) -> Option<T> {
+        self.queue.pop_front()
     }
-    fn get_child_nodes(&self) -> &[Node<T, F>] {
-        self.children.elems()
-    }
-    /// Returns the child `Node` at the specified ID elements path
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub(crate) fn get_child(
-        &self,
-        id_elems: &[NodePathElem],
-    ) -> Result<&Node<T, F>, InvalidNodePath> {
-        if id_elems.is_empty() {
-            Ok(self)
-        } else {
-            self.get_child_entry(id_elems).map(|(_, child)| child)
-        }
-    }
-    /// Returns the child `Node` at the specified ID elements path
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub(crate) fn get_child_mut(
-        &mut self,
-        id_elems: &[NodePathElem],
-    ) -> Result<&mut Node<T, F>, InvalidNodePath> {
-        if id_elems.is_empty() {
-            Ok(self)
-        } else {
-            self.get_child_entry_mut(id_elems).map(|(_, node)| node)
-        }
-    }
-    #[allow(clippy::type_complexity)] //TODO make return type more... straightforward
-    /// Returns the child `Node` and associated `Weight` of the specified ID elements path
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub(crate) fn get_child_and_weight_parent_order_mut(
-        &mut self,
-        id_elems: &[NodePathElem],
-    ) -> Result<
-        Result<weight_vec::RefMutElem<'_, '_, Node<T, F>>, &'_ mut Node<T, F>>,
-        InvalidNodePath,
-    > {
-        if id_elems.is_empty() {
-            Ok(Err(self))
-        } else {
-            self.get_child_entry_mut(id_elems).map(Ok)
-        }
-    }
-    /// Returns the child `Node` and index (if any), after the specified index
-    pub(crate) fn get_idx_and_child_after(
-        &self,
-        after_idx: Option<usize>,
-    ) -> Option<(usize, &Self)> {
-        let idx = after_idx.map_or(0, |i| i + 1);
-        let child = self.children.elems().get(idx);
-        child.map(|c| (idx, c))
-    }
-    pub(crate) fn sum_node_count(&self) -> usize {
-        let child_sum: usize = self.children.elems().iter().map(Self::sum_node_count).sum();
-        child_sum + 1
-    }
-    fn get_child_entry(
-        &self,
-        id_elems: &[NodePathElem],
-    ) -> Result<(Weight, &Node<T, F>), InvalidNodePath> {
-        if let Some((&this_idx, remainder)) = id_elems.split_first() {
-            let child = self.children.get(this_idx).ok_or(id_elems)?;
-            if remainder.is_empty() {
-                Ok(child)
-            } else {
-                let (_, child_node) = child;
-                child_node.get_child_entry(remainder)
-            }
-        } else {
-            Err(id_elems.into())
-        }
-    }
-    fn get_child_entry_mut(
-        &mut self,
-        id_elems: &[NodePathElem],
-    ) -> Result<weight_vec::RefMutElem<'_, '_, Node<T, F>>, InvalidNodePath> {
-        if let Some((&this_idx, remainder)) = id_elems.split_first() {
-            let child_ref = self
-                .children
-                .ref_mut(&mut self.order)
-                .into_elem_ref(this_idx)
-                .or(Err(id_elems))?;
-            if remainder.is_empty() {
-                Ok(child_ref)
-            } else {
-                let child_node = child_ref.1;
-                child_node.get_child_entry_mut(remainder)
-            }
-        } else {
-            Err(id_elems.into())
-        }
-    }
-    /// Sets the weight of the specified `Node`
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn set_weight(
-        &mut self,
-        node_id: &[NodePathElem],
-        weight: Weight,
-    ) -> Result<(), InvalidNodePath> {
-        let (mut weight_ref, _) = self.get_child_entry_mut(node_id)?;
-        weight_ref.set_weight(weight);
-        Ok(())
-    }
-    /// Sets the [`OrderType`](`crate::order::Type`) of this node
-    pub fn set_order(&mut self, ty: order::Type) {
-        self.order.set_type(ty);
-    }
-    /// Attempts to pop the next item, pulling from child nodes as needed
-    ///
-    /// # Errors
-    /// Returns an error if the pop operation fails
-    ///
-    pub fn pop_item(&mut self) -> Result<T, PopError<()>> {
-        self.queue.pop_front().ok_or(()).or_else(|_| {
-            if self.children.is_empty() {
-                Err(PopError::Empty(()))
-            } else {
-                let weights = self.children.weights();
-                let child_idx = self.order.next(weights);
-                let child = if let Some(child_idx) = child_idx {
-                    self.children.get_elem_mut(child_idx)
-                } else {
-                    None
-                };
-                if let Some(child) = child {
-                    child.pop_item()
-                } else {
-                    Err(PopError::Blocked(()))
-                }
-            }
-        })
-    }
-    pub(crate) fn overwrite_from(&mut self, info: NodeInfoIntrinsic<T, F>) {
-        let NodeInfoIntrinsic {
-            queue,
-            filter,
-            order,
-        } = info;
-        self.queue = queue;
-        self.filter = filter;
-        self.set_order(order);
-    }
-    pub(crate) fn overwrite_child_weights(
-        &mut self,
-        weights: Vec<Weight>,
-    ) -> Result<(), (Vec<Weight>, usize)> {
-        self.children
-            .ref_mut(&mut self.order)
-            .overwrite_weights(weights)
+}
+impl<T: Copy, F> Node<T, F> {
+    pub fn pop_item(&mut self) -> Option<T> {
+        self.pop_only_from_self()
+            .or_else(|| match &mut self.children {
+                Children::Chain(chain) => chain.find_next_item(),
+                Children::Items(items) => items.next().copied(),
+            })
     }
 }
 impl<T, F> SequenceSource for Node<T, F> {
@@ -325,37 +47,293 @@ impl<T, F> SequenceSource for Node<T, F> {
         self.sequence
     }
 }
-impl<T, F> std::fmt::Debug for Node<T, F>
-where
-    T: std::fmt::Debug,
-    F: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "Node(#{}, q={:?}, f={:?}, {:?}, w={:?})",
-            self.sequence,
-            self.queue,
-            self.filter,
-            order::Type::from(&self.order),
-            self.children.weights()
-        )
-        // f.debug_map()
-        //     .entries(self.children.elems().iter().enumerate())
-        //     .finish()
+
+impl<T, F> std::fmt::Debug for Node<T, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO
+        f.debug_struct("Node").finish()
     }
 }
 
-/// Counter for a `Sequence`
-#[derive(Debug)]
-pub(crate) struct SequenceCounter(Sequence);
-impl SequenceCounter {
-    fn new(from_id: &NodeId<ty::Root>) -> Self {
-        Self(from_id.sequence())
+#[derive(Clone)]
+pub(crate) enum Children<T, F> {
+    Chain(Chain<T, F>),
+    Items(OrderVec<T>),
+}
+impl<T, F> Children<T, F> {
+    /// Sum the count of all nodes, including `self`
+    pub fn sum_node_count(&self) -> usize {
+        let child_count = match self {
+            Self::Chain(chain) => chain.sum_child_node_count(),
+            Self::Items(_) => 0,
+        };
+        child_count + 1
     }
-    /// Returns the next Sequence value in the counter
-    fn next(&mut self) -> Sequence {
-        self.0 += 1;
-        self.0
+    pub fn len_nodes(&self) -> usize {
+        match self {
+            Self::Chain(chain) => chain.nodes.len(),
+            Self::Items(_) => 0,
+        }
+    }
+    pub fn is_empty_nodes(&self) -> bool {
+        match self {
+            Self::Chain(chain) => chain.nodes.is_empty(),
+            Self::Items(_) => true,
+        }
+    }
+}
+impl<T, F> From<Chain<T, F>> for Children<T, F> {
+    fn from(chain: Chain<T, F>) -> Self {
+        Self::Chain(chain)
+    }
+}
+impl<T, F> From<OrderVec<T>> for Children<T, F> {
+    fn from(items: OrderVec<T>) -> Self {
+        Self::Items(items)
+    }
+}
+
+pub type RemoveResult<T, F, U> = Result<(Weight, NodeInfoIntrinsic<T, F>), RemoveError<U>>;
+
+#[derive(Clone)]
+pub(crate) struct Chain<T, F> {
+    pub nodes: OrderVec<Node<T, F>>,
+}
+impl<T, F> Chain<T, F> {
+    pub fn new(order: order::Type) -> Self {
+        Self {
+            nodes: OrderVec::new(order),
+        }
+    }
+    pub fn sum_child_node_count(&self) -> usize {
+        self.nodes
+            .iter()
+            .map(|(_, node)| node.children.sum_node_count())
+            .sum()
+    }
+    pub fn get_child_entry_mut(
+        &mut self,
+        id_elems: &[NodePathElem],
+    ) -> Result<weight_vec::RefMutElem<'_, '_, Node<T, F>>, InvalidNodePath> {
+        if let Some((&this_idx, remainder)) = id_elems.split_first() {
+            let child_ref = self
+                .nodes
+                .ref_mut()
+                .into_elem_ref(this_idx)
+                .or(Err(id_elems))?;
+            if remainder.is_empty() {
+                Ok(child_ref)
+            } else {
+                match &mut child_ref.1.children {
+                    Children::Chain(chain) => chain.get_child_entry_mut(remainder),
+                    Children::Items(_) => Err(id_elems.into()),
+                }
+            }
+        } else {
+            Err(id_elems.into())
+        }
+    }
+    pub fn remove_child<S: SequenceSource>(
+        &mut self,
+        path_elem: NodePathElem,
+        sequence: &S,
+    ) -> Result<RemoveResult<T, F, NodePathElem>, NodePathElem> {
+        let (_, child) = self.nodes.get(path_elem).ok_or(path_elem)?;
+        let remove_result = if child.children.is_empty_nodes() {
+            let child_sequence = child.sequence();
+            if child_sequence == sequence.sequence() {
+                Ok(self
+                    .nodes
+                    .ref_mut()
+                    .remove(path_elem)
+                    .map(|(weight, node)| {
+                        let (child_weights, info_intrinsic) = NodeInfo::from(node).into();
+                        assert!(child_weights.is_empty());
+                        (weight, info_intrinsic)
+                    })
+                    .expect("node at index exists just after getting some"))
+            } else {
+                Err(RemoveError::SequenceMismatch(path_elem, child_sequence))
+            }
+        } else {
+            Err(RemoveError::NonEmpty(path_elem))
+        };
+        Ok(remove_result)
+    }
+}
+impl<T: Copy, F> Chain<T, F> {
+    pub fn find_next_item(&mut self) -> Option<T> {
+        const INVALID_INDEX: &str = "valid index from next_index";
+        let first_node_index = self.nodes.next_index()?;
+        let first_node = self
+            .nodes
+            .get_elem_mut(first_node_index)
+            .expect(INVALID_INDEX);
+        if let Some(item) = first_node.pop_item() {
+            // fast path
+            Some(item)
+        } else {
+            // search
+            let mut nodes_visited: Vec<_> =
+                std::iter::repeat(Some(())).take(self.nodes.len()).collect();
+            nodes_visited[first_node_index].take();
+            loop {
+                let node_index = self.nodes.next_index()?;
+                // base case - return `None` if node already visited
+                nodes_visited
+                    .get_mut(node_index)
+                    .expect(INVALID_INDEX)
+                    .take()?;
+                //
+                let node = self.nodes.get_elem_mut(node_index).expect(INVALID_INDEX);
+                if let Some(item) = node.pop_item() {
+                    break Some(item);
+                }
+            }
+        }
+    }
+}
+
+pub(crate) use meta::SequenceCounter;
+
+use self::meta::{NodeInfo, NodeInfoIntrinsic};
+pub(crate) mod meta {
+    use std::collections::VecDeque;
+
+    use serde::{Deserialize, Serialize};
+
+    use crate::{
+        id::{self, ty, NodeId, Sequence},
+        node::{Chain, Children},
+        order,
+        weight_vec::OrderVec,
+        Weight,
+    };
+
+    use super::Node;
+    /// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
+    #[must_use]
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub(crate) struct NodeInfo<T, F>(Vec<Weight>, NodeInfoIntrinsic<T, F>);
+    impl<T, F> From<NodeInfo<T, F>> for (Vec<Weight>, NodeInfoIntrinsic<T, F>) {
+        fn from(node_info: NodeInfo<T, F>) -> Self {
+            (node_info.0, node_info.1)
+        }
+    }
+    impl<T, F> From<Node<T, F>> for NodeInfo<T, F> {
+        fn from(node: Node<T, F>) -> Self {
+            let Node {
+                children,
+                queue,
+                filter,
+                sequence: _,
+            } = node;
+            match children {
+                Children::Chain(Chain { nodes }) => {
+                    let (order, (weights, _nodes)) = nodes.into_parts();
+                    let info_intrinsic = NodeInfoIntrinsic::Chain {
+                        queue,
+                        filter,
+                        order,
+                    };
+                    Self(weights, info_intrinsic)
+                }
+                Children::Items(items) => {
+                    let (order, (weights, items)) = items.into_parts();
+                    let info_intrinsic = NodeInfoIntrinsic::Items {
+                        items,
+                        filter,
+                        order,
+                    };
+                    Self(weights, info_intrinsic)
+                }
+            }
+        }
+    }
+    /// Intrinsic description of a Node
+    #[must_use]
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(untagged)]
+    pub enum NodeInfoIntrinsic<T, F> {
+        /// Node containing nodes as children
+        Chain {
+            /// Items queue polled from child nodes
+            queue: VecDeque<T>,
+            /// Filtering value
+            filter: Option<F>,
+            // TODO
+            // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
+            // pub retain_count: usize,
+            /// Ordering type for child nodes
+            order: order::Type,
+        },
+        /// Node containing only child items (no child nodes)
+        Items {
+            /// Items
+            items: Vec<T>,
+            /// Filtering value
+            filter: Option<F>,
+            /// Ordering type for child items
+            order: order::Type,
+        },
+    }
+    impl<T, F> Default for NodeInfoIntrinsic<T, F> {
+        fn default() -> Self {
+            Self::Chain {
+                queue: VecDeque::default(),
+                filter: Option::default(),
+                order: order::Type::default(),
+            }
+        }
+    }
+    impl<T, F> NodeInfoIntrinsic<T, F> {
+        pub(crate) fn construct_root(self) -> (Node<T, F>, SequenceCounter) {
+            const ROOT_ID: NodeId<ty::Root> = id::ROOT;
+            let root = self.make_node(ROOT_ID.sequence());
+            let counter = SequenceCounter::new(&ROOT_ID);
+            (root, counter)
+        }
+        pub(crate) fn construct(self, counter: &mut SequenceCounter) -> Node<T, F> {
+            self.make_node(counter.next())
+        }
+        fn make_node(self, sequence: Sequence) -> Node<T, F> {
+            match self {
+                Self::Chain {
+                    queue,
+                    filter,
+                    order,
+                } => Node {
+                    children: Chain::new(order).into(),
+                    queue,
+                    filter,
+                    sequence,
+                },
+                Self::Items {
+                    items,
+                    filter,
+                    order,
+                } => Node {
+                    children: OrderVec::from((order, items.into_iter().map(|item| (1, item))))
+                        .into(),
+                    queue: VecDeque::new(),
+                    filter,
+                    sequence,
+                },
+            }
+        }
+    }
+
+    /// Counter for a `Sequence`
+    #[derive(Debug)]
+    pub(crate) struct SequenceCounter(Sequence);
+    impl SequenceCounter {
+        fn new(from_id: &NodeId<ty::Root>) -> Self {
+            Self(from_id.sequence())
+        }
+        /// Returns the next Sequence value in the counter
+        fn next(&mut self) -> Sequence {
+            self.0 += 1;
+            self.0
+        }
     }
 }

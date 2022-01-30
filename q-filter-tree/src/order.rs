@@ -13,9 +13,9 @@
 //! //
 //! root_ref.set_order(OrderType::InOrder);
 //! //
-//! let childA = root_ref.add_child(Some(2));
-//! let childB = root_ref.add_child(Some(1));
-//! let childC = root_ref.add_child(Some(3));
+//! let childA = root_ref.add_child(2);
+//! let childB = root_ref.add_child(1);
+//! let childC = root_ref.add_child(3);
 //! let mut childA_ref = childA.try_ref(&mut t).unwrap();
 //! childA_ref.push_item("A1");
 //! childA_ref.push_item("A2");
@@ -27,13 +27,13 @@
 //! childC_ref.push_item("C3");
 //! //
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
-//! assert_eq!(root_ref.pop_item(), Ok("A1"));
-//! assert_eq!(root_ref.pop_item(), Ok("A2"));
-//! assert_eq!(root_ref.pop_item(), Ok("B1"));
-//! assert_eq!(root_ref.pop_item(), Ok("C1"));
-//! assert_eq!(root_ref.pop_item(), Ok("C2"));
-//! assert_eq!(root_ref.pop_item(), Ok("C3"));
-//! assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
+//! assert_eq!(root_ref.pop_item(), Some("A1"));
+//! assert_eq!(root_ref.pop_item(), Some("A2"));
+//! assert_eq!(root_ref.pop_item(), Some("B1"));
+//! assert_eq!(root_ref.pop_item(), Some("C1"));
+//! assert_eq!(root_ref.pop_item(), Some("C2"));
+//! assert_eq!(root_ref.pop_item(), Some("C3"));
+//! assert_eq!(root_ref.pop_item(), None);
 //! ```
 //!
 //! 2. [`Type::RoundRobin`]
@@ -47,9 +47,9 @@
 //! //
 //! root_ref.set_order(OrderType::RoundRobin);
 //! //
-//! let childA = root_ref.add_child(Some(2));
-//! let childB = root_ref.add_child(Some(1));
-//! let childC = root_ref.add_child(Some(3));
+//! let childA = root_ref.add_child(2);
+//! let childB = root_ref.add_child(1);
+//! let childC = root_ref.add_child(3);
 //! let mut childA_ref = childA.try_ref(&mut t).unwrap();
 //! childA_ref.push_item("A1");
 //! childA_ref.push_item("A2");
@@ -61,13 +61,13 @@
 //! childC_ref.push_item("C3");
 //! //
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
-//! assert_eq!(root_ref.pop_item(), Ok("A1"));
-//! assert_eq!(root_ref.pop_item(), Ok("B1"));
-//! assert_eq!(root_ref.pop_item(), Ok("C1"));
-//! assert_eq!(root_ref.pop_item(), Ok("A2"));
-//! assert_eq!(root_ref.pop_item(), Ok("C2"));
-//! assert_eq!(root_ref.pop_item(), Ok("C3"));
-//! assert_eq!(root_ref.pop_item(), Err(PopError::Empty(root.into())));
+//! assert_eq!(root_ref.pop_item(), Some("A1"));
+//! assert_eq!(root_ref.pop_item(), Some("B1"));
+//! assert_eq!(root_ref.pop_item(), Some("C1"));
+//! assert_eq!(root_ref.pop_item(), Some("A2"));
+//! assert_eq!(root_ref.pop_item(), Some("C2"));
+//! assert_eq!(root_ref.pop_item(), Some("C3"));
+//! assert_eq!(root_ref.pop_item(), None);
 //! ```
 //!
 //! 3. [`Type::Shuffle`]
@@ -82,9 +82,9 @@
 //! //
 //! root_ref.set_order(OrderType::Shuffle);
 //! //
-//! let childA = root_ref.add_child(Some(2));
-//! let childB = root_ref.add_child(Some(1));
-//! let childC = root_ref.add_child(Some(3));
+//! let childA = root_ref.add_child(2);
+//! let childB = root_ref.add_child(1);
+//! let childC = root_ref.add_child(3);
 //! let mut childA_ref = childA.try_ref(&mut t).unwrap();
 //! childA_ref.push_item("A");
 //! childA_ref.push_item("A");
@@ -141,15 +141,22 @@ pub enum Type {
     /// Randomly selects items based on the relative [`Weight`]s.
     Random,
 }
+impl Default for Type {
+    fn default() -> Self {
+        Self::InOrder
+    }
+}
 
 #[allow(missing_docs)]
 #[allow(clippy::large_enum_variant)]
 /// State for tracking Ordering progression
+#[derive(Clone)]
 pub struct State {
     order: Order,
 }
 #[allow(clippy::enum_variant_names)] // TODO: consider renaming `InOrder` to not contain `Order`
 #[allow(clippy::large_enum_variant)] // TODO: consider boxing `Shuffle`
+#[derive(Clone)]
 enum Order {
     InOrder(InOrder),
     RoundRobin(RoundRobin),
