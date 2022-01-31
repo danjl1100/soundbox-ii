@@ -30,6 +30,7 @@ fn two_nodes() {
     let root = t.root_id();
     //
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child = root_ref.add_child_default();
     // verify count
     assert_eq!(t.sum_node_count(), 2);
@@ -68,8 +69,10 @@ fn node_pop_chain() {
     let root = t.root_id();
     //
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child1 = root_ref.add_child(0);
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
+    let mut child1_ref = child1_ref.child_nodes().expect("child1 is chain");
     let child2 = child1_ref.add_child(0);
     // verify count
     assert_eq!(t.sum_node_count(), 3);
@@ -109,15 +112,18 @@ fn node_removal() {
     //       |--  child4_child
     //    |--  child5
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let base = root_ref.add_child_default();
     let mut base_ref = base.try_ref(&mut t).expect("base exists");
+    let mut base_ref = base_ref.child_nodes().expect("base is chain");
     let _child1 = base_ref.add_child_default();
     let _child2 = base_ref.add_child_default();
     let _child3 = base_ref.add_child_default();
     let child4 = base_ref.add_child_default();
     let child5 = base_ref.add_child_default();
     let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-    let child4_child = child4_ref.add_child_default();
+    let mut child4_refc = child4_ref.child_nodes().expect("child4 is chain");
+    let child4_child = child4_refc.add_child_default();
     // fill child4
     for i in 0..10 {
         child4_ref.push_item(i);

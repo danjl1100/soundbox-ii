@@ -49,6 +49,7 @@ fn tree_add_to_doc_tests() {
     // compile error: assert!(tree.get_child_mut(&root).is_err());
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
     *root_ref.filter() = Some("filter value".to_string());
+    let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child_blocked = root_ref.add_child(0);
     let child = root_ref.add_child_default();
     // initial weight `None` (0)
@@ -90,6 +91,7 @@ fn tree_add_to_doc_tests() {
 /// //
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
 /// *root_ref.filter() = Some("filter value".to_string());
+/// let mut root_ref = root_ref.child_nodes().expect("root is chain");
 /// let child_blocked = root_ref.add_child(0);
 /// let child = root_ref.add_child(1);
 /// // initial weight `None` (0)
@@ -174,6 +176,12 @@ impl<T, F> Tree<T, F> {
         self.root.children.sum_node_count()
     }
 }
+impl<T: Copy, F> Tree<T, F> {
+    /// Pops an item from the tree
+    pub fn pop_item(&mut self) -> Option<T> {
+        self.root.pop_item()
+    }
+}
 impl<T, F> Default for Tree<T, F> {
     fn default() -> Self {
         Self::new()
@@ -200,36 +208,6 @@ mod refs {
         sequence_counter: &'tree mut node::SequenceCounter,
     }
     impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
-        /// Adds an empty child node, with the default weight
-        pub fn add_child_default(&mut self) -> NodeId<ty::Child> {
-            const DEFAULT_WEIGHT: Weight = 1;
-            self.add_child_from(DEFAULT_WEIGHT, None)
-        }
-        /// Adds an empty child node, with optional weight
-        pub fn add_child(&mut self, weight: Weight) -> NodeId<ty::Child> {
-            self.add_child_from(weight, None)
-        }
-        /// Adds an empty node from the (optional) specified info, with optional weight
-        pub(crate) fn add_child_from(
-            &mut self,
-            weight: Weight,
-            info: Option<NodeInfoIntrinsic<T, F>>,
-        ) -> NodeId<ty::Child> {
-            match &mut self.node.children {
-                Children::Chain(chain) => {
-                    let new_child = info.unwrap_or_default().construct(self.sequence_counter);
-                    let child_path_part = chain.nodes.len();
-                    let sequence = new_child.sequence_keeper();
-                    chain.nodes.ref_mut().push((weight, new_child));
-                    let path = self.path.clone_inner().append(child_path_part);
-                    path.with_sequence(&sequence)
-                }
-                Children::Items(_) => todo!(
-                    //TODO
-                    "type-system guarantee for disallowing adding children to an Items node"
-                ),
-            }
-        }
         /// Mutable access to filter
         pub fn filter(&mut self) -> &mut Option<F> {
             &mut self.node.filter
@@ -245,6 +223,22 @@ mod refs {
         pub(super) fn children_mut(&mut self) -> &mut Children<T, F> {
             &mut self.node.children
         }
+        /// Returns a mut handle to the node-children, if the node is type chain (not items)
+        pub fn child_nodes(&mut self) -> Option<NodeChildrenRefMut<'_, 'path, T, F>> {
+            let Self {
+                node,
+                path,
+                sequence_counter,
+            } = self;
+            match &mut node.children {
+                Children::Chain(node_children) => Some(NodeChildrenRefMut {
+                    node_children,
+                    path: *path,
+                    sequence_counter,
+                }),
+                Children::Items(_) => None,
+            }
+        }
         /// Returns the number of child nodes
         #[must_use]
         pub fn child_nodes_len(&self) -> usize {
@@ -255,6 +249,38 @@ mod refs {
         /// Pops an item from the queue
         pub fn pop_item(&mut self) -> Option<T> {
             self.node.pop_item()
+        }
+    }
+
+    /// Mutable reference to node-children in the [`Tree`]
+    #[must_use]
+    pub struct NodeChildrenRefMut<'tree, 'path, T, F> {
+        node_children: &'tree mut node::Chain<T, F>,
+        path: NodePathRefTyped<'path>,
+        sequence_counter: &'tree mut node::SequenceCounter,
+    }
+    impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
+        /// Adds an empty child node, with the default weight
+        pub fn add_child_default(&mut self) -> NodeId<ty::Child> {
+            const DEFAULT_WEIGHT: Weight = 1;
+            self.add_child_from(DEFAULT_WEIGHT, None)
+        }
+        /// Adds an empty child node, with optional weight
+        pub fn add_child(&mut self, weight: Weight) -> NodeId<ty::Child> {
+            self.add_child_from(weight, None)
+        }
+        /// Adds an empty node from the (optional) specified info, with optional weight
+        pub(crate) fn add_child_from(
+            &mut self,
+            weight: Weight,
+            info: Option<NodeInfoIntrinsic<T, F>>,
+        ) -> NodeId<ty::Child> {
+            let new_child = info.unwrap_or_default().construct(self.sequence_counter);
+            let child_path_part = self.node_children.nodes.len();
+            let sequence = new_child.sequence_keeper();
+            self.node_children.nodes.ref_mut().push((weight, new_child));
+            let path = self.path.clone_inner().append(child_path_part);
+            path.with_sequence(&sequence)
         }
     }
 

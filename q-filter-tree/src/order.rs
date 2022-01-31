@@ -13,6 +13,7 @@
 //! //
 //! root_ref.set_order(OrderType::InOrder);
 //! //
+//! let mut root_ref = root_ref.child_nodes().unwrap();
 //! let childA = root_ref.add_child(2);
 //! let childB = root_ref.add_child(1);
 //! let childC = root_ref.add_child(3);
@@ -47,6 +48,7 @@
 //! //
 //! root_ref.set_order(OrderType::RoundRobin);
 //! //
+//! let mut root_ref = root_ref.child_nodes().unwrap();
 //! let childA = root_ref.add_child(2);
 //! let childB = root_ref.add_child(1);
 //! let childC = root_ref.add_child(3);
@@ -82,6 +84,7 @@
 //! //
 //! root_ref.set_order(OrderType::Shuffle);
 //! //
+//! let mut root_ref = root_ref.child_nodes().unwrap();
 //! let childA = root_ref.add_child(2);
 //! let childB = root_ref.add_child(1);
 //! let childC = root_ref.add_child(3);
