@@ -96,7 +96,7 @@ fn simple_deserialize() -> Result<()> {
             }
           ]
         }"#;
-    let mut t: Tree<&str, ()> = serde_json::from_str(tree_json)?;
+    let mut t: Tree<String, ()> = serde_json::from_str(tree_json)?;
     //
     println!(
         "input:\n\t{}\ndeserialized to:\n\t{}",
@@ -105,14 +105,17 @@ fn simple_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
+    assert_eq!(
+        root.try_ref(&mut t).expect("root exists").pop_item_queued(),
+        None
+    );
     let child = unwrap_child_path(serde_json::from_str("\"0,0\"")?);
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Some("Alfalfa"));
-    assert_eq!(root_ref.pop_item(), Some("Oats"));
-    assert_eq!(root_ref.pop_item(), None);
+    assert_eq!(root_ref.pop_item_queued(), Some(String::from("Alfalfa")));
+    assert_eq!(root_ref.pop_item_queued(), Some(String::from("Oats")));
+    assert_eq!(root_ref.pop_item_queued(), None);
     Ok(())
 }
 
@@ -165,7 +168,7 @@ fn complex_deserialize() -> Result<()> {
         "order": "InOrder"
       }],
       "0,4": [ [], {
-        "items": ["ping","pong"],
+        "queue": ["ping","pong"],
         "filter": null,
         "order": "InOrder"
       }]
@@ -179,7 +182,10 @@ fn complex_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
+    assert_eq!(
+        root.try_ref(&mut t).expect("root exists").pop_item_queued(),
+        None
+    );
     const CHILD_PATH_STRS: &[&str] = &[
         "\"0\"",
         "\"0,0\"",
@@ -195,23 +201,21 @@ fn complex_deserialize() -> Result<()> {
         assert_eq!(*(child_ref.filter()), None);
     }
     //
-    assert_eq!(t.pop_item(), None);
+    assert_eq!(t.pop_item_queued(), None);
     {
         // un-block node "0"
         let base_path = unwrap_child_path(serde_json::from_str("\"0\"")?);
         let mut base_ref = base_path.try_ref(&mut t).expect("base exists");
         base_ref.set_weight(1);
     }
-    assert_eq!(t.pop_item(), None);
+    assert_eq!(t.pop_item_queued(), None);
     {
         // un-block node "0,4"
         let child4_path = unwrap_child_path(serde_json::from_str("\"0,4\"")?);
         let mut child4_ref = child4_path.try_ref(&mut t).expect("child4 exists");
         child4_ref.set_weight(1);
     }
-    for _ in 0..100 {
-        assert_eq!(t.pop_item(), Some("ping"));
-        assert_eq!(t.pop_item(), Some("pong"));
-    }
+    assert_eq!(t.pop_item_queued(), Some("ping"));
+    assert_eq!(t.pop_item_queued(), Some("pong"));
     Ok(())
 }

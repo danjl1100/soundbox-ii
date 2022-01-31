@@ -14,9 +14,9 @@ fn creates_single() {
         root_ref.push_item(i);
     }
     for i in 0..N {
-        assert_eq!(root_ref.pop_item(), Some(i));
+        assert_eq!(root_ref.pop_item_queued(), Some(i));
     }
-    assert_eq!(root_ref.pop_item(), None);
+    assert_eq!(root_ref.pop_item_queued(), None);
     // filter
     let root_filter = root_ref.filter();
     assert_eq!(*root_filter, None);
@@ -49,19 +49,28 @@ fn two_nodes() {
     }
     for i in 0..N {
         assert_eq!(
-            child.try_ref(&mut t).expect("child exists").pop_item(),
+            child
+                .try_ref(&mut t)
+                .expect("child exists")
+                .pop_item_queued(),
             Some(i)
         );
         assert_eq!(
-            root.try_ref(&mut t).expect("root exists").pop_item(),
+            root.try_ref(&mut t).expect("root exists").pop_item_queued(),
             Some(i + 500)
         );
     }
     assert_eq!(
-        child.try_ref(&mut t).expect("child exists").pop_item(),
+        child
+            .try_ref(&mut t)
+            .expect("child exists")
+            .pop_item_queued(),
         None
     );
-    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
+    assert_eq!(
+        root.try_ref(&mut t).expect("root exists").pop_item_queued(),
+        None
+    );
 }
 #[test]
 fn node_pop_chain() {
@@ -82,19 +91,19 @@ fn node_pop_chain() {
         child2_ref.push_item(i);
     }
     // verify child2 pop
-    assert_eq!(child2_ref.pop_item(), Some(0));
-    assert_eq!(child2_ref.pop_item(), Some(1));
+    assert_eq!(child2_ref.pop_item_queued(), Some(0));
+    assert_eq!(child2_ref.pop_item_queued(), Some(1));
     // verify child1 not popping
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
-    assert_eq!(child1_ref.pop_item(), None);
+    assert_eq!(child1_ref.pop_item_queued(), None);
     // allow child1 <- child2
     let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
     child2_ref.set_weight(1);
     // verify child1 chain from child2
     let mut child1_ref = child1.try_ref(&mut t).expect("child2 exists");
-    assert_eq!(child1_ref.pop_item(), Some(2));
-    assert_eq!(child1_ref.pop_item(), Some(3));
-    assert_eq!(child1_ref.pop_item(), None);
+    assert_eq!(child1_ref.pop_item_queued(), Some(2));
+    assert_eq!(child1_ref.pop_item_queued(), Some(3));
+    assert_eq!(child1_ref.pop_item_queued(), None);
 }
 #[test]
 fn node_removal() {
@@ -134,8 +143,8 @@ fn node_removal() {
     base.try_ref(&mut t).expect("base exists").set_weight(1);
     child4.try_ref(&mut t).expect("child4 exists").set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Some(0));
-    assert_eq!(root_ref.pop_item(), Some(1));
+    assert_eq!(root_ref.pop_item_queued(), Some(0));
+    assert_eq!(root_ref.pop_item_queued(), Some(1));
     // this is enforced by the compiler, now!
     // // fails - remove root
     // assert_eq!(
@@ -197,5 +206,5 @@ fn node_removal() {
     );
     // verify root pop empty
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item(), None);
+    assert_eq!(root_ref.pop_item_queued(), None);
 }

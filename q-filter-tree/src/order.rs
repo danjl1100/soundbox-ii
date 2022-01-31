@@ -28,13 +28,13 @@
 //! childC_ref.push_item("C3");
 //! //
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
-//! assert_eq!(root_ref.pop_item(), Some("A1"));
-//! assert_eq!(root_ref.pop_item(), Some("A2"));
-//! assert_eq!(root_ref.pop_item(), Some("B1"));
-//! assert_eq!(root_ref.pop_item(), Some("C1"));
-//! assert_eq!(root_ref.pop_item(), Some("C2"));
-//! assert_eq!(root_ref.pop_item(), Some("C3"));
-//! assert_eq!(root_ref.pop_item(), None);
+//! assert_eq!(root_ref.pop_item_queued(), Some("A1"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("A2"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("B1"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("C1"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("C2"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("C3"));
+//! assert_eq!(root_ref.pop_item_queued(), None);
 //! ```
 //!
 //! 2. [`Type::RoundRobin`]
@@ -63,13 +63,13 @@
 //! childC_ref.push_item("C3");
 //! //
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
-//! assert_eq!(root_ref.pop_item(), Some("A1"));
-//! assert_eq!(root_ref.pop_item(), Some("B1"));
-//! assert_eq!(root_ref.pop_item(), Some("C1"));
-//! assert_eq!(root_ref.pop_item(), Some("A2"));
-//! assert_eq!(root_ref.pop_item(), Some("C2"));
-//! assert_eq!(root_ref.pop_item(), Some("C3"));
-//! assert_eq!(root_ref.pop_item(), None);
+//! assert_eq!(root_ref.pop_item_queued(), Some("A1"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("B1"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("C1"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("A2"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("C2"));
+//! assert_eq!(root_ref.pop_item_queued(), Some("C3"));
+//! assert_eq!(root_ref.pop_item_queued(), None);
 //! ```
 //!
 //! 3. [`Type::Shuffle`]
@@ -104,7 +104,7 @@
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! let mut popped = vec![];
 //! for _ in 0..6 {
-//!     popped.push(root_ref.pop_item().unwrap());
+//!     popped.push(root_ref.pop_item_queued().unwrap());
 //! }
 //! // non-deterministic ordering of `popped`, so instead
 //! // check some properties of `popped`

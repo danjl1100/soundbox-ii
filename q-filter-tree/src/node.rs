@@ -28,12 +28,23 @@ impl<T, F> Node<T, F> {
     }
     /// Pops an item from self-queue only
     ///
-    /// See: [`Self::pop_item`]
+    /// See: [`pop_item`] or [`pop_item_queued`]
     pub fn pop_only_from_self(&mut self) -> Option<T> {
         self.queue.pop_front()
     }
+    /// Pops an item from child node queues only (ignores items-leaf nodes)
+    ///
+    /// See: [`pop_item`] for including items-leaf items for when `T: Copy`
+    pub fn pop_item_queued(&mut self) -> Option<T> {
+        self.pop_only_from_self()
+            .or_else(|| match &mut self.children {
+                Children::Chain(chain) => chain.find_next_item_queued(),
+                Children::Items(_) => None,
+            })
+    }
 }
 impl<T: Copy, F> Node<T, F> {
+    /// Removes items from node queues, and finally copies from items-leaf node
     pub fn pop_item(&mut self) -> Option<T> {
         self.pop_only_from_self()
             .or_else(|| match &mut self.children {
@@ -160,16 +171,20 @@ impl<T, F> Chain<T, F> {
         };
         Ok(remove_result)
     }
-}
-impl<T: Copy, F> Chain<T, F> {
-    pub fn find_next_item(&mut self) -> Option<T> {
+    pub fn find_next_item_queued(&mut self) -> Option<T> {
+        self.find_next_item_using_fn(Node::pop_item_queued)
+    }
+    fn find_next_item_using_fn<U>(&mut self, mut pop_fn: U) -> Option<T>
+    where
+        U: FnMut(&mut Node<T, F>) -> Option<T>,
+    {
         const INVALID_INDEX: &str = "valid index from next_index";
         let first_node_index = self.nodes.next_index()?;
         let first_node = self
             .nodes
             .get_elem_mut(first_node_index)
             .expect(INVALID_INDEX);
-        if let Some(item) = first_node.pop_item() {
+        if let Some(item) = pop_fn(first_node) {
             // fast path
             Some(item)
         } else {
@@ -186,11 +201,16 @@ impl<T: Copy, F> Chain<T, F> {
                     .take()?;
                 //
                 let node = self.nodes.get_elem_mut(node_index).expect(INVALID_INDEX);
-                if let Some(item) = node.pop_item() {
+                if let Some(item) = pop_fn(node) {
                     break Some(item);
                 }
             }
         }
+    }
+}
+impl<T: Copy, F> Chain<T, F> {
+    pub fn find_next_item(&mut self) -> Option<T> {
+        self.find_next_item_using_fn(Node::pop_item)
     }
 }
 

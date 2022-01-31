@@ -64,8 +64,8 @@ fn tree_add_to_doc_tests() {
         .push_item("banana");
     //
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Some("banana"));
-    assert_eq!(root_ref.pop_item(), None);
+    assert_eq!(root_ref.pop_item_queued(), Some("banana"));
+    assert_eq!(root_ref.pop_item_queued(), None);
     // unblock "child_blocked"
     child_blocked
         .try_ref(&mut tree)
@@ -77,9 +77,9 @@ fn tree_add_to_doc_tests() {
         .expect("child_unblocked exists")
         .push_item("cashews");
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    assert_eq!(root_ref.pop_item(), Some("apple"));
-    assert_eq!(root_ref.pop_item(), Some("cashews"));
-    assert_eq!(root_ref.pop_item(), None);
+    assert_eq!(root_ref.pop_item_queued(), Some("apple"));
+    assert_eq!(root_ref.pop_item_queued(), Some("cashews"));
+    assert_eq!(root_ref.pop_item_queued(), None);
 }
 /// Tree data structure, consisting of nodes with queues of items `T`, filter `F`
 ///
@@ -104,8 +104,8 @@ fn tree_add_to_doc_tests() {
 ///     .push_item("banana");
 /// //
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-/// assert_eq!(root_ref.pop_item(), Some("banana"));
-/// assert_eq!(root_ref.pop_item(), None);
+/// assert_eq!(root_ref.pop_item_queued(), Some("banana"));
+/// assert_eq!(root_ref.pop_item_queued(), None);
 /// // unblock "child_blocked"
 /// child_blocked.try_ref(&mut tree)
 ///     .expect("child_blocked exists")
@@ -115,9 +115,9 @@ fn tree_add_to_doc_tests() {
 ///     .expect("child_unblocked exists")
 ///     .push_item("cashews");
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-/// assert_eq!(root_ref.pop_item(), Some("apple"));
-/// assert_eq!(root_ref.pop_item(), Some("cashews"));
-/// assert_eq!(root_ref.pop_item(), None);
+/// assert_eq!(root_ref.pop_item_queued(), Some("apple"));
+/// assert_eq!(root_ref.pop_item_queued(), Some("cashews"));
+/// assert_eq!(root_ref.pop_item_queued(), None);
 /// ```
 ///
 #[derive(Debug)]
@@ -175,9 +175,15 @@ impl<T, F> Tree<T, F> {
     pub fn sum_node_count(&self) -> usize {
         self.root.children.sum_node_count()
     }
+    /// Pops an item from child node queues only (ignores items-leaf nodes)
+    ///
+    /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
+    pub fn pop_item_queued(&mut self) -> Option<T> {
+        self.root.pop_item_queued()
+    }
 }
 impl<T: Copy, F> Tree<T, F> {
-    /// Pops an item from the tree
+    /// Removes items from node queues, and finally copies from items-leaf node
     pub fn pop_item(&mut self) -> Option<T> {
         self.root.pop_item()
     }
@@ -244,9 +250,15 @@ mod refs {
         pub fn child_nodes_len(&self) -> usize {
             self.node.children.len_nodes()
         }
+        /// Pops an item from child node queues only (ignores items-leaf nodes)
+        ///
+        /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
+        pub fn pop_item_queued(&mut self) -> Option<T> {
+            self.node.pop_item_queued()
+        }
     }
     impl<'tree, 'path, T: Copy, F> NodeRefMut<'tree, 'path, T, F> {
-        /// Pops an item from the queue
+        /// Removes items from node queues, and finally copies from items-leaf node
         pub fn pop_item(&mut self) -> Option<T> {
             self.node.pop_item()
         }
