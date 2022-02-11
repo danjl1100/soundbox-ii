@@ -13,17 +13,20 @@ pub struct Config {
     pub watch_assets: bool,
 }
 
+static ENV_BIND_ADDRESS: &str = "BIND_ADDRESS";
+
 static INTERACTIVE: &str = "interactive";
-static BIND_ADDRESS: &str = "bind-address";
-static VLC_HOST: &str = "vlc-host";
-static VLC_PORT: &str = "vlc-port";
-static VLC_PASSWORD: &str = "vlc-password";
+static BIND_ADDRESS: &str = ENV_BIND_ADDRESS;
+static VLC_HOST: &str = vlc_http::auth::ENV_VLC_HOST;
+static VLC_PORT: &str = vlc_http::auth::ENV_VLC_PORT;
+static VLC_PASSWORD: &str = vlc_http::auth::ENV_VLC_PASSWORD;
 static STATIC_ASSETS: &str = "static-assets";
 static WATCH_ASSETS: &str = "watch-assets";
 
 pub fn parse_or_exit() -> Config {
     use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
-    let default_bind_address = SocketAddr::from(([127, 0, 0, 1], 3030)).to_string();
+    let default_bind_address = std::env::var(ENV_BIND_ADDRESS)
+        .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 3030)).to_string());
     let matches = app_from_crate!()
         .arg(
             Arg::with_name(INTERACTIVE)
@@ -36,7 +39,7 @@ pub fn parse_or_exit() -> Config {
                 .short("b")
                 .long(BIND_ADDRESS)
                 .default_value(&default_bind_address)
-                .help("Address and port to bind the HTTP server"),
+                .help("Address and port to bind the HTTP server (overrides environment variable)"),
         )
         .arg(
             Arg::with_name(VLC_HOST)
