@@ -243,6 +243,8 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
     const CMD_SEEK_REL: &str = "seek-rel";
     const CMD_VOL: &str = "vol";
     const CMD_VOL_REL: &str = "vol-rel";
+    const CMD_RANDOM_TOGGLE: &str = "random";
+    const CMD_REPEAT_TOGGLE: &str = "repeat";
     const CMD_SPEED: &str = "speed";
     const QUERY_STATUS: &str = "status";
     const QUERY_PLAYLIST: &str = "playlist";
@@ -297,6 +299,8 @@ fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, Stri
                 .map_err(err_invalid_int),
             _ => Err("expected 1 argument (percent_delta)".to_string()),
         },
+        CMD_RANDOM_TOGGLE => Ok(Command::ToggleRandom.into()),
+        CMD_REPEAT_TOGGLE => Ok(Command::ToggleRepeat.into()),
         CMD_SPEED => match args.split_first() {
             Some((speed_str, extra)) if extra.is_empty() => speed_str
                 .parse()

@@ -41,6 +41,12 @@ pub enum Command {
         /// Percentage delta for the volume
         percent_delta: i16,
     },
+    /// Randomizes VLC playback order when toggled to `true`
+    ToggleRandom,
+    /// Repeats VLC playback order when toggled to `true`
+    ToggleRepeat,
+    // NOTE: this is a higher-order operation,
+    //   (requires knowing the current state of VLC to perform appropriate toggles)
     // /// Set the item selection mode
     // /// TODO: deleteme in Phase 2
     // PlaybackMode {
@@ -67,6 +73,7 @@ pub(crate) enum Query {
 /// Rule for selecting the next playback item in the VLC queue
 ///
 /// TODO: deleteme in Phase 2
+#[derive(Debug, Clone)]
 pub enum RepeatMode {
     /// Stop the VLC queue after playing all items
     Off,
@@ -173,6 +180,8 @@ impl<'a, 'b> From<Command> for RequestIntent<'a, 'b> {
                 command: "volume",
                 args: vec![("val", fmt_volume_delta(percent_delta))],
             })),
+            Command::ToggleRandom => RequestIntent::status("pl_random"),
+            Command::ToggleRepeat => RequestIntent::status("pl_repeat"),
             Command::PlaybackSpeed { speed } => RequestIntent::Status(Some(CmdArgs {
                 command: "rate",
                 args: vec![("val", speed.to_string())],
