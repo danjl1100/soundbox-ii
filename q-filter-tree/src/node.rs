@@ -8,33 +8,37 @@ use crate::{
     Weight,
 };
 
+/// Element in the [`Tree`](`crate::Tree`)
 #[derive(Clone)]
-pub(crate) struct Node<T, F> {
-    pub children: Children<T, F>,
+pub struct Node<T, F> {
+    pub(crate) children: Children<T, F>,
     /// Items queue polled from child nodes/items
     queue: VecDeque<T>,
+    /// Optional filter qualifier
     pub filter: Option<F>,
-    pub sequence: Sequence,
+    pub(crate) sequence: Sequence,
 }
 impl<T, F> Node<T, F> {
+    /// Sets the [`OrderType`](`order::Type`)
     pub fn set_order(&mut self, order: order::Type) {
         match &mut self.children {
             Children::Chain(chain) => chain.nodes.set_order(order),
             Children::Items(items) => items.set_order(order),
         }
     }
+    /// Appends an item to the queue
     pub fn push_item(&mut self, item: T) {
         self.queue.push_back(item);
     }
     /// Pops an item from self-queue only
     ///
     /// See: [`pop_item`] or [`pop_item_queued`]
-    pub fn pop_only_from_self(&mut self) -> Option<T> {
+    pub(crate) fn pop_only_from_self(&mut self) -> Option<T> {
         self.queue.pop_front()
     }
     /// Pops an item from child node queues only (ignores items-leaf nodes)
-    ///
-    /// See: [`pop_item`] for including items-leaf items for when `T: Copy`
+    // ///
+    // /// See: [`pop_item`] for including items-leaf items for when `T: Copy`
     pub fn pop_item_queued(&mut self) -> Option<T> {
         self.pop_only_from_self()
             .or_else(|| match &mut self.children {
@@ -42,17 +46,23 @@ impl<T, F> Node<T, F> {
                 Children::Items(_) => None,
             })
     }
-}
-impl<T: Copy, F> Node<T, F> {
-    /// Removes items from node queues, and finally copies from items-leaf node
-    pub fn pop_item(&mut self) -> Option<T> {
-        self.pop_only_from_self()
-            .or_else(|| match &mut self.children {
-                Children::Chain(chain) => chain.find_next_item(),
-                Children::Items(items) => items.next().copied(),
-            })
+    /// Returns the number of child nodes
+    #[must_use]
+    pub fn child_nodes_len(&self) -> usize {
+        self.children.len_nodes()
     }
 }
+// TODO reinstate
+// impl<T: Copy, F> Node<T, F> {
+//     /// Removes items from node queues, and finally copies from items-leaf node
+//     pub(crate) fn pop_item(&mut self) -> Option<T> {
+//         self.pop_only_from_self()
+//             .or_else(|| match &mut self.children {
+//                 Children::Chain(chain) => chain.find_next_item(),
+//                 Children::Items(items) => items.next().copied(),
+//             })
+//     }
+// }
 impl<T, F> SequenceSource for Node<T, F> {
     fn sequence(&self) -> Sequence {
         self.sequence
@@ -73,20 +83,20 @@ pub(crate) enum Children<T, F> {
 }
 impl<T, F> Children<T, F> {
     /// Sum the count of all nodes, including `self`
-    pub fn sum_node_count(&self) -> usize {
+    pub(crate) fn sum_node_count(&self) -> usize {
         let child_count = match self {
             Self::Chain(chain) => chain.sum_child_node_count(),
             Self::Items(_) => 0,
         };
         child_count + 1
     }
-    pub fn len_nodes(&self) -> usize {
+    pub(crate) fn len_nodes(&self) -> usize {
         match self {
             Self::Chain(chain) => chain.nodes.len(),
             Self::Items(_) => 0,
         }
     }
-    pub fn is_empty_nodes(&self) -> bool {
+    pub(crate) fn is_empty_nodes(&self) -> bool {
         match self {
             Self::Chain(chain) => chain.nodes.is_empty(),
             Self::Items(_) => true,
@@ -111,18 +121,18 @@ pub(crate) struct Chain<T, F> {
     pub nodes: OrderVec<Node<T, F>>,
 }
 impl<T, F> Chain<T, F> {
-    pub fn new(order: order::Type) -> Self {
+    pub(crate) fn new(order: order::Type) -> Self {
         Self {
             nodes: OrderVec::new(order),
         }
     }
-    pub fn sum_child_node_count(&self) -> usize {
+    pub(crate) fn sum_child_node_count(&self) -> usize {
         self.nodes
             .iter()
             .map(|(_, node)| node.children.sum_node_count())
             .sum()
     }
-    pub fn get_child_entry_mut(
+    pub(crate) fn get_child_entry_mut(
         &mut self,
         id_elems: &[NodePathElem],
     ) -> Result<weight_vec::RefMutElem<'_, '_, Node<T, F>>, InvalidNodePath> {
@@ -144,7 +154,7 @@ impl<T, F> Chain<T, F> {
             Err(id_elems.into())
         }
     }
-    pub fn remove_child<S: SequenceSource>(
+    pub(crate) fn remove_child<S: SequenceSource>(
         &mut self,
         path_elem: NodePathElem,
         sequence: &S,
@@ -171,7 +181,7 @@ impl<T, F> Chain<T, F> {
         };
         Ok(remove_result)
     }
-    pub fn find_next_item_queued(&mut self) -> Option<T> {
+    pub(crate) fn find_next_item_queued(&mut self) -> Option<T> {
         self.find_next_item_using_fn(Node::pop_item_queued)
     }
     fn find_next_item_using_fn<U>(&mut self, mut pop_fn: U) -> Option<T>
@@ -189,8 +199,7 @@ impl<T, F> Chain<T, F> {
             Some(item)
         } else {
             // search
-            let mut nodes_visited: Vec<_> =
-                std::iter::repeat(Some(())).take(self.nodes.len()).collect();
+            let mut nodes_visited = vec![Some(()); self.nodes.len()];
             nodes_visited[first_node_index].take();
             loop {
                 let node_index = self.nodes.next_index()?;
@@ -208,11 +217,12 @@ impl<T, F> Chain<T, F> {
         }
     }
 }
-impl<T: Copy, F> Chain<T, F> {
-    pub fn find_next_item(&mut self) -> Option<T> {
-        self.find_next_item_using_fn(Node::pop_item)
-    }
-}
+// TODO reinstate
+// impl<T: Copy, F> Chain<T, F> {
+//     pub(crate) fn find_next_item(&mut self) -> Option<T> {
+//         self.find_next_item_using_fn(Node::pop_item)
+//     }
+// }
 
 pub(crate) use meta::SequenceCounter;
 

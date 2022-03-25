@@ -28,14 +28,14 @@ pub enum PopError<T> {
     /// Child nodes are not allowed (all weights = 0)
     Blocked(T),
 }
-impl<T> PopError<T> {
-    pub(crate) fn map_inner<U, F: Fn(T) -> U>(self, f: F) -> PopError<U> {
-        match self {
-            Self::Empty(inner) => PopError::Empty(f(inner)),
-            Self::Blocked(inner) => PopError::Blocked(f(inner)),
-        }
-    }
-}
+// impl<T> PopError<T> {
+//     pub(crate) fn map_inner<U, F: Fn(T) -> U>(self, f: F) -> PopError<U> {
+//         match self {
+//             Self::Empty(inner) => PopError::Empty(f(inner)),
+//             Self::Blocked(inner) => PopError::Blocked(f(inner)),
+//         }
+//     }
+// }
 
 /// Error removing a node (when node is indeed found)
 #[derive(Debug, PartialEq)]

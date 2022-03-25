@@ -197,8 +197,8 @@ fn complex_deserialize() -> Result<()> {
     ];
     for child_path_str in CHILD_PATH_STRS {
         let child = unwrap_child_path(serde_json::from_str(child_path_str)?);
-        let mut child_ref = child.try_ref(&mut t).expect("child exists");
-        assert_eq!(*(child_ref.filter()), None);
+        let child_ref = child.try_ref(&mut t).expect("child exists");
+        assert_eq!(child_ref.filter, None);
     }
     //
     assert_eq!(t.pop_item_queued(), None);

@@ -21,7 +21,7 @@ use id::{ty, NodeId, NodePath};
 pub mod id;
 
 pub use node::meta::NodeInfoIntrinsic as NodeInfo;
-pub(crate) use node::Node;
+pub use node::Node;
 mod node;
 
 mod weight_vec;
@@ -40,15 +40,12 @@ mod serde {
 pub type Weight = u32;
 
 #[test]
-#[ignore] // TODO
 fn tree_add_to_doc_tests() {
     let mut tree: Tree<_, _> = Tree::new();
     let root = tree.root_id();
     //
-    // TODO: add this compile-error to Doc Tests as failed test
-    // compile error: assert!(tree.get_child_mut(&root).is_err());
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    *root_ref.filter() = Some("filter value".to_string());
+    root_ref.filter = Some("filter value".to_string());
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child_blocked = root_ref.add_child(0);
     let child = root_ref.add_child_default();
@@ -90,7 +87,7 @@ fn tree_add_to_doc_tests() {
 /// let root = tree.root_id();
 /// //
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-/// *root_ref.filter() = Some("filter value".to_string());
+/// root_ref.filter = Some("filter value".to_string());
 /// let mut root_ref = root_ref.child_nodes().expect("root is chain");
 /// let child_blocked = root_ref.add_child(0);
 /// let child = root_ref.add_child(1);
@@ -163,7 +160,7 @@ impl<T, F> Tree<T, F> {
         let (parent_id, last_elem) = node_id_cloned.into_parent();
         // remove child from parent
         let mut parent = parent_id.try_ref(self)?;
-        match parent.children_mut() {
+        match &mut parent.children {
             node::Children::Chain(chain) => chain
                 .remove_child(last_elem, node_id)
                 .map(|remove_result| remove_result.map_err(|e| e.map_id(|_| node_id.clone())))
@@ -176,18 +173,19 @@ impl<T, F> Tree<T, F> {
         self.root.children.sum_node_count()
     }
     /// Pops an item from child node queues only (ignores items-leaf nodes)
-    ///
-    /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
+    // ///
+    // /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
     pub fn pop_item_queued(&mut self) -> Option<T> {
         self.root.pop_item_queued()
     }
 }
-impl<T: Copy, F> Tree<T, F> {
-    /// Removes items from node queues, and finally copies from items-leaf node
-    pub fn pop_item(&mut self) -> Option<T> {
-        self.root.pop_item()
-    }
-}
+// TODO reinstate (with tests)
+// impl<T: Copy, F> Tree<T, F> {
+//     /// Removes items from node queues, and finally copies from items-leaf node
+//     pub fn pop_item(&mut self) -> Option<T> {
+//         self.root.pop_item()
+//     }
+// }
 impl<T, F> Default for Tree<T, F> {
     fn default() -> Self {
         Self::new()
@@ -202,7 +200,6 @@ mod refs {
     };
     use crate::node::meta::NodeInfoIntrinsic;
     use crate::node::{self, Children, Node};
-    use crate::order::Type as OrderType;
     use crate::weight_vec;
     use crate::{Tree, Weight};
 
@@ -214,21 +211,6 @@ mod refs {
         sequence_counter: &'tree mut node::SequenceCounter,
     }
     impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
-        /// Mutable access to filter
-        pub fn filter(&mut self) -> &mut Option<F> {
-            &mut self.node.filter
-        }
-        /// Appends an item to the queue
-        pub fn push_item(&mut self, item: T) {
-            self.node.push_item(item);
-        }
-        /// Sets the [`OrderType`]
-        pub fn set_order(&mut self, order: OrderType) {
-            self.node.set_order(order);
-        }
-        pub(super) fn children_mut(&mut self) -> &mut Children<T, F> {
-            &mut self.node.children
-        }
         /// Returns a mut handle to the node-children, if the node is type chain (not items)
         pub fn child_nodes(&mut self) -> Option<NodeChildrenRefMut<'_, 'path, T, F>> {
             let Self {
@@ -245,22 +227,16 @@ mod refs {
                 Children::Items(_) => None,
             }
         }
-        /// Returns the number of child nodes
-        #[must_use]
-        pub fn child_nodes_len(&self) -> usize {
-            self.node.children.len_nodes()
-        }
-        /// Pops an item from child node queues only (ignores items-leaf nodes)
-        ///
-        /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
-        pub fn pop_item_queued(&mut self) -> Option<T> {
-            self.node.pop_item_queued()
+    }
+    impl<'tree, 'path, T, F> std::ops::Deref for NodeRefMut<'tree, 'path, T, F> {
+        type Target = Node<T, F>;
+        fn deref(&self) -> &Self::Target {
+            self.node
         }
     }
-    impl<'tree, 'path, T: Copy, F> NodeRefMut<'tree, 'path, T, F> {
-        /// Removes items from node queues, and finally copies from items-leaf node
-        pub fn pop_item(&mut self) -> Option<T> {
-            self.node.pop_item()
+    impl<'tree, 'path, T, F> std::ops::DerefMut for NodeRefMut<'tree, 'path, T, F> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            self.node
         }
     }
 

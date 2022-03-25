@@ -18,11 +18,11 @@ fn creates_single() {
     }
     assert_eq!(root_ref.pop_item_queued(), None);
     // filter
-    let root_filter = root_ref.filter();
+    let root_filter = &mut root_ref.filter;
     assert_eq!(*root_filter, None);
     *root_filter = Some(String::from("my filter"));
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.filter(), &mut Some(String::from("my filter")));
+    let root_ref = root.try_ref(&mut t).expect("root exists");
+    assert_eq!(&root_ref.filter, &Some(String::from("my filter")));
 }
 #[test]
 fn two_nodes() {
@@ -36,9 +36,9 @@ fn two_nodes() {
     assert_eq!(t.sum_node_count(), 2);
     // filter
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
-    *child_ref.filter() = Some(String::from("child_filter"));
+    child_ref.filter = Some(String::from("child_filter"));
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    *root_ref.filter() = Some(String::from("root_filter"));
+    root_ref.filter = Some(String::from("root_filter"));
     // item
     const N: usize = 5;
     for i in 0..N {

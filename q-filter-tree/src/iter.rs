@@ -170,17 +170,17 @@ mod tests {
         let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
         let mut child4_ref = child4_ref.child_nodes().expect("child4 is chain");
         let child4_child = child4_ref.add_child_default();
-        *root.try_ref(&mut t).expect("root exists").filter() = Some("root");
-        *base.try_ref(&mut t).expect("base exists").filter() = Some("base");
-        *child1.try_ref(&mut t).expect("child1 exists").filter() = Some("child1");
-        *child2.try_ref(&mut t).expect("child2 exists").filter() = Some("child2");
-        *child3.try_ref(&mut t).expect("child3 exists").filter() = Some("child3");
-        *child4.try_ref(&mut t).expect("child4 exists").filter() = Some("child4");
-        *child5.try_ref(&mut t).expect("child5 exists").filter() = Some("child5");
-        *child4_child
+        root.try_ref(&mut t).expect("root exists").filter = Some("root");
+        base.try_ref(&mut t).expect("base exists").filter = Some("base");
+        child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
+        child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
+        child3.try_ref(&mut t).expect("child3 exists").filter = Some("child3");
+        child4.try_ref(&mut t).expect("child4 exists").filter = Some("child4");
+        child5.try_ref(&mut t).expect("child5 exists").filter = Some("child5");
+        child4_child
             .try_ref(&mut t)
             .expect("child4_child exists")
-            .filter() = Some("child4_child");
+            .filter = Some("child4_child");
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root.into()), "root");
@@ -232,17 +232,17 @@ mod tests {
             .child_nodes()
             .expect("child4_child is chain");
         let child4_child_child = child4_child_ref.add_child_default();
-        *root.try_ref(&mut t).expect("root exists").filter() = Some("root");
-        *base.try_ref(&mut t).expect("base exists").filter() = Some("base");
-        *child1.try_ref(&mut t).expect("child1 exists").filter() = Some("child1");
-        *child2.try_ref(&mut t).expect("child2 exists").filter() = Some("child2");
-        *child3.try_ref(&mut t).expect("child3 exists").filter() = Some("child3");
-        *child4.try_ref(&mut t).expect("child4 exists").filter() = Some("child4");
-        *child5.try_ref(&mut t).expect("child5 exists").filter() = Some("child5");
-        *child4_child
+        root.try_ref(&mut t).expect("root exists").filter = Some("root");
+        base.try_ref(&mut t).expect("base exists").filter = Some("base");
+        child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
+        child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
+        child3.try_ref(&mut t).expect("child3 exists").filter = Some("child3");
+        child4.try_ref(&mut t).expect("child4 exists").filter = Some("child4");
+        child5.try_ref(&mut t).expect("child5 exists").filter = Some("child5");
+        child4_child
             .try_ref(&mut t)
             .expect("child4_child exists")
-            .filter() = Some("child4_child");
+            .filter = Some("child4_child");
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root.into()), "root");
@@ -274,16 +274,16 @@ mod tests {
         // |-- child3
         // |-- child4
         let mut root_ref = root.try_ref(&mut t).expect("root exists");
-        *root_ref.filter() = Some("root");
+        root_ref.filter = Some("root");
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         let child1 = root_ref.add_child_default();
         let child2 = root_ref.add_child_default();
         let child3 = root_ref.add_child_default();
         let child4 = root_ref.add_child_default();
-        *child1.try_ref(&mut t).expect("child1 exists").filter() = Some("child1");
-        *child2.try_ref(&mut t).expect("child2 exists").filter() = Some("child2");
-        *child3.try_ref(&mut t).expect("child3 exists").filter() = Some("child3");
-        *child4.try_ref(&mut t).expect("child4 exists").filter() = Some("child4");
+        child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
+        child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
+        child3.try_ref(&mut t).expect("child3 exists").filter = Some("child3");
+        child4.try_ref(&mut t).expect("child4 exists").filter = Some("child4");
         //
         let mut iter = t.iter_ids();
         assert_eq!(iter.next(), Some(root.into()), "root");
