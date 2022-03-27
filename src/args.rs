@@ -28,7 +28,7 @@ impl Config {
 }
 
 impl Config {
-    const DISABLE_SERVER: &'static str = "disable-server";
+    const SERVE_HTTP: &'static str = "serve";
 }
 impl VlcHttpConfig {
     const VLC_HOST: &'static str = vlc_http::auth::ENV_VLC_HOST;
@@ -51,9 +51,9 @@ mod args_def {
             let app = VlcHttpConfig::attach_args(app);
             let app = ServerConfig::attach_args(app);
             app.arg(
-                Arg::new(Self::DISABLE_SERVER)
-                    .long(Self::DISABLE_SERVER)
-                    .help("Disables the HTTP server"),
+                Arg::new(Self::SERVE_HTTP)
+                    .long(Self::SERVE_HTTP)
+                    .help("Enables the HTTP server"),
             )
         }
     }
@@ -85,7 +85,7 @@ mod args_def {
                 Arg::new(Self::INTERACTIVE)
                     .short('i')
                     .long(ServerConfig::INTERACTIVE)
-                    .help("Activates the command-line interface"),
+                    .help("Activates the command-line interface (if HTTP server disabled, defaults to enabled)"),
             )
             .arg(
                 Arg::new(Self::BIND_ADDRESS)
@@ -98,7 +98,6 @@ mod args_def {
             .arg(
                 Arg::new(Self::STATIC_ASSETS)
                     .long(Self::STATIC_ASSETS)
-                    .short('s')
                     .default_value("dist/")
                     .help("static asserts folder path (created by frontend)"),
             )
@@ -172,10 +171,10 @@ impl<'a> TryFrom<&'a clap::ArgMatches> for ServerConfig {
 }
 
 fn build_config(matches: &clap::ArgMatches) -> Result<Config, String> {
-    let server_config = if matches.is_present(Config::DISABLE_SERVER) {
-        None
-    } else {
+    let server_config = if matches.is_present(Config::SERVE_HTTP) {
         Some(ServerConfig::try_from(matches)?)
+    } else {
+        None
     };
     let vlc_http_config = VlcHttpConfig::try_from(matches)?;
     //
