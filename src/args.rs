@@ -47,32 +47,32 @@ mod args_def {
     use clap::Arg;
     use std::net::SocketAddr;
     impl Config {
-        pub(super) fn attach_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+        pub(super) fn attach_args(app: clap::Command<'_>) -> clap::Command<'_> {
             let app = VlcHttpConfig::attach_args(app);
             let app = ServerConfig::attach_args(app);
             app.arg(
-                Arg::with_name(Self::DISABLE_SERVER)
+                Arg::new(Self::DISABLE_SERVER)
                     .long(Self::DISABLE_SERVER)
                     .help("Disables the HTTP server"),
             )
         }
     }
     impl VlcHttpConfig {
-        fn attach_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+        fn attach_args(app: clap::Command<'_>) -> clap::Command<'_> {
             app.arg(
-                Arg::with_name(VlcHttpConfig::VLC_HOST)
+                Arg::new(VlcHttpConfig::VLC_HOST)
                     .long(VlcHttpConfig::VLC_HOST)
                     .takes_value(true)
                     .help("Address of VLC-HTTP server (overrides environment variable)"),
             )
             .arg(
-                Arg::with_name(VlcHttpConfig::VLC_PORT)
+                Arg::new(VlcHttpConfig::VLC_PORT)
                     .long(VlcHttpConfig::VLC_PORT)
                     .takes_value(true)
                     .help("Port of VLC-HTTP server (overrides environment variable)"),
             )
             .arg(
-                Arg::with_name(VlcHttpConfig::VLC_PASSWORD)
+                Arg::new(VlcHttpConfig::VLC_PASSWORD)
                     .long(VlcHttpConfig::VLC_PASSWORD)
                     .takes_value(true)
                     .help("Password of VLC-HTTP server (overrides environment variable)"),
@@ -80,32 +80,32 @@ mod args_def {
         }
     }
     impl ServerConfig {
-        fn attach_args<'a, 'b>(app: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+        fn attach_args(app: clap::Command<'_>) -> clap::Command<'_> {
             app.arg(
-                Arg::with_name(Self::INTERACTIVE)
-                    .short("i")
+                Arg::new(Self::INTERACTIVE)
+                    .short('i')
                     .long(ServerConfig::INTERACTIVE)
                     .help("Activates the command-line interface"),
             )
             .arg(
-                Arg::with_name(Self::BIND_ADDRESS)
-                    .short("b")
+                Arg::new(Self::BIND_ADDRESS)
+                    .short('b')
                     .long(Self::BIND_ADDRESS)
                     // only accepts &str reference
                     //   .default_value(default_bind_address)
                     .help("Address and port to bind the HTTP server (overrides environment variable)"),
             )
             .arg(
-                Arg::with_name(Self::STATIC_ASSETS)
+                Arg::new(Self::STATIC_ASSETS)
                     .long(Self::STATIC_ASSETS)
-                    .short("s")
+                    .short('s')
                     .default_value("dist/")
                     .help("static asserts folder path (created by frontend)"),
             )
             .arg(
-                Arg::with_name(Self::WATCH_ASSETS)
+                Arg::new(Self::WATCH_ASSETS)
                     .long(Self::WATCH_ASSETS)
-                    .short("w")
+                    .short('w')
                     .help("watches the assets folder path and refreshes frontend clients when changed"),
             )
         }
@@ -117,13 +117,13 @@ mod args_def {
 }
 
 pub fn parse_or_exit() -> Config {
-    use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version};
-    let matches = Config::attach_args(app_from_crate!()).get_matches();
+    let mut command = Config::attach_args(clap::command!());
+    let matches = command.get_matches_mut();
 
     match build_config(&matches) {
         Ok(config) => config,
         Err(message) => {
-            eprintln!("{}", matches.usage());
+            eprintln!("{}", command.render_usage());
             eprintln!();
             eprintln!("ERROR: {}", message);
             std::process::exit(1)
@@ -131,9 +131,9 @@ pub fn parse_or_exit() -> Config {
     }
 }
 
-impl<'a, 'b> TryFrom<&'a clap::ArgMatches<'b>> for ServerConfig {
+impl<'a> TryFrom<&'a clap::ArgMatches> for ServerConfig {
     type Error = String;
-    fn try_from(matches: &'a clap::ArgMatches<'b>) -> Result<Self, String> {
+    fn try_from(matches: &'a clap::ArgMatches) -> Result<Self, String> {
         let bind_address = matches.value_of(Self::BIND_ADDRESS).map_or_else(
             || Cow::Owned(ServerConfig::get_default_bind_address()),
             Cow::Borrowed,
@@ -171,7 +171,7 @@ impl<'a, 'b> TryFrom<&'a clap::ArgMatches<'b>> for ServerConfig {
     }
 }
 
-fn build_config(matches: &clap::ArgMatches<'_>) -> Result<Config, String> {
+fn build_config(matches: &clap::ArgMatches) -> Result<Config, String> {
     let server_config = if matches.is_present(Config::DISABLE_SERVER) {
         None
     } else {
@@ -184,9 +184,9 @@ fn build_config(matches: &clap::ArgMatches<'_>) -> Result<Config, String> {
         server_config,
     })
 }
-impl<'a, 'b> TryFrom<&'a clap::ArgMatches<'b>> for VlcHttpConfig {
+impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
     type Error = String;
-    fn try_from(matches: &clap::ArgMatches<'_>) -> Result<VlcHttpConfig, String> {
+    fn try_from(matches: &clap::ArgMatches) -> Result<VlcHttpConfig, String> {
         use vlc_http::auth::{Config, Credentials, PartialConfig};
         const NOTE_CMD_HELP: &str =
             "NOTE: View command-line help (-h) for alternate methods of specifying VLC-HTTP parameters.";
