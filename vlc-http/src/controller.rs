@@ -59,7 +59,8 @@ impl Controller {
         loop {
             // decide action
             let decision_time = shared::time_now();
-            dbg!(decision_time);
+            // TODO add tracing
+            // dbg!(decision_time);
             let action = {
                 tokio::select! {
                     biased; // prioritize External over Internal actions

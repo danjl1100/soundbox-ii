@@ -23,7 +23,8 @@ impl Rules {
     }
     pub async fn next_action(&mut self, now: Time) -> Option<Action> {
         let (delay, action) = self.calc_immediate_need(now)?;
-        dbg!(delay, &action);
+        // TODO add tracing
+        // dbg!(delay, &action);
         //  (3) sleep (if applicable)
         if let Some(delay) = delay {
             tokio::time::sleep(delay).await;
@@ -34,9 +35,9 @@ impl Rules {
     fn calc_immediate_need(&mut self, now: Time) -> Need {
         //  (1) calculate all needs
         let needs = self.rules.iter().map(move |rule| {
-            let need = rule.get_need(now);
-            dbg!(rule, &need);
-            need
+            rule.get_need(now)
+            // TODO add tracing
+            // dbg!(rule, &need);
         });
         //  (2) pick most-immediate option
         needs.min_by(ord_need).flatten()
