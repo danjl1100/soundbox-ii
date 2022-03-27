@@ -51,13 +51,18 @@ impl std::ops::Deref for ReloadVersion {
 fn print_startup_info(args: &args::Config) {
     println!(
         "  - VLC-HTTP will connect to server: {}",
-        args.vlc_http_credentials.authority_str()
+        args.vlc_http_config.0.authority_str()
     );
-    println!("  - Serving static assets from {:?}", args.static_assets);
-    if args.watch_assets {
-        println!("    - Watching for changes, will notify clients");
+    if let Some(server_config) = args.server_config.as_ref() {
+        println!(
+            "  - Serving static assets from {:?}",
+            server_config.static_assets
+        );
+        if server_config.watch_assets {
+            println!("    - Watching for changes, will notify clients");
+        }
+        println!("  - Listening on: {}", server_config.bind_address);
     }
-    println!("  - Listening on: {}", args.bind_address);
     println!();
     // ^^^ listen URL is last (for easy skimming)
 }
@@ -80,12 +85,12 @@ fn launch_cli(
 }
 
 fn launch_hotwatch(
-    args: &args::Config,
+    server_config: &args::ServerConfig,
     reload_tx: watch::Sender<ReloadVersion>,
 ) -> hotwatch::Hotwatch {
     let mut hotwatch = hotwatch::Hotwatch::new().expect("hotwatch failed to initialize");
     hotwatch
-        .watch(args.static_assets.clone(), move |event| {
+        .watch(server_config.static_assets.clone(), move |event| {
             use hotwatch::Event;
             match event {
                 Event::NoticeWrite(_) | Event::NoticeRemove(_) => {
@@ -115,7 +120,7 @@ async fn launch(args: args::Config) {
 
     print_startup_info(&args);
 
-    let cli_handle = if args.interactive {
+    let cli_handle = if args.is_interactive() {
         let action_tx = action_tx.clone();
         let playback_status_rx = playback_status_rx.clone();
         let playlist_info_rx = playlist_info_rx.clone();
@@ -133,14 +138,16 @@ async fn launch(args: args::Config) {
         None
     };
 
-    let hotwatch_handle = if args.watch_assets {
-        Some(launch_hotwatch(&args, reload_tx))
-    } else {
-        None
-    };
+    let hotwatch_handle = args.server_config.as_ref().map(|server_config| {
+        if server_config.watch_assets {
+            Some(launch_hotwatch(server_config, reload_tx))
+        } else {
+            None
+        }
+    });
 
     // spawn server
-    let warp_graceful_handle = {
+    let warp_graceful_handle = args.server_config.map(|server_config| {
         const TASK_NAME: &str = "warp";
         let api = {
             let action_tx = action_tx.clone();
@@ -154,12 +161,12 @@ async fn launch(args: args::Config) {
                     shutdown_rx,
                     reload_rx,
                 },
-                args.static_assets,
+                server_config.static_assets,
             )
         };
         let shutdown_rx = shutdown_rx.clone();
         let (_addr, server) =
-            warp::serve(api).bind_with_graceful_shutdown(args.bind_address, async move {
+            warp::serve(api).bind_with_graceful_shutdown(server_config.bind_address, async move {
                 shutdown_rx.wait_for_shutdown(TASK_NAME).await;
                 println!("waiting for warp HTTP clients to disconnect..."); // TODO: add mechanism to ask WebSocket ClientHandlers to disconnect
             });
@@ -167,7 +174,7 @@ async fn launch(args: args::Config) {
             server.await;
             println!("ended: {}", TASK_NAME);
         })
-    };
+    });
 
     let mut tasks = AsyncTasks::new(shutdown_rx);
 
@@ -178,7 +185,7 @@ async fn launch(args: args::Config) {
             action_rx,
             playback_status_tx,
             playlist_info_tx,
-            credentials: args.vlc_http_credentials,
+            credentials: args.vlc_http_config.0,
         }
         .build()
         .run(),
@@ -186,7 +193,9 @@ async fn launch(args: args::Config) {
 
     // join all async tasks and thread(s)
     tasks.join_all().await.expect("tasks end with no panics");
-    warp_graceful_handle.await.expect("warp ends with no panic");
+    if let Some(warp_handle) = warp_graceful_handle {
+        warp_handle.await.expect("warp ends with no panic");
+    }
     if let Some(cli_handle) = cli_handle {
         cli_handle.join().expect("cli ends with no panic");
     }
