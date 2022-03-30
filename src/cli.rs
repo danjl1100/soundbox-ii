@@ -1,8 +1,12 @@
 use shared::Shutdown;
-use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, ResultReceiver};
+use vlc_http::{self, Action, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
+
+/// Definition of all interactive commands
+mod command;
+use command::ActionAndReceiver;
 
 fn blocking_recv<T, F: Fn()>(
     mut rx: oneshot::Receiver<T>,
@@ -64,7 +68,7 @@ impl Prompt {
                 break;
             }
             // print prompt
-            print!("soundbox-ii> ");
+            print!("{} ", command::PROMPT_STR);
             self.stdout.flush()?;
             // read line
             buffer.clear();
@@ -73,57 +77,59 @@ impl Prompt {
                 println!("<<STDIN EOF>>");
                 break;
             }
-            if !self.run_line(&buffer) {
-                break;
+            match self.run_line(&buffer) {
+                Ok(Ok(Some(Shutdown))) => {
+                    eprintln!("exit");
+                    break;
+                }
+                Ok(Ok(None)) => {}
+                Ok(Err(clap_err)) => {
+                    eprintln!("{}", clap_err);
+                }
+                Err(e) => {
+                    eprintln!("ERROR: {}", e);
+                }
             };
         }
         Ok(())
     }
-    fn run_line(&mut self, line: &str) -> bool {
+}
+
+impl Prompt {
+    fn run_line(&mut self, line: &str) -> Result<Result<Option<Shutdown>, clap::Error>, String> {
+        use clap::Parser;
         // split args
-        let parts: Vec<&str> = line.trim().split(' ').collect();
-        let action_str = parts[0];
-        let parsed = match action_str {
-            "" => {
-                // skip action, just poll and print status
-                None
-            }
-            "quit" | "q" | "exit" => {
-                println!("exit\n");
-                return false;
-            }
-            _ => {
-                // parse action
-                Some(parse_line(action_str, &parts[1..]))
-            }
+        let line_parts = line.trim().split_whitespace();
+        let parsed = match command::InteractiveArgs::try_parse_from(line_parts) {
+            Ok(parsed) => parsed,
+            Err(clap_err) => return Ok(Err(clap_err)),
         };
-        if let Some(action_and_rx) = parsed {
+        if let Some(command) = parsed.command {
             // execute action and print result
-            let result = match action_and_rx {
-                Ok(ActionAndReceiver::Command(action, result_rx)) => {
-                    self.send_and_print_result(action, result_rx)
-                }
-                Ok(ActionAndReceiver::QueryPlaybackStatus(action, result_rx)) => {
-                    self.send_and_print_result(action, result_rx)
-                }
-                Ok(ActionAndReceiver::QueryPlaylistInfo(action, result_rx)) => {
-                    self.send_and_print_result(action, result_rx)
-                }
-                Err(message) => Err(format!("Input error: {}", message)),
-            };
-            if let Err(nonfatal_message) = result {
-                eprintln!("ERROR: {}", nonfatal_message);
-            }
+            match command.build() {
+                Err(Shutdown) => return Ok(Ok(Some(Shutdown))),
+                Ok(result_and_rx) => match result_and_rx {
+                    ActionAndReceiver::Command(action, result_rx) => {
+                        self.send_and_print_result(action, result_rx)
+                    }
+                    ActionAndReceiver::QueryPlaybackStatus(action, result_rx) => {
+                        self.send_and_print_result(action, result_rx)
+                    }
+                    ActionAndReceiver::QueryPlaylistInfo(action, result_rx) => {
+                        self.send_and_print_result(action, result_rx)
+                    }
+                },
+            }?;
         }
         // poll and print status
         if let Some(Some(playback)) = self.playback_status.poll_update() {
-            dbg!(playback);
+            println!("Playback: {:#?}", playback);
         }
         if let Some(Some(playlist)) = self.playlist_info.poll_update() {
-            dbg!(playlist);
+            println!("Playlist: {:#?}", playlist);
         }
 
-        true
+        Ok(Ok(None))
     }
 
     fn send_and_print_result<T>(
@@ -206,110 +212,5 @@ where
         } else {
             None
         }
-    }
-}
-
-enum ActionAndReceiver {
-    Command(Action, ResultReceiver<()>),
-    QueryPlaybackStatus(Action, ResultReceiver<PlaybackStatus>),
-    QueryPlaylistInfo(Action, ResultReceiver<PlaylistInfo>),
-}
-impl From<Command> for ActionAndReceiver {
-    fn from(command: Command) -> Self {
-        use vlc_http::IntoAction;
-        let (action, result_rx) = command.to_action_rx();
-        Self::Command(action, result_rx)
-    }
-}
-impl ActionAndReceiver {
-    fn query_playback_status() -> Self {
-        let (action, result_rx) = Action::query_playback_status();
-        Self::QueryPlaybackStatus(action, result_rx)
-    }
-    fn query_playlist_info() -> Self {
-        let (action, result_rx) = Action::query_playlist_info();
-        Self::QueryPlaylistInfo(action, result_rx)
-    }
-}
-fn parse_line(action_str: &str, args: &[&str]) -> Result<ActionAndReceiver, String> {
-    const CMD_PLAY: &str = "play";
-    const CMD_PAUSE: &str = "pause";
-    const CMD_STOP: &str = "stop";
-    const CMD_ADD: &str = "add";
-    const CMD_START: &str = "start";
-    const CMD_NEXT: &str = "next";
-    const CMD_PREV: &str = "prev";
-    const CMD_SEEK: &str = "seek";
-    const CMD_SEEK_REL: &str = "seek-rel";
-    const CMD_VOL: &str = "vol";
-    const CMD_VOL_REL: &str = "vol-rel";
-    const CMD_RANDOM_TOGGLE: &str = "random";
-    const CMD_REPEAT_TOGGLE: &str = "repeat";
-    const CMD_SPEED: &str = "speed";
-    const QUERY_STATUS: &str = "status";
-    const QUERY_PLAYLIST: &str = "playlist";
-    let err_invalid_int = |_| "invalid integer number".to_string();
-    let err_invalid_float = |_| "invalid decimal number".to_string();
-    match action_str {
-        CMD_PLAY => Ok(Command::PlaybackResume.into()),
-        CMD_PAUSE => Ok(Command::PlaybackPause.into()),
-        CMD_STOP => Ok(Command::PlaybackStop.into()),
-        CMD_ADD => match args.split_first() {
-            Some((&uri, extra)) if extra.is_empty() => Ok(Command::PlaylistAdd {
-                uri: uri.to_string(),
-            }
-            .into()),
-            _ => Err("expected 1 argument (path/URI)".to_string()),
-        },
-        CMD_START => match args.split_first() {
-            None => Ok(Command::PlaylistPlay { item_id: None }.into()),
-            Some((&item_id, extra)) if extra.is_empty() => Ok(Command::PlaylistPlay {
-                item_id: Some(item_id.to_string()),
-            }
-            .into()),
-            _ => Err("expected maximum of 1 argument (item id)".to_string()),
-        },
-        CMD_NEXT => Ok(Command::SeekNext.into()),
-        CMD_PREV => Ok(Command::SeekPrevious.into()),
-        CMD_SEEK => match args.split_first() {
-            Some((seconds_str, extra)) if extra.is_empty() => seconds_str
-                .parse()
-                .map(|seconds| Command::SeekTo { seconds }.into())
-                .map_err(err_invalid_int),
-            _ => Err("expected 1 argument (seconds)".to_string()),
-        },
-        CMD_SEEK_REL => match args.split_first() {
-            Some((seconds_str, extra)) if extra.is_empty() => seconds_str
-                .parse()
-                .map(|seconds_delta| Command::SeekRelative { seconds_delta }.into())
-                .map_err(err_invalid_int),
-            _ => Err("expected 1 argument (seconds_delta)".to_string()),
-        },
-        CMD_VOL => match args.split_first() {
-            Some((percent_str, extra)) if extra.is_empty() => percent_str
-                .parse()
-                .map(|percent| Command::Volume { percent }.into())
-                .map_err(err_invalid_int),
-            _ => Err("expected 1 argument (percent)".to_string()),
-        },
-        CMD_VOL_REL => match args.split_first() {
-            Some((percent_str, extra)) if extra.is_empty() => percent_str
-                .parse()
-                .map(|percent_delta| Command::VolumeRelative { percent_delta }.into())
-                .map_err(err_invalid_int),
-            _ => Err("expected 1 argument (percent_delta)".to_string()),
-        },
-        CMD_RANDOM_TOGGLE => Ok(Command::ToggleRandom.into()),
-        CMD_REPEAT_TOGGLE => Ok(Command::ToggleRepeat.into()),
-        CMD_SPEED => match args.split_first() {
-            Some((speed_str, extra)) if extra.is_empty() => speed_str
-                .parse()
-                .map(|speed| Command::PlaybackSpeed { speed }.into())
-                .map_err(err_invalid_float),
-            _ => Err("expected 1 argument (decimal)".to_string()),
-        },
-        "." | QUERY_STATUS => Ok(ActionAndReceiver::query_playback_status()),
-        "p" | QUERY_PLAYLIST => Ok(ActionAndReceiver::query_playlist_info()),
-        _ => Err(format!("Unknown command: \"{}\"", action_str)),
     }
 }
