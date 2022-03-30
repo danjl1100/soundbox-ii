@@ -52,17 +52,16 @@ impl<T, F> Node<T, F> {
         self.children.len_nodes()
     }
 }
-// TODO reinstate
-// impl<T: Copy, F> Node<T, F> {
-//     /// Removes items from node queues, and finally copies from items-leaf node
-//     pub(crate) fn pop_item(&mut self) -> Option<T> {
-//         self.pop_only_from_self()
-//             .or_else(|| match &mut self.children {
-//                 Children::Chain(chain) => chain.find_next_item(),
-//                 Children::Items(items) => items.next().copied(),
-//             })
-//     }
-// }
+impl<T: Copy, F> Node<T, F> {
+    /// Removes items from node queues, and finally copies from items-leaf node
+    pub(crate) fn pop_item(&mut self) -> Option<T> {
+        self.pop_only_from_self()
+            .or_else(|| match &mut self.children {
+                Children::Chain(chain) => chain.find_next_item(),
+                Children::Items(items) => items.next().copied(),
+            })
+    }
+}
 impl<T, F> SequenceSource for Node<T, F> {
     fn sequence(&self) -> Sequence {
         self.sequence
@@ -217,12 +216,11 @@ impl<T, F> Chain<T, F> {
         }
     }
 }
-// TODO reinstate
-// impl<T: Copy, F> Chain<T, F> {
-//     pub(crate) fn find_next_item(&mut self) -> Option<T> {
-//         self.find_next_item_using_fn(Node::pop_item)
-//     }
-// }
+impl<T: Copy, F> Chain<T, F> {
+    pub(crate) fn find_next_item(&mut self) -> Option<T> {
+        self.find_next_item_using_fn(Node::pop_item)
+    }
+}
 
 pub(crate) use meta::SequenceCounter;
 

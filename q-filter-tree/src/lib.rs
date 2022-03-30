@@ -36,6 +36,9 @@ mod serde {
     mod tree;
 }
 
+pub use refs::{NodeRefMut, NodeRefMutWeighted};
+mod refs;
+
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;
 
@@ -90,13 +93,15 @@ fn tree_add_to_doc_tests() {
 /// root_ref.filter = Some("filter value".to_string());
 /// let mut root_ref = root_ref.child_nodes().expect("root is chain");
 /// let child_blocked = root_ref.add_child(0);
-/// let child = root_ref.add_child(1);
+/// let child = root_ref.add_child_default();
 /// // initial weight `None` (0)
-/// child_blocked.try_ref(&mut tree)
-///     .expect("child_blocked exists")
+/// child_blocked
+///     .try_ref(&mut tree)
+///     .expect("root exists")
 ///     .push_item("apple");
 /// // initial weight `1`
-/// child.try_ref(&mut tree)
+/// child
+///     .try_ref(&mut tree)
 ///     .expect("child exists")
 ///     .push_item("banana");
 /// //
@@ -104,11 +109,13 @@ fn tree_add_to_doc_tests() {
 /// assert_eq!(root_ref.pop_item_queued(), Some("banana"));
 /// assert_eq!(root_ref.pop_item_queued(), None);
 /// // unblock "child_blocked"
-/// child_blocked.try_ref(&mut tree)
+/// child_blocked
+///     .try_ref(&mut tree)
 ///     .expect("child_blocked exists")
 ///     .set_weight(2);
 /// let child_unblocked = child_blocked;
-/// child_unblocked.try_ref(&mut tree)
+/// child_unblocked
+///     .try_ref(&mut tree)
 ///     .expect("child_unblocked exists")
 ///     .push_item("cashews");
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
@@ -189,202 +196,5 @@ impl<T, F> Tree<T, F> {
 impl<T, F> Default for Tree<T, F> {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-pub use refs::{NodeRefMut, NodeRefMutWeighted};
-mod refs {
-    use crate::error::InvalidNodePath;
-    use crate::id::{
-        ty, NodeId, NodeIdTyped, NodePath, NodePathRefTyped, NodePathTyped, SequenceSource,
-    };
-    use crate::node::meta::NodeInfoIntrinsic;
-    use crate::node::{self, Children, Node};
-    use crate::weight_vec;
-    use crate::{Tree, Weight};
-
-    /// Mutable reference to a node in the [`Tree`]
-    #[must_use]
-    pub struct NodeRefMut<'tree, 'path, T, F> {
-        node: &'tree mut Node<T, F>,
-        path: NodePathRefTyped<'path>,
-        sequence_counter: &'tree mut node::SequenceCounter,
-    }
-    impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
-        /// Returns a mut handle to the node-children, if the node is type chain (not items)
-        pub fn child_nodes(&mut self) -> Option<NodeChildrenRefMut<'_, 'path, T, F>> {
-            let Self {
-                node,
-                path,
-                sequence_counter,
-            } = self;
-            match &mut node.children {
-                Children::Chain(node_children) => Some(NodeChildrenRefMut {
-                    node_children,
-                    path: *path,
-                    sequence_counter,
-                }),
-                Children::Items(_) => None,
-            }
-        }
-    }
-    impl<'tree, 'path, T, F> std::ops::Deref for NodeRefMut<'tree, 'path, T, F> {
-        type Target = Node<T, F>;
-        fn deref(&self) -> &Self::Target {
-            self.node
-        }
-    }
-    impl<'tree, 'path, T, F> std::ops::DerefMut for NodeRefMut<'tree, 'path, T, F> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            self.node
-        }
-    }
-
-    /// Mutable reference to node-children in the [`Tree`]
-    #[must_use]
-    pub struct NodeChildrenRefMut<'tree, 'path, T, F> {
-        node_children: &'tree mut node::Chain<T, F>,
-        path: NodePathRefTyped<'path>,
-        sequence_counter: &'tree mut node::SequenceCounter,
-    }
-    impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
-        /// Adds an empty child node, with the default weight
-        pub fn add_child_default(&mut self) -> NodeId<ty::Child> {
-            const DEFAULT_WEIGHT: Weight = 1;
-            self.add_child_from(DEFAULT_WEIGHT, None)
-        }
-        /// Adds an empty child node, with optional weight
-        pub fn add_child(&mut self, weight: Weight) -> NodeId<ty::Child> {
-            self.add_child_from(weight, None)
-        }
-        /// Adds an empty node from the (optional) specified info, with optional weight
-        pub(crate) fn add_child_from(
-            &mut self,
-            weight: Weight,
-            info: Option<NodeInfoIntrinsic<T, F>>,
-        ) -> NodeId<ty::Child> {
-            let new_child = info.unwrap_or_default().construct(self.sequence_counter);
-            let child_path_part = self.node_children.nodes.len();
-            let sequence = new_child.sequence_keeper();
-            self.node_children.nodes.ref_mut().push((weight, new_child));
-            let path = self.path.clone_inner().append(child_path_part);
-            path.with_sequence(&sequence)
-        }
-    }
-
-    /// Mutable reference to a node with an associated [`Weight`]
-    #[must_use]
-    pub struct NodeRefMutWeighted<'tree, 'path, T, F> {
-        weight_ref: weight_vec::RefMutWeight<'tree, 'tree>,
-        inner: NodeRefMut<'tree, 'path, T, F>,
-    }
-    impl<'tree, 'path, T, F> NodeRefMutWeighted<'tree, 'path, T, F> {
-        /// Sets the weight
-        pub fn set_weight(&mut self, weight: Weight) {
-            self.weight_ref.set_weight(weight);
-        }
-        /// Gets the weight
-        #[must_use]
-        pub fn get_weight(&self) -> Weight {
-            self.weight_ref.get_weight()
-        }
-        /// Downgrades to [`NodeRefMut`]
-        pub fn into_inner(self) -> NodeRefMut<'tree, 'path, T, F> {
-            self.inner
-        }
-    }
-    impl<'tree, 'path, T, F> std::ops::Deref for NodeRefMutWeighted<'tree, 'path, T, F> {
-        type Target = NodeRefMut<'tree, 'path, T, F>;
-        fn deref(&self) -> &Self::Target {
-            &self.inner
-        }
-    }
-    impl<T, F> std::ops::DerefMut for NodeRefMutWeighted<'_, '_, T, F> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.inner
-        }
-    }
-    impl NodePath<ty::Root> {
-        /// Returns `NodeRefMut` within the specified `Tree`
-        ///
-        /// # Errors
-        /// Returns an error if the specified `NodeId` does not point to a valid node
-        ///
-        pub fn try_ref<'tree, T, F>(
-            &self,
-            tree: &'tree mut Tree<T, F>,
-        ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
-            let path = self.into();
-            let Tree {
-                root,
-                sequence_counter,
-            } = tree;
-            Ok(NodeRefMut {
-                node: root,
-                path,
-                sequence_counter,
-            })
-        }
-    }
-    impl NodePath<ty::Child> {
-        /// Returns `NodeRefMutWeighted` within the specified `Tree`
-        ///
-        /// # Errors
-        /// Returns an error if the specified `NodeId` does not point to a valid **child** node
-        ///
-        pub fn try_ref<'tree, T, F>(
-            &self,
-            tree: &'tree mut Tree<T, F>,
-        ) -> Result<NodeRefMutWeighted<'tree, '_, T, F>, InvalidNodePath> {
-            let path = self;
-            match &mut tree.root.children {
-                Children::Chain(chain) => {
-                    let (weight_ref, node) = chain.get_child_entry_mut(path.into())?;
-                    let path = path.into();
-                    let sequence_counter = &mut tree.sequence_counter;
-                    Ok(NodeRefMutWeighted {
-                        weight_ref,
-                        inner: NodeRefMut {
-                            node,
-                            path,
-                            sequence_counter,
-                        },
-                    })
-                }
-                Children::Items(_) => Err(path.clone().into()),
-            }
-        }
-    }
-    impl NodePathTyped {
-        /// Returns `NodeRefMut` within the specified `Tree`
-        ///
-        /// # Errors
-        /// Returns an error if the specified `NodeId` does not point to a valid node
-        ///
-        pub fn try_ref<'tree, T, F>(
-            &self,
-            tree: &'tree mut Tree<T, F>,
-        ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
-            match self {
-                Self::Root(path) => path.try_ref(tree),
-                Self::Child(path) => path.try_ref(tree).map(NodeRefMutWeighted::into_inner),
-            }
-        }
-    }
-    impl NodeIdTyped {
-        /// Returns `NodeRefMut` to the specified `NodeId`
-        ///
-        /// # Errors
-        /// Returns an error if the specified `NodeId` does not point to a valid node
-        ///
-        pub fn try_ref<'path, 'tree, T, F>(
-            &'path self,
-            tree: &'tree mut Tree<T, F>,
-        ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
-            match self {
-                Self::Root(id) => id.try_ref(tree),
-                Self::Child(id) => id.try_ref(tree).map(NodeRefMutWeighted::into_inner),
-            }
-        }
     }
 }
