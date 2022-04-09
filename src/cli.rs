@@ -148,11 +148,6 @@ impl Prompt {
         };
         print_a_dot();
         // send command
-        #[allow(clippy::match_like_matches_macro)]
-        let print_result = match &action {
-            Action::Command(_, _) => false,
-            _ => true,
-        };
         let send_result = self.action_tx.blocking_send(action);
         if send_result.is_err() {
             return Err("Failed to send command result".to_string());
@@ -163,11 +158,8 @@ impl Prompt {
             std::time::Duration::from_millis(100),
             print_a_dot,
         ) {
-            Some(Ok(action_result)) => {
+            Some(Ok(_action_result)) => {
                 println!();
-                if print_result {
-                    dbg!(&action_result);
-                }
                 Ok(())
             }
             Some(Err(action_err)) => {
@@ -197,6 +189,7 @@ where
     }
     fn poll_update(&mut self) -> Option<&T> {
         //TODO: too many `clone`s!
+        //  maybe use `has_changed` to determine when to clone?
         let current = self.receiver.borrow().clone();
         self.update_changed(current)
     }
