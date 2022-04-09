@@ -142,6 +142,7 @@ mod web_socket {
                         if reload_base_value == *self.config.reload_rx.borrow() {
                             // borrowed value was updated to identical value...  LOGIC ERROR!
                             // however... silently proceed (non-critical ease-of-use feature)
+                            dbg!("WARNING: client code change detected, but value not changed.");
                             None
                         } else {
                             Some(ServerResponse::ClientCodeChanged)

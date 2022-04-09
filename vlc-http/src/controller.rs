@@ -27,10 +27,12 @@ pub struct Controller {
     playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
     context: Context,
     rules: Rules,
+    rate_limit_action_rx: RateLimiter,
 }
 impl Config {
     /// Creates a [`Controller`] form the specified [`Config`]
     pub fn build(self) -> Controller {
+        const RATE_LIMIT_MS: u32 = 90;
         let Self {
             action_rx,
             playback_status_tx,
@@ -45,6 +47,7 @@ impl Config {
             playlist_info_tx,
             context,
             rules,
+            rate_limit_action_rx: RateLimiter::new(RATE_LIMIT_MS),
         }
     }
 }
@@ -65,7 +68,10 @@ impl Controller {
                 tokio::select! {
                     biased; // prioritize External over Internal actions
                     external_action = self.action_rx.recv() => {
-                        external_action.ok_or(Shutdown)?
+                        let external_action = external_action.ok_or(Shutdown)?;
+                        // rate-limit commands only (allow rule-based actions)
+                        self.rate_limit_action_rx.enter().await;
+                        external_action
                     }
                     Some(internal_action) = self.rules.next_action(decision_time) => {
                         internal_action
@@ -75,19 +81,6 @@ impl Controller {
                     }
                 }
             };
-            // TODO: is this worth it?   ideally need to rate-limit commands, but allow fetches unimpeded
-            // // sleep (rate limiting)
-            // if let Some(last_act_time) = last_act_time {
-            //     const RATE_LIMIT_MS: u32 = 90;
-            //     let since_last_act: shared::TimeDifference = shared::time_now() - last_act_time;
-            //     let remaining_delay = shared::TimeDifference::milliseconds(RATE_LIMIT_MS.into()) - since_last_act;
-            //     if let Ok(delay) = remaining_delay.to_std() {
-            //         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-            //         println!("WAITING!!!!!!!!!!!!!!!! {:?}", delay);
-            //         println!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-            //         tokio::time::sleep(delay).await;
-            //     }
-            // }
             // run action
             let action_time = shared::time_now();
             if let Action::Command(command, _) = &action {
@@ -203,6 +196,31 @@ where
     notify_fn(&new_value);
     if !sender.is_closed() {
         let _ignore_err = sender.send(Some(new_value));
+    }
+}
+
+struct RateLimiter {
+    interval: shared::TimeDifference,
+    last_time: Option<shared::Time>,
+}
+impl RateLimiter {
+    fn new(interval_millis: u32) -> Self {
+        Self {
+            interval: shared::TimeDifference::milliseconds(interval_millis.into()),
+            last_time: None,
+        }
+    }
+    async fn enter(&mut self) {
+        let now = shared::time_now();
+        if let Some(last_act_time) = self.last_time {
+            let since_last_act = now - last_act_time;
+            let remaining_delay = self.interval - since_last_act;
+            if let Ok(delay) = remaining_delay.to_std() {
+                dbg!("waiting {:?}", delay);
+                tokio::time::sleep(delay).await;
+            }
+        }
+        self.last_time = Some(now);
     }
 }
 
