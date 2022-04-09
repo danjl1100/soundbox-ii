@@ -11,7 +11,7 @@
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! //
-//! root_ref.set_order(OrderType::InOrder);
+//! root_ref.set_order_type(OrderType::InOrder);
 //! //
 //! let mut root_ref = root_ref.child_nodes().unwrap();
 //! let childA = root_ref.add_child(2);
@@ -46,7 +46,7 @@
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! //
-//! root_ref.set_order(OrderType::RoundRobin);
+//! root_ref.set_order_type(OrderType::RoundRobin);
 //! //
 //! let mut root_ref = root_ref.child_nodes().unwrap();
 //! let childA = root_ref.add_child(2);
@@ -82,7 +82,7 @@
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! //
-//! root_ref.set_order(OrderType::Shuffle);
+//! root_ref.set_order_type(OrderType::Shuffle);
 //! //
 //! let mut root_ref = root_ref.child_nodes().unwrap();
 //! let childA = root_ref.add_child(2);

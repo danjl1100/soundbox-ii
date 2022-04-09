@@ -20,10 +20,17 @@ pub struct Node<T, F> {
 }
 impl<T, F> Node<T, F> {
     /// Sets the [`OrderType`](`order::Type`)
-    pub fn set_order(&mut self, order: order::Type) {
+    pub fn set_order_type(&mut self, order: order::Type) {
         match &mut self.children {
             Children::Chain(chain) => chain.nodes.set_order(order),
             Children::Items(items) => items.set_order(order),
+        }
+    }
+    /// Gets the [`OrderType`](`order::Type`)
+    pub fn get_order_type(&mut self) -> order::Type {
+        match &self.children {
+            Children::Chain(chain) => chain.nodes.get_order_type(),
+            Children::Items(items) => items.get_order_type(),
         }
     }
     /// Appends an item to the queue
@@ -45,6 +52,21 @@ impl<T, F> Node<T, F> {
                 Children::Chain(chain) => chain.find_next_item_queued(),
                 Children::Items(_) => None,
             })
+    }
+    /// Overwrites children with the specified items (equally-weighted)
+    pub fn set_child_items_uniform<I>(&mut self, items: I)
+    where
+        I: IntoIterator<Item = T>,
+    {
+        self.set_child_items(items.into_iter().map(|x| (1, x)));
+    }
+    /// Overwrites children with the specified items
+    pub fn set_child_items<I>(&mut self, items: I)
+    where
+        I: IntoIterator<Item = (Weight, T)>,
+    {
+        let order = self.get_order_type();
+        self.children = OrderVec::from((order, items)).into();
     }
     /// Returns the number of child nodes
     #[must_use]

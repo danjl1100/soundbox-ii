@@ -180,21 +180,101 @@ impl<T, F> Tree<T, F> {
         self.root.children.sum_node_count()
     }
     /// Pops an item from child node queues only (ignores items-leaf nodes)
-    // ///
-    // /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
+    ///
+    /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
     pub fn pop_item_queued(&mut self) -> Option<T> {
         self.root.pop_item_queued()
     }
 }
-// TODO reinstate (with tests)
-// impl<T: Copy, F> Tree<T, F> {
-//     /// Removes items from node queues, and finally copies from items-leaf node
-//     pub fn pop_item(&mut self) -> Option<T> {
-//         self.root.pop_item()
-//     }
-// }
+impl<T: Copy, F> Tree<T, F> {
+    /// Removes items from node queues, and finally copies from items-leaf node
+    pub fn pop_item(&mut self) -> Option<T> {
+        self.root.pop_item()
+    }
+}
 impl<T, F> Default for Tree<T, F> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{OrderType, Tree};
+    #[test]
+    fn simplest_items() {
+        let mut tree: Tree<_, ()> = Tree::new();
+        let root = tree.root_id();
+        let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+        assert_eq!(root_ref.get_order_type(), OrderType::InOrder);
+        root_ref.set_child_items_uniform(vec!["hey", "this", "is"]);
+        for _ in 0..200 {
+            assert_eq!(tree.pop_item(), Some("hey"));
+            assert_eq!(tree.pop_item(), Some("this"));
+            assert_eq!(tree.pop_item(), Some("is"));
+        }
+        let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+        root_ref.push_item("special");
+        root_ref.push_item("item");
+        assert_eq!(tree.pop_item(), Some("special"));
+        assert_eq!(tree.pop_item(), Some("item"));
+        for _ in 0..200 {
+            assert_eq!(tree.pop_item(), Some("hey"));
+            assert_eq!(tree.pop_item(), Some("this"));
+            assert_eq!(tree.pop_item(), Some("is"));
+        }
+    }
+    #[test]
+    #[allow(clippy::similar_names)]
+    fn chain() {
+        let mut tree: Tree<_, ()> = Tree::new();
+        let root = tree.root_id();
+        // root > child_a child_b
+        let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+        let mut root_ref_child_nodes = root_ref.child_nodes().expect("root is chain");
+        let child_a = root_ref_child_nodes.add_child_default();
+        let child_b = root_ref_child_nodes.add_child_default();
+        let child_c = root_ref_child_nodes.add_child_default();
+        // root > child_a > child_a_a
+        let mut child_a_ref = child_a.try_ref(&mut tree).expect("child_a exists");
+        let child_a_a = child_a_ref
+            .child_nodes()
+            .expect("child_a is chain")
+            .add_child_default();
+        // root > child_a > child_a_a [ items ]
+        let mut child_a_a_ref = child_a_a.try_ref(&mut tree).expect("child_a_a exists");
+        child_a_a_ref.set_child_items_uniform(vec!["aa1", "aa2"]);
+        // root > child_b > child_b_b, child_b_z
+        let mut child_b_ref = child_b.try_ref(&mut tree).expect("child_b exists");
+        let mut child_b_ref_child_nodes = child_b_ref.child_nodes().expect("=child_b is chain");
+        let child_b_b = child_b_ref_child_nodes.add_child_default();
+        let child_b_z = child_b_ref_child_nodes.add_child_default();
+        // root > child_b > child_b_b [ items ]
+        let mut child_b_b_ref = child_b_b.try_ref(&mut tree).expect("child_b_b exists");
+        child_b_b_ref.set_child_items_uniform(vec!["bb1", "bb2"]);
+        // root > child_b > child_b_z [ items ]
+        let mut child_b_z_ref = child_b_z.try_ref(&mut tree).expect("child_b_z exists");
+        child_b_z_ref.set_child_items_uniform(vec!["bz1", "bz2"]);
+        // root > child_c [ items ]
+        let mut child_c_ref = child_c.try_ref(&mut tree).expect("child_c exists");
+        child_c_ref.set_child_items_uniform(vec!["cc1", "cc2"]);
+        //
+        for _ in 0..100 {
+            assert_eq!(tree.pop_item(), Some("aa1"));
+            assert_eq!(tree.pop_item(), Some("bb1"));
+            assert_eq!(tree.pop_item(), Some("cc1"));
+            //
+            assert_eq!(tree.pop_item(), Some("aa2"));
+            assert_eq!(tree.pop_item(), Some("bz1"));
+            assert_eq!(tree.pop_item(), Some("cc2"));
+            //
+            assert_eq!(tree.pop_item(), Some("aa1"));
+            assert_eq!(tree.pop_item(), Some("bb2"));
+            assert_eq!(tree.pop_item(), Some("cc1"));
+            //
+            assert_eq!(tree.pop_item(), Some("aa2"));
+            assert_eq!(tree.pop_item(), Some("bz2"));
+            assert_eq!(tree.pop_item(), Some("cc2"));
+        }
     }
 }
