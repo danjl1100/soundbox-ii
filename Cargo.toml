@@ -3,6 +3,7 @@ name = "soundbox-ii"
 version = "0.1.0"
 edition = "2018"
 description = "Interactive graph-based sequencer for beets songs playing on a VLC backend."
+license = "GPL-3.0-or-later"
 
 [workspace]
 members = ["q-filter-tree", "vlc-http", "frontend", "shared"]
