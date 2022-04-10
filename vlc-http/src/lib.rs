@@ -22,8 +22,8 @@ pub mod auth;
 pub use controller::Controller;
 pub mod controller;
 
-pub use command::Command;
-use command::Query;
+use command::{LowCommand, Query};
+pub use command::{PublicCommand as Command, RepeatMode};
 mod command;
 
 mod request;

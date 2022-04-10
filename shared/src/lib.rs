@@ -27,6 +27,96 @@ macro_rules! serde_derive_unidirectional {
         )+
     };
 }
+
+#[macro_export]
+/// Constructs an enum of single types
+macro_rules! wrapper_enum {
+    (
+        $(
+            $(#[$meta:meta])*
+            $vis:vis enum $name:ident {
+                $(
+                    $(#[$item_meta:meta])*
+                    $variant:ident $( ( $inner:ty ) )?
+                ),+ $(,)?
+                $(
+                    { impl None for }
+                    $(
+                        $(#[$item_simple_meta:meta])*
+                        $simple_variant:ident $( ( $($simple_ty:ty),+ ) )?
+                    ),+ $(,)?
+                )?
+            }
+        )+
+    ) => {
+        $(
+            $(#[$meta])*
+            $vis enum $name {
+                $(
+                    $(#[$item_meta])*
+                    $variant $( ( $inner ) )?
+                ),+
+                $(
+                    ,
+                    $(
+                        $(#[$item_simple_meta])*
+                        $simple_variant $( ( $($simple_ty),+ ) )?
+                    ),+
+                )?
+            }
+            $(
+                $( impl From<$inner> for $name {
+                    fn from(other: $inner) -> Self {
+                        $name::$variant(other)
+                    }
+                } )?
+            )+
+        )+
+    };
+    (
+        $(
+            $(#[$meta:meta])*
+            $vis:vis enum $name:ident < $lifetime_param:lifetime > {
+                $(
+                    $(#[$item_meta:meta])*
+                    $variant:ident $( ( & $lifetime_inner:lifetime $inner:ty ) )?
+                ),+ $(,)?
+                $(
+                    { impl None for }
+                    $(
+                        $(#[$item_simple_meta:meta])*
+                        $simple_variant:ident ( & $lifetime_simple_inner:lifetime $($simple_ty:ty),+ )
+                    ),+ $(,)?
+                )?
+            }
+        )+
+    ) => {
+        $(
+            $(#[$meta])*
+            $vis enum $name<$lifetime_param> {
+                $(
+                    $(#[$item_meta])*
+                    $variant $( ( & $lifetime_inner $inner ) )?
+                ),+
+                $(
+                    ,
+                    $(
+                        $(#[$item_simple_meta])*
+                        $simple_variant ( $( & $lifetime_simple_inner $simple_ty),+ )
+                    ),+
+                )?
+            }
+            $(
+                $( impl <$lifetime_param> From<& $lifetime_inner $inner> for $name<$lifetime_param> {
+                    fn from(other: & $lifetime_inner $inner) -> Self {
+                        $name::$variant(other)
+                    }
+                } )?
+            )+
+        )+
+    }
+}
+
 /// Shutdown signal
 #[must_use]
 #[derive(Clone, Copy)]

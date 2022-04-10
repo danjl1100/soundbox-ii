@@ -94,54 +94,7 @@ pub mod ty {
     }
 }
 
-macro_rules! typed_enum {
-    ($(
-        $(#[$meta:meta])*
-        pub enum $name:ident {
-            $(
-                $(#[$child_meta:meta])*
-                $variant:ident($ty:ty)
-            ),+ $(,)?
-        }
-    )+) => {$(
-            $(#[$meta])*
-            pub enum $name {
-                $(
-                    $(#[$child_meta])*
-                    $variant($ty)
-                ),+
-            }
-            $(impl From<$ty> for $name {
-                fn from(other: $ty) -> Self {
-                    Self::$variant(other)
-                }
-            })+
-    )+};
-    ($(
-        $(#[$meta:meta])*
-        pub enum $name:ident < $lt:lifetime > {
-            $(
-                $(#[$child_meta:meta])*
-                $variant:ident(ref $ty:ty)
-            ),+ $(,)?
-        }
-    )+) => {$(
-            $(#[$meta])*
-            pub enum $name < $lt > {
-                $(
-                    $(#[$child_meta])*
-                    $variant(& $lt $ty)
-                ),+
-            }
-            $(impl < $lt > From<& $lt $ty> for $name < $lt > {
-                fn from(other: & $lt $ty) -> Self {
-                    Self::$variant(other)
-                }
-            })+
-    )+}
-}
-
-typed_enum! {
+shared::wrapper_enum! {
     /// Typed [`NodeId`]
     #[derive(Clone, PartialEq, Eq)]
     pub enum NodeIdTyped {
@@ -159,14 +112,14 @@ typed_enum! {
         Child(NodePath<Child>),
     }
 }
-typed_enum! {
+shared::wrapper_enum! {
     /// Typed reference to a [`NodePath`]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum NodePathRefTyped<'a> {
         /// Root path
-        Root(ref NodePath<Root>),
+        Root(&'a NodePath<Root>),
         /// Child path
-        Child(ref NodePath<Child>),
+        Child(&'a NodePath<Child>),
     }
 //  this seems like a PAIN to implement... for no real gain / use.
 //  Just carry a (NodePathRefTyped, Sequence) !

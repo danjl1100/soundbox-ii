@@ -12,6 +12,7 @@ mod playback {
     use std::convert::TryInto;
 
     /// Status of the current playback
+    #[must_use]
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Status {
         /// version of the VLC-HTTP interface api
@@ -19,11 +20,11 @@ mod playback {
         /// Information about the current item
         pub information: Option<Info>,
         /// True if playlist-loop is enabled
-        pub is_loop: bool,
+        pub is_loop_all: bool,
         /// True if playlist-randomize is enabled
         pub is_random: bool,
         /// True if single-item-repeat is enabled
-        pub is_repeat: bool,
+        pub is_repeat_one: bool,
         /// VLC version string
         pub version: String,
         /// Volume percentage
@@ -50,11 +51,11 @@ mod playback {
                 playlist_item_id,
                 information,
                 duration_secs,
-                is_loop,
+                is_loop_all,
                 position_fraction,
                 is_random,
                 rate_ratio,
-                is_repeat,
+                is_repeat_one,
                 state,
                 position_secs,
                 version,
@@ -71,9 +72,9 @@ mod playback {
             Self {
                 apiversion,
                 information: meta,
-                is_loop,
+                is_loop_all,
                 is_random,
-                is_repeat,
+                is_repeat_one,
                 version,
                 volume_percent: command::decode_volume_to_percent(volume),
                 timing: PlaybackTiming {
@@ -97,7 +98,7 @@ mod playback {
         #[serde(rename = "length")]
         duration_secs: u64,
         #[serde(rename = "loop")]
-        is_loop: bool,
+        is_loop_all: bool,
         #[serde(rename = "position")]
         position_fraction: PositionFraction, //f64,
         #[serde(rename = "random")]
@@ -105,7 +106,7 @@ mod playback {
         #[serde(rename = "rate")]
         rate_ratio: RateRatio, //f64,
         #[serde(rename = "repeat")]
-        is_repeat: bool,
+        is_repeat_one: bool,
         state: StateJSON,
         #[serde(rename = "time")]
         position_secs: i64,
@@ -169,6 +170,7 @@ mod playlist {
     use std::convert::TryInto;
 
     /// Playlist information
+    #[must_use]
     #[derive(Clone, PartialEq, Eq)]
     pub struct Info {
         /// Items in the playlist
@@ -358,13 +360,13 @@ mod for_tests {
         fn default() -> Self {
             playback::Status {
                 apiversion: Default::default(),
-                information: Default::default(),
-                is_loop: Default::default(),
+                information: Option::default(),
+                is_loop_all: Default::default(),
                 is_random: Default::default(),
-                is_repeat: Default::default(),
-                version: Default::default(),
+                is_repeat_one: Default::default(),
+                version: String::default(),
                 volume_percent: Default::default(),
-                timing: Default::default(),
+                timing: shared::PlaybackTiming::default(),
                 received_time: fake_received_time(),
             }
         }

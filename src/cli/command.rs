@@ -57,11 +57,15 @@ pub enum Subcommand {
         /// Relative volume percentage
         percent_delta: i16,
     },
-    /// Random toggle command
-    #[clap(alias("shuffle"))]
-    Random,
-    /// Repeat toggle command
-    Repeat,
+    /// Playback mode command
+    #[clap(alias("mode"))]
+    PlaybackMode {
+        #[clap(subcommand)]
+        repeat: Repeat,
+        #[clap(long, alias("shuffle"))]
+        /// Randomize VLC playback order
+        random: bool,
+    },
     /// Speed command
     Speed {
         /// Fractional speed
@@ -79,6 +83,24 @@ pub enum Subcommand {
     /// Print help information
     Help,
 }
+#[derive(clap::Subcommand, Debug)]
+pub enum Repeat {
+    /// Repeat none
+    Off,
+    /// Repeat all playlist items
+    All,
+    /// Repeat current item only
+    One,
+}
+impl From<Repeat> for vlc_http::RepeatMode {
+    fn from(other: Repeat) -> Self {
+        match other {
+            Repeat::Off => Self::Off,
+            Repeat::All => Self::All,
+            Repeat::One => Self::One,
+        }
+    }
+}
 impl Subcommand {
     pub(super) fn build(self) -> Result<ActionAndReceiver, Shutdown> {
         Ok(match self {
@@ -93,8 +115,10 @@ impl Subcommand {
             Self::SeekRel { seconds_delta } => Command::SeekRelative { seconds_delta }.into(),
             Self::Vol { percent } => Command::Volume { percent }.into(),
             Self::VolRel { percent_delta } => Command::VolumeRelative { percent_delta }.into(),
-            Self::Random => Command::ToggleRandom.into(),
-            Self::Repeat => Command::ToggleRepeat.into(),
+            Self::PlaybackMode { repeat, random } => {
+                let repeat = repeat.into();
+                Command::PlaybackMode { repeat, random }.into()
+            }
             Self::Speed { speed } => Command::PlaybackSpeed { speed }.into(),
             Self::Status => ActionAndReceiver::query_playback_status(),
             Self::Playlist => ActionAndReceiver::query_playlist_info(),

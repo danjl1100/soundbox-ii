@@ -2,11 +2,13 @@
 
 pub(crate) mod response {
     use crate::{command::TextResponseType, Error, PlaybackStatus, PlaylistInfo};
-    #[derive(Debug)]
-    #[allow(clippy::large_enum_variant)]
-    pub enum Typed {
-        Playback(PlaybackStatus),
-        Playlist(PlaylistInfo),
+    shared::wrapper_enum! {
+        #[derive(Debug)]
+        #[allow(clippy::large_enum_variant)]
+        pub enum Typed {
+            Playback(PlaybackStatus),
+            Playlist(PlaylistInfo),
+        }
     }
 
     pub async fn try_parse_body_text(

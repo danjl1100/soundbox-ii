@@ -1,5 +1,5 @@
 use crate::vlc_responses::{PlaybackStatus, PlaybackTiming, PlaylistInfo};
-use crate::{Action, Command};
+use crate::{Action, LowCommand as Command};
 use shared::{Time, TimeDifference};
 
 use need::ord as ord_need;
