@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Controller for VLC-HTTP, with associated helper types
 
 use std::convert::TryFrom;

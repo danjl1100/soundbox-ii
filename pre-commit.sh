@@ -18,8 +18,18 @@ if [ "${old_stash}" = "${new_stash}" ]; then
   exit 0
 fi
 
+COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
+
 # Run tests
 true \
+  && echo "Missing copyright notice in files:" \
+    && [[ ! $( \
+          find $(git rev-parse --show-toplevel) -path $(git rev-parse --show-toplevel)/target -prune \
+              -o -name '*.rs' -exec grep -LH "${COPYRIGHT_TEXT}" {} + | tee /dev/stderr \
+      ) ]] \
+      || (echo "fix using:   echo \"// ${COPYRIGHT_TEXT}, see /COPYING file for details
+\$(cat \$FILE)\" > \$FILE" && false) \
+    && echo "[none]" \
   && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l && echo "[none]" \
   && cargo clippy --workspace \
   && cargo test --workspace \

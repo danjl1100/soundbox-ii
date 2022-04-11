@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use shared::Shutdown;
 use vlc_http::{self, Action, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
@@ -68,13 +69,13 @@ impl Prompt {
                 break;
             }
             // print prompt
-            print!("{} ", command::PROMPT_STR);
+            eprint!("{} ", command::PROMPT_STR);
             self.stdout.flush()?;
             // read line
             buffer.clear();
             let read_count = stdin.read_line(&mut buffer)?;
             if read_count == 0 {
-                println!("<<STDIN EOF>>");
+                eprintln!("<<STDIN EOF>>");
                 break;
             }
             match self.run_line(&buffer) {
@@ -107,7 +108,7 @@ impl Prompt {
         if let Some(command) = parsed.command {
             // execute action and print result
             match command.build() {
-                Err(Shutdown) => return Ok(Ok(Some(Shutdown))),
+                Err(shutdown_option) => return Ok(Ok(shutdown_option)),
                 Ok(result_and_rx) => match result_and_rx {
                     ActionAndReceiver::Command(action, result_rx) => {
                         self.send_and_print_result(action, result_rx)
@@ -141,9 +142,9 @@ impl Prompt {
         T: std::fmt::Debug,
     {
         // print action
-        print!("running {} ", action);
+        eprint!("running {} ", action);
         let print_a_dot = || {
-            print!(".");
+            eprint!(".");
             drop(self.stdout.lock().flush());
         };
         print_a_dot();
@@ -159,7 +160,7 @@ impl Prompt {
             print_a_dot,
         ) {
             Some(Ok(_action_result)) => {
-                println!();
+                eprintln!();
                 Ok(())
             }
             Some(Err(action_err)) => {

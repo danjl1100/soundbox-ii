@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use backoff::backoff::Backoff;
 use gloo_timers::callback::Timeout;
 use serde::{de::DeserializeOwned, Serialize};

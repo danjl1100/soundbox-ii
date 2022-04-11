@@ -1,3 +1,19 @@
+// soundbox-ii music playback controller *don't keep your sounds boxed up*
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
 //! Binary crate for running the soundbox-ii logic
 
 // TODO: only while building
@@ -34,7 +50,7 @@ async fn main() {
 
     let args = args::parse_or_exit();
 
-    println!("\nHello, soundbox-ii!\n");
+    eprintln!(include_str!("cli/COPYING.WELCOME"));
     launch(args).await;
 }
 

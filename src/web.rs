@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 pub use filter::root as filter;
 mod filter {
     use http::uri::Uri;

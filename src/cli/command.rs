@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::Shutdown;
 use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
@@ -80,8 +81,22 @@ pub enum Subcommand {
     /// Exits the interactive shell, server, and entire process
     #[clap(alias("q"), alias("exit"))]
     Quit,
+    /// Show copying/license information
+    Show {
+        #[clap(subcommand)]
+        ty: ShowCopyingLicenseType,
+    },
     /// Print help information
     Help,
+}
+#[derive(clap::Subcommand, Debug)]
+pub enum ShowCopyingLicenseType {
+    /// Show warranty details
+    #[clap(alias("w"))]
+    Warranty,
+    /// Show conditions for redistribution
+    #[clap(alias("c"))]
+    Copying,
 }
 #[derive(clap::Subcommand, Debug)]
 pub enum Repeat {
@@ -102,7 +117,7 @@ impl From<Repeat> for vlc_http::RepeatMode {
     }
 }
 impl Subcommand {
-    pub(super) fn build(self) -> Result<ActionAndReceiver, Shutdown> {
+    pub(super) fn build(self) -> Result<ActionAndReceiver, Option<Shutdown>> {
         Ok(match self {
             Self::Play => Command::PlaybackResume.into(),
             Self::Pause => Command::PlaybackPause.into(),
@@ -123,7 +138,19 @@ impl Subcommand {
             Self::Status => ActionAndReceiver::query_playback_status(),
             Self::Playlist => ActionAndReceiver::query_playlist_info(),
             Self::Quit => {
-                return Err(Shutdown);
+                return Err(Some(Shutdown));
+            }
+            Self::Show { ty } => {
+                eprintln!();
+                match ty {
+                    ShowCopyingLicenseType::Warranty => {
+                        eprintln!(include_str!("COPYING.WARRANTY"));
+                    }
+                    ShowCopyingLicenseType::Copying => {
+                        eprintln!(include_str!("COPYING.REDISTRIBUTION"));
+                    }
+                }
+                return Err(None);
             }
             Self::Help => unreachable!("built-in help displayed by clap"),
         })
