@@ -149,9 +149,48 @@ impl Config {
     }
     /// Attempts to construct `Config` from the specified `PartialConfig`
     ///
+    /// # Example
+    ///
+    /// ```
+    /// # use vlc_http::auth::{Config, PartialConfig};
+    /// let partial_good = PartialConfig::<()> {
+    ///     password: Ok("1234".to_string()),
+    ///     host: Ok("localhost".to_string()),
+    ///     port: Ok("22".to_string()),
+    /// };
+    /// let config = Config {
+    ///     password: "1234".to_string(),
+    ///     host: "localhost".to_string(),
+    ///     port: 22,
+    /// };
+    /// assert_eq!(Config::try_from_partial(partial_good), Ok(Ok(config)));
+    /// ```
+    ///
     /// # Errors
+    ///
     /// Returns a `PartialConfig` if one or more fields are missing
-    /// Returns an `Ok(Err(ParsePortErrpr))` if the port string is invalid
+    /// ```
+    /// # use vlc_http::auth::{Config, PartialConfig};
+    /// let partial_err = PartialConfig {
+    ///     password: Ok("secret".to_string()),
+    ///     host: Err("not sure why not"),
+    ///     port: Ok("22".to_string()),
+    /// };
+    /// assert_eq!(Config::try_from_partial(partial_err.clone()), Err(partial_err));
+    /// ```
+    ///
+    /// Returns an `Ok(Err(ParsePortError))` if the port string is invalid
+    /// ```
+    /// # use vlc_http::auth::{Config, PartialConfig};
+    /// let non_numeric_port = "not a number".to_string();
+    /// let partial_err_port = PartialConfig::<()> {
+    ///     password: Ok("1234".to_string()),
+    ///     host: Ok("localhost".to_string()),
+    ///     port: Ok(non_numeric_port.clone()),
+    /// };
+    /// let num_err = Config::parse_port(non_numeric_port.clone()).unwrap_err();
+    /// assert_eq!(Config::try_from_partial(partial_err_port), Ok(Err(num_err)));
+    /// ```
     pub fn try_from_partial<E>(
         partial: PartialConfig<E>,
     ) -> Result<Result<Self, ParsePortError>, PartialConfig<E>> {
