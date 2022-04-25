@@ -20,7 +20,7 @@
 //   https://www.w3schools.com/howto/howto_js_rangeslider.asp
 //   https://www.cssportal.com/style-input-range/
 @mixin input_range($background, $height, $radius, $thumb, $thumb_width, $thumb_height, $thumb_radius) {
-  $vertical_padding: ($thumb_height - $height) / 2;
+  $vertical_padding: calc(($thumb_height - $height) / 2);
   input[type=range] {
     margin-top: $vertical_padding;
     margin-bottom: $vertical_padding;
@@ -159,7 +159,7 @@ svg {
     }
   }
   &.time {
-    @include align-center
+    @include align-center;
     @include input_range(#ccc, 10px, 3px, #11b1ff, 15px, 35px, 12px);
     input[type=range] {
       flex-grow: 1;
