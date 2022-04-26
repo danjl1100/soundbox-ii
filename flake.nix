@@ -115,24 +115,30 @@
             cp -r dist/* "$out/share/frontend"
           '';
         };
-      in rec {
-        packages.${name} = pkgs.symlinkJoin {
-          inherit name;
-          paths = [
-            packages."${name}_bin"
-            packages."${name}_frontend"
-          ];
-        };
-        packages."${name}_bin" = project.workspaceMembers.${rootModuleName}.build;
-        packages."${name}_frontend" = trunkBuild {
+
+        # define packages (for re-use in combined target)
+        bin = project.workspaceMembers.${rootModuleName}.build;
+        frontend = trunkBuild {
           src = ./.;
           buildDirRelative = "frontend";
           pname = "${name}_frontend";
           version = "0.1.0";
         };
+        bin_wrapped = pkgs.symlinkJoin {
+          inherit name;
+          paths = [ bin frontend ];
+          buildInputs = [ pkgs.makeWrapper ];
+          postBuild = ''
+            wrapProgram $out/bin/soundbox-ii --add-flags "--static-assets \"${frontend}/share/frontend\""
+          '';
+        };
+      in rec {
+        packages.${name} = bin_wrapped;
+        packages."${name}_bin" = bin;
+        packages."${name}_frontend" = frontend;
 
         # `nix build`
-        defaultPackage = packages.${name};
+        defaultPackage = bin_wrapped;
 
         # `nix run`
         apps.${name} = flake-utils.lib.mkApp {
