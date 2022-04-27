@@ -132,6 +132,39 @@
             wrapProgram $out/bin/soundbox-ii --add-flags "--static-assets \"${frontend}/share/frontend\""
           '';
         };
+
+        mkVlcApp = { name, visual }: flake-utils.lib.mkApp {
+          inherit name;
+          drv = pkgs.writeShellScriptBin name (vlc_script { inherit visual; });
+        };
+        vlc_script = { visual ? false }: let
+          launch = if visual then ''
+            echo "!!!NOTE!!! Need to click menu:  View > Add Interface > Web"
+            echo ""
+            echo "Press enter to launch visual interface"
+            read a
+            ${pkgs.vlc}/bin/vlc ''${ARGS}
+          '' else ''
+            ${pkgs.vlc}/bin/cvlc --intf http ''${ARGS}
+          '';
+        in ''
+          if [ "''${VLC_BIND_HOST}" = "" ]; then
+            echo "VLC_BIND_HOST is not set";
+            exit 1;
+          fi
+          if [ "''${VLC_PORT}" = "" ]; then
+            echo "VLC_PORT is not set";
+            exit 1;
+          fi
+          if [ "''${VLC_PASSWORD}" = "" ]; then
+            echo "VLC_PASSWORD is not set";
+            exit 1;
+          fi
+
+          ARGS="--audio-replay-gain-mode track --http-host ''${VLC_BIND_HOST} --http-port ''${VLC_PORT} --http-password ''${VLC_PASSWORD}"
+
+          ${launch}
+        '';
       in rec {
         packages.${name} = bin_wrapped;
         packages."${name}_bin" = bin;
@@ -141,11 +174,13 @@
         defaultPackage = bin_wrapped;
 
         # `nix run`
+        defaultApp = apps.${name};
         apps.${name} = flake-utils.lib.mkApp {
           inherit name;
           drv = packages.${name};
         };
-        defaultApp = apps.${name};
+        apps.vlc = mkVlcApp { name = "vlc"; visual = true; };
+        apps.cvlc = mkVlcApp { name = "cvlc"; visual = false; };
 
         # `nix develop`
         devShell = pkgs.mkShell {
