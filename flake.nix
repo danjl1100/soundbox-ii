@@ -190,6 +190,8 @@
           buildInputs = buildInputs ++ ([
             # development-only tools go here
             pkgs.nixpkgs-fmt
+            pkgs.cargo-deny
+            pkgs.cargo-edit
             pkgs.cargo-watch
             pkgs.bacon
             pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-analysis

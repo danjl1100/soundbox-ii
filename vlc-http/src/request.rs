@@ -41,12 +41,7 @@ impl From<&ArtRequestIntent> for RequestInfo {
         let ArtRequestIntent { id } = intent;
         let path_and_query = id.as_ref().map_or_else(
             || PathAndQuery::from_static(ART),
-            |id| {
-                Self::format_path_query(
-                    ART,
-                    &Self::query_builder().append_pair("item", id).finish(),
-                )
-            },
+            |id| Self::format_path_query(ART, &QueryBuilder::new().append("item", id).finish()),
         );
         Self {
             path_and_query,
@@ -55,13 +50,10 @@ impl From<&ArtRequestIntent> for RequestInfo {
     }
 }
 impl RequestInfo {
-    fn query_builder() -> form_urlencoded::Serializer<'static, String> {
-        form_urlencoded::Serializer::new(String::new())
-    }
     fn format_cmd_args(path: &str, command: &str, args: &[(&str, String)]) -> PathAndQuery {
-        let query = Self::query_builder()
-            .append_pair("command", command)
-            .extend_pairs(args)
+        let query = QueryBuilder::new()
+            .append("command", command)
+            .extend(args)
             .finish();
         Self::format_path_query(path, &query)
     }
@@ -69,6 +61,41 @@ impl RequestInfo {
         format!("{path}?{query}", path = path, query = query)
             .parse()
             .expect("valid urlencoded args")
+    }
+}
+
+/// Builds URI query strings
+#[derive(Default)]
+struct QueryBuilder(String);
+impl QueryBuilder {
+    fn new() -> Self {
+        Self::default()
+    }
+    fn append(mut self, key: &str, value: &str) -> Self {
+        let sep = if self.0.is_empty() { "" } else { "&" };
+        let key = urlencoding::encode(key);
+        let value = urlencoding::encode(value);
+        self.0.push_str(&format!(
+            "{sep}{key}={value}",
+            sep = sep,
+            key = key,
+            value = value
+        ));
+        self
+    }
+    fn extend<'a, I, T, U>(mut self, elems: I) -> Self
+    where
+        I: IntoIterator<Item = &'a (T, U)>,
+        T: AsRef<str> + 'a,
+        U: AsRef<str> + 'a,
+    {
+        for (key, value) in elems {
+            self = self.append(key.as_ref(), value.as_ref());
+        }
+        self
+    }
+    fn finish(self) -> String {
+        self.0
     }
 }
 
@@ -86,7 +113,7 @@ mod tests {
             RequestInfo {
                 path_and_query: "/requests/status.json?command=sentinel_command"
                     .parse()
-                    .unwrap(),
+                    .expect("uri"),
                 method: Method::GET,
             }
         );
@@ -102,9 +129,9 @@ mod tests {
             RequestInfo::from(&with_args),
             RequestInfo {
                 path_and_query:
-                    "/requests/status.json?command=second&first=this&then=something+else"
+                    "/requests/status.json?command=second&first=this&then=something%20else"
                         .parse()
-                        .unwrap(),
+                        .expect("uri"),
                 method: Method::GET,
             }
         );
@@ -120,7 +147,7 @@ mod tests {
             RequestInfo {
                 path_and_query: "/requests/playlist.json?command=do_something"
                     .parse()
-                    .unwrap(),
+                    .expect("uri"),
                 method: Method::GET,
             }
         );
@@ -130,10 +157,11 @@ mod tests {
             args: vec![
                 ("everything", "is".to_string()),
                 ("awesome", "!!#$%".to_string()),
+                ("with", "some spaces thrown in".to_string()),
             ],
         }));
         assert_eq!(RequestInfo::from(&with_args), RequestInfo {
-            path_and_query: "/requests/playlist.json?command=ditherous&everything=is&awesome=%21%21%23%24%25".parse().unwrap(),
+            path_and_query: "/requests/playlist.json?command=ditherous&everything=is&awesome=%21%21%23%24%25&with=some%20spaces%20thrown%20in".parse().expect("uri"),
             method: Method::GET,
         });
     }
@@ -143,7 +171,7 @@ mod tests {
         assert_eq!(
             RequestInfo::from(&empty),
             RequestInfo {
-                path_and_query: "/art".parse().unwrap(),
+                path_and_query: "/art".parse().expect("uri"),
                 method: Method::GET,
             }
         );
@@ -154,7 +182,7 @@ mod tests {
         assert_eq!(
             RequestInfo::from(&with_id),
             RequestInfo {
-                path_and_query: "/art?item=sentinel_ID".parse().unwrap(),
+                path_and_query: "/art?item=sentinel_ID".parse().expect("uri"),
                 method: Method::GET,
             }
         );
@@ -165,7 +193,7 @@ mod tests {
         assert_eq!(
             RequestInfo::from(&status),
             RequestInfo {
-                path_and_query: "/requests/status.json".parse().unwrap(),
+                path_and_query: "/requests/status.json".parse().expect("uri"),
                 method: Method::GET,
             },
         );
@@ -176,7 +204,7 @@ mod tests {
         assert_eq!(
             RequestInfo::from(&playlist),
             RequestInfo {
-                path_and_query: "/requests/playlist.json".parse().unwrap(),
+                path_and_query: "/requests/playlist.json".parse().expect("uri"),
                 method: Method::GET,
             },
         );
