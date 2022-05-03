@@ -89,8 +89,14 @@
 
           cargoSha256 = "sha256-DBL8fvC1pVsGsIEjNouFbeAsbH/TNfcrIrds2EWD53Q=";
         };
-        trunkBuild = { src, buildDirRelative ? ".", pname, version }: pkgs.stdenvNoCC.mkDerivation {
-          inherit src pname version;
+        projectImportCargo = (import-cargo.builders.importCargo {
+            lockFile = ./Cargo.lock;
+            inherit pkgs;
+          });
+        trunkBuild = { buildDirRelative ? ".", pname, version }: pkgs.stdenvNoCC.mkDerivation {
+          inherit pname version;
+
+          src = ./.;
 
           buildInputs = [
             pkgs.rustc
@@ -100,10 +106,7 @@
             trunk-latest
             pkgs.wasm-bindgen-cli
             pkgs.nodePackages.sass
-            (import-cargo.builders.importCargo {
-              lockFile = "${src}/Cargo.lock";
-              inherit pkgs;
-            }).cargoHome
+            projectImportCargo.cargoHome
           ];
 
           buildPhase = ''
@@ -119,7 +122,6 @@
         # define packages (for re-use in combined target)
         bin = project.workspaceMembers.${rootModuleName}.build;
         frontend = trunkBuild {
-          src = ./.;
           buildDirRelative = "frontend";
           pname = "${name}_frontend";
           version = "0.1.0";
@@ -193,6 +195,15 @@
             pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-analysis
             pkgs.rust-bin.${rustChannel}.${rustVersion}.rls
           ]);
+          shellHook = ''
+            #!/usr/bin/env bash
+            FAKE_CARGO_HOME=$(pwd)/target/.fake-cargo-home
+            rm -rf "$FAKE_CARGO_HOME"
+            mkdir -p "$FAKE_CARGO_HOME"
+            cp -prd ${projectImportCargo.vendorDir}/vendor "$FAKE_CARGO_HOME"
+            chmod -R u+w $FAKE_CARGO_HOME
+            export CARGO_HOME=''${FAKE_CARGO_HOME}/vendor
+          '';
           RUST_SRC_PATH = "${pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-src}/lib/rustlib/src/rust/library";
         };
       }
