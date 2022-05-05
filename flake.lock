@@ -100,7 +100,7 @@
         "import-cargo": "import-cargo",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay",
-        "trunk-latest-src": "trunk-latest-src"
+        "trunk-0-15-0-src": "trunk-0-15-0-src"
       }
     },
     "rust-overlay": {
@@ -122,18 +122,19 @@
         "type": "github"
       }
     },
-    "trunk-latest-src": {
+    "trunk-0-15-0-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1649905053,
-        "narHash": "sha256-6+jbjKUS3V4i3IYk9Jm8TYYKufopZBxrE7AGR/bOyiQ=",
+        "lastModified": 1651419651,
+        "narHash": "sha256-VHUs/trR1M5WacEA0gwKLkGtsws9GFmn1vK0kRxpNII=",
         "owner": "thedodd",
         "repo": "trunk",
-        "rev": "e82a98fbaf679c5df371bd39f7980807d71ed3b0",
+        "rev": "127633425457a8468bc27fa82ac28ce0a95f1175",
         "type": "github"
       },
       "original": {
         "owner": "thedodd",
+        "ref": "v0.15.0",
         "repo": "trunk",
         "type": "github"
       }

@@ -10,13 +10,13 @@
       url = "github:kolloch/crate2nix";
       flake = false;
     };
-    trunk-latest-src = {
-      url = "github:thedodd/trunk";
+    trunk-0-15-0-src = {
+      url = "github:thedodd/trunk/v0.15.0";
       flake = false;
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, import-cargo, crate2nix, trunk-latest-src, ... }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, import-cargo, crate2nix, trunk-0-15-0-src, ... }:
     let
       # name must match Cargo.toml
       name = "soundbox-ii";
@@ -75,9 +75,9 @@
         #    once nixpkgs-unstable incorporates: https://github.com/thedodd/trunk/pull/358
         trunk-latest = pkgs.rustPlatform.buildRustPackage rec {
           pname = "trunk";
-          version = "0.14.0-pre-git";
+          version = "0.15.0";
 
-          src = trunk-latest-src;
+          src = trunk-0-15-0-src;
 
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = if pkgs.stdenvNoCC.isDarwin
@@ -87,7 +87,7 @@
           # requires network
           checkFlags = [ "--skip=tools::tests::download_and_install_binaries" ];
 
-          cargoSha256 = "sha256-DBL8fvC1pVsGsIEjNouFbeAsbH/TNfcrIrds2EWD53Q=";
+          cargoSha256 = "sha256-czXe9W+oR1UV7zGZiiHcbydzH6sowa/8upm+5lkPG1U=";
         };
         projectImportCargo = (import-cargo.builders.importCargo {
             lockFile = ./Cargo.lock;
