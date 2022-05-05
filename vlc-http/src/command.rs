@@ -316,6 +316,8 @@ impl TryFrom<PublicCommand> for LowCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[allow(clippy::needless_pass_by_value)]
     fn assert_encode<'a, 'b, T>(value: T, expected: RequestIntent)
     where
         RequestIntent<'a, 'b>: From<T>,

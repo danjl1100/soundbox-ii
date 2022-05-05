@@ -24,9 +24,11 @@ pub mod tests {
     use super::ord as ord_need;
     use super::{Action, Duration, Need, Ordering};
 
+    #[allow(clippy::unnecessary_wraps)]
     pub fn immediate(action: Action) -> Need {
         Some((None, action))
     }
+    #[allow(clippy::unnecessary_wraps)]
     pub fn some_millis(millis: u64, action: Action) -> Need {
         Some((Some(Duration::from_millis(millis)), action))
     }

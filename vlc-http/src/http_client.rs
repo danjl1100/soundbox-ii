@@ -96,7 +96,7 @@ mod context {
             RequestInfo: From<T>,
         {
             let request_info = RequestInfo::from(request_intent);
-            Ok(self.run_retry_loop(request_info).await?)
+            self.run_retry_loop(request_info).await
         }
         async fn run_retry_loop(
             &self,

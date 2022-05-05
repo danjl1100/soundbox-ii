@@ -32,6 +32,7 @@ true \
     && echo "[none]" \
   && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l && echo "[none]" \
   && cargo clippy --workspace \
+  && cargo clippy --workspace --tests \
   && cargo test --workspace \
   && cargo doc --workspace --no-deps -q \
   && true # trailing commas for the win

@@ -263,6 +263,8 @@ impl Rule for FetchAfterTrackEnd {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::bool_assert_comparison)]
+
     use super::need::tests::{immediate, some_millis};
     use super::*;
     use crate::vlc_responses::{PlaybackInfo, PlaylistItem};
@@ -430,7 +432,7 @@ mod tests {
             fas.info_from_playback(&PlaybackStatus {
                 timing: PlaybackTiming {
                     duration_secs: 2,
-                    ..Default::default()
+                    ..PlaybackTiming::default()
                 },
                 ..PlaybackStatus::default()
             }),
@@ -565,14 +567,12 @@ mod tests {
             far.notify_playlist(&PlaylistInfo {
                 received_time: time(1),
                 items: vec![dummy_playlist_item()],
-                ..PlaylistInfo::default()
             });
             assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [identical] (t=1, still)
             far.notify_playlist(&PlaylistInfo {
                 received_time: time(3),
                 items: vec![dummy_playlist_item()],
-                ..PlaylistInfo::default()
             });
             assert_eq!(far.info_time.map(t), Some(time(1)));
             // notify [info change] (t=5)

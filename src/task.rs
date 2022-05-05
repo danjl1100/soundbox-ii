@@ -22,7 +22,7 @@ impl ShutdownReceiver {
         value
     }
     /// Asynchronous poll for Shutdown
-    pub async fn is_shutdown(&mut self, task_name: &'static str) -> Option<Shutdown> {
+    pub async fn check_shutdown(&mut self, task_name: &'static str) -> Option<Shutdown> {
         let rx = &mut self.0;
         let changed_result = rx.changed().await;
         if changed_result.is_err() {
@@ -41,7 +41,7 @@ impl ShutdownReceiver {
     }
     /// Asynchronous wait for Shutdown
     pub async fn wait_for_shutdown(mut self, task_name: &'static str) {
-        while self.is_shutdown(task_name).await.is_none() {
+        while self.check_shutdown(task_name).await.is_none() {
             continue;
         }
     }
@@ -69,7 +69,7 @@ impl AsyncTasks {
         let handle = tokio::task::spawn(async move {
             tokio::select! {
                 biased; // poll in-order (shutdown first)
-                Some(Shutdown) = shutdown_rx.is_shutdown(task_name) => {}
+                Some(Shutdown) = shutdown_rx.check_shutdown(task_name) => {}
                 Err(Shutdown) = task => {}
                 else => {}
             };
