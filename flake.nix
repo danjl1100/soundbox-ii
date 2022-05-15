@@ -136,9 +136,9 @@
 
         mkVlcApp = { name, visual }: flake-utils.lib.mkApp {
           inherit name;
-          drv = pkgs.writeShellScriptBin name (vlc_script { inherit visual; });
+          drv = vlc_script { inherit name visual; };
         };
-        vlc_script = { visual ? false }: let
+        vlc_script = { name, visual ? false }: let
           launch = if visual then ''
             echo "!!!NOTE!!! Need to click menu:  View > Add Interface > Web"
             echo ""
@@ -148,7 +148,7 @@
           '' else ''
             ${pkgs.vlc}/bin/cvlc --intf http ''${ARGS}
           '';
-        in ''
+        in pkgs.writeShellScriptBin name ''
           if [ "''${VLC_BIND_HOST}" = "" ]; then
             echo "VLC_BIND_HOST is not set";
             exit 1;
@@ -170,6 +170,8 @@
         packages.${name} = bin_wrapped;
         packages."${name}_bin" = bin;
         packages."${name}_frontend" = frontend;
+        packages."${name}_vlc" = vlc_script { name = "vlc"; visual = true; };
+        packages."${name}_cvlc" = vlc_script { name = "cvlc"; visual = false; };
 
         # `nix build`
         defaultPackage = bin_wrapped;
@@ -213,6 +215,10 @@
     in packages // {
       hydraJobs = flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: {
         soundbox-ii = packages.packages.${system}.soundbox-ii;
+        soundbox-ii_bin = packages.packages.${system}.soundbox-ii_bin;
+        soundbox-ii_frontend = packages.packages.${system}.soundbox-ii_frontend;
+        soundbox-ii_vlc = packages.packages.${system}.soundbox-ii_vlc;
+        soundbox-ii_cvlc = packages.packages.${system}.soundbox-ii_cvlc;
       });
     };
 }
