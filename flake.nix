@@ -23,8 +23,7 @@
       rootModuleName = "soundbox-ii";
       rustChannel = "stable";
       rustVersion = "1.60.0";
-    in flake-utils.lib.eachDefaultSystem (system:
-      let
+      makeForSystem = (system: let
         # Imports
         pkgs = import nixpkgs {
           inherit system;
@@ -208,7 +207,12 @@
           '';
           RUST_SRC_PATH = "${pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-src}/lib/rustlib/src/rust/library";
         };
-      }
-    );
-
+      });
+      # packages = flake-utils.lib.eachDefaultSystem makeForSystem;
+      packages = flake-utils.lib.eachSystem [ "x86_64-linux" ] makeForSystem;
+    in packages // {
+      hydraJobs = flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: {
+        soundbox-ii = packages.packages.${system}.soundbox-ii;
+      });
+    };
 }
