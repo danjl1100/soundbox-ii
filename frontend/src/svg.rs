@@ -4,7 +4,7 @@ use yew::prelude::*;
 
 macro_rules! svg_paths {
     (
-        $struct_vis:vis struct $struct:ident { path, width, height }
+        $struct_vis:vis struct $struct:ident { path, width, height, view_box }
         $(
             $item_vis:vis const $name:ident = {
                 [ $width:expr , $height:expr $(,)?];
@@ -50,7 +50,7 @@ macro_rules! svg_paths {
 }
 
 svg_paths! {
-    pub(crate) struct Def { path, width, height }
+    pub(crate) struct Def { path, width, height, view_box }
     pub(crate) const PLAY = {
         [12, 12]; // 1-10, with extra margin
         // triangle (x,y = 1-10)
