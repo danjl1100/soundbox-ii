@@ -197,13 +197,12 @@ async fn launch(args: args::Config) {
     // run controller
     tasks.spawn(
         "vlc controller",
-        vlc_http::controller::Config {
+        vlc_http::Controller::new(vlc_http::controller::Config {
             action_rx,
             playback_status_tx,
             playlist_info_tx,
             credentials: args.vlc_http_config.0,
-        }
-        .build()
+        })
         .run(),
     );
 

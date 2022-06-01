@@ -187,7 +187,7 @@ fn build_config(matches: &clap::ArgMatches) -> Result<Config, String> {
 impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
     type Error = String;
     fn try_from(matches: &clap::ArgMatches) -> Result<VlcHttpConfig, String> {
-        use vlc_http::auth::{Config, Credentials, PartialConfig};
+        use vlc_http::auth::{Credentials, PartialConfig, RawCredentials};
         const NOTE_CMD_HELP: &str =
             "NOTE: View command-line help (-h) for alternate methods of specifying VLC-HTTP parameters.";
         //
@@ -208,9 +208,9 @@ impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
         };
         let merge_with_env = |arg_config| {
             let env_config = PartialConfig::from_env();
-            Config::try_from_partial(env_config.override_with(arg_config))
+            RawCredentials::try_from_partial(env_config.override_with(arg_config))
         };
-        let config = Config::try_from_partial(arg_config)
+        let config = RawCredentials::try_from_partial(arg_config)
             .or_else(merge_with_env)
             .map(|result| result.map_err(format_err_port))
             .map_err(format_err_partial)??;

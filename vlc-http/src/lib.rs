@@ -30,9 +30,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use tokio::sync::oneshot;
-
-pub use auth::{Config, Credentials};
+pub use auth::{Credentials, RawCredentials};
 pub mod auth;
 
 pub use controller::Controller;
@@ -51,106 +49,119 @@ mod http_client;
 pub use vlc_responses::{PlaybackStatus, PlaylistInfo};
 pub mod vlc_responses;
 
-/// Sender for an action result
-pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
-/// Receiver for an action result
-pub type ResultReceiver<T> = oneshot::Receiver<Result<T, Error>>;
+pub use action::{Action, IntoAction, ResultReceiver, ResultSender};
+mod action {
+    use tokio::sync::oneshot;
 
-/// Response for [`Action::QueryArt`].
-///
-/// # Variants:
-/// - `Err(hyper_err)` - internal error
-/// - `Ok(Err(message))` - text error from VLC
-/// - `Ok(Ok(respnse))` - Art response from VLC
-pub type Art = Result<Result<hyper::Response<hyper::Body>, String>, hyper::Error>;
+    use crate::{command::Query, Command, Error, PlaybackStatus, PlaylistInfo};
 
-/// Action available to be `run()`, with `Sender<T>` for returning the result
-#[must_use]
-#[derive(Debug)]
-pub enum Action {
-    /// [`Command`] with `Sender` for the result
-    Command(Command, ResultSender<()>),
-    /// [`PlaybackStatus`] query, with a `Sender` for the result
-    QueryPlaybackStatus(Option<ResultSender<PlaybackStatus>>),
-    /// [`PlaylistInfo`] query, with a `Sender` for the result
-    QueryPlaylistInfo(Option<ResultSender<PlaylistInfo>>),
-    /// Art query, with a `Sender` for the result
-    QueryArt(oneshot::Sender<Art>),
-}
-impl Action {
-    /// Constructs a [`PlaybackStatus`] action variant, with no receiver
-    pub fn fetch_playback_status() -> Self {
-        Self::QueryPlaybackStatus(None)
+    /// Sender for an action result
+    pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
+    /// Receiver for an action result
+    pub type ResultReceiver<T> = oneshot::Receiver<Result<T, Error>>;
+
+    /// Response for [`Action::QueryArt`].
+    ///
+    /// # Variants:
+    /// - `Err(hyper_err)` - internal error
+    /// - `Ok(Err(message))` - text error from VLC
+    /// - `Ok(Ok(respnse))` - Art response from VLC
+    pub type Art = Result<Result<hyper::Response<hyper::Body>, String>, hyper::Error>;
+
+    /// Action available to be [`run()`](`crate::Controller::run`), with `Sender<T>` for returning the result
+    #[must_use]
+    #[derive(Debug)]
+    pub enum Action {
+        /// [`Command`] with `Sender` for the result
+        Command(Command, ResultSender<()>),
+        /// [`PlaybackStatus`] query, with a `Sender` for the result
+        QueryPlaybackStatus(Option<ResultSender<PlaybackStatus>>),
+        /// [`PlaylistInfo`] query, with a `Sender` for the result
+        QueryPlaylistInfo(Option<ResultSender<PlaylistInfo>>),
+        /// Art query, with a `Sender` for the result
+        QueryArt(oneshot::Sender<Art>),
     }
-    /// Constructs a [`PlaybackStatus`] action variant, with no receiver
-    pub fn fetch_playlist_info() -> Self {
-        Self::QueryPlaylistInfo(None)
+    impl Action {
+        /// Constructs a [`PlaybackStatus`] action variant, with no receiver
+        pub fn fetch_playback_status() -> Self {
+            Self::QueryPlaybackStatus(None)
+        }
+        /// Constructs a [`PlaybackStatus`] action variant, with no receiver
+        pub fn fetch_playlist_info() -> Self {
+            Self::QueryPlaylistInfo(None)
+        }
+        /// Constructs a [`PlaybackStatus`] action variant, with the corresponding
+        /// [`ResultReceiver`]
+        pub fn query_playback_status() -> (Self, ResultReceiver<PlaybackStatus>) {
+            let (result_tx, result_rx) = oneshot::channel();
+            let action = Self::QueryPlaybackStatus(Some(result_tx));
+            (action, result_rx)
+        }
+        /// Constructs a [`PlaylistInfo`] action variant, with the corresponding
+        /// [`ResultReceiver`]
+        pub fn query_playlist_info() -> (Self, ResultReceiver<PlaylistInfo>) {
+            let (result_tx, result_rx) = oneshot::channel();
+            let action = Self::QueryPlaylistInfo(Some(result_tx));
+            (action, result_rx)
+        }
+        /// Constructs a Art action variant, with the corresponding
+        /// [`ResultReceiver`]
+        pub fn query_art() -> (Self, oneshot::Receiver<Art>) {
+            let (result_tx, result_rx) = oneshot::channel();
+            let action = Self::QueryArt(result_tx);
+            (action, result_rx)
+        }
     }
-    /// Constructs a [`PlaybackStatus`] action variant, with the corresponding
-    /// [`ResultReceiver`]
-    pub fn query_playback_status() -> (Self, ResultReceiver<PlaybackStatus>) {
-        let (result_tx, result_rx) = oneshot::channel();
-        let action = Self::QueryPlaybackStatus(Some(result_tx));
-        (action, result_rx)
+    /// Type that can transform into an [`Action`] and [`ResultReceiver`] pair
+    #[allow(clippy::module_name_repetitions)]
+    pub trait IntoAction {
+        /// Type output by the [`ResultReceiver`]
+        type Output;
+        /// Converts the object to an [`Action`] and [`ResultReceiver`] pair
+        fn to_action_rx(self) -> (Action, ResultReceiver<Self::Output>);
     }
-    /// Constructs a [`PlaylistInfo`] action variant, with the corresponding
-    /// [`ResultReceiver`]
-    pub fn query_playlist_info() -> (Self, ResultReceiver<PlaylistInfo>) {
-        let (result_tx, result_rx) = oneshot::channel();
-        let action = Self::QueryPlaylistInfo(Some(result_tx));
-        (action, result_rx)
+    impl IntoAction for Command {
+        type Output = ();
+        fn to_action_rx(self) -> (Action, ResultReceiver<()>) {
+            let (result_tx, result_rx) = oneshot::channel();
+            let action = Action::Command(self, result_tx);
+            (action, result_rx)
+        }
     }
-    /// Constructs a Art action variant, with the corresponding
-    /// [`ResultReceiver`]
-    pub fn query_art() -> (Self, oneshot::Receiver<Art>) {
-        let (result_tx, result_rx) = oneshot::channel();
-        let action = Self::QueryArt(result_tx);
-        (action, result_rx)
+    impl std::fmt::Display for Action {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            match self {
+                Self::Command(command, _) => write!(f, "{:?}", command),
+                Self::QueryPlaybackStatus(_) => write!(f, "{:?}", Query::PlaybackStatus),
+                Self::QueryPlaylistInfo(_) => write!(f, "{:?}", Query::PlaylistInfo),
+                Self::QueryArt(_) => write!(f, "QueryArt"),
+            }
+        }
     }
-}
-/// Type that can transform into an [`Action`] and [`ResultReceiver`] pair
-pub trait IntoAction {
-    /// Type output by the [`ResultReceiver`]
-    type Output;
-    /// Converts the object to an [`Action`] and [`ResultReceiver`] pair
-    fn to_action_rx(self) -> (Action, ResultReceiver<Self::Output>);
-}
-impl IntoAction for Command {
-    type Output = ();
-    fn to_action_rx(self) -> (Action, ResultReceiver<()>) {
-        let (result_tx, result_rx) = oneshot::channel();
-        let action = Action::Command(self, result_tx);
-        (action, result_rx)
+    impl std::cmp::PartialEq for Action {
+        fn eq(&self, rhs: &Self) -> bool {
+            ActionType::from(self) == ActionType::from(rhs)
+        }
     }
-}
-impl std::fmt::Display for Action {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::Command(command, _) => write!(f, "{:?}", command),
-            Self::QueryPlaybackStatus(_) => write!(f, "{:?}", Query::PlaybackStatus),
-            Self::QueryPlaylistInfo(_) => write!(f, "{:?}", Query::PlaylistInfo),
-            Self::QueryArt(_) => write!(f, "QueryArt"),
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum ActionType {
+        Command,
+        QueryPlaybackStatus,
+        QueryPlaylistInfo,
+        QueryArt,
+    }
+    impl From<&Action> for ActionType {
+        fn from(action: &Action) -> Self {
+            match action {
+                Action::Command(..) => Self::Command,
+                Action::QueryPlaybackStatus(..) => Self::QueryPlaybackStatus,
+                Action::QueryPlaylistInfo(..) => Self::QueryPlaylistInfo,
+                Action::QueryArt(..) => Self::QueryArt,
+            }
         }
     }
 }
-impl std::cmp::PartialEq for Action {
-    fn eq(&self, rhs: &Self) -> bool {
-        match (self, rhs) {
-            (Self::Command(..), Self::Command(..))
-            | (Self::QueryPlaybackStatus(_), Self::QueryPlaybackStatus(_))
-            | (Self::QueryPlaylistInfo(_), Self::QueryPlaylistInfo(_))
-            | (Self::QueryArt(_), Self::QueryArt(_)) => true,
-            (
-                Self::Command(..)
-                | Self::QueryPlaybackStatus(_)
-                | Self::QueryPlaylistInfo(_)
-                | Self::QueryArt(_),
-                _,
-            ) => false,
-        }
-    }
-}
-impl std::cmp::Eq for Action {}
 
 /// Error from the `run()` function
 #[derive(Debug)]

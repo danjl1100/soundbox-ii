@@ -31,7 +31,7 @@ impl std::fmt::Display for EnvError {
 
 /// Configuration for connecting to the VLC instance
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Config {
+pub struct RawCredentials {
     /// Password string (plaintext)
     pub password: String,
     /// Host string
@@ -102,7 +102,7 @@ impl<E> PartialConfig<E> {
     /// Moves all `Ok` fields from `other` to `self`
     ///
     /// ```
-    /// use vlc_http::auth::{Config, PartialConfig};
+    /// use vlc_http::auth::{RawCredentials, PartialConfig};
     /// use std::convert::TryFrom;
     ///
     /// let priority = PartialConfig {
@@ -122,7 +122,7 @@ impl<E> PartialConfig<E> {
     ///     port: Ok("this value overrides Err".to_string()),
     ///     password: Ok("Err does NOT override this value".to_string()),
     /// });
-    /// assert!(Config::try_from_partial(result).is_ok());
+    /// assert!(RawCredentials::try_from_partial(result).is_ok());
     /// ```
     pub fn override_with<U>(mut self, other: PartialConfig<U>) -> Self {
         if let Ok(host) = other.host {
@@ -138,7 +138,7 @@ impl<E> PartialConfig<E> {
     }
 }
 type ParsePortError = (String, std::num::ParseIntError);
-impl Config {
+impl RawCredentials {
     /// Parses the specified port string
     ///
     /// # Errors
@@ -147,49 +147,49 @@ impl Config {
     pub fn parse_port(port_str: String) -> Result<u16, ParsePortError> {
         u16::from_str(&port_str).map_err(|err| (port_str, err))
     }
-    /// Attempts to construct `Config` from the specified `PartialConfig`
+    /// Attempts to construct `RawCredentials` from the specified `PartialConfig`
     ///
     /// # Example
     ///
     /// ```
-    /// # use vlc_http::auth::{Config, PartialConfig};
+    /// # use vlc_http::auth::{RawCredentials, PartialConfig};
     /// let partial_good = PartialConfig::<()> {
     ///     password: Ok("1234".to_string()),
     ///     host: Ok("localhost".to_string()),
     ///     port: Ok("22".to_string()),
     /// };
-    /// let config = Config {
+    /// let config = RawCredentials {
     ///     password: "1234".to_string(),
     ///     host: "localhost".to_string(),
     ///     port: 22,
     /// };
-    /// assert_eq!(Config::try_from_partial(partial_good), Ok(Ok(config)));
+    /// assert_eq!(RawCredentials::try_from_partial(partial_good), Ok(Ok(config)));
     /// ```
     ///
     /// # Errors
     ///
     /// Returns a `PartialConfig` if one or more fields are missing
     /// ```
-    /// # use vlc_http::auth::{Config, PartialConfig};
+    /// # use vlc_http::auth::{RawCredentials, PartialConfig};
     /// let partial_err = PartialConfig {
     ///     password: Ok("secret".to_string()),
     ///     host: Err("not sure why not"),
     ///     port: Ok("22".to_string()),
     /// };
-    /// assert_eq!(Config::try_from_partial(partial_err.clone()), Err(partial_err));
+    /// assert_eq!(RawCredentials::try_from_partial(partial_err.clone()), Err(partial_err));
     /// ```
     ///
     /// Returns an `Ok(Err(ParsePortError))` if the port string is invalid
     /// ```
-    /// # use vlc_http::auth::{Config, PartialConfig};
+    /// # use vlc_http::auth::{RawCredentials, PartialConfig};
     /// let non_numeric_port = "not a number".to_string();
     /// let partial_err_port = PartialConfig::<()> {
     ///     password: Ok("1234".to_string()),
     ///     host: Ok("localhost".to_string()),
     ///     port: Ok(non_numeric_port.clone()),
     /// };
-    /// let num_err = Config::parse_port(non_numeric_port.clone()).unwrap_err();
-    /// assert_eq!(Config::try_from_partial(partial_err_port), Ok(Err(num_err)));
+    /// let num_err = RawCredentials::parse_port(non_numeric_port.clone()).unwrap_err();
+    /// assert_eq!(RawCredentials::try_from_partial(partial_err_port), Ok(Err(num_err)));
     /// ```
     pub fn try_from_partial<E>(
         partial: PartialConfig<E>,
@@ -199,7 +199,7 @@ impl Config {
                 password: Ok(password),
                 host: Ok(host),
                 port: Ok(port),
-            } => Ok(Self::parse_port(port).map(|port| Config {
+            } => Ok(Self::parse_port(port).map(|port| RawCredentials {
                 password,
                 host,
                 port,
@@ -227,17 +227,17 @@ where
                 Err(err) => writeln!(f, "\t{}\tError: {}", label, err),
             }
         }
-        writeln!(f, "Config {{")?;
+        writeln!(f, "RawCredentials {{")?;
         write_val(f, "host    ", &self.host)?;
         write_val(f, "port    ", &self.port)?;
         write_val(f, "password", &self.password)?;
         write!(f, "}}")
     }
 }
-impl TryFrom<Config> for Credentials {
+impl TryFrom<RawCredentials> for Credentials {
     type Error = (String, InvalidUri);
-    fn try_from(config: Config) -> Result<Self, Self::Error> {
-        let Config {
+    fn try_from(config: RawCredentials) -> Result<Self, Self::Error> {
+        let RawCredentials {
             password,
             host,
             port,

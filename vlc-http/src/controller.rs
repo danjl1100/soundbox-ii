@@ -32,19 +32,19 @@ pub struct Controller {
     rules: Rules,
     rate_limit_action_rx: RateLimiter,
 }
-impl Config {
-    /// Creates a [`Controller`] form the specified [`Config`]
-    pub fn build(self) -> Controller {
+impl Controller {
+    /// Creates a [`Controller`] from the specified [`Config`]
+    pub fn new(config: Config) -> Self {
         const RATE_LIMIT_MS: u32 = 90;
-        let Self {
+        let Config {
             action_rx,
             playback_status_tx,
             playlist_info_tx,
             credentials,
-        } = self;
+        } = config;
         let context = Context::new(credentials);
         let rules = Rules::new();
-        Controller {
+        Self {
             action_rx,
             playback_status_tx,
             playlist_info_tx,
