@@ -46,7 +46,6 @@ mod playback {
     }
     impl From<(StatusJSON, Time)> for Status {
         fn from((other, received_time): (StatusJSON, Time)) -> Self {
-            use std::convert::TryFrom;
             let StatusJSON {
                 apiversion,
                 playlist_item_id,

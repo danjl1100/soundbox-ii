@@ -26,7 +26,6 @@ impl Shuffle {
     }
     fn fill_remaining(&mut self, weights: &[Weight]) {
         use rand::seq::SliceRandom;
-        use std::convert::TryFrom;
         //TODO: consider changing behavior to persist "remaining",
         // only adding items to keep weight totals in check
         let mut idxs: Vec<_> = weights
