@@ -30,7 +30,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-pub use auth::{Credentials, RawCredentials};
+pub use auth::{Authorization, Credentials};
 pub mod auth;
 
 pub use controller::Controller;

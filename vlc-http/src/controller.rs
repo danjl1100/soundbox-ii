@@ -7,21 +7,21 @@ use crate::{
     command::{ArtRequestIntent, HighCommand, RequestIntent},
     http_client::{response, Context},
     rules::Rules,
-    Action, Credentials, Error, LowCommand, PlaybackStatus, PlaylistInfo, Query,
+    Action, Authorization, Error, LowCommand, PlaybackStatus, PlaylistInfo, Query,
 };
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, oneshot, watch};
 
-/// Configuration for [`Controller`]
-pub struct Config {
+/// Arguments for constructing a [`Controller`]
+pub struct Args {
     /// Receiver for [`Action`]s
     pub action_rx: mpsc::Receiver<Action>,
     /// Sender for [`PlaybackStatus`]
     pub playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
     /// Sender for [`PlaylistInfo`]
     pub playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
-    /// Credentials
-    pub credentials: Credentials,
+    /// Authorization
+    pub authorization: Authorization,
 }
 /// Control interface for VLC-HTTP
 pub struct Controller {
@@ -33,16 +33,16 @@ pub struct Controller {
     rate_limit_action_rx: RateLimiter,
 }
 impl Controller {
-    /// Creates a [`Controller`] from the specified [`Config`]
-    pub fn new(config: Config) -> Self {
+    /// Creates a [`Controller`] from the specified [`Args`]
+    pub fn new(args: Args) -> Self {
         const RATE_LIMIT_MS: u32 = 90;
-        let Config {
+        let Args {
             action_rx,
             playback_status_tx,
             playlist_info_tx,
-            credentials,
-        } = config;
-        let context = Context::new(credentials);
+            authorization,
+        } = args;
+        let context = Context::new(authorization);
         let rules = Rules::new();
         Self {
             action_rx,

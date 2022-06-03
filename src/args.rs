@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 pub struct Config {
+    /// Configuration for the VLC HTTP interface
     pub vlc_http_config: VlcHttpConfig,
-    /// Configuration for the webserver.
+    /// Configuration for the webserver
     /// If `None`, then interactive mode implicitly enabled
     pub server_config: Option<ServerConfig>,
 }
-pub struct VlcHttpConfig(pub vlc_http::Credentials);
+pub struct VlcHttpConfig(pub vlc_http::Authorization);
 pub struct ServerConfig {
     interactive: bool,
     pub bind_address: SocketAddr,
@@ -61,20 +62,20 @@ mod args_def {
     impl VlcHttpConfig {
         fn attach_args(app: clap::Command<'_>) -> clap::Command<'_> {
             app.arg(
-                Arg::new(VlcHttpConfig::VLC_HOST)
-                    .long(VlcHttpConfig::VLC_HOST)
+                Arg::new(Self::VLC_HOST)
+                    .long(Self::VLC_HOST)
                     .takes_value(true)
                     .help("Address of VLC-HTTP server (overrides environment variable)"),
             )
             .arg(
-                Arg::new(VlcHttpConfig::VLC_PORT)
-                    .long(VlcHttpConfig::VLC_PORT)
+                Arg::new(Self::VLC_PORT)
+                    .long(Self::VLC_PORT)
                     .takes_value(true)
                     .help("Port of VLC-HTTP server (overrides environment variable)"),
             )
             .arg(
-                Arg::new(VlcHttpConfig::VLC_PASSWORD)
-                    .long(VlcHttpConfig::VLC_PASSWORD)
+                Arg::new(Self::VLC_PASSWORD)
+                    .long(Self::VLC_PASSWORD)
                     .takes_value(true)
                     .help("Password of VLC-HTTP server (overrides environment variable)"),
             )
@@ -85,7 +86,7 @@ mod args_def {
             app.arg(
                 Arg::new(Self::INTERACTIVE)
                     .short('i')
-                    .long(ServerConfig::INTERACTIVE)
+                    .long(Self::INTERACTIVE)
                     .help("Activates the command-line interface (if HTTP server disabled, defaults to enabled)"),
             )
             .arg(
@@ -110,7 +111,7 @@ mod args_def {
             )
         }
         pub fn get_default_bind_address() -> String {
-            std::env::var(ServerConfig::ENV_BIND_ADDRESS)
+            std::env::var(Self::ENV_BIND_ADDRESS)
                 .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], 3030)).to_string())
         }
     }
@@ -120,7 +121,7 @@ pub fn parse_or_exit() -> Config {
     let mut command = Config::attach_args(clap::command!());
     let matches = command.get_matches_mut();
 
-    match build_config(&matches) {
+    match Config::try_from(&matches) {
         Ok(config) => config,
         Err(message) => {
             eprintln!("{}", command.render_usage());
@@ -131,36 +132,44 @@ pub fn parse_or_exit() -> Config {
     }
 }
 
+impl<'a> TryFrom<&'a clap::ArgMatches> for Config {
+    type Error = String;
+    fn try_from(matches: &clap::ArgMatches) -> Result<Self, String> {
+        let server_config = if matches.is_present(Config::SERVE_HTTP) {
+            Some(ServerConfig::try_from(matches)?)
+        } else {
+            None
+        };
+        let vlc_http_config = VlcHttpConfig::try_from(matches)?;
+        //
+        Ok(Config {
+            vlc_http_config,
+            server_config,
+        })
+    }
+}
+
 impl<'a> TryFrom<&'a clap::ArgMatches> for ServerConfig {
     type Error = String;
     fn try_from(matches: &'a clap::ArgMatches) -> Result<Self, String> {
-        let bind_address = matches.value_of(Self::BIND_ADDRESS).map_or_else(
-            || Cow::Owned(ServerConfig::get_default_bind_address()),
-            Cow::Borrowed,
-        );
-        let bind_address = SocketAddr::from_str(&bind_address).map_err(|err| {
-            format!(
-                "{} ({} argument \"{}\")",
-                err,
-                Self::BIND_ADDRESS,
-                bind_address
-            )
-        })?;
+        let bind_address = {
+            let input = matches.value_of(Self::BIND_ADDRESS).map_or_else(
+                || Cow::Owned(ServerConfig::get_default_bind_address()),
+                Cow::Borrowed,
+            );
+            SocketAddr::from_str(&input)
+                .map_err(|err| format!("{err} ({} argument \"{input}\")", Self::BIND_ADDRESS))?
+        };
         let static_assets = matches
             .value_of(Self::STATIC_ASSETS)
             .ok_or_else(|| "missing static-assets folder".to_string())
             .and_then(|s| match PathBuf::from_str(s) {
-                Err(err) => Err(format!(
-                    "{} ({} argument \"{}\")",
-                    err,
-                    Self::STATIC_ASSETS,
-                    s
-                )),
                 Ok(path) => match (path.exists(), path.is_dir()) {
-                    (false, _) => Err(format!("static-assets path \"{}\" does not exist", s)),
-                    (_, false) => Err(format!("static-assets path \"{}\" is not a folder", s)),
+                    (false, _) => Err(format!("static-assets path \"{s}\" does not exist")),
+                    (_, false) => Err(format!("static-assets path \"{s}\" is not a folder")),
                     (true, true) => Ok(path),
                 },
+                Err(never) => match never {},
             })?;
         Ok(ServerConfig {
             interactive: matches.is_present(Self::INTERACTIVE),
@@ -171,32 +180,22 @@ impl<'a> TryFrom<&'a clap::ArgMatches> for ServerConfig {
     }
 }
 
-fn build_config(matches: &clap::ArgMatches) -> Result<Config, String> {
-    let server_config = if matches.is_present(Config::SERVE_HTTP) {
-        Some(ServerConfig::try_from(matches)?)
-    } else {
-        None
-    };
-    let vlc_http_config = VlcHttpConfig::try_from(matches)?;
-    //
-    Ok(Config {
-        vlc_http_config,
-        server_config,
-    })
-}
 impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
     type Error = String;
     fn try_from(matches: &clap::ArgMatches) -> Result<VlcHttpConfig, String> {
-        use vlc_http::auth::{Credentials, PartialConfig, RawCredentials};
+        use vlc_http::auth::{Authorization, Credentials, PartialConfig};
         const NOTE_CMD_HELP: &str =
             "NOTE: View command-line help (-h) for alternate methods of specifying VLC-HTTP parameters.";
         //
-        let format_err_port = |(port_str, err)| format!("invalid port \"{}\" ({})", port_str, err);
+        let format_err_port = |(port_str, err)| format!("invalid port \"{port_str}\" ({err})");
         let format_err_partial =
-            |partial| format!("incomplete VLC-HTTP {}\n{}", partial, NOTE_CMD_HELP);
-        let format_err_uri =
-            |(uri, uri_err)| format!("invalid VLC-HTTP host/port ({} \"{}\")", uri_err, uri);
+            |partial| format!("incomplete VLC-HTTP {partial}\n{NOTE_CMD_HELP}");
+        let format_err_uri = |(uri, err)| format!("invalid VLC-HTTP host/port ({err} \"{uri}\")");
         let unwrap_val = |key| matches.value_of(key).map(String::from).ok_or(());
+        let merge_with_env = |arg_config| {
+            let env_config = PartialConfig::from_env();
+            Credentials::try_from_partial(env_config.override_with(arg_config))
+        };
         //
         let host = unwrap_val(Self::VLC_HOST);
         let port = unwrap_val(Self::VLC_PORT);
@@ -206,16 +205,12 @@ impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
             host,
             port,
         };
-        let merge_with_env = |arg_config| {
-            let env_config = PartialConfig::from_env();
-            RawCredentials::try_from_partial(env_config.override_with(arg_config))
+        let credentials = {
+            let input = Credentials::try_from_partial(arg_config).or_else(merge_with_env);
+            let complete = input.map_err(format_err_partial)?;
+            complete.map_err(format_err_port)?
         };
-        let config = RawCredentials::try_from_partial(arg_config)
-            .or_else(merge_with_env)
-            .map(|result| result.map_err(format_err_port))
-            .map_err(format_err_partial)??;
-        Credentials::try_from(config)
-            .map(VlcHttpConfig)
-            .map_err(format_err_uri)
+        let auth = Authorization::try_from(credentials).map_err(format_err_uri)?;
+        Ok(Self(auth))
     }
 }

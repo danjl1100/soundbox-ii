@@ -73,7 +73,7 @@ pub(crate) mod response {
 
 pub(crate) use context::Context;
 mod context {
-    use crate::{auth::Credentials, request::RequestInfo};
+    use crate::{auth::Authorization, request::RequestInfo};
     use hyper::{
         body::Body, client::Builder as ClientBuilder, Client as HyperClient,
         Request as HyperRequest,
@@ -82,9 +82,9 @@ mod context {
     type Request = HyperRequest<Body>;
 
     /// Execution context for [`RequestIntent`]s
-    pub(crate) struct Context(Client, Credentials);
+    pub(crate) struct Context(Client, Authorization);
     impl Context {
-        pub fn new(credentials: Credentials) -> Self {
+        pub fn new(credentials: Authorization) -> Self {
             let client = ClientBuilder::default().build_http();
             Self(client, credentials)
         }
