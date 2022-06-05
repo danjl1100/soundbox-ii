@@ -31,7 +31,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use shared::Shutdown;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 mod cli;
 
@@ -128,11 +128,16 @@ fn launch_hotwatch(
 }
 
 async fn launch(args: args::Config) {
-    let (action_tx, action_rx) = mpsc::channel(1);
-    let (playback_status_tx, playback_status_rx) = watch::channel(None);
-    let (playlist_info_tx, playlist_info_rx) = watch::channel(None);
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
     let (reload_tx, reload_rx) = watch::channel(ReloadVersion::default());
+
+    let authorization = args.vlc_http_config.0.clone();
+    let (controller, channels) = vlc_http::Controller::new(authorization);
+    let vlc_http::controller::Channels {
+        action_tx,
+        playback_status_rx,
+        playlist_info_rx,
+    } = channels;
 
     print_startup_info(&args);
 
@@ -195,16 +200,7 @@ async fn launch(args: args::Config) {
     let mut tasks = AsyncTasks::new(shutdown_rx);
 
     // run controller
-    tasks.spawn(
-        "vlc controller",
-        vlc_http::Controller::new(vlc_http::controller::Args {
-            action_rx,
-            playback_status_tx,
-            playlist_info_tx,
-            authorization: args.vlc_http_config.0,
-        })
-        .run(),
-    );
+    tasks.spawn("vlc controller", controller.run());
 
     // join all async tasks and thread(s)
     tasks.join_all().await.expect("tasks end with no panics");

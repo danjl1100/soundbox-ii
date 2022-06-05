@@ -12,18 +12,33 @@ use crate::{
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, oneshot, watch};
 
-/// Arguments for constructing a [`Controller`]
-pub struct Args {
-    /// Receiver for [`Action`]s
-    pub action_rx: mpsc::Receiver<Action>,
-    /// Sender for [`PlaybackStatus`]
-    pub playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
-    /// Sender for [`PlaylistInfo`]
-    pub playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
-    /// Authorization
-    pub authorization: Authorization,
+/// Channels for interfacing with a [`Controller`]
+pub struct Channels {
+    /// Sender for [`Action`]s
+    pub action_tx: mpsc::Sender<Action>,
+    /// Receiver for [`PlaybackStatus`]
+    pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
+    /// Receiver for [`PlaylistInfo`]
+    pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
 }
+
 /// Control interface for VLC-HTTP
+///
+/// # Example
+///
+/// ```
+/// use vlc_http::{Authorization, Credentials, Controller};
+///
+/// let auth = Authorization::try_from(Credentials {
+///     password: "1234".to_string(),
+///     host: "localhost".to_string(),
+///     port: 22,
+/// }).expect("valid credentials");
+/// let (controller, _channels) = Controller::new(auth);
+///
+/// let async_task = controller.run();
+/// //TODO: tokio::spawn(async_task)
+/// ```
 pub struct Controller {
     action_rx: mpsc::Receiver<Action>,
     playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
@@ -33,25 +48,32 @@ pub struct Controller {
     rate_limit_action_rx: RateLimiter,
 }
 impl Controller {
-    /// Creates a [`Controller`] from the specified [`Args`]
-    pub fn new(args: Args) -> Self {
-        const RATE_LIMIT_MS: u32 = 90;
-        let Args {
-            action_rx,
-            playback_status_tx,
-            playlist_info_tx,
-            authorization,
-        } = args;
-        let context = Context::new(authorization);
-        let rules = Rules::new();
-        Self {
-            action_rx,
-            playback_status_tx,
-            playlist_info_tx,
-            context,
-            rules,
-            rate_limit_action_rx: RateLimiter::new(RATE_LIMIT_MS),
-        }
+    const RATE_LIMIT_MS: u32 = 90;
+    /// Creates a [`Controller`] with the associated control [`Channels`]
+    pub fn new(authorization: Authorization) -> (Self, Channels) {
+        // Channels
+        let (action_tx, action_rx) = mpsc::channel(1);
+        let (playback_status_tx, playback_status_rx) = watch::channel(None);
+        let (playlist_info_tx, playlist_info_rx) = watch::channel(None);
+        let channels = Channels {
+            action_tx,
+            playback_status_rx,
+            playlist_info_rx,
+        };
+        // Controller
+        let controller = {
+            let context = Context::new(authorization);
+            let rules = Rules::new();
+            Self {
+                action_rx,
+                playback_status_tx,
+                playlist_info_tx,
+                context,
+                rules,
+                rate_limit_action_rx: RateLimiter::new(Self::RATE_LIMIT_MS),
+            }
+        };
+        (controller, channels)
     }
 }
 impl Controller {

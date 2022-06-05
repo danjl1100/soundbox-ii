@@ -251,7 +251,7 @@ impl TryFrom<Credentials> for Authorization {
     }
 }
 /// Low-level authorization information for connecting to the VLC instance
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Authorization {
     /// Bearer string (base64 encoded password with prefix)
     auth: String,
