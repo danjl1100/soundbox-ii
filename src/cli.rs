@@ -5,13 +5,11 @@ use vlc_http::{self, Action, PlaybackStatus, PlaylistInfo, ResultReceiver};
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
 
-mod arg_split;
-
 /// Definition of all interactive commands
 mod command;
 use command::ActionAndReceiver;
 
-use crate::cli::arg_split::ArgSplit;
+use arg_split::ArgSplit;
 
 fn blocking_recv<T, F: Fn()>(
     mut rx: oneshot::Receiver<T>,
@@ -104,7 +102,7 @@ impl Prompt {
     fn run_line(&mut self, line: &str) -> Result<Result<Option<Shutdown>, clap::Error>, String> {
         use clap::Parser;
         // split args - allow quoted strings with whitespace, and allow escape characters (`\"`) etc
-        let line_parts = ArgSplit::parse(line);
+        let line_parts = ArgSplit::split(line);
         let parsed = match command::InteractiveArgs::try_parse_from(line_parts) {
             Ok(parsed) => parsed,
             Err(clap_err) => return Ok(Err(clap_err)),

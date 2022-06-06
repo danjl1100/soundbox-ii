@@ -1,13 +1,27 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! See [`ArgSplit`] for details.
 
 use std::iter::FromIterator;
 
 const BACKSLASH: char = '\\';
-const SPACE: char = ' ';
 const DOUBLE_QUOTE: char = '"';
 const SINGLE_QUOTE: char = '\'';
 
 /// Parses a char sequence into arguments. Accepts quoted arguments and respects simple escaping.
+///
+/// # Example
+/// ```
+/// use arg_split::ArgSplit;
+///
+/// let split = ArgSplit::split(r#"these are some "quoted arguments""#);
+/// assert_eq!(split, vec![
+///     "these".to_string(),
+///     "are".to_string(),
+///     "some".to_string(),
+///     "quoted arguments".to_string(),
+/// ])
+///
+/// ```
 #[derive(Default)]
 pub struct ArgSplit {
     /// Completed tokens
@@ -21,7 +35,7 @@ pub struct ArgSplit {
 }
 impl ArgSplit {
     /// Splits the specified string into arguments
-    pub fn parse(input: &str) -> Vec<String> {
+    pub fn split(input: &str) -> Vec<String> {
         input.chars().collect::<Self>().finish()
     }
     /// Process the next `char`
@@ -95,10 +109,10 @@ mod tests {
             )+
         };
         (@inner $input:expr => $($output:expr),+) => {
-            assert_eq!(ArgSplit::parse($input), vec![$($output),+]);
+            assert_eq!(ArgSplit::split($input), vec![$($output),+]);
         };
         (@inner $input:expr) => {
-            assert_eq!(ArgSplit::parse($input), Vec::<String>::new());
+            assert_eq!(ArgSplit::split($input), Vec::<String>::new());
         };
     }
 

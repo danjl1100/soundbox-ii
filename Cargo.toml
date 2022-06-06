@@ -6,7 +6,7 @@ description = "Interactive graph-based sequencer for beets songs playing on a VL
 license = "GPL-3.0-or-later"
 
 [workspace]
-members = ["q-filter-tree", "vlc-http", "frontend", "shared"]
+members = ["q-filter-tree", "vlc-http", "frontend", "sequencer", "shared", "arg_split"]
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -19,6 +19,7 @@ warp = "0.3.2"
 http = "0.2.4"
 clap = { version = "3.1.6", features = ["cargo", "derive"] }
 shared = { path = "./shared", features = ["server", "time_now"] }
+arg_split = { path = "./arg_split" }
 serde_json = "1.0.64"
 futures = "^0.3"
 hotwatch = "0.4.5"

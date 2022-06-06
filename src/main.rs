@@ -44,10 +44,6 @@ mod task;
 
 #[tokio::main]
 async fn main() {
-    // bug in clippy and/or tokio proc macro
-    //  ref:  https://github.com/rust-lang/rust-clippy/issues/7438
-    #![allow(clippy::semicolon_if_nothing_returned)]
-
     let args = args::parse_or_exit();
 
     eprintln!(include_str!("cli/COPYING.WELCOME"));
