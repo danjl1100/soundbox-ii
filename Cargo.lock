@@ -1111,6 +1111,8 @@ dependencies = [
  "arg_split",
  "clap",
  "q-filter-tree",
+ "serde_json",
+ "shared",
 ]
 
 [[package]]

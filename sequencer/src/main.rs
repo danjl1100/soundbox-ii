@@ -1,11 +1,15 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use std::io::{stdin, BufRead};
+use clap::Parser;
+use std::{
+    io::{stdin, BufRead},
+    str::FromStr,
+};
 
 use arg_split::ArgSplit;
-use q_filter_tree::Tree;
+use q_filter_tree::id::{NodePath, NodePathTyped};
+use sequencer::Sequencer;
 
-use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(no_binary_name = true)]
 struct Args {
@@ -23,15 +27,20 @@ impl TryFrom<&String> for Args {
 #[derive(Parser, Debug)]
 enum Command {
     Show,
+    AddNode {
+        parent_path: Option<String>,
+    },
+    SetNodeFile {
+        node_path: Option<String>,
+        filename: String,
+    },
 }
 
-struct Sequencer {
-    tree: Tree<String, ()>,
+#[derive(Default)]
+struct Cli {
+    sequencer: Sequencer,
 }
-impl Sequencer {
-    fn new() -> Self {
-        Self { tree: Tree::new() }
-    }
+impl Cli {
     fn exec_lines<T>(&mut self, input: T) -> Result<(), std::io::Error>
     where
         T: BufRead,
@@ -39,7 +48,12 @@ impl Sequencer {
         for line in input.lines() {
             let line = line?;
             match Args::try_from(&line) {
-                Ok(Args { command: Some(cmd) }) => self.exec_command(cmd),
+                Ok(Args { command: Some(cmd) }) => {
+                    let result = self.exec_command(cmd);
+                    if let Err(e) = result {
+                        eprintln!("ERROR: {:?}", e);
+                    }
+                }
                 Ok(Args { command: None }) => continue,
                 Err(clap_err) => {
                     eprintln!("unrecognized command: {}", clap_err);
@@ -49,18 +63,40 @@ impl Sequencer {
         }
         Ok(())
     }
-    fn exec_command(&mut self, command: Command) {
-        println!("command: {:?}", command);
+    fn exec_command(&mut self, command: Command) -> Result<(), CommandError> {
         match command {
             Command::Show => {
-                println!("{:?}", self.tree);
+                println!("{}", self.sequencer);
+            }
+            Command::AddNode { parent_path } => {
+                let node_path = self
+                    .sequencer
+                    .add_node(parent_path.unwrap_or_default())
+                    .map_err(CommandError::from)?;
+                println!("added node {node_path}");
+            }
+            Command::SetNodeFile {
+                node_path,
+                filename,
+            } => {
+                self.sequencer
+                    .set_node_file(node_path.unwrap_or_default(), filename)?;
             }
         }
+        Ok(())
+    }
+}
+
+shared::wrapper_enum! {
+    #[derive(Debug)]
+    enum CommandError {
+        Serde(serde_json::Error),
+        Sequencer(sequencer::Error),
     }
 }
 
 fn main() -> Result<(), std::io::Error> {
     println!("hello, sequencer!");
 
-    Sequencer::new().exec_lines(stdin().lock())
+    Cli::default().exec_lines(stdin().lock())
 }

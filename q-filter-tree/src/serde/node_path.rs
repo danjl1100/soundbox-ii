@@ -47,20 +47,25 @@ impl<'de> Visitor<'de> for NodePathVisitor {
         formatter.write_str("string of comma separated uints (path elements)")
     }
     fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
-        type ParseIntErrorAndStr<'a> = (std::num::ParseIntError, &'a str);
-        match v {
+        NodePathTyped::from_str(v).map_err(|(_, fail_elem_str)| {
+            E::custom(format!("invalid path element \"{}\"", fail_elem_str))
+        })
+    }
+}
+impl FromStr for NodePathTyped {
+    type Err = (std::num::ParseIntError, String);
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
             // empty string --> empty list
             "" => Ok(vec![]),
             // split on separator
             elems_str => elems_str
                 .split(NodePathTyped::DELIM)
                 // parse int
-                .map(|elem| NodePathElem::from_str(elem).map_err(|err| (err, elem)))
-                .collect::<Result<Vec<NodePathElem>, ParseIntErrorAndStr<'_>>>(),
+                .map(|elem| NodePathElem::from_str(elem).map_err(|err| (err, elem.to_owned())))
+                .collect::<Result<Vec<NodePathElem>, _>>(),
         }
         .map(NodePathTyped::from)
-        .map_err(|(_, fail_elem_str)| {
-            E::custom(format!("invalid path element \"{}\"", fail_elem_str))
-        })
     }
 }

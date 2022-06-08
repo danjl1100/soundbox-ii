@@ -52,8 +52,7 @@ mod serde {
     mod tree;
 }
 
-pub use refs::{NodeRefMut, NodeRefMutWeighted};
-mod refs;
+pub mod refs;
 
 /// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
 pub type Weight = u32;

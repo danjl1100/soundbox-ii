@@ -290,6 +290,14 @@ impl<T: Type> From<NodeId<T>> for NodePath<T> {
         node_id.path
     }
 }
+impl<T: Type> From<NodeId<T>> for NodePathTyped
+where
+    NodePathTyped: From<NodePath<T>>,
+{
+    fn from(node_id: NodeId<T>) -> Self {
+        NodePath::from(node_id).into()
+    }
+}
 
 impl<T: Type> std::fmt::Debug for NodePath<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
