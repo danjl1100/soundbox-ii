@@ -190,7 +190,7 @@ impl<T, F> Chain<T, F> {
                     .ref_mut()
                     .remove(path_elem)
                     .map(|(weight, node)| {
-                        let (child_weights, info_intrinsic) = NodeInfo::from(node).into();
+                        let (child_weights, _seq, info_intrinsic) = NodeInfo::from(node).into();
                         assert!(child_weights.is_empty());
                         (weight, info_intrinsic)
                     })
@@ -265,10 +265,10 @@ pub(crate) mod meta {
     /// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
     #[must_use]
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub(crate) struct NodeInfo<T, F>(Vec<Weight>, NodeInfoIntrinsic<T, F>);
-    impl<T, F> From<NodeInfo<T, F>> for (Vec<Weight>, NodeInfoIntrinsic<T, F>) {
+    pub(crate) struct NodeInfo<T, F>(Vec<Weight>, Sequence, NodeInfoIntrinsic<T, F>);
+    impl<T, F> From<NodeInfo<T, F>> for (Vec<Weight>, Sequence, NodeInfoIntrinsic<T, F>) {
         fn from(node_info: NodeInfo<T, F>) -> Self {
-            (node_info.0, node_info.1)
+            (node_info.0, node_info.1, node_info.2)
         }
     }
     impl<T, F> From<Node<T, F>> for NodeInfo<T, F> {
@@ -277,7 +277,7 @@ pub(crate) mod meta {
                 children,
                 queue,
                 filter,
-                sequence: _,
+                sequence,
             } = node;
             match children {
                 Children::Chain(Chain { nodes }) => {
@@ -287,7 +287,7 @@ pub(crate) mod meta {
                         filter,
                         order,
                     };
-                    Self(weights, info_intrinsic)
+                    Self(weights, sequence, info_intrinsic)
                 }
                 Children::Items(items) => {
                     let (order, (weights, items)) = items.into_parts();
@@ -296,7 +296,7 @@ pub(crate) mod meta {
                         filter,
                         order,
                     };
-                    Self(weights, info_intrinsic)
+                    Self(weights, sequence, info_intrinsic)
                 }
             }
         }

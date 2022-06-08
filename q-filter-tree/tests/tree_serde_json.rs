@@ -5,9 +5,15 @@ use q_filter_tree::{
 };
 use serde_json::Result;
 
-const EMPTY_NODE: &str = r#"[[],{"queue":[],"filter":null,"order":"InOrder"}]"#;
-const ONE_CHILD: &str = r#"[[0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
-const FIVE_CHILD: &str = r#"[[0,0,0,0,0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
+fn empty_node(seq: usize) -> String {
+    format!(r#"[[],{seq},{{"queue":[],"filter":null,"order":"InOrder"}}]"#)
+}
+fn one_child(seq: usize) -> String {
+    format!(r#"[[0],{seq},{{"queue":[],"filter":null,"order":"InOrder"}}]"#)
+}
+fn five_child(seq: usize) -> String {
+    format!(r#"[[0,0,0,0,0],{seq},{{"queue":[],"filter":null,"order":"InOrder"}}]"#)
+}
 #[test]
 fn simple_serialize() -> Result<()> {
     let mut t: Tree<(), ()> = Tree::new();
@@ -22,8 +28,8 @@ fn simple_serialize() -> Result<()> {
         json_str,
         format!(
             r#"{{"":{ONE},"0":{EMPTY}}}"#,
-            EMPTY = EMPTY_NODE,
-            ONE = ONE_CHILD
+            ONE = one_child(0),
+            EMPTY = empty_node(1),
         )
     );
     Ok(())
@@ -59,10 +65,15 @@ fn complex_serialize() -> Result<()> {
     assert_eq!(
         json_str,
         format!(
-            r#"{{"":{ONE},"0":{FIVE},"0,0":{EMPTY},"0,1":{EMPTY},"0,2":{EMPTY},"0,3":{ONE},"0,3,0":{EMPTY},"0,4":{EMPTY}}}"#,
-            EMPTY = EMPTY_NODE,
-            ONE = ONE_CHILD,
-            FIVE = FIVE_CHILD
+            r#"{{"":{ONE_0},"0":{FIVE_1},"0,0":{EMPTY_2},"0,1":{EMPTY_3},"0,2":{EMPTY_4},"0,3":{ONE_5},"0,3,0":{EMPTY_7},"0,4":{EMPTY_6}}}"#,
+            ONE_0 = one_child(0),
+            ONE_5 = one_child(5),
+            FIVE_1 = five_child(1),
+            EMPTY_2 = empty_node(2),
+            EMPTY_3 = empty_node(3),
+            EMPTY_4 = empty_node(4),
+            EMPTY_6 = empty_node(6),
+            EMPTY_7 = empty_node(7),
         )
     );
     Ok(())
@@ -74,6 +85,7 @@ fn simple_deserialize() -> Result<()> {
         {
           "": [
             [ 1 ],
+            0,
             {
               "queue": [],
               "filter": null,
@@ -82,6 +94,7 @@ fn simple_deserialize() -> Result<()> {
           ],
           "0": [
             [ 0 ],
+            0,
             {
               "queue": [],
               "filter": null,
@@ -90,6 +103,7 @@ fn simple_deserialize() -> Result<()> {
           ],
           "0,0": [
             [],
+            0,
             {
               "queue": ["Alfalfa", "Oats"],
               "filter": null,
@@ -133,42 +147,42 @@ fn unwrap_child_path(typed: NodePathTyped) -> NodePath<ty::Child> {
 fn complex_deserialize() -> Result<()> {
     let tree_json = r#"
     {
-      "": [ [0], {
+      "": [ [0], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0": [ [0,0,0,0,0], {
+      "0": [ [0,0,0,0,0], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,0": [ [], {
+      "0,0": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,1": [ [], {
+      "0,1": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,2": [ [], {
+      "0,2": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,3": [ [0], {
+      "0,3": [ [0], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,3,0": [ [], {
+      "0,3,0": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,4": [ [], {
+      "0,4": [ [], 0, {
         "queue": ["ping","pong"],
         "filter": null,
         "order": "InOrder"

@@ -65,7 +65,7 @@ where
         while let Some((node_path, node_info)) =
             access.next_entry::<NodePathTyped, NodeInfo<T, F>>()?
         {
-            let (child_weights, info_intrinsic) = node_info.into();
+            let (child_weights, _seq, info_intrinsic) = node_info.into();
 
             // insert Node (if root, create tree)
             match (&node_path, &mut tree) {
