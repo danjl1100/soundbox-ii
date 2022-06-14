@@ -2,7 +2,7 @@
   description = "soundbox-ii music playback controller";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs?rev=35227e5abb956ae2885306ef4769617ed28427e7"; # TODO diagnose `trunk` issues with newer revs of nixpkgs-unstable
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     import-cargo.url = "github:edolstra/import-cargo";
@@ -10,13 +10,9 @@
       url = "github:kolloch/crate2nix";
       flake = false;
     };
-    trunk-0-15-0-src = {
-      url = "github:thedodd/trunk/v0.15.0";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, import-cargo, crate2nix, trunk-0-15-0-src, ... }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, import-cargo, crate2nix, ... }:
     let
       # name must match Cargo.toml
       name = "soundbox-ii";
@@ -69,25 +65,6 @@
           pkgs.pkgconfig
         ];
 
-        # Trunk builder for frontend
-        # TODO remove this, replace with stable `pkgs` version,
-        #    once nixpkgs-unstable incorporates: https://github.com/thedodd/trunk/pull/358
-        trunk-latest = pkgs.rustPlatform.buildRustPackage rec {
-          pname = "trunk";
-          version = "0.15.0";
-
-          src = trunk-0-15-0-src;
-
-          nativeBuildInputs = [ pkgs.pkg-config ];
-          buildInputs = if pkgs.stdenvNoCC.isDarwin
-            then [ pkgs.libiconv pkgs.CoreServices pkgs.Security ]
-            else [ pkgs.openssl ];
-
-          # requires network
-          checkFlags = [ "--skip=tools::tests::download_and_install_binaries" ];
-
-          cargoSha256 = "sha256-czXe9W+oR1UV7zGZiiHcbydzH6sowa/8upm+5lkPG1U=";
-        };
         projectImportCargo = (import-cargo.builders.importCargo {
             lockFile = ./Cargo.lock;
             inherit pkgs;
@@ -99,10 +76,6 @@
 
           buildInputs = [
             pkgs.rustc
-            # TODO change trunk-latest to stable `pkgs` version,
-            #   once nixpkgs-unstable contains pr: https://github.com/thedodd/trunk/pull/358
-            # pkgs.trunk
-            trunk-latest
             pkgs.wasm-bindgen-cli
             pkgs.nodePackages.sass
             projectImportCargo.cargoHome
@@ -110,7 +83,7 @@
 
           buildPhase = ''
             cd "${buildDirRelative}"
-            trunk build --dist dist
+            ${pkgs.trunk}/bin/trunk build --dist dist
           '';
           installPhase = ''
             mkdir -p "$out/share/frontend"
