@@ -2,6 +2,7 @@
 use crate::Shutdown;
 use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
+pub const COMMAND_NAME: &str = "soundbox-ii";
 pub const PROMPT_STR: &str = "soundbox-ii>";
 
 /// Options for soundbox-ii interactive shell
@@ -144,10 +145,10 @@ impl Subcommand {
                 eprintln!();
                 match ty {
                     ShowCopyingLicenseType::Warranty => {
-                        eprintln!(include_str!("COPYING.WARRANTY"));
+                        eprintln!("{}", shared::license::WARRANTY);
                     }
                     ShowCopyingLicenseType::Copying => {
-                        eprintln!(include_str!("COPYING.REDISTRIBUTION"));
+                        eprintln!("{}", shared::license::REDISTRIBUTION);
                     }
                 }
                 return Err(None);

@@ -133,6 +133,8 @@ macro_rules! wrapper_enum {
     }
 }
 
+pub mod license;
+
 /// Shutdown signal
 #[must_use]
 #[derive(Clone, Copy)]

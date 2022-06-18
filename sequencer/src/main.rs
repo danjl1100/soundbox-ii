@@ -1,14 +1,27 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Binary for running [`Sequencer`] interactively
+
+// TODO: only while building
+#![allow(dead_code)]
+// teach me
+#![deny(clippy::pedantic)]
+// no unsafe
+#![forbid(unsafe_code)]
+// no unwrap
+#![deny(clippy::unwrap_used)]
+// no panic
+#![deny(clippy::panic)]
+// docs!
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 use clap::Parser;
-use std::{
-    io::{stdin, BufRead},
-    str::FromStr,
-};
+use std::io::{stdin, BufRead};
 
 use arg_split::ArgSplit;
-use q_filter_tree::id::{NodePath, NodePathTyped};
-use sequencer::Sequencer;
+use sequencer::{DebugItemSource, Sequencer};
+
+const COMMAND_NAME: &str = "sequencer";
 
 #[derive(Parser, Debug)]
 #[clap(no_binary_name = true)]
@@ -24,21 +37,49 @@ impl TryFrom<&String> for Args {
     }
 }
 
+/// Cli Commands
 #[derive(Parser, Debug)]
-enum Command {
-    Show,
-    AddNode {
-        parent_path: Option<String>,
+pub enum Command {
+    /// Quit the interactive shell (alternative to Ctrl-D, EOF)
+    #[clap(alias("q"), alias("exit"))]
+    Quit,
+    /// Show license snippets
+    Show {
+        /// The license snippet to show
+        #[clap(subcommand)]
+        license: ShowCopyingLicenseType,
     },
-    SetNodeFile {
-        node_path: Option<String>,
-        filename: String,
+    /// Print the current sequencer-nodes state
+    Print,
+    /// Add a new node for fanning-out to child nodes
+    Add {
+        /// Path of the parent for the new node (use "." for the root node)
+        parent_path: String,
+        /// Filename source, for terminal nodes only (optional)
+        filename: Option<String>,
     },
+    /// Remove a node
+    Remove {
+        /// Path of the target node to delete
+        path: String,
+        //TODO
+        // recursive: bool,
+    },
+}
+/// Types of License snippets available to show
+#[derive(clap::Subcommand, Debug)]
+pub enum ShowCopyingLicenseType {
+    /// Show warranty details
+    #[clap(alias("w"))]
+    Warranty,
+    /// Show conditions for redistribution
+    #[clap(alias("c"))]
+    Copying,
 }
 
 #[derive(Default)]
 struct Cli {
-    sequencer: Sequencer,
+    sequencer: Sequencer<DebugItemSource>,
 }
 impl Cli {
     fn exec_lines<T>(&mut self, input: T) -> Result<(), std::io::Error>
@@ -48,6 +89,9 @@ impl Cli {
         for line in input.lines() {
             let line = line?;
             match Args::try_from(&line) {
+                Ok(Args {
+                    command: Some(Command::Quit),
+                }) => return Ok(()),
                 Ok(Args { command: Some(cmd) }) => {
                     let result = self.exec_command(cmd);
                     if let Err(e) = result {
@@ -61,26 +105,38 @@ impl Cli {
                 }
             }
         }
+        eprintln!("<<STDIN EOF>>");
         Ok(())
     }
     fn exec_command(&mut self, command: Command) -> Result<(), CommandError> {
         match command {
-            Command::Show => {
+            Command::Quit => {}
+            Command::Show { license } => match license {
+                ShowCopyingLicenseType::Warranty => {
+                    eprintln!("{}", shared::license::WARRANTY);
+                }
+                ShowCopyingLicenseType::Copying => {
+                    eprintln!("{}", shared::license::REDISTRIBUTION);
+                }
+            },
+            Command::Print => {
                 println!("{}", self.sequencer);
             }
-            Command::AddNode { parent_path } => {
-                let node_path = self
-                    .sequencer
-                    .add_node(parent_path.unwrap_or_default())
-                    .map_err(CommandError::from)?;
-                println!("added node {node_path}");
-            }
-            Command::SetNodeFile {
-                node_path,
+            Command::Add {
+                parent_path,
                 filename,
             } => {
-                self.sequencer
-                    .set_node_file(node_path.unwrap_or_default(), filename)?;
+                let add_result = if let Some(filename) = filename {
+                    self.sequencer.add_terminal_node(&parent_path, filename)
+                } else {
+                    self.sequencer.add_node(&parent_path)
+                };
+                let node_path = add_result.map_err(CommandError::from)?;
+                println!("added node {node_path}");
+            }
+            Command::Remove { .. } => {
+                todo!()
+                // self.sequencer.remove_node(&path)
             }
         }
         Ok(())
@@ -96,7 +152,8 @@ shared::wrapper_enum! {
 }
 
 fn main() -> Result<(), std::io::Error> {
-    println!("hello, sequencer!");
+    eprint!("{}", COMMAND_NAME);
+    eprintln!("{}", shared::license::WELCOME);
 
     Cli::default().exec_lines(stdin().lock())
 }

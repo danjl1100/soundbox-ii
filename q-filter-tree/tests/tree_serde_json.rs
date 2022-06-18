@@ -27,7 +27,7 @@ fn simple_serialize() -> Result<()> {
     assert_eq!(
         json_str,
         format!(
-            r#"{{"":{ONE},"0":{EMPTY}}}"#,
+            r#"{{".":{ONE},".0":{EMPTY}}}"#,
             ONE = one_child(0),
             EMPTY = empty_node(1),
         )
@@ -65,7 +65,7 @@ fn complex_serialize() -> Result<()> {
     assert_eq!(
         json_str,
         format!(
-            r#"{{"":{ONE_0},"0":{FIVE_1},"0,0":{EMPTY_2},"0,1":{EMPTY_3},"0,2":{EMPTY_4},"0,3":{ONE_5},"0,3,0":{EMPTY_7},"0,4":{EMPTY_6}}}"#,
+            r#"{{".":{ONE_0},".0":{FIVE_1},".0.0":{EMPTY_2},".0.1":{EMPTY_3},".0.2":{EMPTY_4},".0.3":{ONE_5},".0.3.0":{EMPTY_7},".0.4":{EMPTY_6}}}"#,
             ONE_0 = one_child(0),
             ONE_5 = one_child(5),
             FIVE_1 = five_child(1),
@@ -83,7 +83,7 @@ fn complex_serialize() -> Result<()> {
 fn simple_deserialize() -> Result<()> {
     let tree_json = r#"
         {
-          "": [
+          ".": [
             [ 1 ],
             0,
             {
@@ -92,7 +92,7 @@ fn simple_deserialize() -> Result<()> {
               "order": "InOrder"
             }
           ],
-          "0": [
+          ".0": [
             [ 0 ],
             0,
             {
@@ -101,7 +101,7 @@ fn simple_deserialize() -> Result<()> {
               "order": "InOrder"
             }
           ],
-          "0,0": [
+          ".0.0": [
             [],
             0,
             {
@@ -124,7 +124,7 @@ fn simple_deserialize() -> Result<()> {
         root.try_ref(&mut t).expect("root exists").pop_item_queued(),
         None
     );
-    let child = unwrap_child_path(serde_json::from_str("\"0,0\"")?);
+    let child = unwrap_child_path(serde_json::from_str("\".0.0\"")?);
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
@@ -147,42 +147,42 @@ fn unwrap_child_path(typed: NodePathTyped) -> NodePath<ty::Child> {
 fn complex_deserialize() -> Result<()> {
     let tree_json = r#"
     {
-      "": [ [0], 0, {
+      ".": [ [0], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0": [ [0,0,0,0,0], 0, {
+      ".0": [ [0,0,0,0,0], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,0": [ [], 0, {
+      ".0.0": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,1": [ [], 0, {
+      ".0.1": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,2": [ [], 0, {
+      ".0.2": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,3": [ [0], 0, {
+      ".0.3": [ [0], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,3,0": [ [], 0, {
+      ".0.3.0": [ [], 0, {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      "0,4": [ [], 0, {
+      ".0.4": [ [], 0, {
         "queue": ["ping","pong"],
         "filter": null,
         "order": "InOrder"
@@ -202,13 +202,13 @@ fn complex_deserialize() -> Result<()> {
         None
     );
     const CHILD_PATH_STRS: &[&str] = &[
-        "\"0\"",
-        "\"0,0\"",
-        "\"0,1\"",
-        "\"0,2\"",
-        "\"0,3\"",
-        "\"0,3,0\"",
-        "\"0,4\"",
+        "\".0\"",
+        "\".0.0\"",
+        "\".0.1\"",
+        "\".0.2\"",
+        "\".0.3\"",
+        "\".0.3.0\"",
+        "\".0.4\"",
     ];
     for child_path_str in CHILD_PATH_STRS {
         let child = unwrap_child_path(serde_json::from_str(child_path_str)?);
@@ -219,14 +219,14 @@ fn complex_deserialize() -> Result<()> {
     assert_eq!(t.pop_item_queued(), None);
     {
         // un-block node "0"
-        let base_path = unwrap_child_path(serde_json::from_str("\"0\"")?);
+        let base_path = unwrap_child_path(serde_json::from_str("\".0\"")?);
         let mut base_ref = base_path.try_ref(&mut t).expect("base exists");
         base_ref.set_weight(1);
     }
     assert_eq!(t.pop_item_queued(), None);
     {
-        // un-block node "0,4"
-        let child4_path = unwrap_child_path(serde_json::from_str("\"0,4\"")?);
+        // un-block node "0.4"
+        let child4_path = unwrap_child_path(serde_json::from_str("\".0.4\"")?);
         let mut child4_ref = child4_path.try_ref(&mut t).expect("child4 exists");
         child4_ref.set_weight(1);
     }

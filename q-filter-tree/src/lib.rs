@@ -47,7 +47,10 @@ pub use order::Type as OrderType;
 pub mod order;
 
 mod iter;
-mod serde {
+/// Serialize/Deserialize functionality
+pub mod serde {
+    /// Error from deserializing a [`NodePathTyped`](`super::id::NodePathTyped`)
+    pub type NodePathParseError = node_path::ParseError;
     mod node_path;
     mod tree;
 }

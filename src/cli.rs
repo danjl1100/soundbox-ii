@@ -6,6 +6,7 @@ use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
 
 /// Definition of all interactive commands
+pub use command::COMMAND_NAME;
 mod command;
 use command::ActionAndReceiver;
 

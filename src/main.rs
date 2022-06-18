@@ -46,7 +46,8 @@ mod task;
 async fn main() {
     let args = args::parse_or_exit();
 
-    eprintln!(include_str!("cli/COPYING.WELCOME"));
+    eprint!("{}", cli::COMMAND_NAME);
+    eprintln!("{}", shared::license::WELCOME);
     launch(args).await;
 }
 

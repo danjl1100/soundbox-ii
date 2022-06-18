@@ -1111,6 +1111,7 @@ dependencies = [
  "arg_split",
  "clap",
  "q-filter-tree",
+ "serde",
  "serde_json",
  "shared",
 ]
