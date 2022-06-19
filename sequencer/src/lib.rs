@@ -32,8 +32,8 @@
 
 use q_filter_tree::{
     error::InvalidNodePath,
-    id::{ty, NodeId, NodePathTyped},
-    serde::NodePathParseError,
+    id::{ty, NodeId, NodeIdTyped, NodePathTyped},
+    serde::{NodeDescriptor, NodeIdParseError},
     Tree,
 };
 
@@ -62,7 +62,7 @@ impl<T: ItemSource> Sequencer<T> {
         }
     }
     fn inner_add_node(&mut self, parent_path_str: &str) -> Result<NodeId<ty::Child>, Error> {
-        let parent_path = parse_path_str(parent_path_str)?;
+        let parent_path = parse_path(parent_path_str)?;
         let mut parent_ref = parent_path.try_ref(&mut self.tree)?;
         let mut child_nodes = parent_ref
             .child_nodes()
@@ -98,7 +98,7 @@ impl<T: ItemSource> Sequencer<T> {
     }
     // TODO
     // pub fn update_node(&mut self, node_path_str: &str) -> Result<(), Error> {
-    //     let node_path = parse_path_str(node_path_str)?;
+    //     let node_path = parse_path(node_path_str)?;
     //     let mut node_ref = node_path.try_ref(&mut self.tree)?;
     // }
     // fn inner_update_node(
@@ -115,7 +115,7 @@ impl<T: ItemSource> Sequencer<T> {
     // }
     // TODO
     // pub fn remove_node(&mut self, node_id_str: &str, node_sequence: usize) -> Result<(), Error> {
-    //     let node_path = parse_path_str(node_path_str)?;
+    //     let node_path = parse_id(node_path_str)?;
     //     let node_id = node_path.with_sequence(id);
     // }
 }
@@ -123,10 +123,26 @@ impl<T: ItemSource> Sequencer<T> {
 fn serialize_path<T: Into<NodePathTyped>>(path: T) -> Result<String, serde_json::Error> {
     serde_json::to_string(&path.into())
 }
-fn parse_path_str(path_str: &str) -> Result<NodePathTyped, String> {
-    path_str
+fn parse_path(input_str: &str) -> Result<NodePathTyped, String> {
+    match parse_descriptor(input_str)? {
+        NodeDescriptor::Path(node_path) => Ok(node_path),
+        NodeDescriptor::Id(node_id) => {
+            eprint!("coerced id \"{node_id}\" ");
+            let node_path = node_id.into();
+            eprintln!("into path \"{node_path}\"");
+            Ok(node_path)
+        }
+    }
+}
+fn parse_id(input_str: &str) -> Result<NodeIdTyped, String> {
+    parse_descriptor(input_str)?
+        .try_into()
+        .map_err(|node_path| format!("expected NodeId, got {node_path:?}. Try adding #id."))
+}
+fn parse_descriptor(input_str: &str) -> Result<NodeDescriptor, String> {
+    input_str
         .parse()
-        .map_err(|e: NodePathParseError| e.to_string())
+        .map_err(|e: NodeIdParseError| e.to_string())
 }
 
 impl<T: ItemSource> std::fmt::Display for Sequencer<T> {

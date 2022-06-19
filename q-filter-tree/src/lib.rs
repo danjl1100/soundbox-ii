@@ -51,6 +51,10 @@ mod iter;
 pub mod serde {
     /// Error from deserializing a [`NodePathTyped`](`super::id::NodePathTyped`)
     pub type NodePathParseError = node_path::ParseError;
+    /// Error from deserializing a [`NodeIdTyped`](`super::id::NodeIdTyped`)
+    pub type NodeIdParseError = node_id::ParseError;
+    pub use node_descriptor::NodeDescriptor;
+    mod node_descriptor;
     mod node_id;
     mod node_path;
     mod tree;

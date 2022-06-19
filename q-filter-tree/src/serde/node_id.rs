@@ -10,8 +10,8 @@ use serde::{
 use crate::id::{Keeper, NodeIdTyped, NodePathRefTyped, NodePathTyped, Sequence, SequenceSource};
 
 impl NodeIdTyped {
-    const DELIM: &'static str = "#";
-    const SERIALIZED_ADDENDUM: &'static str = "pound sign and uint (sequence element)";
+    pub(super) const DELIM: &'static str = "#";
+    pub(super) const SERIALIZED_ADDENDUM: &'static str = "pound sign and uint (sequence element)";
 }
 impl std::fmt::Display for NodeIdTyped {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -26,7 +26,7 @@ impl Serialize for NodeIdTyped {
     where
         S: serde::Serializer,
     {
-        serializer.collect_str(&format_args!("{self}"))
+        serializer.collect_str(self)
     }
 }
 
@@ -45,7 +45,9 @@ impl<'de> Visitor<'de> for NodeIdVisitor {
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         let path_description = NodePathTyped::SERIALIZED_DESCRIPTION;
         let id_addendum = NodeIdTyped::SERIALIZED_ADDENDUM;
-        formatter.write_str(&format!("{path_description}, followed by {id_addendum}"))
+        formatter.write_fmt(format_args!(
+            "{path_description}, followed by {id_addendum}"
+        ))
     }
     fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
         NodeIdTyped::from_str(v).map_err(|e| E::custom(e.to_string()))

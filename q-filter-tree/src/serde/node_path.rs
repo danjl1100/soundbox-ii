@@ -35,7 +35,7 @@ impl<'a> Serialize for NodePathRefTyped<'a> {
     where
         S: Serializer,
     {
-        serializer.collect_str(&format_args!("{self}"))
+        serializer.collect_str(self)
     }
 }
 // Inherit Display/Serialize from `NodePathRefTyped`

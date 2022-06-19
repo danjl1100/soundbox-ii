@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use crate::id::{ty, NodeIdTyped, NodePath, NodePathTyped};
+use crate::id::{ty, NodeIdTyped, NodePath, NodePathRefTyped, NodePathTyped};
 use crate::node::meta::NodeInfo;
 use crate::{Tree, Weight};
 
@@ -83,7 +83,7 @@ where
                     let mut parent_ref = parent_path.try_ref(tree).map_err(|_| {
                         M::Error::custom(format!(
                             "failed to create node at path {}, parent {:?} does not exist",
-                            NodePathTyped::from(node_path.clone()),
+                            NodePathRefTyped::from(node_path),
                             parent_path
                         ))
                     })?;

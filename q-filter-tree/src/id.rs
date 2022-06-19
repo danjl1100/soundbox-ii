@@ -104,6 +104,7 @@ pub mod ty {
 
 shared::wrapper_enum! {
     /// Typed [`NodeId`]
+    #[must_use]
     #[derive(Clone, PartialEq, Eq)]
     pub enum NodeIdTyped {
         /// Root id
@@ -112,6 +113,7 @@ shared::wrapper_enum! {
         Child(NodeId<Child>),
     }
     /// Typed [`NodePath`]
+    #[must_use]
     #[derive(Clone, PartialEq, Eq, Hash)]
     pub enum NodePathTyped {
         /// Root path
@@ -249,7 +251,6 @@ impl<T: Type> NodePath<T> {
 }
 impl NodePath<Child> {
     /// Returns the parent path sequence (if it exists) and the last path element
-    #[must_use]
     pub fn into_parent(self) -> (NodePathTyped, NodePathElem) {
         let mut parts = self.into_elems();
         let last_elem = parts.pop().expect("NodePath<Child> is not empty");

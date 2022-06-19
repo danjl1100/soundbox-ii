@@ -19,7 +19,7 @@ use clap::Parser;
 use std::io::{stdin, BufRead};
 
 use arg_split::ArgSplit;
-use sequencer::{DebugItemSource, Sequencer};
+use sequencer::{DebugItemSource, Error, Sequencer};
 
 const COMMAND_NAME: &str = "sequencer";
 
@@ -95,12 +95,12 @@ impl Cli {
                 Ok(Args { command: Some(cmd) }) => {
                     let result = self.exec_command(cmd);
                     if let Err(e) = result {
-                        eprintln!("ERROR: {:?}", e);
+                        eprintln!("ERROR: {e:?}");
                     }
                 }
                 Ok(Args { command: None }) => continue,
                 Err(clap_err) => {
-                    eprintln!("unrecognized command: {}", clap_err);
+                    eprintln!("{clap_err}");
                     continue;
                 }
             }
@@ -108,7 +108,7 @@ impl Cli {
         eprintln!("<<STDIN EOF>>");
         Ok(())
     }
-    fn exec_command(&mut self, command: Command) -> Result<(), CommandError> {
+    fn exec_command(&mut self, command: Command) -> Result<(), Error> {
         match command {
             Command::Quit => {}
             Command::Show { license } => match license {
@@ -126,12 +126,11 @@ impl Cli {
                 parent_path,
                 filename,
             } => {
-                let add_result = if let Some(filename) = filename {
-                    self.sequencer.add_terminal_node(&parent_path, filename)
+                let node_path = if let Some(filename) = filename {
+                    self.sequencer.add_terminal_node(&parent_path, filename)?
                 } else {
-                    self.sequencer.add_node(&parent_path)
+                    self.sequencer.add_node(&parent_path)?
                 };
-                let node_path = add_result.map_err(CommandError::from)?;
                 println!("added node {node_path}");
             }
             Command::Remove { .. } => {
@@ -140,14 +139,6 @@ impl Cli {
             }
         }
         Ok(())
-    }
-}
-
-shared::wrapper_enum! {
-    #[derive(Debug)]
-    enum CommandError {
-        Serde(serde_json::Error),
-        Sequencer(sequencer::Error),
     }
 }
 
