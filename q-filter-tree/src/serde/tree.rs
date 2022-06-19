@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use crate::id::{ty, NodePath, NodePathTyped};
+use crate::id::{ty, NodeIdTyped, NodePath, NodePathTyped};
 use crate::node::meta::NodeInfo;
 use crate::{Tree, Weight};
 
@@ -20,9 +20,8 @@ where
         let node_count = self.sum_node_count();
         let mut map = serializer.serialize_map(Some(node_count))?;
         for (node_id, node) in self.enumerate() {
-            let node_path = NodePathTyped::from(node_id);
             let node_info = NodeInfo::from((*node).clone());
-            map.serialize_entry(&node_path, &node_info)?;
+            map.serialize_entry(&node_id, &node_info)?;
         }
         map.end()
     }
@@ -62,10 +61,9 @@ where
         let mut weights_root: Vec<Option<Weight>> = vec![];
         let mut weights_children: HashMap<NodePath<ty::Child>, _> = HashMap::new();
 
-        while let Some((node_path, node_info)) =
-            access.next_entry::<NodePathTyped, NodeInfo<T, F>>()?
-        {
-            let (child_weights, _seq, info_intrinsic) = node_info.into();
+        while let Some((node_id, node_info)) = access.next_entry::<NodeIdTyped, NodeInfo<T, F>>()? {
+            let node_path = NodePathTyped::from(node_id);
+            let (child_weights, info_intrinsic) = node_info.into();
 
             // insert Node (if root, create tree)
             match (&node_path, &mut tree) {

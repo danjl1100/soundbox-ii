@@ -12,7 +12,7 @@ pub(crate) const ROOT: NodeId<Root> = NodeId {
 pub type NodePathElem = usize;
 
 pub use sequence::Sequence;
-pub(crate) use sequence::SequenceSource;
+pub(crate) use sequence::{Keeper, SequenceSource};
 mod sequence {
     use super::{ty, NodeId};
 
@@ -33,6 +33,13 @@ mod sequence {
 
     /// Opaque wrapper of a Sequence (to allow storing, and re-use)
     pub struct Keeper(Sequence);
+    impl Keeper {
+        /// Converts a number to a "trusted" Sequence (for use with user input)
+        // Long name is itentional, to discourage use where a trusted [`SequenceSource`] is available
+        pub(crate) fn assert_valid_sequence_from_user(num: Sequence) -> Self {
+            Self(num)
+        }
+    }
     impl SequenceSource for Keeper {
         fn sequence(&self) -> Sequence {
             self.0
@@ -163,6 +170,24 @@ impl<'a> NodePathRefTyped<'a> {
         }
     }
 }
+impl<'a> std::ops::Deref for NodePathRefTyped<'a> {
+    type Target = [NodePathElem];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Root(path) => path.elems(),
+            Self::Child(path) => path.elems(),
+        }
+    }
+}
+impl SequenceSource for NodeIdTyped {
+    fn sequence(&self) -> Sequence {
+        match self {
+            Self::Root(node_id) => node_id.sequence(),
+            Self::Child(node_id) => node_id.sequence(),
+        }
+    }
+}
 
 /// Unique identifier for a node in the [`Tree`](`super::Tree`)
 #[allow(clippy::module_name_repetitions)]
@@ -269,6 +294,22 @@ impl From<NodeIdTyped> for NodePathTyped {
         match node_id {
             NodeIdTyped::Root(node_id) => NodePath::from(node_id).into(),
             NodeIdTyped::Child(node_id) => NodePath::from(node_id).into(),
+        }
+    }
+}
+impl<'a> From<&'a NodeIdTyped> for NodePathRefTyped<'a> {
+    fn from(node_id: &'a NodeIdTyped) -> Self {
+        match node_id {
+            NodeIdTyped::Root(node_id) => (&**node_id).into(),
+            NodeIdTyped::Child(node_id) => (&**node_id).into(),
+        }
+    }
+}
+impl<'a> From<&'a NodePathTyped> for NodePathRefTyped<'a> {
+    fn from(node_path: &'a NodePathTyped) -> Self {
+        match node_path {
+            NodePathTyped::Root(node_path) => node_path.into(),
+            NodePathTyped::Child(node_path) => node_path.into(),
         }
     }
 }

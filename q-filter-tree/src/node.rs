@@ -118,10 +118,10 @@ impl<T, F> Children<T, F> {
             Self::Items(_) => 0,
         }
     }
-    pub(crate) fn is_empty_nodes(&self) -> bool {
+    pub(crate) fn get_nodes(&self) -> Option<&OrderVec<Node<T, F>>> {
         match self {
-            Self::Chain(chain) => chain.nodes.is_empty(),
-            Self::Items(_) => true,
+            Self::Chain(chain) => Some(&chain.nodes),
+            Self::Items(_) => None,
         }
     }
 }
@@ -182,7 +182,15 @@ impl<T, F> Chain<T, F> {
         sequence: &S,
     ) -> Result<RemoveResult<T, F, NodePathElem>, NodePathElem> {
         let (_, child) = self.nodes.get(path_elem).ok_or(path_elem)?;
-        let remove_result = if child.children.is_empty_nodes() {
+        let (is_terminal, has_children) = {
+            let nodes = child.children.get_nodes();
+            let is_terminal = nodes.is_none();
+            let has_children = nodes.map_or(false, |n| !n.is_empty());
+            (is_terminal, has_children)
+        };
+        let remove_result = if has_children {
+            Err(RemoveError::NonEmpty(path_elem))
+        } else {
             let child_sequence = child.sequence();
             if child_sequence == sequence.sequence() {
                 Ok(self
@@ -190,16 +198,16 @@ impl<T, F> Chain<T, F> {
                     .ref_mut()
                     .remove(path_elem)
                     .map(|(weight, node)| {
-                        let (child_weights, _seq, info_intrinsic) = NodeInfo::from(node).into();
-                        assert!(child_weights.is_empty());
+                        let (child_weights, info_intrinsic) = NodeInfo::from(node).into();
+                        if !is_terminal {
+                            assert!(child_weights.is_empty());
+                        }
                         (weight, info_intrinsic)
                     })
                     .expect("node at index exists just after getting some"))
             } else {
                 Err(RemoveError::SequenceMismatch(path_elem, child_sequence))
             }
-        } else {
-            Err(RemoveError::NonEmpty(path_elem))
         };
         Ok(remove_result)
     }
@@ -265,10 +273,10 @@ pub(crate) mod meta {
     /// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
     #[must_use]
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub(crate) struct NodeInfo<T, F>(Vec<Weight>, Sequence, NodeInfoIntrinsic<T, F>);
-    impl<T, F> From<NodeInfo<T, F>> for (Vec<Weight>, Sequence, NodeInfoIntrinsic<T, F>) {
+    pub(crate) struct NodeInfo<T, F>(Vec<Weight>, NodeInfoIntrinsic<T, F>);
+    impl<T, F> From<NodeInfo<T, F>> for (Vec<Weight>, NodeInfoIntrinsic<T, F>) {
         fn from(node_info: NodeInfo<T, F>) -> Self {
-            (node_info.0, node_info.1, node_info.2)
+            (node_info.0, node_info.1)
         }
     }
     impl<T, F> From<Node<T, F>> for NodeInfo<T, F> {
@@ -277,7 +285,7 @@ pub(crate) mod meta {
                 children,
                 queue,
                 filter,
-                sequence,
+                sequence: _,
             } = node;
             match children {
                 Children::Chain(Chain { nodes }) => {
@@ -287,7 +295,7 @@ pub(crate) mod meta {
                         filter,
                         order,
                     };
-                    Self(weights, sequence, info_intrinsic)
+                    Self(weights, info_intrinsic)
                 }
                 Children::Items(items) => {
                     let (order, (weights, items)) = items.into_parts();
@@ -296,7 +304,7 @@ pub(crate) mod meta {
                         filter,
                         order,
                     };
-                    Self(weights, sequence, info_intrinsic)
+                    Self(weights, info_intrinsic)
                 }
             }
         }

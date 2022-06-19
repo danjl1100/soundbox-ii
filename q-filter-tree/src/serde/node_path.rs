@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use crate::id::{NodePathElem, NodePathTyped};
+use crate::id::{NodePathElem, NodePathRefTyped, NodePathTyped};
 
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
 use serde::ser::{Serialize, Serializer};
@@ -8,29 +8,49 @@ use std::str::FromStr;
 impl NodePathTyped {
     const DELIM: &'static str = ".";
     const START_DELIM: &'static str = Self::DELIM;
+    pub(super) const SERIALIZED_DESCRIPTION: &'static str =
+        "string of dot-separated uints (path elements)";
 }
-impl std::fmt::Display for NodePathTyped {
+// NOTE: Serialize defined on `NodePathRefTyped` as lowest-common-denominator
+// for both `NodePathTyped` and `NodeIdTyped` to benefit.
+impl<'a> std::fmt::Display for NodePathRefTyped<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", Self::START_DELIM)?;
+        let start_delim = NodePathTyped::START_DELIM;
+        let delim = NodePathTyped::DELIM;
+        write!(f, "{start_delim}")?;
         let mut first = true;
-        for elem in self.elems() {
+        for elem in &**self {
             if first {
-                write!(f, "{}", elem)?;
+                write!(f, "{elem}")?;
             } else {
-                write!(f, "{}{}", Self::DELIM, elem)?;
+                write!(f, "{delim}{elem}")?;
             }
             first = false;
         }
         Ok(())
     }
 }
-
+impl<'a> Serialize for NodePathRefTyped<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(&format_args!("{self}"))
+    }
+}
+// Inherit Display/Serialize from `NodePathRefTyped`
+impl std::fmt::Display for NodePathTyped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let r = NodePathRefTyped::from(self);
+        write!(f, "{r}")
+    }
+}
 impl Serialize for NodePathTyped {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        serializer.collect_str(&format_args!("{}", &self))
+        NodePathRefTyped::from(self).serialize(serializer)
     }
 }
 
@@ -46,7 +66,7 @@ struct NodePathVisitor;
 impl<'de> Visitor<'de> for NodePathVisitor {
     type Value = NodePathTyped;
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("string of comma separated uints (path elements)")
+        formatter.write_str(NodePathTyped::SERIALIZED_DESCRIPTION)
     }
     fn visit_str<E: Error>(self, v: &str) -> Result<Self::Value, E> {
         NodePathTyped::from_str(v).map_err(|e| E::custom(e.to_string()))
@@ -71,7 +91,7 @@ impl FromStr for NodePathTyped {
                 // parse int
                 .map(|elem| {
                     NodePathElem::from_str(elem)
-                        .map_err(|err| ParseError::InvalidInt(err, elem.to_owned()))
+                        .map_err(|err| ParseError::InvalidPathInt(err, elem.to_owned()))
                 })
                 .collect::<Result<Vec<NodePathElem>, _>>(),
         };
@@ -80,18 +100,17 @@ impl FromStr for NodePathTyped {
 }
 pub enum ParseError {
     MissingStartDelimiter,
-    InvalidInt(std::num::ParseIntError, String),
+    InvalidPathInt(std::num::ParseIntError, String),
 }
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::MissingStartDelimiter => write!(
-                f,
-                "missing start delimiter \"{}\"",
-                NodePathTyped::START_DELIM
-            ),
-            Self::InvalidInt(_, fail_elem_str) => {
-                write!(f, "invalid path element \"{}\"", fail_elem_str)
+            Self::MissingStartDelimiter => {
+                let start_delim = NodePathTyped::START_DELIM;
+                write!(f, "missing start delimiter \"{start_delim}\"")
+            }
+            Self::InvalidPathInt(_, fail_elem_str) => {
+                write!(f, "invalid path element \"{fail_elem_str}\"")
             }
         }
     }

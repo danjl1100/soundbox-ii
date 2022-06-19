@@ -1,19 +1,13 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use q_filter_tree::{
-    id::{ty, NodePath, NodePathTyped},
-    Tree,
+    id::{ty, NodeId, NodeIdTyped, NodePath, NodePathTyped},
+    NodeInfo, Tree,
 };
 use serde_json::Result;
 
-fn empty_node(seq: usize) -> String {
-    format!(r#"[[],{seq},{{"queue":[],"filter":null,"order":"InOrder"}}]"#)
-}
-fn one_child(seq: usize) -> String {
-    format!(r#"[[0],{seq},{{"queue":[],"filter":null,"order":"InOrder"}}]"#)
-}
-fn five_child(seq: usize) -> String {
-    format!(r#"[[0,0,0,0,0],{seq},{{"queue":[],"filter":null,"order":"InOrder"}}]"#)
-}
+const EMPTY_NODE: &str = r#"[[],{"queue":[],"filter":null,"order":"InOrder"}]"#;
+const ONE_CHILD: &str = r#"[[0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
+const FIVE_CHILD: &str = r#"[[0,0,0,0,0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
 #[test]
 fn simple_serialize() -> Result<()> {
     let mut t: Tree<(), ()> = Tree::new();
@@ -27,9 +21,9 @@ fn simple_serialize() -> Result<()> {
     assert_eq!(
         json_str,
         format!(
-            r#"{{".":{ONE},".0":{EMPTY}}}"#,
-            ONE = one_child(0),
-            EMPTY = empty_node(1),
+            r#"{{".#0":{ONE},".0#1":{EMPTY}}}"#,
+            EMPTY = EMPTY_NODE,
+            ONE = ONE_CHILD
         )
     );
     Ok(())
@@ -65,15 +59,10 @@ fn complex_serialize() -> Result<()> {
     assert_eq!(
         json_str,
         format!(
-            r#"{{".":{ONE_0},".0":{FIVE_1},".0.0":{EMPTY_2},".0.1":{EMPTY_3},".0.2":{EMPTY_4},".0.3":{ONE_5},".0.3.0":{EMPTY_7},".0.4":{EMPTY_6}}}"#,
-            ONE_0 = one_child(0),
-            ONE_5 = one_child(5),
-            FIVE_1 = five_child(1),
-            EMPTY_2 = empty_node(2),
-            EMPTY_3 = empty_node(3),
-            EMPTY_4 = empty_node(4),
-            EMPTY_6 = empty_node(6),
-            EMPTY_7 = empty_node(7),
+            r#"{{".#0":{ONE},".0#1":{FIVE},".0.0#2":{EMPTY},".0.1#3":{EMPTY},".0.2#4":{EMPTY},".0.3#5":{ONE},".0.3.0#7":{EMPTY},".0.4#6":{EMPTY}}}"#,
+            EMPTY = EMPTY_NODE,
+            ONE = ONE_CHILD,
+            FIVE = FIVE_CHILD
         )
     );
     Ok(())
@@ -83,27 +72,24 @@ fn complex_serialize() -> Result<()> {
 fn simple_deserialize() -> Result<()> {
     let tree_json = r#"
         {
-          ".": [
+          ".#0": [
             [ 1 ],
-            0,
             {
               "queue": [],
               "filter": null,
               "order": "InOrder"
             }
           ],
-          ".0": [
+          ".0#0": [
             [ 0 ],
-            0,
             {
               "queue": [],
               "filter": null,
               "order": "InOrder"
             }
           ],
-          ".0.0": [
+          ".0.0#0": [
             [],
-            0,
             {
               "queue": ["Alfalfa", "Oats"],
               "filter": null,
@@ -142,48 +128,56 @@ fn unwrap_child_path(typed: NodePathTyped) -> NodePath<ty::Child> {
         }
     }
 }
+fn unwrap_child_id(typed: NodeIdTyped) -> NodeId<ty::Child> {
+    match typed {
+        NodeIdTyped::Child(id) => id,
+        NodeIdTyped::Root(_) => {
+            panic!("incorrect type on parsed NodeIdTyped: {:#?}", typed)
+        }
+    }
+}
 
 #[test]
 fn complex_deserialize() -> Result<()> {
     let tree_json = r#"
     {
-      ".": [ [0], 0, {
+      ".#0": [ [0], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0": [ [0,0,0,0,0], 0, {
+      ".0#1": [ [0,0,0,0,0], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0.0": [ [], 0, {
+      ".0.0#2": [ [], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0.1": [ [], 0, {
+      ".0.1#3": [ [], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0.2": [ [], 0, {
+      ".0.2#4": [ [], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0.3": [ [0], 0, {
+      ".0.3#5": [ [0], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0.3.0": [ [], 0, {
+      ".0.3.0#6": [ [], {
         "queue": [],
         "filter": null,
         "order": "InOrder"
       }],
-      ".0.4": [ [], 0, {
-        "queue": ["ping","pong"],
+      ".0.4#7": [ [], {
+        "items": ["ping", "pong"],
         "filter": null,
         "order": "InOrder"
       }]
@@ -230,7 +224,30 @@ fn complex_deserialize() -> Result<()> {
         let mut child4_ref = child4_path.try_ref(&mut t).expect("child4 exists");
         child4_ref.set_weight(1);
     }
-    assert_eq!(t.pop_item_queued(), Some("ping"));
-    assert_eq!(t.pop_item_queued(), Some("pong"));
+    for _ in 0..100 {
+        assert_eq!(t.pop_item(), Some("ping"));
+        assert_eq!(t.pop_item(), Some("pong"));
+    }
+
+    // remove ping/pong node
+    assert_eq!(t.sum_node_count(), 8);
+    assert_eq!(t.pop_item(), Some("ping"));
+    assert_eq!(t.pop_item(), Some("pong"));
+    {
+        let child4_id = unwrap_child_id(serde_json::from_str("\".0.4#7\"")?);
+        let (weight, node_info) = t
+            .remove_node(&child4_id)
+            .expect("child4 exists")
+            .expect("child4 remove succeeds");
+        assert_eq!(weight, 1);
+        match node_info {
+            NodeInfo::Items { items, .. } => assert_eq!(items, vec!["ping", "pong"]),
+            other => panic!("unexpected node_info from removed: {other:?}"),
+        }
+    }
+    assert_eq!(t.sum_node_count(), 7);
+    assert_eq!(t.pop_item(), None);
+    assert_eq!(t.pop_item(), None);
+
     Ok(())
 }
