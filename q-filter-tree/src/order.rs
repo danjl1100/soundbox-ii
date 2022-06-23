@@ -7,6 +7,7 @@
 //!
 //! Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
 //! ```
+//! use std::borrow::Cow;
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
@@ -29,19 +30,20 @@
 //! childC_ref.push_item("C3");
 //! //
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
-//! assert_eq!(root_ref.pop_item_queued(), Some("A1"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("A2"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("B1"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("C1"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("C2"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("C3"));
-//! assert_eq!(root_ref.pop_item_queued(), None);
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A1")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A2")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("B1")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C1")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C2")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C3")));
+//! assert_eq!(root_ref.pop_item(), None);
 //! ```
 //!
 //! 2. [`Type::RoundRobin`]
 //!
 //! Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
 //! ```
+//! use std::borrow::Cow;
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
@@ -64,13 +66,13 @@
 //! childC_ref.push_item("C3");
 //! //
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
-//! assert_eq!(root_ref.pop_item_queued(), Some("A1"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("B1"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("C1"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("A2"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("C2"));
-//! assert_eq!(root_ref.pop_item_queued(), Some("C3"));
-//! assert_eq!(root_ref.pop_item_queued(), None);
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A1")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("B1")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C1")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A2")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C2")));
+//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C3")));
+//! assert_eq!(root_ref.pop_item(), None);
 //! ```
 //!
 //! 3. [`Type::Shuffle`]
@@ -105,7 +107,7 @@
 //! let mut root_ref = root.try_ref(&mut t).unwrap();
 //! let mut popped = vec![];
 //! for _ in 0..6 {
-//!     popped.push(root_ref.pop_item_queued().unwrap());
+//!     popped.push(root_ref.pop_item().unwrap().into_owned());
 //! }
 //! // non-deterministic ordering of `popped`, so instead
 //! // check some properties of `popped`

@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::{collections::VecDeque, iter::FromIterator};
+use std::{borrow::Cow, collections::VecDeque, iter::FromIterator};
 
 use q_filter_tree::{error::RemoveError, NodeInfo, OrderType, Tree};
 #[test]
@@ -15,9 +15,9 @@ fn creates_single() {
         root_ref.push_item(i);
     }
     for i in 0..N {
-        assert_eq!(root_ref.pop_item_queued(), Some(i));
+        assert_eq!(root_ref.pop_item(), Some(Cow::Owned(i)));
     }
-    assert_eq!(root_ref.pop_item_queued(), None);
+    assert_eq!(root_ref.pop_item(), None);
     // filter
     let root_filter = &mut root_ref.filter;
     assert_eq!(*root_filter, None);
@@ -50,28 +50,19 @@ fn two_nodes() {
     }
     for i in 0..N {
         assert_eq!(
-            child
-                .try_ref(&mut t)
-                .expect("child exists")
-                .pop_item_queued(),
-            Some(i)
+            child.try_ref(&mut t).expect("child exists").pop_item(),
+            Some(Cow::Owned(i))
         );
         assert_eq!(
-            root.try_ref(&mut t).expect("root exists").pop_item_queued(),
-            Some(i + 500)
+            root.try_ref(&mut t).expect("root exists").pop_item(),
+            Some(Cow::Owned(i + 500))
         );
     }
     assert_eq!(
-        child
-            .try_ref(&mut t)
-            .expect("child exists")
-            .pop_item_queued(),
+        child.try_ref(&mut t).expect("child exists").pop_item(),
         None
     );
-    assert_eq!(
-        root.try_ref(&mut t).expect("root exists").pop_item_queued(),
-        None
-    );
+    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
 }
 #[test]
 fn node_pop_chain() {
@@ -92,19 +83,19 @@ fn node_pop_chain() {
         child2_ref.push_item(i);
     }
     // verify child2 pop
-    assert_eq!(child2_ref.pop_item_queued(), Some(0));
-    assert_eq!(child2_ref.pop_item_queued(), Some(1));
+    assert_eq!(child2_ref.pop_item(), Some(Cow::Owned(0)));
+    assert_eq!(child2_ref.pop_item(), Some(Cow::Owned(1)));
     // verify child1 not popping
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
-    assert_eq!(child1_ref.pop_item_queued(), None);
+    assert_eq!(child1_ref.pop_item(), None);
     // allow child1 <- child2
     let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
     child2_ref.set_weight(1);
     // verify child1 chain from child2
     let mut child1_ref = child1.try_ref(&mut t).expect("child2 exists");
-    assert_eq!(child1_ref.pop_item_queued(), Some(2));
-    assert_eq!(child1_ref.pop_item_queued(), Some(3));
-    assert_eq!(child1_ref.pop_item_queued(), None);
+    assert_eq!(child1_ref.pop_item(), Some(Cow::Owned(2)));
+    assert_eq!(child1_ref.pop_item(), Some(Cow::Owned(3)));
+    assert_eq!(child1_ref.pop_item(), None);
 }
 #[test]
 fn node_removal() {
@@ -144,8 +135,8 @@ fn node_removal() {
     base.try_ref(&mut t).expect("base exists").set_weight(1);
     child4.try_ref(&mut t).expect("child4 exists").set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item_queued(), Some(0));
-    assert_eq!(root_ref.pop_item_queued(), Some(1));
+    assert_eq!(root_ref.pop_item(), Some(Cow::Owned(0)));
+    assert_eq!(root_ref.pop_item(), Some(Cow::Owned(1)));
     // this is enforced by the compiler, now!
     // // fails - remove root
     // assert_eq!(
@@ -207,5 +198,5 @@ fn node_removal() {
     );
     // verify root pop empty
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item_queued(), None);
+    assert_eq!(root_ref.pop_item(), None);
 }

@@ -30,6 +30,8 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use std::borrow::Cow;
+
 use error::InvalidNodePath;
 pub mod error;
 
@@ -87,8 +89,8 @@ fn tree_add_to_doc_tests() {
         .push_item("banana");
     //
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    assert_eq!(root_ref.pop_item_queued(), Some("banana"));
-    assert_eq!(root_ref.pop_item_queued(), None);
+    assert_eq!(root_ref.pop_item(), Some(Cow::Owned("banana")));
+    assert_eq!(root_ref.pop_item(), None);
     // unblock "child_blocked"
     child_blocked
         .try_ref(&mut tree)
@@ -100,14 +102,15 @@ fn tree_add_to_doc_tests() {
         .expect("child_unblocked exists")
         .push_item("cashews");
     let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-    assert_eq!(root_ref.pop_item_queued(), Some("apple"));
-    assert_eq!(root_ref.pop_item_queued(), Some("cashews"));
-    assert_eq!(root_ref.pop_item_queued(), None);
+    assert_eq!(root_ref.pop_item(), Some(Cow::Owned("apple")));
+    assert_eq!(root_ref.pop_item(), Some(Cow::Owned("cashews")));
+    assert_eq!(root_ref.pop_item(), None);
 }
 /// Tree data structure, consisting of nodes with queues of items `T`, filter `F`
 ///
 /// # Example
 /// ```
+/// use std::borrow::Cow;
 /// use q_filter_tree::{Tree, error::PopError};
 /// let mut tree: Tree<_, _> = Tree::new();
 /// let root = tree.root_id();
@@ -129,8 +132,8 @@ fn tree_add_to_doc_tests() {
 ///     .push_item("banana");
 /// //
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-/// assert_eq!(root_ref.pop_item_queued(), Some("banana"));
-/// assert_eq!(root_ref.pop_item_queued(), None);
+/// assert_eq!(root_ref.pop_item(), Some(Cow::Owned("banana")));
+/// assert_eq!(root_ref.pop_item(), None);
 /// // unblock "child_blocked"
 /// child_blocked
 ///     .try_ref(&mut tree)
@@ -142,9 +145,9 @@ fn tree_add_to_doc_tests() {
 ///     .expect("child_unblocked exists")
 ///     .push_item("cashews");
 /// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
-/// assert_eq!(root_ref.pop_item_queued(), Some("apple"));
-/// assert_eq!(root_ref.pop_item_queued(), Some("cashews"));
-/// assert_eq!(root_ref.pop_item_queued(), None);
+/// assert_eq!(root_ref.pop_item(), Some(Cow::Borrowed(&"apple")));
+/// assert_eq!(root_ref.pop_item(), Some(Cow::Borrowed(&"cashews")));
+/// assert_eq!(root_ref.pop_item(), None);
 /// ```
 ///
 #[derive(Debug)]
@@ -159,7 +162,7 @@ impl<T, F> Tree<T, F> {
         Self::new_with_root(node::meta::NodeInfoIntrinsic::default())
     }
     /// Creates a tree with the specified root info
-    pub fn new_with_root(node_info: node::meta::NodeInfoIntrinsic<T, F>) -> Self {
+    pub(crate) fn new_with_root(node_info: node::meta::NodeInfoIntrinsic<T, F>) -> Self {
         let (root, sequence_counter) = node_info.construct_root();
         Tree {
             root,
@@ -202,16 +205,10 @@ impl<T, F> Tree<T, F> {
     pub fn sum_node_count(&self) -> usize {
         self.root.children.sum_node_count()
     }
-    /// Pops an item from child node queues only (ignores items-leaf nodes)
-    ///
-    /// See: [`Self::pop_item`] for including items-leaf items for when `T: Copy`
-    pub fn pop_item_queued(&mut self) -> Option<T> {
-        self.root.pop_item_queued()
-    }
 }
-impl<T: Copy, F> Tree<T, F> {
-    /// Removes items from node queues, and finally copies from items-leaf node
-    pub fn pop_item(&mut self) -> Option<T> {
+impl<T: Clone, F> Tree<T, F> {
+    /// Pops items from node queues, or if no queue is available, returns references from item-nodes
+    pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
         self.root.pop_item()
     }
 }
@@ -224,6 +221,7 @@ impl<T, F> Default for Tree<T, F> {
 #[cfg(test)]
 mod tests {
     use crate::{OrderType, Tree};
+    use std::borrow::Cow;
     #[test]
     fn simplest_items() {
         let mut tree: Tree<_, ()> = Tree::new();
@@ -232,19 +230,19 @@ mod tests {
         assert_eq!(root_ref.get_order_type(), OrderType::InOrder);
         root_ref.set_child_items_uniform(vec!["hey", "this", "is"]);
         for _ in 0..200 {
-            assert_eq!(tree.pop_item(), Some("hey"));
-            assert_eq!(tree.pop_item(), Some("this"));
-            assert_eq!(tree.pop_item(), Some("is"));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("hey")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("this")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("is")));
         }
         let mut root_ref = root.try_ref(&mut tree).expect("root exists");
         root_ref.push_item("special");
         root_ref.push_item("item");
-        assert_eq!(tree.pop_item(), Some("special"));
-        assert_eq!(tree.pop_item(), Some("item"));
+        assert_eq!(tree.pop_item(), Some(Cow::Owned("special")));
+        assert_eq!(tree.pop_item(), Some(Cow::Owned("item")));
         for _ in 0..200 {
-            assert_eq!(tree.pop_item(), Some("hey"));
-            assert_eq!(tree.pop_item(), Some("this"));
-            assert_eq!(tree.pop_item(), Some("is"));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("hey")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("this")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("is")));
         }
     }
     #[test]
@@ -283,21 +281,21 @@ mod tests {
         child_c_ref.set_child_items_uniform(vec!["cc1", "cc2"]);
         //
         for _ in 0..100 {
-            assert_eq!(tree.pop_item(), Some("aa1"));
-            assert_eq!(tree.pop_item(), Some("bb1"));
-            assert_eq!(tree.pop_item(), Some("cc1"));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa1")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("bb1")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc1")));
             //
-            assert_eq!(tree.pop_item(), Some("aa2"));
-            assert_eq!(tree.pop_item(), Some("bz1"));
-            assert_eq!(tree.pop_item(), Some("cc2"));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa2")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("bz1")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc2")));
             //
-            assert_eq!(tree.pop_item(), Some("aa1"));
-            assert_eq!(tree.pop_item(), Some("bb2"));
-            assert_eq!(tree.pop_item(), Some("cc1"));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa1")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("bb2")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc1")));
             //
-            assert_eq!(tree.pop_item(), Some("aa2"));
-            assert_eq!(tree.pop_item(), Some("bz2"));
-            assert_eq!(tree.pop_item(), Some("cc2"));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa2")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("bz2")));
+            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc2")));
         }
     }
 }

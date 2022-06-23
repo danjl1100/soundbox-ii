@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::collections::VecDeque;
+use std::{borrow::Cow, collections::VecDeque};
 
 use crate::{
     error::{InvalidNodePath, RemoveError},
@@ -38,22 +38,80 @@ impl<T, F> Node<T, F> {
     pub fn push_item(&mut self, item: T) {
         self.queue.push_back(item);
     }
-    /// Pops an item from self-queue only
-    ///
-    /// See: [`pop_item`] or [`pop_item_queued`]
-    pub(crate) fn pop_only_from_self(&mut self) -> Option<T> {
-        self.queue.pop_front()
+}
+impl<T: Clone, F> Node<T, F> {
+    /// Pops an item from child node queues (if available) then references items
+    pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
+        // 1) search Node for path to:
+        //    1.a) Node X has queued item (Owned)
+        //    1.b) Node X has an item to (Borrowed)
+        self.find_reverse_path_to_pop().map(|path| {
+            // 2) retrieve the Owned or Borrowed item from the specified node
+            self.pop_at_reverse_path(&path)
+        })
+        // This all occurs in one `&mut self` function, so no intermediate access can occur.
     }
-    /// Pops an item from child node queues only (ignores items-leaf nodes)
-    // ///
-    // /// See: [`pop_item`] for including items-leaf items for when `T: Copy`
-    pub fn pop_item_queued(&mut self) -> Option<T> {
-        self.pop_only_from_self()
-            .or_else(|| match &mut self.children {
-                Children::Chain(chain) => chain.find_next_item_queued(),
-                Children::Items(_) => None,
-            })
+    fn find_reverse_path_to_pop(&mut self) -> Option<Vec<NodePathElem>> {
+        const INVALID_INDEX: &str = "valid index from next_index";
+        if self.queue.is_empty() {
+            match &mut self.children {
+                Children::Items(items) if items.is_empty() => None,
+                Children::Items(_) => Some(vec![]),
+                Children::Chain(chain) => {
+                    let nodes = &mut chain.nodes;
+                    let mut nodes_visited = vec![Some(()); nodes.len()];
+                    loop {
+                        let node_index = nodes.next_index()?;
+                        // base case - return `None` if node already visited
+                        nodes_visited
+                            .get_mut(node_index)
+                            .expect(INVALID_INDEX)
+                            .take()?;
+                        //
+                        let node = nodes.get_elem_mut(node_index).expect(INVALID_INDEX);
+                        if let Some(mut path) = node.find_reverse_path_to_pop() {
+                            path.push(node_index);
+                            break Some(path);
+                        }
+                    }
+                }
+            }
+        } else {
+            // queue has elems, path="THIS"
+            Some(vec![])
+        }
     }
+    fn pop_at_reverse_path(&mut self, reverse_path: &[NodePathElem]) -> Cow<'_, T> {
+        if let Some((child_index, remainder)) = reverse_path.split_last() {
+            match &mut self.children {
+                Children::Chain(chain) => {
+                    let child = chain
+                        .nodes
+                        .get_elem_mut(*child_index)
+                        .expect("attempt to pop from a path descendent outside of range");
+                    child.pop_at_reverse_path(remainder)
+                }
+                Children::Items(_) => {
+                    unreachable!("attempt to pop from a path descendent of an items node")
+                }
+            }
+        } else if let Some(queued) = self.queue.pop_front() {
+            Cow::Owned(queued)
+        } else {
+            match &mut self.children {
+                Children::Chain(_) => unreachable!("attempt to pop at a chain node with no queue"),
+                Children::Items(items) => {
+                    let item = items
+                        .next()
+                        // Panic if the promised source of the item is `None` (logic error)
+                        .expect("attempt to pop from items node with no value");
+                    Cow::Borrowed(item)
+                }
+            }
+        }
+    }
+}
+impl<T, F> Node<T, F> {
     /// Overwrites children with the specified items (equally-weighted)
     pub fn set_child_items_uniform<I>(&mut self, items: I)
     where
@@ -73,16 +131,6 @@ impl<T, F> Node<T, F> {
     #[must_use]
     pub fn child_nodes_len(&self) -> usize {
         self.children.len_nodes()
-    }
-}
-impl<T: Copy, F> Node<T, F> {
-    /// Removes items from node queues, and finally copies from items-leaf node
-    pub(crate) fn pop_item(&mut self) -> Option<T> {
-        self.pop_only_from_self()
-            .or_else(|| match &mut self.children {
-                Children::Chain(chain) => chain.find_next_item(),
-                Children::Items(items) => items.next().copied(),
-            })
     }
 }
 impl<T, F> SequenceSource for Node<T, F> {
@@ -210,46 +258,6 @@ impl<T, F> Chain<T, F> {
             }
         };
         Ok(remove_result)
-    }
-    pub(crate) fn find_next_item_queued(&mut self) -> Option<T> {
-        self.find_next_item_using_fn(Node::pop_item_queued)
-    }
-    fn find_next_item_using_fn<U>(&mut self, mut pop_fn: U) -> Option<T>
-    where
-        U: FnMut(&mut Node<T, F>) -> Option<T>,
-    {
-        const INVALID_INDEX: &str = "valid index from next_index";
-        let first_node_index = self.nodes.next_index()?;
-        let first_node = self
-            .nodes
-            .get_elem_mut(first_node_index)
-            .expect(INVALID_INDEX);
-        if let Some(item) = pop_fn(first_node) {
-            // fast path
-            Some(item)
-        } else {
-            // search
-            let mut nodes_visited = vec![Some(()); self.nodes.len()];
-            nodes_visited[first_node_index].take();
-            loop {
-                let node_index = self.nodes.next_index()?;
-                // base case - return `None` if node already visited
-                nodes_visited
-                    .get_mut(node_index)
-                    .expect(INVALID_INDEX)
-                    .take()?;
-                //
-                let node = self.nodes.get_elem_mut(node_index).expect(INVALID_INDEX);
-                if let Some(item) = pop_fn(node) {
-                    break Some(item);
-                }
-            }
-        }
-    }
-}
-impl<T: Copy, F> Chain<T, F> {
-    pub(crate) fn find_next_item(&mut self) -> Option<T> {
-        self.find_next_item_using_fn(Node::pop_item)
     }
 }
 

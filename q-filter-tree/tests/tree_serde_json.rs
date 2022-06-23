@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use q_filter_tree::{
     id::{ty, NodeId, NodeIdTyped, NodePath, NodePathTyped},
@@ -106,17 +108,17 @@ fn simple_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(
-        root.try_ref(&mut t).expect("root exists").pop_item_queued(),
-        None
-    );
+    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
     let child = unwrap_child_path(serde_json::from_str("\".0.0\"")?);
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.set_weight(1);
     let mut root_ref = root.try_ref(&mut t).expect("root exists");
-    assert_eq!(root_ref.pop_item_queued(), Some(String::from("Alfalfa")));
-    assert_eq!(root_ref.pop_item_queued(), Some(String::from("Oats")));
-    assert_eq!(root_ref.pop_item_queued(), None);
+    assert_eq!(
+        root_ref.pop_item(),
+        Some(Cow::Owned(String::from("Alfalfa")))
+    );
+    assert_eq!(root_ref.pop_item(), Some(Cow::Owned(String::from("Oats"))));
+    assert_eq!(root_ref.pop_item(), None);
     Ok(())
 }
 
@@ -191,10 +193,7 @@ fn complex_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(
-        root.try_ref(&mut t).expect("root exists").pop_item_queued(),
-        None
-    );
+    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
     const CHILD_PATH_STRS: &[&str] = &[
         "\".0\"",
         "\".0.0\"",
@@ -210,14 +209,14 @@ fn complex_deserialize() -> Result<()> {
         assert_eq!(child_ref.filter, None);
     }
     //
-    assert_eq!(t.pop_item_queued(), None);
+    assert_eq!(t.pop_item(), None);
     {
         // un-block node "0"
         let base_path = unwrap_child_path(serde_json::from_str("\".0\"")?);
         let mut base_ref = base_path.try_ref(&mut t).expect("base exists");
         base_ref.set_weight(1);
     }
-    assert_eq!(t.pop_item_queued(), None);
+    assert_eq!(t.pop_item(), None);
     {
         // un-block node "0.4"
         let child4_path = unwrap_child_path(serde_json::from_str("\".0.4\"")?);
@@ -225,14 +224,14 @@ fn complex_deserialize() -> Result<()> {
         child4_ref.set_weight(1);
     }
     for _ in 0..100 {
-        assert_eq!(t.pop_item(), Some("ping"));
-        assert_eq!(t.pop_item(), Some("pong"));
+        assert!(matches!(t.pop_item(), Some(Cow::Borrowed(&"ping"))));
+        assert!(matches!(t.pop_item(), Some(Cow::Borrowed(&"pong"))));
     }
 
     // remove ping/pong node
     assert_eq!(t.sum_node_count(), 8);
-    assert_eq!(t.pop_item(), Some("ping"));
-    assert_eq!(t.pop_item(), Some("pong"));
+    assert_eq!(t.pop_item(), Some(Cow::Owned("ping")));
+    assert_eq!(t.pop_item(), Some(Cow::Owned("pong")));
     {
         let child4_id = unwrap_child_id(serde_json::from_str("\".0.4#7\"")?);
         let (weight, node_info) = t
