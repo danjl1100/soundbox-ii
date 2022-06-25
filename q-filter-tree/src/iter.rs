@@ -87,7 +87,7 @@ mod tests {
         let root = t.root_id();
         // \ root
         // |--  child1
-        let mut root_ref = root.try_ref(&mut t).expect("root exists");
+        let mut root_ref = root.try_ref(&mut t);
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         let child1 = root_ref.add_child_default();
         //
@@ -106,7 +106,7 @@ mod tests {
         // |--\ child1
         //    |--\ child2
         //       |-- child3
-        let mut root_ref = root.try_ref(&mut t).expect("root exists");
+        let mut root_ref = root.try_ref(&mut t);
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         //
         let child1 = root_ref.add_child_default();
@@ -133,7 +133,7 @@ mod tests {
         // \ root
         // |--  child1
         // |--  child2
-        let mut root_ref = root.try_ref(&mut t).expect("root exists");
+        let mut root_ref = root.try_ref(&mut t);
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         let child1 = root_ref.add_child_default();
         let child2 = root_ref.add_child_default();
@@ -158,7 +158,7 @@ mod tests {
         //    |--\ child4
         //       |--  child4_child
         //    |--  child5
-        let mut root_ref = root.try_ref(&mut t).expect("root exists");
+        let mut root_ref = root.try_ref(&mut t);
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         let base = root_ref.add_child_default();
         let mut base_ref = base.try_ref(&mut t).expect("base exists");
@@ -171,7 +171,7 @@ mod tests {
         let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
         let mut child4_ref = child4_ref.child_nodes().expect("child4 is chain");
         let child4_child = child4_ref.add_child_default();
-        root.try_ref(&mut t).expect("root exists").filter = Some("root");
+        root.try_ref(&mut t).filter = Some("root");
         base.try_ref(&mut t).expect("base exists").filter = Some("base");
         child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
         child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
@@ -211,7 +211,7 @@ mod tests {
         //       |--\ child4_child
         //          |--  chil4_child_child
         //    |--  child5
-        let mut root_ref = root.try_ref(&mut t).expect("root exists");
+        let mut root_ref = root.try_ref(&mut t);
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         let base = root_ref.add_child_default();
         let mut base_ref = base.try_ref(&mut t).expect("base exists");
@@ -233,7 +233,7 @@ mod tests {
             .child_nodes()
             .expect("child4_child is chain");
         let child4_child_child = child4_child_ref.add_child_default();
-        root.try_ref(&mut t).expect("root exists").filter = Some("root");
+        root.try_ref(&mut t).filter = Some("root");
         base.try_ref(&mut t).expect("base exists").filter = Some("base");
         child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
         child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
@@ -274,7 +274,7 @@ mod tests {
         // |-- child2
         // |-- child3
         // |-- child4
-        let mut root_ref = root.try_ref(&mut t).expect("root exists");
+        let mut root_ref = root.try_ref(&mut t);
         root_ref.filter = Some("root");
         let mut root_ref = root_ref.child_nodes().expect("root is chain");
         let child1 = root_ref.add_child_default();

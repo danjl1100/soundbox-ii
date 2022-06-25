@@ -11,7 +11,7 @@
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
-//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut root_ref = root.try_ref(&mut t);
 //! //
 //! root_ref.set_order_type(OrderType::InOrder);
 //! //
@@ -29,7 +29,7 @@
 //! childC_ref.push_item("C2");
 //! childC_ref.push_item("C3");
 //! //
-//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut root_ref = root.try_ref(&mut t);
 //! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A1")));
 //! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A2")));
 //! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("B1")));
@@ -47,7 +47,7 @@
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
-//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut root_ref = root.try_ref(&mut t);
 //! //
 //! root_ref.set_order_type(OrderType::RoundRobin);
 //! //
@@ -65,7 +65,7 @@
 //! childC_ref.push_item("C2");
 //! childC_ref.push_item("C3");
 //! //
-//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut root_ref = root.try_ref(&mut t);
 //! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A1")));
 //! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("B1")));
 //! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C1")));
@@ -83,7 +83,7 @@
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
 //! let mut t: Tree<_, ()> = Tree::default();
 //! let root = t.root_id();
-//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut root_ref = root.try_ref(&mut t);
 //! //
 //! root_ref.set_order_type(OrderType::Shuffle);
 //! //
@@ -104,7 +104,7 @@
 //! childC_ref.push_item("C");
 //! childC_ref.push_item("NEVER");
 //! //
-//! let mut root_ref = root.try_ref(&mut t).unwrap();
+//! let mut root_ref = root.try_ref(&mut t);
 //! let mut popped = vec![];
 //! for _ in 0..6 {
 //!     popped.push(root_ref.pop_item().unwrap().into_owned());

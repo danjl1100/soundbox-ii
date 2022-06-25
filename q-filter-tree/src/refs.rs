@@ -112,24 +112,17 @@ impl<T, F> std::ops::DerefMut for NodeRefMutWeighted<'_, '_, T, F> {
 }
 impl NodePath<ty::Root> {
     /// Returns `NodeRefMut` within the specified `Tree`
-    ///
-    /// # Errors
-    /// Returns an error if the specified `NodeId` does not point to a valid node
-    ///
-    pub fn try_ref<'tree, T, F>(
-        &self,
-        tree: &'tree mut Tree<T, F>,
-    ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
+    pub fn try_ref<'tree, T, F>(&self, tree: &'tree mut Tree<T, F>) -> NodeRefMut<'tree, '_, T, F> {
         let path = self.into();
         let Tree {
             root,
             sequence_counter,
         } = tree;
-        Ok(NodeRefMut {
+        NodeRefMut {
             node: root,
             path,
             sequence_counter,
-        })
+        }
     }
 }
 impl NodePath<ty::Child> {
@@ -172,7 +165,7 @@ impl NodePathTyped {
         tree: &'tree mut Tree<T, F>,
     ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
         match self {
-            Self::Root(path) => path.try_ref(tree),
+            Self::Root(path) => Ok(path.try_ref(tree)),
             Self::Child(path) => path.try_ref(tree).map(NodeRefMutWeighted::into_inner),
         }
     }
@@ -188,7 +181,7 @@ impl NodeIdTyped {
         tree: &'tree mut Tree<T, F>,
     ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
         match self {
-            Self::Root(id) => id.try_ref(tree),
+            Self::Root(id) => Ok(id.try_ref(tree)),
             Self::Child(id) => id.try_ref(tree).map(NodeRefMutWeighted::into_inner),
         }
     }

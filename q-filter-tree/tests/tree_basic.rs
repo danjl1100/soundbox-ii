@@ -9,7 +9,7 @@ fn creates_single() {
     // verify count
     assert_eq!(t.sum_node_count(), 1);
     // item
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     const N: usize = 10;
     for i in 0..N {
         root_ref.push_item(i);
@@ -22,7 +22,7 @@ fn creates_single() {
     let root_filter = &mut root_ref.filter;
     assert_eq!(*root_filter, None);
     *root_filter = Some(String::from("my filter"));
-    let root_ref = root.try_ref(&mut t).expect("root exists");
+    let root_ref = root.try_ref(&mut t);
     assert_eq!(&root_ref.filter, &Some(String::from("my filter")));
 }
 #[test]
@@ -30,7 +30,7 @@ fn two_nodes() {
     let mut t = Tree::new();
     let root = t.root_id();
     //
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child = root_ref.add_child_default();
     // verify count
@@ -38,38 +38,33 @@ fn two_nodes() {
     // filter
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.filter = Some(String::from("child_filter"));
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     root_ref.filter = Some(String::from("root_filter"));
     // item
     const N: usize = 5;
     for i in 0..N {
         child.try_ref(&mut t).expect("child exists").push_item(i);
-        root.try_ref(&mut t)
-            .expect("root exists")
-            .push_item(i + 500);
+        root.try_ref(&mut t).push_item(i + 500);
     }
     for i in 0..N {
         assert_eq!(
             child.try_ref(&mut t).expect("child exists").pop_item(),
             Some(Cow::Owned(i))
         );
-        assert_eq!(
-            root.try_ref(&mut t).expect("root exists").pop_item(),
-            Some(Cow::Owned(i + 500))
-        );
+        assert_eq!(root.try_ref(&mut t).pop_item(), Some(Cow::Owned(i + 500)));
     }
     assert_eq!(
         child.try_ref(&mut t).expect("child exists").pop_item(),
         None
     );
-    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
+    assert_eq!(root.try_ref(&mut t).pop_item(), None);
 }
 #[test]
 fn node_pop_chain() {
     let mut t: Tree<_, ()> = Tree::new();
     let root = t.root_id();
     //
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child1 = root_ref.add_child(0);
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
@@ -112,7 +107,7 @@ fn node_removal() {
     //    |--\ child4
     //       |--  child4_child
     //    |--  child5
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let base = root_ref.add_child_default();
     let mut base_ref = base.try_ref(&mut t).expect("base exists");
@@ -134,7 +129,7 @@ fn node_removal() {
     // verify root pop
     base.try_ref(&mut t).expect("base exists").set_weight(1);
     child4.try_ref(&mut t).expect("child4 exists").set_weight(1);
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     assert_eq!(root_ref.pop_item(), Some(Cow::Owned(0)));
     assert_eq!(root_ref.pop_item(), Some(Cow::Owned(1)));
     // this is enforced by the compiler, now!
@@ -197,6 +192,6 @@ fn node_removal() {
         )))
     );
     // verify root pop empty
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     assert_eq!(root_ref.pop_item(), None);
 }

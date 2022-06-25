@@ -15,7 +15,7 @@ fn simple_serialize() -> Result<()> {
     let mut t: Tree<(), ()> = Tree::new();
     let root = t.root_id();
     //
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let _child = root_ref.add_child(0);
     //
@@ -43,7 +43,7 @@ fn complex_serialize() -> Result<()> {
     //    |--\ child4
     //       |--  child4_child
     //    |--  child5
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let base = root_ref.add_child(0);
     let mut base_ref = base.try_ref(&mut t).expect("base exists");
@@ -108,11 +108,11 @@ fn simple_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
+    assert_eq!(root.try_ref(&mut t).pop_item(), None);
     let child = unwrap_child_path(serde_json::from_str("\".0.0\"")?);
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.set_weight(1);
-    let mut root_ref = root.try_ref(&mut t).expect("root exists");
+    let mut root_ref = root.try_ref(&mut t);
     assert_eq!(
         root_ref.pop_item(),
         Some(Cow::Owned(String::from("Alfalfa")))
@@ -193,7 +193,7 @@ fn complex_deserialize() -> Result<()> {
     );
     //
     let root = t.root_id();
-    assert_eq!(root.try_ref(&mut t).expect("root exists").pop_item(), None);
+    assert_eq!(root.try_ref(&mut t).pop_item(), None);
     const CHILD_PATH_STRS: &[&str] = &[
         "\".0\"",
         "\".0.0\"",

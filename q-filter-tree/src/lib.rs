@@ -72,7 +72,7 @@ fn tree_add_to_doc_tests() {
     let mut tree: Tree<_, _> = Tree::new();
     let root = tree.root_id();
     //
-    let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+    let mut root_ref = root.try_ref(&mut tree);
     root_ref.filter = Some("filter value".to_string());
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child_blocked = root_ref.add_child(0);
@@ -88,7 +88,7 @@ fn tree_add_to_doc_tests() {
         .expect("child exists")
         .push_item("banana");
     //
-    let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+    let mut root_ref = root.try_ref(&mut tree);
     assert_eq!(root_ref.pop_item(), Some(Cow::Owned("banana")));
     assert_eq!(root_ref.pop_item(), None);
     // unblock "child_blocked"
@@ -101,7 +101,7 @@ fn tree_add_to_doc_tests() {
         .try_ref(&mut tree)
         .expect("child_unblocked exists")
         .push_item("cashews");
-    let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+    let mut root_ref = root.try_ref(&mut tree);
     assert_eq!(root_ref.pop_item(), Some(Cow::Owned("apple")));
     assert_eq!(root_ref.pop_item(), Some(Cow::Owned("cashews")));
     assert_eq!(root_ref.pop_item(), None);
@@ -115,7 +115,7 @@ fn tree_add_to_doc_tests() {
 /// let mut tree: Tree<_, _> = Tree::new();
 /// let root = tree.root_id();
 /// //
-/// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+/// let mut root_ref = root.try_ref(&mut tree);
 /// root_ref.filter = Some("filter value".to_string());
 /// let mut root_ref = root_ref.child_nodes().expect("root is chain");
 /// let child_blocked = root_ref.add_child(0);
@@ -131,7 +131,7 @@ fn tree_add_to_doc_tests() {
 ///     .expect("child exists")
 ///     .push_item("banana");
 /// //
-/// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+/// let mut root_ref = root.try_ref(&mut tree);
 /// assert_eq!(root_ref.pop_item(), Some(Cow::Owned("banana")));
 /// assert_eq!(root_ref.pop_item(), None);
 /// // unblock "child_blocked"
@@ -144,7 +144,7 @@ fn tree_add_to_doc_tests() {
 ///     .try_ref(&mut tree)
 ///     .expect("child_unblocked exists")
 ///     .push_item("cashews");
-/// let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+/// let mut root_ref = root.try_ref(&mut tree);
 /// assert_eq!(root_ref.pop_item(), Some(Cow::Borrowed(&"apple")));
 /// assert_eq!(root_ref.pop_item(), Some(Cow::Borrowed(&"cashews")));
 /// assert_eq!(root_ref.pop_item(), None);
@@ -226,7 +226,7 @@ mod tests {
     fn simplest_items() {
         let mut tree: Tree<_, ()> = Tree::new();
         let root = tree.root_id();
-        let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+        let mut root_ref = root.try_ref(&mut tree);
         assert_eq!(root_ref.get_order_type(), OrderType::InOrder);
         root_ref.set_child_items_uniform(vec!["hey", "this", "is"]);
         for _ in 0..200 {
@@ -234,7 +234,7 @@ mod tests {
             assert_eq!(tree.pop_item(), Some(Cow::Owned("this")));
             assert_eq!(tree.pop_item(), Some(Cow::Owned("is")));
         }
-        let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+        let mut root_ref = root.try_ref(&mut tree);
         root_ref.push_item("special");
         root_ref.push_item("item");
         assert_eq!(tree.pop_item(), Some(Cow::Owned("special")));
@@ -251,7 +251,7 @@ mod tests {
         let mut tree: Tree<_, ()> = Tree::new();
         let root = tree.root_id();
         // root > child_a child_b
-        let mut root_ref = root.try_ref(&mut tree).expect("root exists");
+        let mut root_ref = root.try_ref(&mut tree);
         let mut root_ref_child_nodes = root_ref.child_nodes().expect("root is chain");
         let child_a = root_ref_child_nodes.add_child_default();
         let child_b = root_ref_child_nodes.add_child_default();
