@@ -15,8 +15,8 @@ pub struct Node<T, F> {
     pub(crate) children: Children<T, F>,
     /// Items queue polled from child nodes/items
     queue: VecDeque<T>,
-    /// Optional filter qualifier
-    pub filter: Option<F>,
+    /// Filter qualifier
+    pub filter: F,
     pub(crate) sequence: Sequence,
 }
 impl<T, F> Node<T, F> {
@@ -327,7 +327,7 @@ pub(crate) mod meta {
             /// Items queue polled from child nodes
             queue: VecDeque<T>,
             /// Filtering value
-            filter: Option<F>,
+            filter: F,
             // TODO
             // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
             // pub retain_count: usize,
@@ -339,16 +339,16 @@ pub(crate) mod meta {
             /// Items
             items: Vec<T>,
             /// Filtering value
-            filter: Option<F>,
+            filter: F,
             /// Ordering type for child items
             order: order::Type,
         },
     }
-    impl<T, F> Default for NodeInfoIntrinsic<T, F> {
+    impl<T, F: Default> Default for NodeInfoIntrinsic<T, F> {
         fn default() -> Self {
             Self::Chain {
                 queue: VecDeque::default(),
-                filter: Option::default(),
+                filter: F::default(),
                 order: order::Type::default(),
             }
         }

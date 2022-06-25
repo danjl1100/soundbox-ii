@@ -53,23 +53,28 @@ pub struct NodeChildrenRefMut<'tree, 'path, T, F> {
     path: NodePathRefTyped<'path>,
     sequence_counter: &'tree mut node::SequenceCounter,
 }
-impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
+impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F>
+where
+    F: Default,
+{
     /// Adds an empty child node, with the default weight
     pub fn add_child_default(&mut self) -> NodeId<ty::Child> {
         const DEFAULT_WEIGHT: Weight = 1;
-        self.add_child_from(DEFAULT_WEIGHT, None)
+        self.add_child_from(DEFAULT_WEIGHT, NodeInfoIntrinsic::default())
     }
     /// Adds an empty child node, with optional weight
     pub fn add_child(&mut self, weight: Weight) -> NodeId<ty::Child> {
-        self.add_child_from(weight, None)
+        self.add_child_from(weight, NodeInfoIntrinsic::default())
     }
+}
+impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
     /// Adds an empty node from the (optional) specified info, with optional weight
     pub(crate) fn add_child_from(
         &mut self,
         weight: Weight,
-        info: Option<NodeInfoIntrinsic<T, F>>,
+        info: NodeInfoIntrinsic<T, F>,
     ) -> NodeId<ty::Child> {
-        let new_child = info.unwrap_or_default().construct(self.sequence_counter);
+        let new_child = info.construct(self.sequence_counter);
         let child_path_part = self.node_children.nodes.len();
         let sequence = new_child.sequence_keeper();
         self.node_children.nodes.ref_mut().push((weight, new_child));

@@ -50,7 +50,7 @@ pub trait ItemSource {
 /// Sequencer for tracks (using [`q_filter_tree`] back-end) from text files
 #[derive(Default)]
 pub struct Sequencer<T: ItemSource> {
-    tree: Tree<<T as ItemSource>::Item, <T as ItemSource>::Arg>,
+    tree: Tree<<T as ItemSource>::Item, Option<<T as ItemSource>::Arg>>,
     item_source: T,
 }
 impl<T: ItemSource> Sequencer<T> {

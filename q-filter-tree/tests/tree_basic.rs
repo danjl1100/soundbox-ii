@@ -61,7 +61,7 @@ fn two_nodes() {
 }
 #[test]
 fn node_pop_chain() {
-    let mut t: Tree<_, ()> = Tree::new();
+    let mut t: Tree<_, Option<()>> = Tree::new();
     let root = t.root_id();
     //
     let mut root_ref = root.try_ref(&mut t);
@@ -94,7 +94,7 @@ fn node_pop_chain() {
 }
 #[test]
 fn node_removal() {
-    let mut t: Tree<_, ()> = Tree::new();
+    let mut t: Tree<_, Option<()>> = Tree::new();
     // verify count
     assert_eq!(t.sum_node_count(), 1);
     //

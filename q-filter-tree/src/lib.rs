@@ -155,12 +155,17 @@ pub struct Tree<T, F> {
     root: Node<T, F>,
     sequence_counter: node::SequenceCounter,
 }
-impl<T, F> Tree<T, F> {
+impl<T, F> Tree<T, F>
+where
+    F: Default,
+{
     /// Creates a tree with a single root node
     #[must_use]
     pub fn new() -> Self {
         Self::new_with_root(node::meta::NodeInfoIntrinsic::default())
     }
+}
+impl<T, F> Tree<T, F> {
     /// Creates a tree with the specified root info
     pub(crate) fn new_with_root(node_info: node::meta::NodeInfoIntrinsic<T, F>) -> Self {
         let (root, sequence_counter) = node_info.construct_root();
@@ -212,7 +217,10 @@ impl<T: Clone, F> Tree<T, F> {
         self.root.pop_item()
     }
 }
-impl<T, F> Default for Tree<T, F> {
+impl<T, F> Default for Tree<T, F>
+where
+    F: Default,
+{
     fn default() -> Self {
         Self::new()
     }

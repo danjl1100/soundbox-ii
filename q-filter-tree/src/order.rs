@@ -9,7 +9,7 @@
 //! ```
 //! use std::borrow::Cow;
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
-//! let mut t: Tree<_, ()> = Tree::default();
+//! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
 //! //
@@ -45,7 +45,7 @@
 //! ```
 //! use std::borrow::Cow;
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
-//! let mut t: Tree<_, ()> = Tree::default();
+//! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
 //! //
@@ -81,7 +81,7 @@
 //! `[2, 1, 0, 4]` will yield, in some **shuffled** order, two 0's, one 1, no 2's, and four 3's.
 //! ```
 //! use q_filter_tree::{Tree, error::PopError, OrderType};
-//! let mut t: Tree<_, ()> = Tree::default();
+//! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
 //! //

@@ -119,7 +119,7 @@ where
                         )));
                     }
                     if let Some(mut parent_ref) = parent_ref.child_nodes() {
-                        parent_ref.add_child_from(weight, Some(info_intrinsic));
+                        parent_ref.add_child_from(weight, info_intrinsic);
                     } else {
                         return Err(M::Error::custom(format!(
                             "parent of node {:?} is a not chain type",

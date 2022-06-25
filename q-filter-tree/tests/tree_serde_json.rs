@@ -184,7 +184,7 @@ fn complex_deserialize() -> Result<()> {
         "order": "InOrder"
       }]
     }"#;
-    let mut t: Tree<&str, ()> = serde_json::from_str(tree_json)?;
+    let mut t: Tree<&str, Option<()>> = serde_json::from_str(tree_json)?;
     //
     println!(
         "input:\n\t{}\ndeserialized to:\n\t{}",
