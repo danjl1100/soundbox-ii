@@ -10,45 +10,41 @@ impl<T, F> Tree<T, F> {
     }
     /// Creates a depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
     pub(crate) fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
-        Iter {
+        IterIdSharedRefs {
             parent_idxs: vec![],
-            tail: Some((&self.root, None)),
+            next: Some(&self.root),
         }
     }
 }
-struct Iter<'a, T, F> {
+/// Depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
+struct IterIdSharedRefs<'a, T, F> {
     /// Parent "Node and Index" pairs that lead to the tail node
     parent_idxs: Vec<(&'a Node<T, F>, NodePathElem)>,
     /// Next node to emit (with the child index to be explored)
-    tail: Option<(&'a Node<T, F>, Option<NodePathElem>)>,
+    next: Option<&'a Node<T, F>>,
 }
-impl<'a, T, F> Iter<'a, T, F> {
+impl<'a, T, F> IterIdSharedRefs<'a, T, F> {
     /// Collects `parent_idxs` into a [`NodePathTyped`]
     fn collect_parent_path(&self) -> NodePathTyped {
-        let parent_idxs = self
-            .parent_idxs
-            .iter()
-            .map(|(_, idx)| *idx)
-            .collect::<Vec<_>>();
-        NodePathTyped::from(parent_idxs)
+        self.parent_idxs.iter().map(|(_, idx)| *idx).collect()
     }
 }
-impl<'a, T, F> Iterator for Iter<'a, T, F> {
+impl<'a, T, F> Iterator for IterIdSharedRefs<'a, T, F> {
     type Item = (NodeIdTyped, &'a Node<T, F>);
     fn next(&mut self) -> Option<Self::Item> {
-        let (tail, mut last_idx) = self.tail.take()?;
-        let parent_path = self.collect_parent_path();
-        let tail_id = parent_path.with_sequence(tail);
-        self.tail = {
-            let mut parent_node = tail;
+        let current_node = self.next.take()?;
+        let current_node_id = self.collect_parent_path().with_sequence(current_node);
+        self.next = {
+            let mut last_idx = None;
+            let mut parent_node = current_node;
             loop {
-                let lookup_idx = last_idx.map_or(0, |x| x + 1);
                 match &parent_node.children {
                     Children::Chain(chain) => {
+                        let lookup_idx = last_idx.map_or(0, |x| x + 1);
                         if let Some((_, child_node)) = chain.nodes.get(lookup_idx) {
                             // found child
                             self.parent_idxs.push((parent_node, lookup_idx));
-                            break Some((child_node, None));
+                            break Some(child_node);
                         }
                     }
                     Children::Items(_) => {}
@@ -63,7 +59,7 @@ impl<'a, T, F> Iterator for Iter<'a, T, F> {
                 break None;
             }
         };
-        Some((tail_id, tail))
+        Some((current_node_id, current_node))
     }
 }
 

@@ -2,7 +2,7 @@
 //! Reference helpers for modifying [`Node`]s in the [`Tree`]
 use crate::error::InvalidNodePath;
 use crate::id::{
-    ty, NodeId, NodeIdTyped, NodePath, NodePathRefTyped, NodePathTyped, SequenceSource,
+    ty, NodeId, NodeIdTyped, NodePath, NodePathRefTyped, NodePathTyped, Sequence, SequenceSource,
 };
 use crate::node::meta::NodeInfoIntrinsic;
 use crate::node::{self, Children, Node};
@@ -43,6 +43,11 @@ impl<'tree, 'path, T, F> std::ops::Deref for NodeRefMut<'tree, 'path, T, F> {
 impl<'tree, 'path, T, F> std::ops::DerefMut for NodeRefMut<'tree, 'path, T, F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.node
+    }
+}
+impl<'tree, 'path, T, F> SequenceSource for NodeRefMut<'tree, 'path, T, F> {
+    fn sequence(&self) -> Sequence {
+        self.node.sequence()
     }
 }
 
@@ -158,6 +163,20 @@ impl NodePath<ty::Child> {
             Children::Items(_) => Err(path.clone().into()),
         }
     }
+    /// Returns a the specified weight and `Node` reference within the `Tree`
+    ///
+    /// # Errors
+    /// Returns an erorr if the [`NodePath`] is not a valid path for the specified `Tree`
+    pub fn try_ref_shared<'tree, T, F>(
+        &self,
+        tree: &'tree Tree<T, F>,
+    ) -> Result<(Weight, &'tree Node<T, F>), InvalidNodePath> {
+        let path = self;
+        match &tree.root.children {
+            Children::Chain(chain) => chain.get_child_entry_shared(path.into()),
+            Children::Items(_) => Err(path.clone().into()),
+        }
+    }
 }
 impl NodePathTyped {
     /// Returns `NodeRefMut` within the specified `Tree`
@@ -172,6 +191,22 @@ impl NodePathTyped {
         match self {
             Self::Root(path) => Ok(path.try_ref(tree)),
             Self::Child(path) => path.try_ref(tree).map(NodeRefMutWeighted::into_inner),
+        }
+    }
+    /// Returns `Node` within the specified `Tree`
+    ///
+    /// # Errors
+    /// Returns an error if the specified `NodeId` does not point to a valid node
+    ///
+    pub fn try_ref_shared<'tree, T, F>(
+        &self,
+        tree: &'tree Tree<T, F>,
+    ) -> Result<(Option<Weight>, &'tree Node<T, F>), InvalidNodePath> {
+        match self {
+            Self::Root(_) => Ok((None, &tree.root)),
+            Self::Child(path) => path
+                .try_ref_shared(tree)
+                .map(|(weight, node)| (Some(weight), node)),
         }
     }
 }

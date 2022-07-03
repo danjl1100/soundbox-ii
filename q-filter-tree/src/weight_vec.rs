@@ -170,7 +170,7 @@ impl<'vec, 'order, T> RefMut<'vec, 'order, T> {
         assert_eq!(
             self.weights.len(),
             self.elems.len(),
-            "weights and items lists length equal after overwrite_child_weights"
+            "weights and items lists length prior to into_elem_ref"
         );
         let Self {
             weights,

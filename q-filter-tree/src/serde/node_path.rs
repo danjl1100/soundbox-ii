@@ -19,7 +19,7 @@ impl<'a> std::fmt::Display for NodePathRefTyped<'a> {
         let delim = NodePathTyped::DELIM;
         write!(f, "{start_delim}")?;
         let mut first = true;
-        for elem in &**self {
+        for elem in self.elems() {
             if first {
                 write!(f, "{elem}")?;
             } else {

@@ -163,6 +163,12 @@ impl NodePathTyped {
             Self::Child(path) => path.elems(),
         }
     }
+    pub(crate) fn as_ref(&self) -> NodePathRefTyped<'_> {
+        match self {
+            Self::Root(path) => path.into(),
+            Self::Child(path) => path.into(),
+        }
+    }
 }
 impl<'a> NodePathRefTyped<'a> {
     pub(crate) fn clone_inner(&self) -> NodePathTyped {
@@ -171,14 +177,20 @@ impl<'a> NodePathRefTyped<'a> {
             Self::Child(path) => NodePathTyped::Child((*path).clone()),
         }
     }
-}
-impl<'a> std::ops::Deref for NodePathRefTyped<'a> {
-    type Target = [NodePathElem];
-
-    fn deref(&self) -> &Self::Target {
+    pub(crate) fn elems(&self) -> &[NodePathElem] {
         match self {
             Self::Root(path) => path.elems(),
             Self::Child(path) => path.elems(),
+        }
+    }
+}
+impl<'a> PartialEq<NodePathTyped> for NodePathRefTyped<'a> {
+    fn eq(&self, other: &NodePathTyped) -> bool {
+        match (self, other) {
+            (Self::Root(l0), NodePathTyped::Root(r0)) => *l0 == r0,
+            (Self::Child(l0), NodePathTyped::Child(r0)) => *l0 == r0,
+            (Self::Root(..), NodePathTyped::Child(..))
+            | (Self::Child(..), NodePathTyped::Root(..)) => false,
         }
     }
 }
@@ -282,7 +294,12 @@ impl From<Vec<NodePathElem>> for NodePathTyped {
 }
 impl From<VecDeque<NodePathElem>> for NodePathTyped {
     fn from(elems: VecDeque<NodePathElem>) -> Self {
-        elems.into_iter().collect::<Vec<_>>().into()
+        Self::from_iter(elems)
+    }
+}
+impl FromIterator<NodePathElem> for NodePathTyped {
+    fn from_iter<T: IntoIterator<Item = NodePathElem>>(iter: T) -> Self {
+        iter.into_iter().collect::<Vec<_>>().into()
     }
 }
 impl<'a, T: Type> From<&'a NodeId<T>> for &'a [NodePathElem] {
@@ -298,11 +315,21 @@ impl From<NodeIdTyped> for NodePathTyped {
         }
     }
 }
+impl<'a> From<&'a NodeId<ty::Root>> for NodePathRefTyped<'a> {
+    fn from(node_id: &'a NodeId<ty::Root>) -> Self {
+        Self::Root(node_id)
+    }
+}
+impl<'a> From<&'a NodeId<ty::Child>> for NodePathRefTyped<'a> {
+    fn from(node_id: &'a NodeId<ty::Child>) -> Self {
+        Self::Child(node_id)
+    }
+}
 impl<'a> From<&'a NodeIdTyped> for NodePathRefTyped<'a> {
     fn from(node_id: &'a NodeIdTyped) -> Self {
         match node_id {
-            NodeIdTyped::Root(node_id) => (&**node_id).into(),
-            NodeIdTyped::Child(node_id) => (&**node_id).into(),
+            NodeIdTyped::Root(node_id) => node_id.into(),
+            NodeIdTyped::Child(node_id) => node_id.into(),
         }
     }
 }

@@ -224,6 +224,24 @@ impl<T, F> Chain<T, F> {
             Err(id_elems.into())
         }
     }
+    pub(crate) fn get_child_entry_shared(
+        &self,
+        id_elems: &[NodePathElem],
+    ) -> Result<(Weight, &Node<T, F>), InvalidNodePath> {
+        if let Some((&this_idx, remainder)) = id_elems.split_first() {
+            let child_ref = self.nodes.get(this_idx).ok_or(id_elems)?;
+            if remainder.is_empty() {
+                Ok(child_ref)
+            } else {
+                match &child_ref.1.children {
+                    Children::Chain(chain) => chain.get_child_entry_shared(remainder),
+                    Children::Items(_) => Err(id_elems.into()),
+                }
+            }
+        } else {
+            Err(id_elems.into())
+        }
+    }
     pub(crate) fn remove_child<S: SequenceSource>(
         &mut self,
         path_elem: NodePathElem,
