@@ -48,8 +48,7 @@ use node::RemoveResult;
 pub use order::Type as OrderType;
 pub mod order;
 
-mod iter;
-pub mod iter_mut;
+pub mod iter;
 /// Serialize/Deserialize functionality
 pub mod serde {
     /// Error from deserializing a [`NodePathTyped`](`super::id::NodePathTyped`)
