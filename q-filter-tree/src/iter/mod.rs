@@ -24,7 +24,7 @@ impl<T, F> Tree<T, F> {
         self.enumerate().map(|(id, _)| id)
     }
     /// Creates a depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
-    pub(crate) fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
+    pub fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
         IterIdSharedRefs {
             parent_idxs: vec![],
             next: Some(&self.root),
