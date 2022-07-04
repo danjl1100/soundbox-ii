@@ -1,8 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use crate::{
-    id::{NodePathRefTyped, NodePathTyped},
-    Tree,
-};
+use crate::id::{NodePathRefTyped, NodePathTyped};
 
 #[derive(Debug, PartialEq, Eq)]
 struct SentinelResult(&'static str);
@@ -71,9 +68,7 @@ macro_rules! assert_iter {
 
 #[test]
 fn empty() {
-    let mut t: Tree<(), ()> = Tree::default();
-    let root = t.root_id();
-    //
+    let (mut t, root) = super::tests::create_empty();
     let mut iter = t.enumerate_mut();
     assert_iter!(iter.with_next(
         filters = [()],
@@ -85,17 +80,9 @@ fn empty() {
 
 #[test]
 fn single() {
-    let mut t: Tree<(), String> = Tree::default();
-    let root = t.root_id();
+    let (mut t, root, child1) = super::tests::create_single();
     // \ root
     // |--  child1
-    let mut root_ref = root.try_ref(&mut t);
-    root_ref.filter = "this is root".to_string();
-    let mut root_ref = root_ref.child_nodes().expect("root is chain");
-    let child1 = root_ref.add_child_default();
-    root.try_ref(&mut t).filter = "this is root".to_string();
-    child1.try_ref(&mut t).expect("child1 exists").filter = "child1's filter".to_string();
-    //
     {
         let mut iter = t.enumerate_mut();
         assert_iter!(iter.with_next(
@@ -128,27 +115,11 @@ fn single() {
 
 #[test]
 fn single_line() {
-    let mut t: Tree<(), &str> = Tree::default();
-    let root = t.root_id();
+    let (mut t, root, child1, child2, child3) = super::tests::create_single_line();
     // \ root
     // |--\ child1
     //    |--\ child2
     //       |-- child3
-    let mut root_ref = root.try_ref(&mut t);
-    let mut root_ref = root_ref.child_nodes().expect("root is chain");
-    //
-    let child1 = root_ref.add_child_default();
-    let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
-    let mut child1_ref = child1_ref.child_nodes().expect("child1 is chain");
-    let child2 = child1_ref.add_child_default();
-    let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
-    let mut child2_ref = child2_ref.child_nodes().expect("child2 is chain");
-    let child3 = child2_ref.add_child_default();
-    root.try_ref(&mut t).filter = "the root";
-    child1.try_ref(&mut t).expect("child1 exists").filter = "foo";
-    child2.try_ref(&mut t).expect("child2 exists").filter = "bar";
-    child3.try_ref(&mut t).expect("child3 exists").filter = "baz";
-    //
     let mut iter = t.enumerate_mut();
     assert_iter!(iter.with_all(
         [
@@ -198,20 +169,10 @@ fn single_line() {
 
 #[test]
 fn double() {
-    let mut t: Tree<(), &str> = Tree::default();
-    let root = t.root_id();
+    let (mut t, root, child1, child2) = super::tests::create_double();
     // \ root
     // |--  child1
     // |--  child2
-    let mut root_ref = root.try_ref(&mut t);
-    root_ref.filter = "thorny root";
-    let mut root_ref = root_ref.child_nodes().expect("root is chain");
-    let child1 = root_ref.add_child_default();
-    let child2 = root_ref.add_child_default();
-    root.try_ref(&mut t).filter = "thorny root";
-    child1.try_ref(&mut t).expect("child1 exists").filter = "child1 carrot";
-    child2.try_ref(&mut t).expect("child2 exists").filter = "child2 lemon";
-    //
     let mut iter = t.enumerate_mut();
     assert_iter!(iter.with_all(
         [
@@ -246,11 +207,10 @@ fn double() {
     ]));
 }
 
-#[allow(clippy::too_many_lines)] // yikes...
 #[test]
 fn complex() {
-    let mut t: Tree<(), &str> = Tree::new();
-    let root = t.root_id();
+    let (mut t, root, base, child1, child2, child3, (child4, (child4_child,)), child5) =
+        super::tests::create_complex();
     // \ root
     // |--\ base
     //    |--  child1
@@ -259,30 +219,6 @@ fn complex() {
     //    |--\ child4
     //       |--  child4_child
     //    |--  child5
-    let mut root_ref = root.try_ref(&mut t);
-    let mut root_ref = root_ref.child_nodes().expect("root is chain");
-    let base = root_ref.add_child_default();
-    let mut base_ref = base.try_ref(&mut t).expect("base exists");
-    let mut base_ref = base_ref.child_nodes().expect("base is chain");
-    let child1 = base_ref.add_child_default();
-    let child2 = base_ref.add_child_default();
-    let child3 = base_ref.add_child_default();
-    let child4 = base_ref.add_child_default();
-    let child5 = base_ref.add_child_default();
-    let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-    let mut child4_ref = child4_ref.child_nodes().expect("child4 is chain");
-    let child4_child = child4_ref.add_child_default();
-    root.try_ref(&mut t).filter = "root";
-    base.try_ref(&mut t).expect("base exists").filter = "base";
-    child1.try_ref(&mut t).expect("child1 exists").filter = "child1";
-    child2.try_ref(&mut t).expect("child2 exists").filter = "child2";
-    child3.try_ref(&mut t).expect("child3 exists").filter = "child3";
-    child4.try_ref(&mut t).expect("child4 exists").filter = "child4";
-    child5.try_ref(&mut t).expect("child5 exists").filter = "child5";
-    child4_child
-        .try_ref(&mut t)
-        .expect("child4_child exists")
-        .filter = "child4_child";
     // from ROOT
     let mut iter = t.enumerate_mut();
     assert_iter!(iter.with_all(
@@ -385,8 +321,16 @@ fn complex() {
 #[allow(clippy::too_many_lines)] // yikes...
 #[test]
 fn complex2() {
-    let mut t: Tree<(), &str> = Tree::new();
-    let root = t.root_id();
+    let (
+        mut t,
+        root,
+        base,
+        child1,
+        (child2, (child2_child, child2_child2)),
+        child3,
+        (child4, (child4_child, (child4_child_child,))),
+        child5,
+    ) = super::tests::create_complex2();
     // \ root
     // |--\ base
     //    |--  child1
@@ -398,40 +342,6 @@ fn complex2() {
     //       |--\ child4_child
     //          |--  chil4_child_child
     //    |--  child5
-    let mut root_ref = root.try_ref(&mut t);
-    let mut root_ref = root_ref.child_nodes().expect("root is chain");
-    let base = root_ref.add_child_default();
-    let mut base_ref = base.try_ref(&mut t).expect("base exists");
-    let mut base_ref = base_ref.child_nodes().expect("base is chain");
-    let child1 = base_ref.add_child_default();
-    let child2 = base_ref.add_child_default();
-    let child3 = base_ref.add_child_default();
-    let child4 = base_ref.add_child_default();
-    let child5 = base_ref.add_child_default();
-    let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
-    let mut child2_ref = child2_ref.child_nodes().expect("child2 is chain");
-    let child2_child = child2_ref.add_child_default();
-    let child2_child2 = child2_ref.add_child_default();
-    let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
-    let mut child4_ref = child4_ref.child_nodes().expect("child4 is chain");
-    let child4_child = child4_ref.add_child_default();
-    let mut child4_child_ref = child4_child.try_ref(&mut t).expect("child4_child exists");
-    let mut child4_child_ref = child4_child_ref
-        .child_nodes()
-        .expect("child4_child is chain");
-    let child4_child_child = child4_child_ref.add_child_default();
-    root.try_ref(&mut t).filter = "root";
-    base.try_ref(&mut t).expect("base exists").filter = "base";
-    child1.try_ref(&mut t).expect("child1 exists").filter = "child1";
-    child2.try_ref(&mut t).expect("child2 exists").filter = "child2";
-    child3.try_ref(&mut t).expect("child3 exists").filter = "child3";
-    child4.try_ref(&mut t).expect("child4 exists").filter = "child4";
-    child5.try_ref(&mut t).expect("child5 exists").filter = "child5";
-    child4_child
-        .try_ref(&mut t)
-        .expect("child4_child exists")
-        .filter = "child4_child";
-    //
     let mut iter = t.enumerate_mut();
     assert_iter!(iter.with_all(
         [
@@ -555,24 +465,12 @@ fn complex2() {
 
 #[test]
 fn root_siblings() {
-    let mut t: Tree<(), &str> = Tree::new();
-    let root = t.root_id();
+    let (mut t, root, (child1, child2, child3, child4)) = super::tests::create_root_siblings();
     // \ root
     // |-- child1
     // |-- child2
     // |-- child3
     // |-- child4
-    let mut root_ref = root.try_ref(&mut t);
-    root_ref.filter = "root";
-    let mut root_ref = root_ref.child_nodes().expect("root is chain");
-    let child1 = root_ref.add_child_default();
-    let child2 = root_ref.add_child_default();
-    let child3 = root_ref.add_child_default();
-    let child4 = root_ref.add_child_default();
-    child1.try_ref(&mut t).expect("child1 exists").filter = "child1";
-    child2.try_ref(&mut t).expect("child2 exists").filter = "child2";
-    child3.try_ref(&mut t).expect("child3 exists").filter = "child3";
-    child4.try_ref(&mut t).expect("child4 exists").filter = "child4";
     //
     let mut iter = t.enumerate_mut();
     assert_iter!(iter.with_all(

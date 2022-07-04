@@ -1,27 +1,42 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use super::Tree;
+use crate::{
+    id::{ty, NodeId},
+    Tree,
+};
 
+type RootId = NodeId<ty::Root>;
+type ChildId = NodeId<ty::Child>;
+
+pub(super) fn create_empty() -> (Tree<(), ()>, NodeId<ty::Root>) {
+    let t = Tree::default();
+    let root = t.root_id();
+    (t, root)
+}
 #[test]
 fn empty() {
-    let t: Tree<(), ()> = Tree::default();
-    let root = t.root_id();
-    //
+    let (t, root) = create_empty();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()));
     for _ in 0..20 {
         assert_eq!(iter.next(), None);
     }
 }
-#[test]
-fn single() {
-    let mut t: Tree<(), ()> = Tree::default();
+
+pub(super) fn create_single() -> (Tree<(), String>, RootId, ChildId) {
+    let mut t = Tree::default();
     let root = t.root_id();
     // \ root
     // |--  child1
     let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child1 = root_ref.add_child_default();
-    //
+    root.try_ref(&mut t).filter = "this is root".to_string();
+    child1.try_ref(&mut t).expect("child1 exists").filter = "child1's filter".to_string();
+    (t, root, child1)
+}
+#[test]
+fn single() {
+    let (t, root, child1) = create_single();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()), "root");
     assert_eq!(iter.next(), Some(child1.into()), "child1");
@@ -29,9 +44,9 @@ fn single() {
         assert_eq!(iter.next(), None);
     }
 }
-#[test]
-fn single_line() {
-    let mut t: Tree<(), ()> = Tree::default();
+
+pub(super) fn create_single_line() -> (Tree<(), &'static str>, RootId, ChildId, ChildId, ChildId) {
+    let mut t = Tree::default();
     let root = t.root_id();
     // \ root
     // |--\ child1
@@ -47,7 +62,15 @@ fn single_line() {
     let mut child2_ref = child2.try_ref(&mut t).expect("child2 exists");
     let mut child2_ref = child2_ref.child_nodes().expect("child2 is chain");
     let child3 = child2_ref.add_child_default();
-    //
+    root.try_ref(&mut t).filter = "the root";
+    child1.try_ref(&mut t).expect("child1 exists").filter = "foo";
+    child2.try_ref(&mut t).expect("child2 exists").filter = "bar";
+    child3.try_ref(&mut t).expect("child3 exists").filter = "baz";
+    (t, root, child1, child2, child3)
+}
+#[test]
+fn single_line() {
+    let (t, root, child1, child2, child3) = create_single_line();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()), "root");
     assert_eq!(iter.next(), Some(child1.into()), "child1");
@@ -57,9 +80,9 @@ fn single_line() {
         assert_eq!(iter.next(), None);
     }
 }
-#[test]
-fn double() {
-    let mut t: Tree<(), ()> = Tree::default();
+
+pub(super) fn create_double() -> (Tree<(), &'static str>, RootId, ChildId, ChildId) {
+    let mut t = Tree::default();
     let root = t.root_id();
     // \ root
     // |--  child1
@@ -68,7 +91,14 @@ fn double() {
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child1 = root_ref.add_child_default();
     let child2 = root_ref.add_child_default();
-    //
+    root.try_ref(&mut t).filter = "thorny root";
+    child1.try_ref(&mut t).expect("child1 exists").filter = "child1 carrot";
+    child2.try_ref(&mut t).expect("child2 exists").filter = "child2 lemon";
+    (t, root, child1, child2)
+}
+#[test]
+fn double() {
+    let (t, root, child1, child2) = create_double();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()), "root");
     assert_eq!(iter.next(), Some(child1.into()), "child1");
@@ -77,9 +107,19 @@ fn double() {
         assert_eq!(iter.next(), None);
     }
 }
-#[test]
-fn complex() {
-    let mut t: Tree<(), _> = Tree::new();
+
+#[allow(clippy::type_complexity)]
+pub(super) fn create_complex() -> (
+    Tree<(), &'static str>,
+    RootId,
+    ChildId,
+    ChildId,
+    ChildId,
+    ChildId,
+    (ChildId, (ChildId,)),
+    ChildId,
+) {
+    let mut t = Tree::new();
     let root = t.root_id();
     // \ root
     // |--\ base
@@ -102,18 +142,32 @@ fn complex() {
     let mut child4_ref = child4.try_ref(&mut t).expect("child4 exists");
     let mut child4_ref = child4_ref.child_nodes().expect("child4 is chain");
     let child4_child = child4_ref.add_child_default();
-    root.try_ref(&mut t).filter = Some("root");
-    base.try_ref(&mut t).expect("base exists").filter = Some("base");
-    child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
-    child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
-    child3.try_ref(&mut t).expect("child3 exists").filter = Some("child3");
-    child4.try_ref(&mut t).expect("child4 exists").filter = Some("child4");
-    child5.try_ref(&mut t).expect("child5 exists").filter = Some("child5");
+    root.try_ref(&mut t).filter = "root";
+    base.try_ref(&mut t).expect("base exists").filter = "base";
+    child1.try_ref(&mut t).expect("child1 exists").filter = "child1";
+    child2.try_ref(&mut t).expect("child2 exists").filter = "child2";
+    child3.try_ref(&mut t).expect("child3 exists").filter = "child3";
+    child4.try_ref(&mut t).expect("child4 exists").filter = "child4";
+    child5.try_ref(&mut t).expect("child5 exists").filter = "child5";
     child4_child
         .try_ref(&mut t)
         .expect("child4_child exists")
-        .filter = Some("child4_child");
-    //
+        .filter = "child4_child";
+    (
+        t,
+        root,
+        base,
+        child1,
+        child2,
+        child3,
+        (child4, (child4_child,)),
+        child5,
+    )
+}
+#[test]
+fn complex() {
+    let (t, root, base, child1, child2, child3, (child4, (child4_child,)), child5) =
+        create_complex();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()), "root");
     assert_eq!(iter.next(), Some(base.into()), "base");
@@ -127,9 +181,19 @@ fn complex() {
         assert_eq!(iter.next(), None);
     }
 }
-#[test]
-fn complex2() {
-    let mut t: Tree<(), _> = Tree::new();
+
+#[allow(clippy::type_complexity)]
+pub(super) fn create_complex2() -> (
+    Tree<(), &'static str>,
+    RootId,
+    ChildId,
+    ChildId,
+    (ChildId, (ChildId, ChildId)),
+    ChildId,
+    (ChildId, (ChildId, (ChildId,))),
+    ChildId,
+) {
+    let mut t = Tree::new();
     let root = t.root_id();
     // \ root
     // |--\ base
@@ -164,18 +228,40 @@ fn complex2() {
         .child_nodes()
         .expect("child4_child is chain");
     let child4_child_child = child4_child_ref.add_child_default();
-    root.try_ref(&mut t).filter = Some("root");
-    base.try_ref(&mut t).expect("base exists").filter = Some("base");
-    child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
-    child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
-    child3.try_ref(&mut t).expect("child3 exists").filter = Some("child3");
-    child4.try_ref(&mut t).expect("child4 exists").filter = Some("child4");
-    child5.try_ref(&mut t).expect("child5 exists").filter = Some("child5");
+    root.try_ref(&mut t).filter = "root";
+    base.try_ref(&mut t).expect("base exists").filter = "base";
+    child1.try_ref(&mut t).expect("child1 exists").filter = "child1";
+    child2.try_ref(&mut t).expect("child2 exists").filter = "child2";
+    child3.try_ref(&mut t).expect("child3 exists").filter = "child3";
+    child4.try_ref(&mut t).expect("child4 exists").filter = "child4";
+    child5.try_ref(&mut t).expect("child5 exists").filter = "child5";
     child4_child
         .try_ref(&mut t)
         .expect("child4_child exists")
-        .filter = Some("child4_child");
-    //
+        .filter = "child4_child";
+    (
+        t,
+        root,
+        base,
+        child1,
+        (child2, (child2_child, child2_child2)),
+        child3,
+        (child4, (child4_child, (child4_child_child,))),
+        child5,
+    )
+}
+#[test]
+fn complex2() {
+    let (
+        t,
+        root,
+        base,
+        child1,
+        (child2, (child2_child, child2_child2)),
+        child3,
+        (child4, (child4_child, (child4_child_child,))),
+        child5,
+    ) = create_complex2();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()), "root");
     assert_eq!(iter.next(), Some(base.into()), "base");
@@ -196,9 +282,14 @@ fn complex2() {
         assert_eq!(iter.next(), None);
     }
 }
-#[test]
-fn root_siblings() {
-    let mut t: Tree<(), _> = Tree::new();
+
+#[allow(clippy::type_complexity)]
+pub(super) fn create_root_siblings() -> (
+    Tree<(), &'static str>,
+    RootId,
+    (ChildId, ChildId, ChildId, ChildId),
+) {
+    let mut t = Tree::new();
     let root = t.root_id();
     // \ root
     // |-- child1
@@ -206,17 +297,21 @@ fn root_siblings() {
     // |-- child3
     // |-- child4
     let mut root_ref = root.try_ref(&mut t);
-    root_ref.filter = Some("root");
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
     let child1 = root_ref.add_child_default();
     let child2 = root_ref.add_child_default();
     let child3 = root_ref.add_child_default();
     let child4 = root_ref.add_child_default();
-    child1.try_ref(&mut t).expect("child1 exists").filter = Some("child1");
-    child2.try_ref(&mut t).expect("child2 exists").filter = Some("child2");
-    child3.try_ref(&mut t).expect("child3 exists").filter = Some("child3");
-    child4.try_ref(&mut t).expect("child4 exists").filter = Some("child4");
-    //
+    root.try_ref(&mut t).filter = "root";
+    child1.try_ref(&mut t).expect("child1 exists").filter = "child1";
+    child2.try_ref(&mut t).expect("child2 exists").filter = "child2";
+    child3.try_ref(&mut t).expect("child3 exists").filter = "child3";
+    child4.try_ref(&mut t).expect("child4 exists").filter = "child4";
+    (t, root, (child1, child2, child3, child4))
+}
+#[test]
+fn root_siblings() {
+    let (t, root, (child1, child2, child3, child4)) = create_root_siblings();
     let mut iter = t.iter_ids();
     assert_eq!(iter.next(), Some(root.into()), "root");
     assert_eq!(iter.next(), Some(child1.into()), "child1");
