@@ -184,7 +184,10 @@ impl<T, F> From<OrderVec<T>> for Children<T, F> {
     }
 }
 
-pub type RemoveResult<T, F, U> = Result<(Weight, NodeInfoIntrinsic<T, F>), RemoveError<U>>;
+/// Result for removing a node (when node is indeed found)
+///
+/// Generic for internal-use, returning from node-to-node during the removal
+pub type RemoveResult<T, F, E> = Result<(Weight, NodeInfoIntrinsic<T, F>), E>;
 
 #[derive(Clone)]
 pub(crate) struct Chain<T, F> {
@@ -246,7 +249,7 @@ impl<T, F> Chain<T, F> {
         &mut self,
         path_elem: NodePathElem,
         sequence: &S,
-    ) -> Result<RemoveResult<T, F, NodePathElem>, NodePathElem> {
+    ) -> Result<RemoveResult<T, F, RemoveError<NodePathElem>>, NodePathElem> {
         let (_, child) = self.nodes.get(path_elem).ok_or(path_elem)?;
         let (is_terminal, has_children) = {
             let nodes = child.children.get_nodes();

@@ -40,11 +40,16 @@ pub mod id;
 
 pub use node::meta::NodeInfoIntrinsic as NodeInfo;
 pub use node::Node;
+/// Result for removing a node (when node is indeed found)
+pub type RemoveResult<T, F> = node::RemoveResult<T, F, RemoveError>;
+/// Error removing a node (when node is indeed found)
+pub type RemoveError = error::RemoveError<NodeId<ty::Child>>;
+pub use error::RemoveError as RemoveErrorInner;
+pub use node::RemoveResult as RemoveResultInner;
 mod node;
 
 mod weight_vec;
 
-use node::RemoveResult;
 pub use order::Type as OrderType;
 pub mod order;
 
@@ -191,7 +196,7 @@ impl<T, F> Tree<T, F> {
     pub fn remove_node(
         &mut self,
         node_id: &NodeId<ty::Child>,
-    ) -> Result<RemoveResult<T, F, NodeId<ty::Child>>, InvalidNodePath> {
+    ) -> Result<RemoveResult<T, F>, InvalidNodePath> {
         let err_child_path_invalid = || InvalidNodePath::from(node_id.clone().into_inner());
         // calculate parent path
         let node_id_cloned = NodePath::from(node_id.clone());

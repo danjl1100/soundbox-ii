@@ -39,6 +39,8 @@ pub enum PopError<T> {
 // }
 
 /// Error removing a node (when node is indeed found)
+///
+/// Generic for the internal use, returning from node-to-node during the removal
 #[derive(Debug, PartialEq)]
 pub enum RemoveError<T> {
     /// Node matching the path has a different sequence (e.g. node paths changed)

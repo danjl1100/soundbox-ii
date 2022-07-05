@@ -60,8 +60,8 @@ pub enum Command {
     },
     /// Remove a node
     Remove {
-        /// Path of the target node to delete
-        path: String,
+        /// Id of the target node to delete
+        id: String,
         //TODO
         // recursive: bool,
     },
@@ -95,7 +95,10 @@ impl Cli {
                 Ok(Args { command: Some(cmd) }) => {
                     let result = self.exec_command(cmd);
                     if let Err(e) = result {
-                        eprintln!("ERROR: {e:?}");
+                        match e {
+                            Error::Message(message) => eprintln!("ERROR: {message}"),
+                            e => eprintln!("ERROR: {e:?}"),
+                        }
                     }
                 }
                 Ok(Args { command: None }) => continue,
@@ -133,9 +136,10 @@ impl Cli {
                 };
                 println!("added node {node_path}");
             }
-            Command::Remove { .. } => {
-                todo!()
-                // self.sequencer.remove_node(&path)
+            Command::Remove { id } => {
+                let removed = self.sequencer.remove_node(&id)?;
+                let (weight, info) = removed;
+                println!("removed node {id}: weight = {weight}, {info:#?}");
             }
         }
         Ok(())
