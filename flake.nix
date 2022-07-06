@@ -63,7 +63,12 @@
           pkgs.rustc
           pkgs.cargo
           pkgs.pkgconfig
-        ];
+        ] ++ (if pkgs.stdenv.hostPlatform.isDarwin then
+        let
+          frameworks = pkgs.darwin.apple_sdk.frameworks;
+        in [
+          frameworks.CoreServices
+        ] else []);
 
         projectImportCargo = (import-cargo.builders.importCargo {
             lockFile = ./Cargo.lock;
@@ -187,9 +192,9 @@
         };
       });
       # packages = flake-utils.lib.eachDefaultSystem makeForSystem;
-      packages = flake-utils.lib.eachSystem [ "x86_64-linux" ] makeForSystem;
+      packages = flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] makeForSystem;
     in packages // {
-      hydraJobs = flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: {
+      hydraJobs = flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (system: {
         soundbox-ii = packages.packages.${system}.soundbox-ii;
         soundbox-ii_bin = packages.packages.${system}.soundbox-ii_bin;
         soundbox-ii_frontend = packages.packages.${system}.soundbox-ii_frontend;
