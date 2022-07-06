@@ -33,6 +33,10 @@ impl<T> WeightVec<T> {
     pub fn iter(&self) -> impl Iterator<Item = (&Weight, &T)> {
         self.weights().iter().zip(self.elems().iter())
     }
+    // TODO remove if not needed
+    // pub fn iter_mut_elems_straight(&mut self) -> impl Iterator<Item = &mut T> {
+    //     self.1.iter_mut()
+    // }
     pub fn ref_mut<'order>(&mut self, order: &'order mut order::State) -> RefMut<'_, 'order, T> {
         self.ref_mut_optional(Some(order))
     }
@@ -238,6 +242,10 @@ impl<T> OrderVec<T> {
     pub fn get_elem_mut(&mut self, index: usize) -> Option<&mut T> {
         self.vec.get_elem_mut(index)
     }
+    // TODO remove if not needed
+    // pub fn iter_mut_elems_straight(&mut self) -> impl Iterator<Item = &mut T> {
+    //     self.vec.iter_mut_elems_straight()
+    // }
     /// Sets the [`OrderType`](`crate::order::Type`)
     pub fn set_order(&mut self, ty: order::Type) {
         self.order.set_type(ty);

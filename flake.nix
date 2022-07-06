@@ -85,6 +85,9 @@
             cd "${buildDirRelative}"
             ${pkgs.trunk}/bin/trunk build --dist dist
           '';
+          # TODO: need to set mtime of the resulting files to the commit time (but can't use `current time` when unstaged, since that's not pure)
+          # OR another bogus time?
+          # OR write a file mtime.txt that the server reads?
           installPhase = ''
             mkdir -p "$out/share/frontend"
             cp -r dist/* "$out/share/frontend"

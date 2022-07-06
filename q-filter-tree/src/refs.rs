@@ -86,6 +86,11 @@ impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
         let path = self.path.clone_inner().append(child_path_part);
         path.with_sequence(&sequence)
     }
+    // TODO remove if not needed
+    // /// Iterates the child nodes in order
+    // pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Node<T, F>> {
+    //     self.node_children.nodes.iter_mut_elems_straight()
+    // }
 }
 
 /// Mutable reference to a node with an associated [`Weight`]
