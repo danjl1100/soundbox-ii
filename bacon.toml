@@ -23,6 +23,11 @@ command = ["cargo", "test", "--color", "always", "--workspace"]
 need_stdout = true
 watch = ["tests"]
 
+[jobs.test-sequencer]
+command = ["cargo", "test", "--color", "always", "--package", "sequencer"]
+need_stdout = true
+watch = ["tests"]
+
 [jobs.doc]
 command = ["cargo", "doc", "--color", "always", "--no-deps", "--workspace"]
 need_stdout = false
