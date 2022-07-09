@@ -171,10 +171,9 @@
           # NOTE: do not include dependencies for `vlc` (broken on darwin systems)
           # inputsFrom = builtins.attrValues self.packages.${system};
           inputsFrom = [ self.defaultPackage.${system} ];
-          buildInputs = buildInputs ++ ([
+          buildInputs = nativeBuildInputs ++ buildInputs ++ ([
             # development-only tools go here
             pkgs.nixpkgs-fmt
-            pkgs.cargo # needed separately for darwin (why??)
             pkgs.cargo-deny
             pkgs.cargo-edit
             # pkgs.cargo-watch
