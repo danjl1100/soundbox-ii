@@ -151,8 +151,8 @@
         packages.${name} = bin_wrapped;
         packages."${name}_bin" = bin;
         packages."${name}_frontend" = frontend;
-        packages."${name}_vlc" = vlc_script { name = "vlc"; visual = true; };
-        packages."${name}_cvlc" = vlc_script { name = "cvlc"; visual = false; };
+        # packages."${name}_vlc" = vlc_script { name = "vlc"; visual = true; };
+        # packages."${name}_cvlc" = vlc_script { name = "cvlc"; visual = false; };
 
         # `nix build`
         defaultPackage = bin_wrapped;
