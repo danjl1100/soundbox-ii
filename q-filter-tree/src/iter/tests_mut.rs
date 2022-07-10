@@ -1,5 +1,6 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::id::{NodePathRefTyped, NodePathTyped};
+use shared::{IgnoreNever, Never};
 
 #[derive(Debug, PartialEq, Eq)]
 struct SentinelResult(&'static str);
@@ -38,7 +39,8 @@ macro_rules! assert_iter {
                 filter_sets.push(Vec::from(filters));
                 paths.push(path.clone_inner());
                 child_lens.push(node_ref_mut.child_nodes_len());
-            });
+                Ok::<_, Never>(())
+            }).ignore_never();
             assert_eq!(filter_sets, vec![
                 $(
                     vec![ $($filter),+ ]
@@ -62,7 +64,7 @@ macro_rules! assert_iter {
         );
     };
     ( $iter:ident.with_all(empty) ) => {
-        $iter.with_all(|_, _, _| panic!("expected iter is empty for with_all"));
+        $iter.with_all::<_, shared::Never>(|_, _, _| panic!("expected iter is empty for with_all")).ignore_never();
     };
 }
 

@@ -148,14 +148,22 @@ impl<'tree, T, F: Clone> IterDetachedNodeMut<'tree, T, F> {
     ///
     /// See [`with_next()`] for the closure arguments' description.
     ///
+    /// # Errors
+    /// Returns an error on the first occurrence of the `consume_fn` returning an error.
+    /// Note this means the iteration may be interrupted at an arbitrary step.
+    ///
     /// [`with_next()`]: Self::with_next
-    pub fn with_all<U>(&mut self, mut consume_fn: U)
+    pub fn with_all<U, E>(&mut self, mut consume_fn: U) -> Result<(), E>
     where
-        U: FnMut(&[F], NodePathRefTyped<'_>, NodeRefMut<'_, '_, T, F>),
+        U: FnMut(&[F], NodePathRefTyped<'_>, NodeRefMut<'_, '_, T, F>) -> Result<(), E>,
     {
-        while self.with_next(&mut consume_fn).is_some() {
-            continue;
+        while let Some(result) = self.with_next(&mut consume_fn) {
+            match result {
+                Err(err) => return Err(err),
+                Ok(()) => continue,
+            }
         }
+        Ok(())
     }
     /// Performs the specified operation to the next yielded element
     ///

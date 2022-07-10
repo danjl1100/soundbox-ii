@@ -142,6 +142,24 @@ pub struct Shutdown;
 
 /// Un-instantiable type
 pub enum Never {}
+impl std::fmt::Display for Never {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
+    }
+}
+/// Helper extension trait to ignore [`Never`] errors.
+pub trait IgnoreNever<T> {
+    /// Like unwrap, but with no panic possible
+    fn ignore_never(self) -> T;
+}
+impl<T> IgnoreNever<T> for Result<T, Never> {
+    fn ignore_never(self) -> T {
+        match self {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+}
 
 /// Timestamp for receiving or sending a message
 pub type Time = chrono::DateTime<chrono::offset::Utc>;

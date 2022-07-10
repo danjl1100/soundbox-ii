@@ -40,19 +40,13 @@ use q_filter_tree::{
     RemoveError,
 };
 
-/// Source of items for the [`Sequencer`]
-pub trait ItemSource {
-    /// Argument to the lookup, from each node in path to the terminal items node
-    type Arg: serde::Serialize + Clone + Default;
-    /// Element resulting from the lookup
-    type Item: serde::Serialize + Clone + PartialEq;
-    /// Retrieves [`Item`](`Self::Item`)s matching the specified [`Arg`](`Self::Arg`)s
-    fn lookup(&self, args: &[Self::Arg]) -> Vec<Self::Item>;
-}
+use sources::ItemSource;
+pub mod sources;
 
 // conversions, for ergonomic use with `ItemSource`
 type Item<T> = <T as ItemSource>::Item;
 type Arg<T> = <T as ItemSource>::Arg;
+type ItemError<T> = <T as ItemSource>::Error;
 type Tree<T> = q_filter_tree::Tree<Item<T>, Arg<T>>;
 type NodeInfo<T> = q_filter_tree::NodeInfo<Item<T>, Arg<T>>;
 
@@ -93,8 +87,7 @@ impl<T: ItemSource> Sequencer<T> {
         let new_node_id = self.inner_add_node(parent_path_str)?;
         let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
         node_ref.filter = filter;
-        let new_node_path_str = serde_json::to_string(&NodePathTyped::from(new_node_id))?;
-        Ok(new_node_path_str)
+        Ok(serialize_id(NodeIdTyped::from(new_node_id))?)
     }
     /// Adds a terminal `Node` to the specified path.
     /// Returns the path of the created node.
@@ -115,27 +108,33 @@ impl<T: ItemSource> Sequencer<T> {
             self.tree
                 .enumerate_mut_subtree(&new_node_id)
                 .expect("created node exists"),
-        );
-        Ok(serialize_path(new_node_id)?)
+        )?;
+        Ok(serialize_id(new_node_id)?)
     }
     /// Updates the items for the specified node (and any children)
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn update_node(&mut self, node_path_str: &str) -> Result<(), Error> {
+    pub fn update_node(&mut self, node_path_str: &str) -> Result<String, Error> {
         let node_path = parse_path(node_path_str)?;
         let iter = self.tree.enumerate_mut_subtree(&node_path)?;
-        Self::inner_update_node(&mut self.item_source, iter);
-        Ok(())
+        Self::inner_update_node(&mut self.item_source, iter)?;
+        Ok(serialize_path(node_path)?)
     }
-    fn inner_update_node(item_source: &mut T, mut iter: IterDetachedNodeMut<'_, Item<T>, Arg<T>>) {
+    fn inner_update_node(
+        item_source: &mut T,
+        mut iter: IterDetachedNodeMut<'_, Item<T>, Arg<T>>,
+    ) -> Result<(), Error> {
         iter.with_all(|args, _path, mut node_ref| {
             let is_items = node_ref.child_nodes().is_none();
             if is_items {
-                let items = item_source.lookup(args);
+                let items = item_source
+                    .lookup(args)
+                    .map_err(|e| format!("item lookup error: {e}"))?;
                 node_ref.merge_child_items_uniform(items);
             }
-        });
+            Ok(())
+        })
     }
     /// Removes a `Node` at the specified id (path`#`sequence)
     ///
@@ -157,6 +156,9 @@ impl<T: ItemSource> Sequencer<T> {
     }
 }
 
+fn serialize_id<T: Into<NodeIdTyped>>(id: T) -> Result<String, serde_json::Error> {
+    serde_json::to_string(&id.into())
+}
 fn serialize_path<T: Into<NodePathTyped>>(path: T) -> Result<String, serde_json::Error> {
     serde_json::to_string(&path.into())
 }
@@ -213,12 +215,13 @@ pub struct DebugItemSource;
 impl ItemSource for DebugItemSource {
     type Arg = String;
     type Item = String;
+    type Error = shared::Never;
 
-    fn lookup(&self, args: &[Self::Arg]) -> Vec<Self::Item> {
+    fn lookup(&self, args: &[Self::Arg]) -> Result<Vec<Self::Item>, Self::Error> {
         let debug_label = format!("{args:?}");
-        (0..10)
+        Ok((0..10)
             .map(|n| format!("item # {n} for {}", &debug_label))
-            .collect()
+            .collect())
     }
 }
 
@@ -240,13 +243,14 @@ mod tests {
     impl ItemSource for UpdateTrackingItemSource {
         type Arg = String;
         type Item = String;
+        type Error = shared::Never;
 
-        fn lookup(&self, args: &[Self::Arg]) -> Vec<Self::Item> {
+        fn lookup(&self, args: &[Self::Arg]) -> Result<Vec<Self::Item>, Self::Error> {
             let rev = self.0;
             let debug_label = format!("{args:?} rev {rev}");
-            (0..10)
+            Ok((0..10)
                 .map(|n| format!("item # {n} for {}", &debug_label))
-                .collect()
+                .collect())
         }
     }
 
