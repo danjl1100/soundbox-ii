@@ -285,9 +285,7 @@ mod tests {
     {
         let weights = weight_vec.weights();
         let peeked = s.peek(weights);
-        // TODO is a check like this needed??? assert_eq!(s.get_weights(), weights);
         let popped = s.next(weights);
-        // TODO is a check like this needed??? assert_eq!(s.get_weights(), weights);
         println!("{:?} = {:?} ??", peeked, expected);
         assert_eq!(peeked, expected);
         assert_eq!(popped, expected);
@@ -301,13 +299,16 @@ mod tests {
         target_len: usize,
         all_weights: &[super::Weight],
     ) {
-        while weight_vec.len() > target_len {
-            weight_vec.ref_mut(order_state).pop();
-        }
-        while weight_vec.len() < target_len {
-            let weight = all_weights[weight_vec.len()];
-            weight_vec.ref_mut(order_state).push((weight, ()));
-        }
+        let old_len = weight_vec.len();
+        let mut weight_vec_ref = weight_vec.ref_mut(order_state);
+        weight_vec_ref.truncate(target_len);
+        weight_vec_ref.extend(
+            all_weights
+                .iter()
+                .take(target_len)
+                .skip(old_len)
+                .map(|&w| (w, ())),
+        );
     }
     pub(super) fn check_all(ty: Type) {
         check_type(ty);
@@ -352,6 +353,24 @@ mod tests {
             .expect("index in bounds");
         for _ in 0..100 {
             assert_peek_next(&mut s, &weights, None);
+        }
+    }
+    pub fn check_truncate(ty: Type) {
+        let all_weights = &[1, 1];
+        let mut weight_vec = WeightVec::new();
+        let mut s = State::from(ty);
+        resize_vec_to_len(&mut weight_vec, &mut s, 2, all_weights);
+        assert_peek_next(&mut s, &weight_vec, Some(0));
+        assert_peek_next(&mut s, &weight_vec, Some(1));
+        assert_peek_next(&mut s, &weight_vec, Some(0));
+        assert_peek_next(&mut s, &weight_vec, Some(1));
+        resize_vec_to_len(&mut weight_vec, &mut s, 1, all_weights);
+        for _ in 0..100 {
+            assert_peek_next(&mut s, &weight_vec, Some(0));
+        }
+        resize_vec_to_len(&mut weight_vec, &mut s, 0, all_weights);
+        for _ in 0..100 {
+            assert_peek_next(&mut s, &weight_vec, None);
         }
     }
 }

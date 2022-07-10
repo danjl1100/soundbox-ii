@@ -28,6 +28,11 @@ command = ["cargo", "test", "--color", "always", "--package", "sequencer"]
 need_stdout = true
 watch = ["tests"]
 
+[jobs.test-q-filter-tree]
+command = ["cargo", "test", "--color", "always", "--package", "q-filter-tree"]
+need_stdout = true
+watch = ["tests"]
+
 [jobs.doc]
 command = ["cargo", "doc", "--color", "always", "--no-deps", "--workspace"]
 need_stdout = false

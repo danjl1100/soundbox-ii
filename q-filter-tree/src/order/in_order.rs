@@ -112,9 +112,9 @@ impl Orderer for InOrder {
 
 #[cfg(test)]
 mod tests {
-    use crate::order::tests::resize_vec_to_len;
-
-    use super::super::tests::{assert_peek_next, check_all, to_weight_vec, WeightVec};
+    use super::super::tests::{
+        assert_peek_next, check_all, check_truncate, resize_vec_to_len, to_weight_vec, WeightVec,
+    };
     use super::super::{State, Type};
 
     #[test]
@@ -153,5 +153,10 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    fn truncate() {
+        let ty = Type::InOrder;
+        check_truncate(ty);
     }
 }

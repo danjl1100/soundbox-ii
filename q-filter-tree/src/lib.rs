@@ -48,7 +48,7 @@ pub use error::RemoveError as RemoveErrorInner;
 pub use node::RemoveResult as RemoveResultInner;
 mod node;
 
-mod weight_vec;
+pub mod weight_vec;
 
 pub use order::Type as OrderType;
 pub mod order;
@@ -241,7 +241,7 @@ mod tests {
         let root = tree.root_id();
         let mut root_ref = root.try_ref(&mut tree);
         assert_eq!(root_ref.get_order_type(), OrderType::InOrder);
-        root_ref.set_child_items_uniform(vec!["hey", "this", "is"]);
+        root_ref.overwrite_child_items_uniform(vec!["hey", "this", "is"]);
         for _ in 0..200 {
             assert_eq!(tree.pop_item(), Some(Cow::Owned("hey")));
             assert_eq!(tree.pop_item(), Some(Cow::Owned("this")));
@@ -277,7 +277,7 @@ mod tests {
             .add_child_default();
         // root > child_a > child_a_a [ items ]
         let mut child_a_a_ref = child_a_a.try_ref(&mut tree).expect("child_a_a exists");
-        child_a_a_ref.set_child_items_uniform(vec!["aa1", "aa2"]);
+        child_a_a_ref.overwrite_child_items_uniform(vec!["aa1", "aa2"]);
         // root > child_b > child_b_b, child_b_z
         let mut child_b_ref = child_b.try_ref(&mut tree).expect("child_b exists");
         let mut child_b_ref_child_nodes = child_b_ref.child_nodes().expect("=child_b is chain");
@@ -285,13 +285,13 @@ mod tests {
         let child_b_z = child_b_ref_child_nodes.add_child_default();
         // root > child_b > child_b_b [ items ]
         let mut child_b_b_ref = child_b_b.try_ref(&mut tree).expect("child_b_b exists");
-        child_b_b_ref.set_child_items_uniform(vec!["bb1", "bb2"]);
+        child_b_b_ref.overwrite_child_items_uniform(vec!["bb1", "bb2"]);
         // root > child_b > child_b_z [ items ]
         let mut child_b_z_ref = child_b_z.try_ref(&mut tree).expect("child_b_z exists");
-        child_b_z_ref.set_child_items_uniform(vec!["bz1", "bz2"]);
+        child_b_z_ref.overwrite_child_items_uniform(vec!["bz1", "bz2"]);
         // root > child_c [ items ]
         let mut child_c_ref = child_c.try_ref(&mut tree).expect("child_c exists");
-        child_c_ref.set_child_items_uniform(vec!["cc1", "cc2"]);
+        child_c_ref.overwrite_child_items_uniform(vec!["cc1", "cc2"]);
         //
         for _ in 0..100 {
             assert_eq!(tree.pop_item(), Some(Cow::Owned("aa1")));

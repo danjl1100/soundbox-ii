@@ -102,7 +102,7 @@ impl<T: Clone, F> Node<T, F> {
                 Children::Chain(_) => unreachable!("attempt to pop at a chain node with no queue"),
                 Children::Items(items) => {
                     let item = items
-                        .next()
+                        .next_item()
                         // Panic if the promised source of the item is `None` (logic error)
                         .expect("attempt to pop from items node with no value");
                     Cow::Borrowed(item)
@@ -111,21 +111,76 @@ impl<T: Clone, F> Node<T, F> {
         }
     }
 }
-impl<T, F> Node<T, F> {
-    /// Overwrites children with the specified items (equally-weighted)
-    pub fn set_child_items_uniform<I>(&mut self, items: I)
+impl<T, F> Node<T, F>
+where
+    T: PartialEq,
+{
+    /// Merges the child items with the specified items (attempting to maintain ordering state)
+    pub fn merge_child_items_uniform<I>(&mut self, items: I)
     where
         I: IntoIterator<Item = T>,
     {
-        self.set_child_items(items.into_iter().map(|x| (1, x)));
+        self.merge_child_items(items.into_iter().map(|x| (1, x)));
+    }
+    /// Merges the child items with the specified items (attempting to maintain ordering state)
+    pub fn merge_child_items<I>(&mut self, items: I)
+    where
+        I: IntoIterator<Item = (Weight, T)>,
+    {
+        let mut items = items.into_iter();
+        self.with_child_items(|child_items| {
+            for index in 0..child_items.len() {
+                if let Some((new_weight, new_item)) = items.next() {
+                    let (mut weight_ref, item_ref) = child_items
+                        .ref_mut()
+                        .into_elem_ref(index)
+                        .expect("child items yield element within the length bounds");
+                    if new_weight != weight_ref.get_weight() {
+                        weight_ref.set_weight(new_weight);
+                    }
+                    *item_ref = new_item;
+                } else {
+                    child_items.ref_mut().truncate(index);
+                    break;
+                }
+            }
+            child_items.extend(items.into_iter().skip(child_items.len()));
+            // TODO add test for this functionality
+        });
+    }
+}
+impl<T, F> Node<T, F> {
+    /// Overwrites children with the specified items (equally-weighted)
+    pub fn overwrite_child_items_uniform<I>(&mut self, items: I)
+    where
+        I: IntoIterator<Item = T>,
+    {
+        self.overwrite_child_items(items.into_iter().map(|x| (1, x)));
     }
     /// Overwrites children with the specified items
-    pub fn set_child_items<I>(&mut self, items: I)
+    pub fn overwrite_child_items<I>(&mut self, items: I)
     where
         I: IntoIterator<Item = (Weight, T)>,
     {
         let order = self.get_order_type();
         self.children = OrderVec::from((order, items)).into();
+    }
+    /// Allows mutable access to the items vector [`OrderVec`], deleting child nodes as needed.
+    // TODO consider returning an error if the child nodes is not empty
+    fn with_child_items<U, R>(&mut self, modify_fn: U) -> R
+    where
+        U: FnOnce(&mut OrderVec<T>) -> R,
+    {
+        match &mut self.children {
+            Children::Chain(..) => {
+                let order = self.get_order_type();
+                let mut items = OrderVec::new(order);
+                let result = modify_fn(&mut items);
+                self.children = Children::Items(items);
+                result
+            }
+            Children::Items(items) => modify_fn(items),
+        }
     }
     /// Returns the number of child nodes
     #[must_use]

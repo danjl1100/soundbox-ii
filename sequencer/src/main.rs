@@ -57,6 +57,8 @@ pub enum Command {
         parent_path: String,
         /// Filename source, for terminal nodes only (optional)
         filename: Option<String>,
+        /// Filter value (optional)
+        filter: Option<String>,
     },
     /// Remove a node
     Remove {
@@ -128,11 +130,13 @@ impl Cli {
             Command::Add {
                 parent_path,
                 filename,
+                filter,
             } => {
                 let node_path = if let Some(filename) = filename {
                     self.sequencer.add_terminal_node(&parent_path, filename)?
                 } else {
-                    self.sequencer.add_node(&parent_path)?
+                    self.sequencer
+                        .add_node(&parent_path, filter.unwrap_or_default())?
                 };
                 println!("added node {node_path}");
             }

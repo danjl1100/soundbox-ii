@@ -30,7 +30,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use std::borrow::Cow;
+use std::{borrow::Cow, iter};
 
 use q_filter_tree::{
     error::InvalidNodePath,
@@ -45,7 +45,7 @@ pub trait ItemSource {
     /// Argument to the lookup, from each node in path to the terminal items node
     type Arg: serde::Serialize + Clone + Default;
     /// Element resulting from the lookup
-    type Item: serde::Serialize + Clone;
+    type Item: serde::Serialize + Clone + PartialEq;
     /// Retrieves [`Item`](`Self::Item`)s matching the specified [`Arg`](`Self::Arg`)s
     fn lookup(&self, args: &[Self::Arg]) -> Vec<Self::Item>;
 }
@@ -70,6 +70,11 @@ impl<T: ItemSource> Sequencer<T> {
             item_source,
         }
     }
+    /// Returns a mutable reference to the inner item source
+    //TODO - should this be `pub`?  (e.g. is this a valid use-case outside of tests?)
+    fn ref_item_source(&mut self) -> &mut T {
+        &mut self.item_source
+    }
     fn inner_add_node(&mut self, parent_path_str: &str) -> Result<NodeId<ty::Child>, Error> {
         let parent_path = parse_path(parent_path_str)?;
         let mut parent_ref = parent_path.try_ref(&mut self.tree)?;
@@ -84,8 +89,10 @@ impl<T: ItemSource> Sequencer<T> {
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn add_node(&mut self, parent_path_str: &str) -> Result<String, Error> {
+    pub fn add_node(&mut self, parent_path_str: &str, filter: Arg<T>) -> Result<String, Error> {
         let new_node_id = self.inner_add_node(parent_path_str)?;
+        let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
+        node_ref.filter = filter;
         let new_node_path_str = serde_json::to_string(&NodePathTyped::from(new_node_id))?;
         Ok(new_node_path_str)
     }
@@ -97,11 +104,12 @@ impl<T: ItemSource> Sequencer<T> {
     pub fn add_terminal_node(
         &mut self,
         node_path_str: &str,
-        filter_value: Arg<T>,
+        filter: Arg<T>,
     ) -> Result<String, Error> {
         let new_node_id = self.inner_add_node(node_path_str)?;
         let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
-        node_ref.filter = filter_value;
+        node_ref.filter = filter;
+        node_ref.overwrite_child_items_uniform(iter::empty());
         Self::inner_update_node(
             &mut self.item_source,
             self.tree
@@ -110,15 +118,23 @@ impl<T: ItemSource> Sequencer<T> {
         );
         Ok(serialize_path(new_node_id)?)
     }
-    // TODO
-    // pub fn update_node(&mut self, node_path_str: &str) -> Result<(), Error> {
-    //     let node_path = parse_path(node_path_str)?;
-    //     let mut node_ref = node_path.try_ref(&mut self.tree)?;
-    // }
+    /// Updates the items for the specified node (and any children)
+    ///
+    /// # Errors
+    /// Returns an [`Error`] when inputs do not match the inner tree state
+    pub fn update_node(&mut self, node_path_str: &str) -> Result<(), Error> {
+        let node_path = parse_path(node_path_str)?;
+        let iter = self.tree.enumerate_mut_subtree(&node_path)?;
+        Self::inner_update_node(&mut self.item_source, iter);
+        Ok(())
+    }
     fn inner_update_node(item_source: &mut T, mut iter: IterDetachedNodeMut<'_, Item<T>, Arg<T>>) {
         iter.with_all(|args, _path, mut node_ref| {
-            let items = item_source.lookup(args);
-            node_ref.set_child_items_uniform(items);
+            let is_items = node_ref.child_nodes().is_none();
+            if is_items {
+                let items = item_source.lookup(args);
+                node_ref.merge_child_items_uniform(items);
+            }
         });
     }
     /// Removes a `Node` at the specified id (path`#`sequence)
@@ -216,6 +232,11 @@ mod tests {
 
     #[derive(Default)]
     struct UpdateTrackingItemSource(u32);
+    impl UpdateTrackingItemSource {
+        fn set_rev(&mut self, rev: u32) {
+            self.0 = rev;
+        }
+    }
     impl ItemSource for UpdateTrackingItemSource {
         type Arg = String;
         type Item = String;
@@ -251,7 +272,7 @@ mod tests {
         let mut s = Sequencer::new(DebugItemSource);
         assert_eq!(s.tree.sum_node_count(), 1, "beginning length");
         // add
-        s.add_node(".")?;
+        s.add_node(".", "".to_string())?;
         assert_eq!(s.tree.sum_node_count(), 2, "length after add");
         // remove
         let expect_removed = q_filter_tree::NodeInfo::Chain {
@@ -264,9 +285,89 @@ mod tests {
         Ok(())
     }
 
+    fn assert_next(
+        sequencer: &mut Sequencer<UpdateTrackingItemSource>,
+        filters: &[&str],
+        sequence: usize,
+        rev: usize,
+    ) {
+        assert_eq!(
+            sequencer.pop_next(),
+            Some(Cow::Borrowed(&format!(
+                "item # {sequence} for {filters:?} rev {rev}"
+            )))
+        );
+    }
     #[test]
-    #[ignore]
     fn update_node() -> Result<(), Error> {
-        todo!()
+        let filename = "foo_bar_file";
+
+        let mut s = Sequencer::new(UpdateTrackingItemSource(0));
+        s.add_terminal_node(".", filename.to_string())?;
+        let filters = vec!["", filename];
+        assert_next(&mut s, &filters, 0, 0);
+        assert_next(&mut s, &filters, 1, 0);
+        assert_next(&mut s, &filters, 2, 0);
+        //
+        s.ref_item_source().set_rev(52);
+        assert_next(&mut s, &filters, 3, 0);
+        assert_next(&mut s, &filters, 4, 0);
+        assert_next(&mut s, &filters, 5, 0);
+        s.update_node(".")?;
+        assert_next(&mut s, &filters, 6, 52);
+        assert_next(&mut s, &filters, 7, 52);
+        assert_next(&mut s, &filters, 8, 52);
+        Ok(())
+    }
+    #[test]
+    fn update_subtree() -> Result<(), Error> {
+        let mut s = Sequencer::new(UpdateTrackingItemSource(0));
+        s.add_node(".", "base1".to_string())?;
+        s.add_terminal_node(".0", "child1".to_string())?;
+        s.add_terminal_node(".0", "child2".to_string())?;
+        s.add_node(".", "base2".to_string())?;
+        s.add_terminal_node(".1", "child3".to_string())?;
+        let filters_child1 = vec!["", "base1", "child1"];
+        let filters_child2 = vec!["", "base1", "child2"];
+        let filters_child3 = vec!["", "base2", "child3"];
+        //
+        assert_next(&mut s, &filters_child1, 0, 0);
+        assert_next(&mut s, &filters_child3, 0, 0);
+        assert_next(&mut s, &filters_child2, 0, 0);
+        assert_next(&mut s, &filters_child3, 1, 0);
+        //
+        s.ref_item_source().set_rev(5);
+        assert_next(&mut s, &filters_child1, 1, 0);
+        assert_next(&mut s, &filters_child3, 2, 0);
+        assert_next(&mut s, &filters_child2, 1, 0);
+        assert_next(&mut s, &filters_child3, 3, 0);
+        s.update_node(".1.0")?;
+        assert_next(&mut s, &filters_child1, 2, 0);
+        assert_next(&mut s, &filters_child3, 4, 5);
+        assert_next(&mut s, &filters_child2, 2, 0);
+        assert_next(&mut s, &filters_child3, 5, 5);
+        //
+        s.ref_item_source().set_rev(8);
+        assert_next(&mut s, &filters_child1, 3, 0);
+        assert_next(&mut s, &filters_child3, 6, 5);
+        assert_next(&mut s, &filters_child2, 3, 0);
+        assert_next(&mut s, &filters_child3, 7, 5);
+        s.update_node(".1")?;
+        assert_next(&mut s, &filters_child1, 4, 0);
+        assert_next(&mut s, &filters_child3, 8, 8);
+        assert_next(&mut s, &filters_child2, 4, 0);
+        assert_next(&mut s, &filters_child3, 9, 8);
+        //
+        s.ref_item_source().set_rev(9);
+        assert_next(&mut s, &filters_child1, 5, 0);
+        assert_next(&mut s, &filters_child3, 0, 8);
+        assert_next(&mut s, &filters_child2, 5, 0);
+        assert_next(&mut s, &filters_child3, 1, 8);
+        s.update_node(".0")?;
+        assert_next(&mut s, &filters_child1, 6, 9);
+        assert_next(&mut s, &filters_child3, 2, 8);
+        assert_next(&mut s, &filters_child2, 6, 9);
+        assert_next(&mut s, &filters_child3, 3, 8);
+        Ok(())
     }
 }

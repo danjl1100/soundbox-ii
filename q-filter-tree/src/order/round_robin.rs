@@ -76,7 +76,7 @@ impl Orderer for RoundRobin {
         }
         // advance
         match self.index.as_mut() {
-            Some(0) if removed == 0 => {
+            Some(0) => {
                 self.index = None;
                 self.advance(weights);
             }
@@ -197,9 +197,9 @@ impl RoundRobin {
 
 #[cfg(test)]
 mod tests {
-    use crate::order::tests::resize_vec_to_len;
-
-    use super::super::tests::{assert_peek_next, check_all, WeightVec};
+    use super::super::tests::{
+        assert_peek_next, check_all, check_truncate, resize_vec_to_len, WeightVec,
+    };
     use super::super::{State, Type, Weight};
 
     #[test]
@@ -281,5 +281,10 @@ mod tests {
             }
         }
         check_counter
+    }
+    #[test]
+    fn truncate() {
+        let ty = Type::RoundRobin;
+        check_truncate(ty);
     }
 }
