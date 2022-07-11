@@ -2,6 +2,7 @@
 //! HTTP-specific primitives (interchange for test purposes)
 
 use super::command::{ArtRequestIntent, CmdArgs, RequestIntent};
+use std::fmt::Write;
 
 pub use http::{
     uri::{Authority, InvalidUri, PathAndQuery, Uri},
@@ -58,7 +59,7 @@ impl RequestInfo {
         Self::format_path_query(path, &query)
     }
     fn format_path_query(path: &str, query: &str) -> PathAndQuery {
-        format!("{path}?{query}", path = path, query = query)
+        format!("{path}?{query}")
             .parse()
             .expect("valid urlencoded args")
     }
@@ -75,12 +76,7 @@ impl QueryBuilder {
         let sep = if self.0.is_empty() { "" } else { "&" };
         let key = urlencoding::encode(key);
         let value = urlencoding::encode(value);
-        self.0.push_str(&format!(
-            "{sep}{key}={value}",
-            sep = sep,
-            key = key,
-            value = value
-        ));
+        write!(self.0, "{sep}{key}={value}").expect("string write succeeds");
         self
     }
     fn extend<'a, I, T, U>(mut self, elems: I) -> Self

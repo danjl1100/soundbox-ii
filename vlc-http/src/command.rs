@@ -214,7 +214,7 @@ fn fmt_seconds_delta(seconds_delta: i32) -> String {
 }
 fn fmt_volume_delta(volume_delta: i16) -> String {
     let sign_char = if volume_delta < 0 { '-' } else { '+' };
-    let magnitude: u16 = volume_delta.abs() as u16;
+    let magnitude: u16 = volume_delta.unsigned_abs();
     let magnitude = encode_volume_val(magnitude);
     format!("{}{}", sign_char, magnitude)
 }
