@@ -18,13 +18,13 @@
       name = "soundbox-ii";
       rootModuleName = "soundbox-ii";
       rustChannel = "stable";
-      rustVersion = "1.60.0";
+      rustVersion = "1.62.0";
       makeForSystem = (system: let
         # Imports
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            rust-overlay.overlay (self: super: let
+            rust-overlay.overlays.default (self: super: let
               rust-bundle = self.rust-bin.${rustChannel}.${rustVersion}.default.override {
                 # include wasm32 for frontend compilation via trunk
                 targets = [ "wasm32-unknown-unknown" ];

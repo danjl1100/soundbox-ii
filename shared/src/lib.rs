@@ -298,11 +298,12 @@ serde_derive_unidirectional! {
             pub playlist_item_id: Option<u64>,
         }
         /// Mode of the playback
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
         pub enum PlaybackState {
             /// Paused
             Paused,
             /// Playing
+            #[default]
             Playing,
             /// Stopped
             Stopped,
@@ -413,11 +414,6 @@ impl PlaybackTiming {
     }
 }
 
-impl Default for PlaybackState {
-    fn default() -> Self {
-        Self::Playing
-    }
-}
 impl PlaybackState {
     /// Returns `true` if the state is `PlaybackState::Playing`
     #[must_use]

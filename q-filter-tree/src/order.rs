@@ -136,9 +136,10 @@ mod random;
 
 /// Method of determining Order
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum Type {
     /// Picks [`Weight`] items from one node before moving to the next node
+    #[default]
     InOrder,
     /// Picks items from each node in turn, up to maximum of [`Weight`] items per cycle.
     RoundRobin,
@@ -146,11 +147,6 @@ pub enum Type {
     Shuffle,
     /// Randomly selects items based on the relative [`Weight`]s.
     Random,
-}
-impl Default for Type {
-    fn default() -> Self {
-        Self::InOrder
-    }
 }
 
 #[allow(missing_docs)]
