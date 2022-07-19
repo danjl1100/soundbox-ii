@@ -19,7 +19,10 @@ use clap::{ArgEnum, Parser};
 use std::io::{stdin, BufRead};
 
 use arg_split::ArgSplit;
-use sequencer::{sources::FileLines, DebugItemSource, Error, Sequencer};
+use sequencer::{
+    sources::{Beet, FileLines},
+    DebugItemSource, Error, Sequencer,
+};
 
 const COMMAND_NAME: &str = "sequencer";
 
@@ -56,7 +59,7 @@ pub enum Command {
         /// Path of the parent for the new node (use "." for the root node)
         parent_path: String,
         /// Filename source, for terminal nodes only (optional)
-        filename: Option<String>,
+        items_filter: Vec<String>,
     },
     /// Update items for a node
     Update {
@@ -94,8 +97,9 @@ struct Cli {
 }
 shared::wrapper_enum! {
     enum TypedSequencer {
-        DebugItem(Sequencer<DebugItemSource>),
-        FileLines(Sequencer<FileLines>),
+        DebugItem(Sequencer<DebugItemSource, String>),
+        FileLines(Sequencer<FileLines, String>),
+        Beet(Sequencer<Beet, Vec<String>>),
     }
 }
 impl Default for TypedSequencer {
@@ -109,6 +113,7 @@ macro_rules! match_seq {
         match $seq {
             TypedSequencer::DebugItem($bound) => $call,
             TypedSequencer::FileLines($bound) => $call,
+            TypedSequencer::Beet($bound) => $call,
         }
     };
 }
@@ -162,16 +167,35 @@ impl Cli {
             }
             Command::Add {
                 parent_path,
-                filename,
+                items_filter,
             } => {
-                let node_path = match_seq!(&mut self.sequencer, inner =>
-                    if let Some(filename) = filename {
-                        inner.add_terminal_node(&parent_path, filename)?
-                    } else {
-                        inner.add_node(&parent_path, String::default())?
+                let joined = items_filter.join(" ");
+                match &mut self.sequencer {
+                    TypedSequencer::DebugItem(inner) => {
+                        let node_path = if items_filter.is_empty() {
+                            inner.add_node(&parent_path, joined)
+                        } else {
+                            inner.add_terminal_node(&parent_path, joined)
+                        }?;
+                        println!("added node {node_path}");
                     }
-                );
-                println!("added node {node_path}");
+                    TypedSequencer::FileLines(inner) => {
+                        let node_path = if items_filter.is_empty() {
+                            inner.add_node(&parent_path, joined)
+                        } else {
+                            inner.add_terminal_node(&parent_path, joined)
+                        }?;
+                        println!("added node {node_path}");
+                    }
+                    TypedSequencer::Beet(inner) => {
+                        let node_path = if items_filter.is_empty() {
+                            inner.add_node(&parent_path, items_filter)
+                        } else {
+                            inner.add_terminal_node(&parent_path, items_filter)
+                        }?;
+                        println!("added node {node_path}");
+                    }
+                }
             }
             Command::Update { path } => {
                 let path = path.as_ref().map_or(".", |p| p);
@@ -179,9 +203,11 @@ impl Cli {
                 println!("updated nodes under path {path}");
             }
             Command::Remove { id } => {
-                let removed = match_seq!(&mut self.sequencer, inner => inner.remove_node(&id)?);
-                let (weight, info) = removed;
-                println!("removed node {id}: weight = {weight}, {info:#?}");
+                match_seq!(&mut self.sequencer, inner => {
+                    let removed = inner.remove_node(&id)?;
+                    let (weight, info) = removed;
+                    println!("removed node {id}: weight = {weight}, {info:#?}");
+                });
             }
             Command::Next { count } => {
                 for _ in 0..count.unwrap_or(1) {
@@ -201,13 +227,17 @@ impl Cli {
 
 #[derive(Parser)]
 struct MainArgs {
+    /// Source for the item source
     #[clap(arg_enum)]
     source: Option<ItemSourceType>,
+    /// Command to use for the [`Beet`] item source type
+    beet_cmd: Option<String>,
 }
 #[derive(Clone, ArgEnum)]
 enum ItemSourceType {
     Debug,
     FileLines,
+    Beet,
 }
 fn main() -> Result<(), std::io::Error> {
     eprint!("{}", COMMAND_NAME);
@@ -218,6 +248,16 @@ fn main() -> Result<(), std::io::Error> {
         ItemSourceType::Debug => TypedSequencer::DebugItem(Sequencer::new(DebugItemSource)),
         ItemSourceType::FileLines => {
             TypedSequencer::FileLines(Sequencer::new(FileLines::new(".".into())?))
+        }
+        ItemSourceType::Beet => {
+            if let Some(beet_cmd) = args.beet_cmd {
+                TypedSequencer::Beet(Sequencer::new(Beet::new(beet_cmd)?))
+            } else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "missing beet_cmd",
+                ));
+            }
         }
     };
     Cli::new(sequencer).exec_lines(stdin().lock())

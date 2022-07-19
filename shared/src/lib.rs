@@ -141,6 +141,7 @@ pub mod license;
 pub struct Shutdown;
 
 /// Un-instantiable type
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 pub enum Never {}
 impl std::fmt::Display for Never {
     fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

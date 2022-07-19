@@ -4,17 +4,20 @@
 pub use file::Lines as FileLines;
 mod file;
 
+pub use beet::Beet;
+mod beet;
+
 /// Source of items for the [`Sequencer`](`super::Sequencer`)
-pub trait ItemSource {
-    /// Argument to the lookup, from each node in path to the terminal items node
-    type Arg: serde::Serialize + Clone + Default;
+///
+/// Generic `T` is the argument to the lookup, from each node in path to the terminal items node
+pub trait ItemSource<T> {
     /// Element resulting from the lookup
     type Item: serde::Serialize + Clone + PartialEq;
     /// Error type if the lookup fails
     type Error: std::fmt::Display;
-    /// Retrieves [`Item`](`Self::Item`)s matching the specified [`Arg`](`Self::Arg`)s
+    /// Retrieves [`Item`](`Self::Item`)s matching the specified arguments (`T`)
     ///
     /// # Errors
     /// Returns an error if the underlying lookup operation fails
-    fn lookup(&self, args: &[Self::Arg]) -> Result<Vec<Self::Item>, Self::Error>;
+    fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error>;
 }

@@ -29,12 +29,11 @@ impl Lines {
         Ok(Self { root })
     }
 }
-impl ItemSource for Lines {
-    type Arg = String;
+impl ItemSource<String> for Lines {
     type Item = String;
     type Error = std::io::Error;
 
-    fn lookup(&self, args: &[Self::Arg]) -> Result<Vec<Self::Item>, Self::Error> {
+    fn lookup(&self, args: &[String]) -> Result<Vec<Self::Item>, Self::Error> {
         let mut file_path = self.root.clone();
         for arg in args {
             if !arg.is_empty() {
