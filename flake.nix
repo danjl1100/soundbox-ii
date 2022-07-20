@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?rev=35227e5abb956ae2885306ef4769617ed28427e7"; # TODO diagnose `trunk` issues with newer revs of nixpkgs-unstable
     flake-utils.url = "github:numtide/flake-utils";
+    nix-filter_input.url = "github:numtide/nix-filter";
     rust-overlay.url = "github:oxalica/rust-overlay";
     import-cargo.url = "github:edolstra/import-cargo";
     crate2nix = {
@@ -12,8 +13,58 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, import-cargo, crate2nix, ... }:
+  outputs = { self, nixpkgs, flake-utils, nix-filter_input, rust-overlay, import-cargo, crate2nix, ... }:
     let
+      sources = let
+        nix-filter = nix-filter_input.lib;
+        rust-filter = rec {
+          __functor = self: filter;
+          filter = { root, include-lib-crates ? [], include-bin-crates ? [], include ? [], exclude ? [] }:
+            nix-filter {
+              inherit root exclude;
+              include = include
+                ++ (lib-crates include-lib-crates)
+                ++ (bin-crates include-bin-crates);
+            };
+          _or_root = d: if builtins.isString d then d else ".";
+          rs-src-dir = d: (nix-filter.and
+            (nix-filter.inDirectory "${_or_root d}/src")
+            (nix-filter.or_
+              (nix-filter.matchExt "rs")
+              (nix-filter.isDirectory) # include directories, for sub-folder traversal (required by the outer AND)
+            )
+          );
+          cargo-toml-dir = d: "${_or_root d}/Cargo.toml";
+          cargo-lock-dir = d: "${_or_root d}/Cargo.lock";
+          lib-crate = d: [ (rs-src-dir d) (cargo-toml-dir d) ];
+          bin-crate = d: [ (rs-src-dir d) (cargo-toml-dir d) (cargo-lock-dir d) ];
+          lib-crates = dirs: builtins.concatLists (builtins.map lib-crate dirs);
+          bin-crates = dirs: builtins.concatLists (builtins.map bin-crate dirs);
+        };
+        src-license = [
+          ./shared/src/license/COPYING.REDISTRIBUTION
+          ./shared/src/license/COPYING.WARRANTY
+          ./shared/src/license/COPYING.WELCOME
+        ];
+      in {
+        bin = rust-filter {
+          root = ./.;
+          include-bin-crates = [ false ];
+          include-lib-crates = ["q-filter-tree" "vlc-http" "frontend" "sequencer" "shared" "arg_split"];
+          include = src-license;
+        };
+        frontend = rust-filter {
+          root = ./.;
+          include-lib-crates = [ "frontend" "shared" ];
+          include = [
+            ./frontend/index.html
+            ./frontend/index.scss
+            ./frontend/Trunk.toml
+          ] ++ src-license;
+        };
+        bin-lock-file = ./Cargo.lock;
+      };
+
       # name must match Cargo.toml
       name = "soundbox-ii";
       rootModuleName = "soundbox-ii";
@@ -42,7 +93,7 @@
         project = import
           (generatedCargoNix {
             inherit name;
-            src = ./.;
+            src = sources.bin;
           })
           {
             inherit pkgs;
@@ -71,13 +122,13 @@
         ] else []);
 
         projectImportCargo = (import-cargo.builders.importCargo {
-            lockFile = ./Cargo.lock;
+            lockFile = sources.bin-lock-file;
             inherit pkgs;
           });
-        trunkBuild = { buildDirRelative ? ".", pname, version }: pkgs.stdenvNoCC.mkDerivation {
+        trunkBuild = { pname, version }: pkgs.stdenvNoCC.mkDerivation {
           inherit pname version;
 
-          src = ./.;
+          src = sources.frontend;
 
           buildInputs = [
             pkgs.rustc
@@ -86,7 +137,9 @@
             projectImportCargo.cargoHome
           ];
 
-          buildPhase = ''
+          buildPhase = let
+            buildDirRelative = "frontend";
+          in ''
             cd "${buildDirRelative}"
             ${pkgs.trunk}/bin/trunk build --dist dist
           '';
@@ -102,7 +155,6 @@
         # define packages (for re-use in combined target)
         bin = project.workspaceMembers.${rootModuleName}.build;
         frontend = trunkBuild {
-          buildDirRelative = "frontend";
           pname = "${name}_frontend";
           version = "0.1.0";
         };
@@ -151,8 +203,6 @@
         packages.${name} = bin_wrapped;
         packages."${name}_bin" = bin;
         packages."${name}_frontend" = frontend;
-        # packages."${name}_vlc" = vlc_script { name = "vlc"; visual = true; };
-        # packages."${name}_cvlc" = vlc_script { name = "cvlc"; visual = false; };
 
         # `nix build`
         defaultPackage = bin_wrapped;

@@ -61,6 +61,21 @@
         "type": "github"
       }
     },
+    "nix-filter_input": {
+      "locked": {
+        "lastModified": 1653590866,
+        "narHash": "sha256-E4yKIrt/S//WfW5D9IhQ1dVuaAy8RE7EiCMfnbrOC78=",
+        "owner": "numtide",
+        "repo": "nix-filter",
+        "rev": "3e81a637cdf9f6e9b39aeb4d6e6394d1ad158e16",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "nix-filter",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1651548584,
@@ -98,6 +113,7 @@
         "crate2nix": "crate2nix",
         "flake-utils": "flake-utils",
         "import-cargo": "import-cargo",
+        "nix-filter_input": "nix-filter_input",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }
