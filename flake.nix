@@ -133,6 +133,7 @@
           buildInputs = [
             pkgs.rustc
             pkgs.wasm-bindgen-cli
+            pkgs.trunk
             pkgs.nodePackages.sass
             projectImportCargo.cargoHome
           ];
@@ -141,7 +142,7 @@
             buildDirRelative = "frontend";
           in ''
             cd "${buildDirRelative}"
-            ${pkgs.trunk}/bin/trunk build --dist dist
+            trunk build --dist dist
           '';
           # TODO: need to set mtime of the resulting files to the commit time (but can't use `current time` when unstaged, since that's not pure)
           # OR another bogus time?
@@ -220,7 +221,7 @@
         devShell = pkgs.mkShell {
           # NOTE: do not include dependencies for `vlc` (broken on darwin systems)
           # inputsFrom = builtins.attrValues self.packages.${system};
-          inputsFrom = [ self.defaultPackage.${system} ];
+          inputsFrom = [ self.defaultPackage.${system} frontend ];
           buildInputs = nativeBuildInputs ++ buildInputs ++ ([
             # development-only tools go here
             pkgs.nixpkgs-fmt
