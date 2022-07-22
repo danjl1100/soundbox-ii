@@ -185,8 +185,8 @@ pub(crate) struct Renderer {
 impl Renderer {
     pub fn render(&self, def: &Def) -> Html {
         html! {
-            <svg viewBox=def.view_box>
-                <path d=def.path stroke=self.stroke fill=self.fill />
+            <svg viewBox={def.view_box}>
+                <path d={def.path} stroke={self.stroke} fill={self.fill} />
             </svg>
         }
     }

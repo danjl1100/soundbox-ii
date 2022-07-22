@@ -42,6 +42,9 @@ const LOG_RENDERS: bool = false;
 #[macro_use]
 mod macros;
 
+use controls::Controls;
+mod controls;
+
 use playback::{PlaybackMeta, PlaybackPosition};
 mod playback;
 
@@ -76,22 +79,21 @@ struct Model {
     errors: Vec<String>,
     location: web_sys::Location,
     _interval: Interval,
-    link: ComponentLink<Self>,
 }
 impl Model {
-    fn new(link: ComponentLink<Self>) -> Self {
+    fn new(ctx: &Context<Self>) -> Self {
         let location = web_sys::window().expect("window exists").location();
-        link.send_message(MsgWebSocket::Connect);
+        ctx.link().send_message(MsgWebSocket::Connect);
         Self {
-            websocket: Self::new_websocket(&link, &location),
+            websocket: Self::new_websocket(ctx, &location),
             playback: None,
             errors: vec![],
             location,
-            _interval: Self::new_interval_tick(&link),
-            link,
+            _interval: Self::new_interval_tick(ctx),
         }
     }
-    fn new_websocket(link: &ComponentLink<Self>, location: &web_sys::Location) -> WebsocketHelper {
+    fn new_websocket(ctx: &Context<Self>, location: &web_sys::Location) -> WebsocketHelper {
+        let link = ctx.link();
         let host = location.host().expect("window.location has host");
         let url_websocket = format!("ws://{}/ws", host);
         let on_message = link.callback(|msg| match msg {
@@ -120,16 +122,16 @@ impl Model {
             ..ExponentialBackoff::default()
         }
     }
-    fn new_interval_tick(link: &ComponentLink<Self>) -> Interval {
-        const INTERVAL_MS: u32 = 500;
-        let callback = link.callback(|_| MsgUser::IntervalTick);
+    fn new_interval_tick(ctx: &Context<Self>) -> Interval {
+        const INTERVAL_MS: u32 = 5000;
+        let callback = ctx.link().callback(|_| MsgUser::IntervalTick);
         Interval::new(INTERVAL_MS, move || {
             callback.emit(());
         })
     }
 }
 impl Model {
-    fn view_disconnected(&self) -> Html {
+    fn view_disconnected(&self, ctx: &Context<Self>) -> Html {
         const RED: svg::Renderer = svg::Renderer {
             stroke: "none",
             fill: "#e13e3e", // "red",
@@ -154,11 +156,12 @@ impl Model {
                     }
                 },
             );
+            let onclick = ctx.link().callback(|_| MsgWebSocket::Connect);
             html! {
                 <div>
                     <span>{ auto_reconnect_status }</span>
                     <span>
-                        <button onclick=self.link.callback(|_| MsgWebSocket::Connect)>
+                        <button {onclick}>
                             { "Reconnect Now" }
                         </button>
                     </span>
@@ -184,21 +187,29 @@ impl Model {
             </div>
         }
     }
-    fn view_connected(&self) -> Html {
+    fn view_connected(&self, ctx: &Context<Self>) -> Html {
         let heartbeat_str = if let Some(time) = self.websocket.last_heartbeat() {
             format!("Server last seen: {:?}", time)
         } else {
             "Server last seen: Never".to_string()
         };
-        html! {
-            <div>
-                <div class="row">
-                    { self.view_playback() }
-                    { self.view_album_art() }
+        let view_str = web_sys::window().expect("window exists").location().hash();
+        match view_str.as_ref().map(String::as_str) {
+            Ok("#special") => html! {
+                <div>
+                    { "This one is SPECIAL!" }
                 </div>
-                <p style="font-size: 0.7em;">{ heartbeat_str }</p>
-                { self.view_errors() }
-            </div>
+            },
+            _ => html! {
+                <div>
+                    <div class="row">
+                        { self.view_playback(ctx) }
+                        { self.view_album_art() }
+                    </div>
+                    <p style="font-size: 0.7em;">{ heartbeat_str }</p>
+                    { self.view_errors(ctx) }
+                </div>
+            },
         }
     }
     fn view_album_art(&self) -> Html {
@@ -222,15 +233,16 @@ impl Model {
                 }
                 hasher.finish()
             });
-        let image_src = format!("/v1/art?trick_reload_key={}", trick_reload_key);
+        let src = format!("/v1/art?trick_reload_key={}", trick_reload_key);
         html! {
             <div class="playback art col-7 col-s-5">
-                <img src=image_src alt="Album Art" />
+                <img {src} alt="Album Art" />
             </div>
         }
     }
-    fn view_playback(&self) -> Html {
+    fn view_playback(&self, ctx: &Context<Self>) -> Html {
         if let Some((playback, playback_received)) = &self.playback {
+            let link = ctx.link();
             let meta_html = if let Some(info) = &playback.information {
                 PlaybackMeta::render(info)
             } else {
@@ -243,9 +255,9 @@ impl Model {
             let controls = |ty| {
                 html! {
                     <Controls
-                        on_command=self.link.callback(MsgUser::SendCommand)
-                        playback_state=playback_state
-                        ty=ty
+                        on_command={link.callback(MsgUser::SendCommand)}
+                        {playback_state}
+                        {ty}
                         />
                 }
             };
@@ -263,9 +275,9 @@ impl Model {
                     <div class="playback meta">
                         { meta_html }
                         <PlaybackPosition
-                            timing=playback.timing
-                            received_time=*playback_received
-                            on_command=self.link.callback(MsgUser::SendCommand)
+                            timing={playback.timing}
+                            received_time={*playback_received}
+                            on_command={link.callback(MsgUser::SendCommand)}
                             />
                         <div class="playback control">
                             <span>
@@ -285,7 +297,7 @@ impl Model {
             html! { "No playback status... yet." }
         }
     }
-    fn view_errors(&self) -> Html {
+    fn view_errors(&self, ctx: &Context<Self>) -> Html {
         let render_error = |err| {
             html! {
                 <li>{ err }</li>
@@ -301,7 +313,7 @@ impl Model {
             html! {
                 <div>
                     { "Errors: " }
-                    <button onclick=self.link.callback(|_| MsgUser::ClearErrors)>
+                    <button onclick={ctx.link().callback(|_| MsgUser::ClearErrors)}>
                         { "Clear" }
                     </button>
                     <ul>
@@ -316,7 +328,7 @@ impl Model {
     fn push_error<E: std::fmt::Display>(&mut self, err_type: &str, error: E) {
         self.errors.push(format!("{} error: {}", err_type, error));
     }
-    fn update_websocket(&mut self, msg: MsgWebSocket) -> ShouldRender {
+    fn update_websocket(&mut self, ctx: &Context<Self>, msg: MsgWebSocket) -> bool {
         match msg {
             MsgWebSocket::Connect => {
                 if self.websocket.is_started() {
@@ -367,7 +379,7 @@ impl Model {
             }
         }
     }
-    fn update_user(&mut self, msg: MsgUser) -> ShouldRender {
+    fn update_user(&mut self, ctx: &Context<Self>, msg: MsgUser) -> bool {
         match msg {
             MsgUser::SendCommand(command) => {
                 let payload = shared::ClientRequest::Command(command);
@@ -390,22 +402,18 @@ impl Model {
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
-    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        Self::new(link)
+    fn create(ctx: &Context<Self>) -> Self {
+        Self::new(ctx)
     }
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        msg.update_on(self)
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        msg.update_on(self, ctx)
     }
-    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        // no props
-        false
-    }
-    fn view(&self) -> Html {
+    fn view(&self, ctx: &Context<Self>) -> Html {
         log_render!("Model");
         let content = if self.websocket.is_connected() {
-            self.view_connected()
+            self.view_connected(ctx)
         } else {
-            self.view_disconnected()
+            self.view_disconnected(ctx)
         };
         html! {
             <>
@@ -413,132 +421,13 @@ impl Component for Model {
                 <div class="content">
                     { content }
                 </div>
+                <p>
+                    { "This is some live content, cool!" }
+                    <br/>
+                    { format!("{:?}", web_sys::window().expect("window exists").location().hash()) }
+                </p>
                 <footer>{ "(c) 2021 - don't keep your sounds boxed up" }</footer>
             </>
-        }
-    }
-}
-
-use controls::Controls;
-mod controls {
-    use crate::svg;
-    use shared::Command;
-    use yew::prelude::*;
-
-    const LABEL_PREVIOUS: (&str, &svg::Def) = ("Previous", svg::PREV);
-    const LABEL_NEXT: (&str, &svg::Def) = ("Next", svg::NEXT);
-    const LABEL_PLAY: (&str, &svg::Def) = ("Play", svg::PLAY);
-    const LABEL_PAUSE: (&str, &svg::Def) = ("Pause", svg::PAUSE);
-    const LABEL_FORWARD: (&str, &svg::Def) = ("Forward", svg::FORWARD);
-    const LABEL_BACKWARD: (&str, &svg::Def) = ("Backward", svg::BACKWARD);
-    const LABEL_LOUDER: (&str, &svg::Def) = ("Louder", svg::PLUS);
-    const LABEL_SOFTER: (&str, &svg::Def) = ("Softer", svg::MINUS);
-
-    #[derive(Properties, Clone)]
-    pub(crate) struct Properties {
-        pub on_command: Callback<Command>,
-        pub playback_state: Option<shared::PlaybackState>,
-        pub ty: Type,
-    }
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(crate) enum Type {
-        TrackPause,
-        Seek,
-        Volume,
-    }
-
-    pub(crate) enum Msg {}
-
-    pub(crate) struct Controls {
-        on_command: Callback<Command>,
-        link: ComponentLink<Self>,
-        playback_state: Option<shared::PlaybackState>,
-        ty: Type,
-    }
-    impl Controls {
-        fn view_buttons(&self) -> Html {
-            const SEEK_BACKWARD: shared::Command = Command::SeekRelative { seconds_delta: -5 };
-            const SEEK_FORWARD: shared::Command = Command::SeekRelative { seconds_delta: 5 };
-            const VOL_DOWN: shared::Command = Command::VolumeRelative { percent_delta: -5 };
-            const VOL_UP: shared::Command = Command::VolumeRelative { percent_delta: 5 };
-            let is_paused = self.playback_state == Some(shared::PlaybackState::Paused);
-            let is_playing = self.playback_state == Some(shared::PlaybackState::Playing);
-            match self.ty {
-                Type::TrackPause => html! {
-                    <>
-                        { self.fetch_button(LABEL_PREVIOUS, Command::SeekPrevious, true) }
-                        { self.fetch_button(LABEL_PLAY, Command::PlaybackResume, !is_playing) }
-                        { self.fetch_button(LABEL_PAUSE, Command::PlaybackPause, !is_paused) }
-                        { self.fetch_button(LABEL_NEXT, Command::SeekNext, true) }
-                    </>
-                },
-                Type::Seek => html! {
-                    <>
-                        { self.fetch_button(LABEL_BACKWARD, SEEK_BACKWARD, true) }
-                        { self.fetch_button(LABEL_FORWARD, SEEK_FORWARD, true) }
-                    </>
-                },
-                Type::Volume => html! {
-                    <>
-                        { self.fetch_button(LABEL_SOFTER, VOL_DOWN, true) }
-                        { self.fetch_button(LABEL_LOUDER, VOL_UP, true) }
-                    </>
-                },
-            }
-        }
-        fn fetch_button(
-            &self,
-            (text, svg_def): (&str, &svg::Def),
-            cmd: Command,
-            enable: bool,
-        ) -> Html {
-            const BLACK: svg::Renderer = svg::Renderer {
-                stroke: "none",
-                fill: "black",
-            };
-            let style = if enable { "" } else { "display: none;" };
-            html! {
-                <button onclick=self.on_command.reform(move |_| cmd.clone()) style=style>
-                    { BLACK.render(svg_def) }
-                    { text }
-                </button>
-            }
-        }
-    }
-    impl Component for Controls {
-        type Message = Msg;
-        type Properties = Properties;
-        fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-            let Properties {
-                on_command,
-                playback_state,
-                ty,
-            } = props;
-            Self {
-                on_command,
-                link,
-                playback_state,
-                ty,
-            }
-        }
-        fn update(&mut self, msg: Self::Message) -> ShouldRender {
-            match msg {}
-        }
-        fn change(&mut self, props: Self::Properties) -> ShouldRender {
-            let Properties {
-                on_command,
-                playback_state,
-                ty,
-            } = props;
-            self.on_command = on_command; // Callback's `PartialEq` implementation is empirically useless
-            set_detect_change! {
-                self.ty = ty;
-                self.playback_state = playback_state;
-            }
-        }
-        fn view(&self) -> Html {
-            log_render!(format!("Controls {:?}", self.ty));
-            self.view_buttons()
         }
     }
 }

@@ -3,7 +3,7 @@ use crate::fmt;
 use shared::{Command, PlaybackInfo, PlaybackTiming};
 use yew::prelude::*;
 
-#[derive(Properties, Clone)]
+#[derive(Properties, Clone, PartialEq)]
 pub(crate) struct Properties {
     pub on_command: Callback<Command>,
     pub timing: PlaybackTiming,
@@ -15,13 +15,6 @@ pub(crate) enum Msg {
 }
 
 pub(crate) struct PlaybackPosition {
-    link: ComponentLink<Self>,
-    // Callback to send `shared::Command`s
-    on_command: Callback<Command>,
-    // Duration of current item
-    duration_secs: u64,
-    // Time status was received from server
-    received_time: shared::Time,
     // Current forecast position
     forecast_position_secs: u64,
     // Preview slider position (while sliding)
@@ -38,23 +31,14 @@ impl Properties {
 impl Component for PlaybackPosition {
     type Properties = Properties;
     type Message = Msg;
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let forecast_position_secs = props.calc_forecast_position_secs();
-        let Properties {
-            on_command,
-            timing: PlaybackTiming { duration_secs, .. },
-            received_time,
-        } = props;
+    fn create(ctx: &Context<Self>) -> Self {
+        let props = ctx.props();
         Self {
-            link,
-            on_command,
-            duration_secs,
-            received_time,
-            forecast_position_secs,
+            forecast_position_secs: props.calc_forecast_position_secs(),
             preview_position_secs: None,
         }
     }
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Msg::PreviewPosition(position_secs) => {
                 self.preview_position_secs = Some(u64::from(position_secs));
@@ -62,51 +46,58 @@ impl Component for PlaybackPosition {
             }
         }
     }
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        let forecast_position_secs = props.calc_forecast_position_secs();
-        let Properties {
-            on_command,
-            timing: PlaybackTiming { duration_secs, .. },
-            received_time: new_received_time,
-        } = props;
-        self.on_command = on_command; // Callback's `PartialEq` implementation is empirically useless
-        if new_received_time != self.received_time {
-            self.preview_position_secs = None;
-        }
-        set_detect_change! {
-            self.duration_secs = duration_secs;
-            self.forecast_position_secs = forecast_position_secs;
-            self.received_time = new_received_time;
-        }
-    }
-    fn view(&self) -> Html {
+    // fn change(&mut self, props: Self::Properties) -> ShouldRender {
+    //     let forecast_position_secs = props.calc_forecast_position_secs();
+    //     let Properties {
+    //         on_command,
+    //         timing: PlaybackTiming { duration_secs, .. },
+    //         received_time: new_received_time,
+    //     } = props;
+    //     self.on_command = on_command; // Callback's `PartialEq` implementation is empirically useless
+    //     if new_received_time != self.received_time {
+    //         self.preview_position_secs = None;
+    //     }
+    //     set_detect_change! {
+    //         self.duration_secs = duration_secs;
+    //         self.forecast_position_secs = forecast_position_secs;
+    //         self.received_time = new_received_time;
+    //     }
+    // }
+    fn view(&self, ctx: &Context<Self>) -> Html {
         log_render!("PlaybackPosition");
-        let duration_secs = self.duration_secs;
+        let props = ctx.props();
+        let duration_secs = props.timing.duration_secs;
         let position_secs = self
             .preview_position_secs
             .unwrap_or(self.forecast_position_secs);
         let remaining_secs = duration_secs.saturating_sub(position_secs);
         let duration_str = duration_secs.to_string();
         let position_str = position_secs.to_string();
-        let on_change = self.on_command.reform(|change| match change {
-            ChangeData::Value(s) => {
-                let seconds = parse_position_str(&s);
-                shared::Command::SeekTo { seconds }
-            }
-            _ => unreachable!("range input gives Value"),
+        // TODO figure out how to get the value out of the `change` event
+        // let on_change =
+        //     props
+        //         .on_command
+        //         .reform(|event: web_sys::Event| match event.type_().as_str() {
+        //             "change" => {
+        //                 let target = event.target().unwrap();
+        //                 let value = target.dyn_ref();
+        //                 let seconds = parse_position_str(&value);
+        //                 shared::Command::SeekTo { seconds }
+        //             }
+        //             _ => unreachable!("range input gives Value"),
+        //         });
+        let on_input = ctx.link().callback(|event: web_sys::InputEvent| {
+            Msg::PreviewPosition(parse_position_str(&event.data().unwrap_or_default()))
         });
-        let on_input = self
-            .link
-            .callback(|event: InputData| Msg::PreviewPosition(parse_position_str(&event.value)));
         let position_fmt = fmt::fmt_duration_seconds(position_secs);
         let remaining_fmt = fmt::fmt_duration_seconds(remaining_secs);
         html! {
             <div class="playback time">
                 { position_fmt }
                 <input type="range"
-                    min="0" max=duration_str value=position_str
-                    onchange=on_change
-                    oninput=on_input
+                    min="0" max={duration_str} value={position_str}
+                    // onchange={on_change}
+                    oninput={on_input}
                     />
                 { "-" }{ remaining_fmt }
             </div>

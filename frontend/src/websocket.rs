@@ -1,22 +1,28 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+#![allow(clippy::pedantic)] // just while terraforming
+#![allow(unused)] // just while terraforming
+                  // TODO use an actual `reqwasm` type
+type WebSocketError = shared::Never;
+type WebSocketTask = shared::Never;
+
 use backoff::backoff::Backoff;
 use gloo_timers::callback::Timeout;
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryInto;
 use std::marker::PhantomData;
-use yew::format::Json;
-use yew::prelude::{Callback, ShouldRender};
-use yew::services::websocket::{WebSocketError, WebSocketService, WebSocketStatus, WebSocketTask};
+use yew::prelude::Callback;
 
 #[derive(Debug)]
 pub(crate) struct Notify(NotifyMsg);
 /// Privacy layer, to ensure all "status" events originate from this module
 #[derive(Debug)]
-struct NotifyMsg(WebSocketStatus);
+struct NotifyMsg(
+    //WebSocketStatus
+);
 
 pub(crate) struct Helper<T: Serialize, U: DeserializeOwned, B: Backoff> {
     url: String,
-    on_message: Callback<Json<anyhow::Result<U>>>,
+    // on_message: Callback<Json<anyhow::Result<U>>>,
     on_notification: Callback<Notify>,
     /// Websocket task, and server heartbeat
     task: Option<(SocketTask<T, U>, Option<shared::Time>)>,
@@ -32,20 +38,21 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
         reconnect: Callback<()>,
         reconnect_backoff: B,
     ) -> Self {
-        let on_message = on_message.reform(|Json(message)| message);
-        let reconnector = ReconnectLogic {
-            timeout_millis: None,
-            backoff: reconnect_backoff,
-            reconnect,
-        };
-        Self {
-            url,
-            on_message,
-            on_notification,
-            task: None,
-            reconnector,
-            before_first_connect: true,
-        }
+        unimplemented!("need a re-write for the reqwasm crate");
+        // let on_message = on_message.reform(|Json(message)| message);
+        // let reconnector = ReconnectLogic {
+        //     timeout_millis: None,
+        //     backoff: reconnect_backoff,
+        //     reconnect,
+        // };
+        // Self {
+        //     url,
+        //     on_message,
+        //     on_notification,
+        //     task: None,
+        //     reconnector,
+        //     before_first_connect: true,
+        // }
     }
     pub(crate) fn connect(&mut self) -> Result<(), WebSocketError> {
         self.reconnector.clear_timeout();
@@ -76,29 +83,32 @@ impl<T: Serialize, U: DeserializeOwned + 'static, B: Backoff> Helper<T, U, B> {
         self.task.as_mut().map(|(task, _)| task)
     }
     fn create_task(&mut self) -> Result<&mut SocketTask<T, U>, WebSocketError> {
-        let on_notification = self
-            .on_notification
-            .clone()
-            .reform(|event| Notify(NotifyMsg(event)));
-        let task =
-            WebSocketService::connect_text(&self.url, self.on_message.clone(), on_notification)?;
-        self.task.replace((SocketTask::new(task), None));
-        Ok(self.get_task().expect("replaced `task` option is some"))
+        todo!()
+        // let on_notification = self
+        //     .on_notification
+        //     .clone()
+        //     .reform(|event| Notify(NotifyMsg(event)));
+        // let task =
+        //     WebSocketService::connect_text(&self.url, self.on_message.clone(), on_notification)?;
+        // self.task.replace((SocketTask::new(task), None));
+        // Ok(self.get_task().expect("replaced `task` option is some"))
     }
-    pub(crate) fn on_notify(&mut self, Notify(NotifyMsg(event)): Notify) -> ShouldRender {
-        let should_render = match event {
-            WebSocketStatus::Closed | WebSocketStatus::Error => {
-                self.task = None;
-                true
-            }
-            WebSocketStatus::Opened => false,
-        };
-        if self.is_started() {
-            self.reconnector.clear_timeout();
-        } else {
-            self.reconnector.set_timeout();
-        }
-        should_render
+    // pub(crate) fn on_notify(&mut self, Notify(NotifyMsg(event)): Notify) -> bool {
+    pub(crate) fn on_notify(&mut self, Notify(NotifyMsg()): Notify) -> bool {
+        todo!()
+        // let should_render = match event {
+        //     WebSocketStatus::Closed | WebSocketStatus::Error => {
+        //         self.task = None;
+        //         true
+        //     }
+        //     WebSocketStatus::Opened => false,
+        // };
+        // if self.is_started() {
+        //     self.reconnector.clear_timeout();
+        // } else {
+        //     self.reconnector.set_timeout();
+        // }
+        // should_render
     }
     pub(crate) fn on_message(&mut self) {
         self.before_first_connect = false;
@@ -120,7 +130,8 @@ impl<T: Serialize, U: DeserializeOwned> SocketTask<T, U> {
         }
     }
     pub(crate) fn send(&mut self, message: &T) {
-        self.task.send(Json(message));
+        todo!()
+        // self.task.send(Json(message));
     }
 }
 

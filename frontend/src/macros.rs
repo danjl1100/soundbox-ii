@@ -12,7 +12,7 @@ macro_rules! make_console {
             #[allow(unused)]
             macro_rules! $type {
                 ($dol($arg:expr),+ $dol(,)?) => {
-                    yew::services::ConsoleService::$type(&format!( $dol($arg),+ ));
+                    gloo::console::$type!(format!( $dol($arg),+ ));
                 };
             }
         )+
@@ -28,29 +28,30 @@ macro_rules! log_render {
     };
 }
 
-macro_rules! set_detect_change {
-    (debug; $( $self:ident . $target:ident = $source:expr ;)+) => {
-        {
-            $(
-                debug!("{:?} => {:?}  changed? {:?}", &$self.$target, &$source, $self.$target != $source);
-            )+
-            set_detect_change! {
-                $( $self . $target = $source ;)+
-            }
-        }
-    };
-    ($( $self:ident . $target:ident = $source:expr ;)+) => {
-        {
-            let changed = $(
-                ( $self.$target != $source )
-            )||+;
-            $(
-                $self.$target = $source;
-            )+
-            changed
-        }
-    };
-}
+// TODO remove if not needed in yew 0.19
+// macro_rules! set_detect_change {
+//     (debug; $( $self:ident . $target:ident = $source:expr ;)+) => {
+//         {
+//             $(
+//                 debug!("{:?} => {:?}  changed? {:?}", &$self.$target, &$source, $self.$target != $source);
+//             )+
+//             set_detect_change! {
+//                 $( $self . $target = $source ;)+
+//             }
+//         }
+//     };
+//     ($( $self:ident . $target:ident = $source:expr ;)+) => {
+//         {
+//             let changed = $(
+//                 ( $self.$target != $source )
+//             )||+;
+//             $(
+//                 $self.$target = $source;
+//             )+
+//             changed
+//         }
+//     };
+// }
 
 macro_rules! derive_wrapper {
     (
@@ -78,9 +79,9 @@ macro_rules! derive_wrapper {
                 }
             )+
             impl $name {
-                fn update_on(self, target: &mut $target) -> ShouldRender {
+                fn update_on(self, target: &mut $target, ctx: &Context<$target>) -> bool {
                     match self {
-                        $($name::$variant(inner) => target.$update_fn(inner)),+
+                        $($name::$variant(inner) => target.$update_fn(ctx, inner)),+
                     }
                 }
             }
