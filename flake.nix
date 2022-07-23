@@ -2,7 +2,7 @@
   description = "soundbox-ii music playback controller";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?rev=35227e5abb956ae2885306ef4769617ed28427e7"; # TODO diagnose `trunk` issues with newer revs of nixpkgs-unstable
+    nixpkgs.url = "github:nixos/nixpkgs";
     flake-utils.url = "github:numtide/flake-utils";
     nix-filter_input.url = "github:numtide/nix-filter";
     rust-overlay.url = "github:oxalica/rust-overlay";
@@ -142,6 +142,10 @@
             buildDirRelative = "frontend";
           in ''
             cd "${buildDirRelative}"
+            # TODO remove, just to let download start to see _what_ is attempting to be downloaded
+            # export XDG_CACHE_HOME=$(pwd)/fake-cache
+            # echo XDG_CACHE_HOME is $XDG_CACHE_HOME
+            # mkdir -p "$XDG_CACHE_HOME"
             trunk build --dist dist
           '';
           # TODO: need to set mtime of the resulting files to the commit time (but can't use `current time` when unstaged, since that's not pure)
