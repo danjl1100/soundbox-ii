@@ -57,7 +57,7 @@ macro_rules! derive_wrapper {
     (
         $(
             $(#[$meta:meta])*
-            enum $name:ident for $target:ident {
+            $vis:vis enum $name:ident for $target:ident {
                 $(
                     $variant:ident ( $inner:ty ) for $update_fn:ident (..)
                 ),+ $(,)?
@@ -66,7 +66,7 @@ macro_rules! derive_wrapper {
     ) => {
         $(
             $(#[$meta])*
-            enum $name {
+            $vis enum $name {
                 $(
                     $variant ( $inner )
                 ),+
