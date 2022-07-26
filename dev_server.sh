@@ -18,4 +18,18 @@ else
   ARGS="--serve --watch-assets --interactive"
 fi
 
+if [ "$IN_NIX_SHELL" != "" ]; then
+  which cargo >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo 'Executing cargo directly (within nix shell)'
+    echo ''
+    cargo run -- ${ARGS}
+    exit $?
+  fi
+  echo 'No cargo found in this nix shell (fall back to `nix run`)'
+else
+  echo 'No nix shell detected (run `nix develop` to speed this up for development)'
+fi
+
+echo ''
 nix run .#${APP} -- ${ARGS}

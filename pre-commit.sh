@@ -31,10 +31,10 @@ true \
 \$(cat \$FILE)\" > \$FILE" && false) \
     && echo "[none]" \
   && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l && echo "[none]" \
-  && cargo clippy --workspace \
-  && cargo clippy --workspace --tests \
-  && cargo test --workspace \
-  && cargo doc --workspace --no-deps -q \
+  && cargo clippy --workspace --color always \
+  && cargo clippy --workspace --tests --color always \
+  && cargo test --workspace --color always \
+  && cargo doc --workspace --no-deps -q --color always \
   && true # trailing commas for the win
 RESULT=$?
 
