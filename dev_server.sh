@@ -18,18 +18,30 @@ else
   ARGS="--serve --watch-assets --interactive"
 fi
 
-if [ "$IN_NIX_SHELL" != "" ]; then
-  which cargo >/dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    echo 'Executing cargo directly (within nix shell)'
+case $APP in
+  soundbox-ii_bin | soundbox-ii)
+    ATTEMPT_SHELL_USAGE=1
+    ;;
+  *)
+    ATTEMPT_SHELL_USAGE=0
+    ;;
+esac
+
+if [ $ATTEMPT_SHELL_USAGE -eq 1 ]; then
+  if [ "$IN_NIX_SHELL" != "" ]; then
+    which cargo >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo 'Executing cargo directly (within nix shell)'
+      echo ''
+      cargo run -- ${ARGS}
+      exit $?
+    fi
+    echo 'No cargo found in this nix shell (fall back to `nix run`)'
     echo ''
-    cargo run -- ${ARGS}
-    exit $?
+  else
+    echo 'No nix shell detected (run `nix develop` to speed this up for development)'
+    echo ''
   fi
-  echo 'No cargo found in this nix shell (fall back to `nix run`)'
-else
-  echo 'No nix shell detected (run `nix develop` to speed this up for development)'
 fi
 
-echo ''
 nix run .#${APP} -- ${ARGS}

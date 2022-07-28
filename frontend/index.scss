@@ -58,19 +58,25 @@
   }
 }
 
-// TODO - TEST THIS OUT!
-// @media (prefers-color-scheme: dark) {
-//   html {
-//     background-color: #1e1e1e;
-//     color: #ffffffd4;
-//   }
-//   button {
-//     background-color: #ffffffb0;
-//   }
-//   button:hover {
-//     background-color: #ffffffe0;
-//   }
-// }
+@media (prefers-color-scheme: dark) {
+  html {
+    filter: invert(85%);
+  }
+  body {
+    filter: none;
+  }
+  // TODO is this customization needed?
+  // html {
+  //   background-color: #1e1e1e;
+  //   color: #ffffffd4;
+  // }
+  // button {
+  //   background-color: #ffffffb0;
+  // }
+  // button:hover {
+  //   background-color: #ffffffe0;
+  // }
+}
 
 /* --------------------------------- */
 $tablet_width: 600px;

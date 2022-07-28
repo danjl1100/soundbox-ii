@@ -12,7 +12,7 @@ macro_rules! make_console {
             #[allow(unused)]
             macro_rules! $type {
                 ($dol($arg:expr),+ $dol(,)?) => {
-                    gloo::console::$type!(format!( $dol($arg),+ ));
+                    gloo::console::$type!(format!( $dol($arg),+ ))
                 };
             }
         )+
@@ -86,5 +86,43 @@ macro_rules! derive_wrapper {
                 }
             }
         )+
+    };
+    (
+        $(
+            $(#[$meta:meta])*
+            $vis:vis enum $name:ident for $Component:ident {
+                $(
+                    $variant:ident ( $inner_ty:ty ) for self.$update_member:ident
+                ),+ $(,)?
+            }
+        )+
+    ) => {
+        $(
+            $(#[$meta])*
+            $vis enum $name {
+                $(
+                    $variant ( $inner_ty )
+                ),+
+            }
+            $(
+                impl From<$inner_ty> for $name {
+                    fn from(other: $inner_ty) -> Self {
+                        $name::$variant(other)
+                    }
+                }
+            )+
+            impl $name {
+                fn update_on(self, component: &mut $Component, ctx: &Context<$Component>) -> bool {
+                    use $crate::macros::UpdateDelegate;
+                    match self {
+                        $($name::$variant(inner_ty) => UpdateDelegate::<$Component>::update(&mut component.$update_member, ctx, inner_ty)),+
+                    }
+                }
+            }
+        )+
     }
+}
+pub trait UpdateDelegate<C: yew::Component> {
+    type Message;
+    fn update(&mut self, ctx: &yew::Context<C>, message: Self::Message) -> bool;
 }

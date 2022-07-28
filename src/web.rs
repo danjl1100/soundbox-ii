@@ -32,9 +32,12 @@ mod filter {
     fn static_files(
         assets_dir: PathBuf,
     ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
-        warp::get()
-            .and(warp::path("app"))
-            .and(warp::fs::dir(assets_dir))
+        warp::get().and(warp::path("app")).and(
+            warp::fs::dir(assets_dir.clone()) // load specific file
+                .or(warp::path::tail() // OR, ignore tail
+                    .and(warp::fs::dir(assets_dir)) // loads index.html (pretend requested `/app/`)
+                    .map(|_tail, file| file)),
+        )
     }
 
     mod api_v1 {

@@ -294,7 +294,7 @@ impl Model {
     fn push_error<E: std::fmt::Display>(&mut self, err_type: &str, error: E) {
         self.errors.push(format!("{} error: {}", err_type, error));
     }
-    fn update_websocket(&mut self, ctx: &Context<Self>, msg: MsgWebSocket) -> bool {
+    fn update_websocket(&mut self, _ctx: &Context<Self>, msg: MsgWebSocket) -> bool {
         match msg {
             MsgWebSocket::Connect => {
                 if self.websocket.is_started() {
@@ -345,7 +345,7 @@ impl Model {
             }
         }
     }
-    fn update_user(&mut self, ctx: &Context<Self>, msg: MsgUser) -> bool {
+    fn update_user(&mut self, _ctx: &Context<Self>, msg: MsgUser) -> bool {
         match msg {
             MsgUser::SendCommand(command) => {
                 let payload = shared::ClientRequest::Command(command);
