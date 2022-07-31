@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use yew::{html, Component, Context, Html};
+use yew::{html, html::Scope, Component, Context, Html};
 
 use crate::macros::UpdateDelegate;
 
@@ -40,7 +40,7 @@ impl Logger {
                         { self.errors.len() }
                         { " Errors " }
                         <button onclick={toggle_details}>
-                            { if show_details { "Hide" } else { "Show" } }
+                            { if show_details { "Hide" } else { "Details" } }
                         </button>
                         { " " }
                         <button onclick={clear}>{ "Clear" }</button>
@@ -105,4 +105,13 @@ where
             Msg::ShowErrorDetails(show) => self.set_show_error_details(show),
         }
     }
+}
+
+pub(crate) fn emit_error<C>(link: &Scope<C>, scope: &'static str, message: String)
+where
+    C: Component,
+    <C as Component>::Message: From<Msg>,
+{
+    link.callback_once(move |_| Msg::Error((scope, message)))
+        .emit(());
 }

@@ -120,7 +120,7 @@ macro_rules! derive_wrapper {
                 }
             }
         )+
-    }
+    };
 }
 pub trait UpdateDelegate<C: yew::Component> {
     type Message;

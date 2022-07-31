@@ -32,6 +32,8 @@
 
 use backoff::{exponential::ExponentialBackoff, SystemClock};
 use gloo_net::websocket::WebSocketError;
+use wasm_bindgen::JsValue;
+use web_sys::Location;
 use yew::{html, Component, Context, Html};
 use yew_router::{
     prelude::{Link, Redirect},
@@ -82,17 +84,38 @@ fn switch_main(route: &Route) -> Html {
 derive_wrapper! {
     #[allow(clippy::large_enum_variant)]
     enum AppMsg for App {
-        WebSocket(websocket::Msg) for self.websocket,
-        Reconnect(reconnect::Msg) for self.reconnect,
         Logger(log::Msg) for self.logger,
+        Reconnect(reconnect::Msg) for self.reconnect,
+        Model(model::Msg) for self.model,
+        WebSocket(websocket::Msg) for self.websocket,
+    }
+}
+enum AppMsgIntrinsic {
+    ReloadPage,
+}
+shared::wrapper_enum! {
+    enum AppMsgFull {
+        Intrinsic(AppMsgIntrinsic),
+        { impl None for }
+        Main(AppMsg),
+    }
+}
+impl<T> From<T> for AppMsgFull
+where
+    AppMsg: From<T>,
+{
+    fn from(inner: T) -> Self {
+        AppMsgFull::Main(inner.into())
     }
 }
 
 type WebsocketHandler = websocket::Handler<shared::ServerResponse, shared::ClientRequest>;
 struct App {
-    websocket: WebsocketHandler,
-    reconnect: reconnect::Logic<ExponentialBackoff<SystemClock>>,
     logger: log::Logger,
+    model: model::Model,
+    reconnect: reconnect::Logic<ExponentialBackoff<SystemClock>>,
+    websocket: WebsocketHandler,
+    window: web_sys::Window,
 }
 impl App {
     fn new_websocket(ctx: &Context<Self>) -> WebsocketHandler {
@@ -102,8 +125,13 @@ impl App {
             format!("ws://{host}/ws")
         };
         let link = ctx.link();
-        let on_message =
-            link.callback(|server_response| log::Msg::Message(format!("{server_response:?}")));
+        let on_message = link.batch_callback(|server_response| {
+            vec![
+                // log::Msg::Message(format!("{server_response:?}")).into(), //TODO deleteme, remove `Message` printouts (framework churn)
+                model::Msg::Server(server_response).into(),
+                reconnect::Msg::ConnectionEstablished.into(),
+            ]
+        });
         let on_error = link.callback(|e| -> AppMsg {
             const TYPE_WEBSOCKET: &str = "websocket";
             const TYPE_SERDE: &str = "serde";
@@ -146,9 +174,30 @@ impl App {
             ..ExponentialBackoff::default()
         }
     }
+    fn reload_page(&mut self, ctx: &Context<Self>) -> bool {
+        fn do_reload(location: &Location) -> Result<(), JsValue> {
+            let location_str = location.href()?;
+            location.set_href(&location_str)?;
+            Ok(())
+        }
+        let location = self.window.location();
+        self.reconnect.set_is_shutdown(true);
+        let mut retry_count = 0;
+        let link = ctx.link();
+        while let Err(err) = do_reload(&location) {
+            log::emit_error(link, "app", format!("page reload failed: {err:?}"));
+            retry_count += 1;
+            if retry_count > 10 {
+                let bail_message = "page reload failed too many times :/".to_string();
+                log::emit_error(link, "app", bail_message);
+                break;
+            }
+        }
+        false
+    }
 }
 impl Component for App {
-    type Message = AppMsg;
+    type Message = AppMsgFull;
     type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
@@ -166,32 +215,49 @@ impl Component for App {
                 },
             )
         };
+        let model = {
+            let on_error =
+                link.callback(|e| log::Msg::Error(("model", format!("TODO - handle this? {e:?}"))));
+            let reload_page = link.callback(|()| AppMsgIntrinsic::ReloadPage);
+            model::Model {
+                status: model::Status::default(),
+                callbacks: model::Callbacks {
+                    on_error,
+                    reload_page,
+                },
+            }
+        };
+        let window = web_sys::window().expect("JS has window");
+        // startup WebSocket
+        link.callback_once(|()| websocket::Msg::Connect).emit(());
         Self {
-            websocket,
-            reconnect,
             logger: log::Logger::default(),
+            reconnect,
+            model,
+            websocket,
+            window,
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, message: AppMsg) -> bool {
-        if self.reconnect.get_timeout_millis().is_some() {
-            if let AppMsg::Logger(log::Msg::Message(..)) = &message {
-                ctx.link()
-                    .callback(|_| reconnect::Msg::ConnectionEstablished)
-                    .emit(());
-            }
+    fn update(&mut self, ctx: &Context<Self>, message: AppMsgFull) -> bool {
+        match message {
+            AppMsgFull::Main(main) => main.update_on(self, ctx),
+            AppMsgFull::Intrinsic(intrinsic) => match intrinsic {
+                AppMsgIntrinsic::ReloadPage => self.reload_page(ctx),
+            },
         }
-        message.update_on(self, ctx)
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         let websocket_connect = link.callback(|_| websocket::Msg::Connect);
         let websocket_disconnect = link.callback(|_| websocket::Msg::Disconnect);
+        let fake_error = link.callback(|_| log::Msg::Error(("debug", "fake error".to_string())));
         html! {
             <>
                 <header class="monospace">{ "soundbox-ii" }</header>
                 <div class="content">
+                    <button onclick={fake_error}>{ "Trigger fake error" }</button>
                     <div>
                         {"This is a websocket test"}
                         <br/>
@@ -202,7 +268,10 @@ impl Component for App {
                     <BrowserRouter>
                         <Switch<Route> render={Switch::render(switch_main)} />
                     </BrowserRouter>
-                    { self.logger.error_view(ctx) }
+                    <div style="font-size: 0.8em;">
+                        { self.model.status.heartbeat_view() }
+                        { self.logger.error_view(ctx) }
+                    </div>
                 </div>
                 <footer>{ "(c) 2021-2022 - don't keep your sounds boxed up" }</footer>
             </>
@@ -210,6 +279,77 @@ impl Component for App {
     }
 }
 
+mod model {
+    use std::borrow::Cow;
+
+    use shared::ServerResponse;
+    use yew::{html, Callback, Component, Context, Html};
+
+    use crate::macros::UpdateDelegate;
+
+    pub enum Msg {
+        Server(ServerResponse),
+    }
+    #[derive(Debug)]
+    pub enum Error {
+        ServerError(String),
+    }
+
+    pub struct Model {
+        pub callbacks: Callbacks,
+        pub status: Status,
+    }
+    #[derive(Default)]
+    pub struct Status {
+        last_heartbeat: Option<shared::Time>,
+        playback: Option<shared::PlaybackStatus>,
+    }
+    pub struct Callbacks {
+        pub on_error: Callback<Error>,
+        pub reload_page: Callback<()>,
+    }
+    impl Status {
+        pub fn heartbeat_view(&self) -> Html {
+            html! {
+                <div>
+                    { "Sever last seen: " }
+                    { self.last_heartbeat.map_or(Cow::Borrowed("Never"), |t| format!("{t:?}").into()) }
+                </div>
+            }
+        }
+    }
+
+    impl<C> UpdateDelegate<C> for Model
+    where
+        C: Component,
+    {
+        type Message = Msg;
+
+        fn update(&mut self, _ctx: &Context<C>, message: Self::Message) -> bool {
+            match message {
+                Msg::Server(message) => {
+                    log!("Server message: {message:?}");
+                    match message {
+                        ServerResponse::Heartbeat | ServerResponse::Success => {}
+                        ServerResponse::ClientCodeChanged => {
+                            self.callbacks.reload_page.emit(());
+                        }
+                        ServerResponse::ServerError(err) => {
+                            self.callbacks.on_error.emit(Error::ServerError(err));
+                        }
+                        ServerResponse::PlaybackStatus(playback) => {
+                            self.status.playback.replace(playback);
+                        }
+                    }
+                    self.status.last_heartbeat.replace(shared::time_now());
+                    true // always, due to Heartbeat
+                }
+            }
+        }
+    }
+}
+
 fn main() {
+    log!("--------------------START APP MAIN--------------------");
     yew::start_app::<App>();
 }

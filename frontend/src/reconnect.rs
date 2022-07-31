@@ -6,6 +6,7 @@ use yew::{Callback, Component, Context};
 
 use crate::macros::UpdateDelegate;
 
+#[derive(Debug)]
 pub enum Msg {
     ConnectionEstablished,
     ConnectionClose,
@@ -20,6 +21,7 @@ pub struct Logic<B: Backoff> {
     timeout_millis: Option<(Timeout, u32)>,
     backoff: B,
     callbacks: Callbacks,
+    is_shutdown: bool,
 }
 impl<B: Backoff> Logic<B> {
     pub fn new(backoff: B, callbacks: Callbacks) -> Self {
@@ -27,11 +29,11 @@ impl<B: Backoff> Logic<B> {
             timeout_millis: None,
             backoff,
             callbacks,
+            is_shutdown: false,
         }
     }
     /// Clears the current timeout (persists the backoff state)
     fn clear_timeout(&mut self) {
-        log!("reconnect: clear timeout");
         self.timeout_millis = None;
     }
     /// Resets the backoff and timeout
@@ -50,15 +52,17 @@ impl<B: Backoff> Logic<B> {
             return;
         }
         if let Some(delay) = self.backoff.next_backoff() {
-            log!("reconnect: schedule timeout for {delay:?}");
             let delay_millis = delay.as_millis().try_into().unwrap_or(u32::MAX);
-            debug!("reconnect delay_millis = {}", delay_millis);
+            log!("reconnect: schedule timeout for {delay_millis:?}ms");
             let connect = self.callbacks.connect.clone();
             let timeout = Timeout::new(delay_millis, move || {
                 connect.emit(());
             });
             self.timeout_millis = Some((timeout, delay_millis));
         }
+    }
+    pub fn set_is_shutdown(&mut self, is_shutdown: bool) {
+        self.is_shutdown = is_shutdown;
     }
 }
 impl<B: Backoff, C: Component> UpdateDelegate<C> for Logic<B> {
@@ -67,6 +71,9 @@ impl<B: Backoff, C: Component> UpdateDelegate<C> for Logic<B> {
     fn update(&mut self, _ctx: &Context<C>, message: Self::Message) -> bool {
         match message {
             Msg::ConnectionEstablished => self.reset_all(), // DONE
+            message @ (Msg::ConnectionError | Msg::ConnectionClose) if self.is_shutdown => {
+                log!("reconnect ignoring: {message:?}, is_shutdown!");
+            }
             Msg::ConnectionClose => self.schedule_timeout(), // only if needed, Retry (??)
             Msg::ConnectionError => {
                 self.clear_timeout();
