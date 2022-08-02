@@ -6,6 +6,7 @@ use yew::{Callback, Component, Context};
 
 use crate::macros::UpdateDelegate;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum Msg {
     ConnectionEstablished,

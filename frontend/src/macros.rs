@@ -111,11 +111,26 @@ macro_rules! derive_wrapper {
                     }
                 }
             )+
-            impl $name {
-                fn update_on(self, component: &mut $Component, ctx: &Context<$Component>) -> bool {
-                    use $crate::macros::UpdateDelegate;
-                    match self {
-                        $($name::$variant(inner_ty) => UpdateDelegate::<$Component>::update(&mut component.$update_member, ctx, inner_ty)),+
+            mod __sealed {
+                use super::{$name, $Component};
+                use $crate::macros::UpdateDelegate;
+                pub(super) struct TickedAll { _sealed: () }
+                impl $name {
+                    pub(super) fn update_on(
+                        self,
+                        component: &mut $Component,
+                        ctx: &yew::Context<$Component>,
+                        _sentinel: TickedAll, // ensures the `tick_all` function is indeed called
+                    ) -> bool {
+                        match self {
+                            $($name::$variant(inner_ty) => {
+                                UpdateDelegate::<$Component>::update(&mut component.$update_member, ctx, inner_ty)
+                            }),+
+                        }
+                    }
+                    pub(super) fn tick_all(component: &mut $Component) -> TickedAll {
+                        $(UpdateDelegate::<$Component>::tick_all(&mut component.$update_member);)+
+                        TickedAll { _sealed: () }
                     }
                 }
             }
@@ -124,5 +139,11 @@ macro_rules! derive_wrapper {
 }
 pub trait UpdateDelegate<C: yew::Component> {
     type Message;
+    /// Update for the `Message` of interest
     fn update(&mut self, ctx: &yew::Context<C>, message: Self::Message) -> bool;
+    /// Update on every message tick
+    ///
+    /// NOTE: This callback should only examine and update internal state,
+    ///   not emit messages. (`yew::Context` is intentionally omitted)
+    fn tick_all(&mut self) {}
 }

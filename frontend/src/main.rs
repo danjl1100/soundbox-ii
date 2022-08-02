@@ -92,6 +92,7 @@ derive_wrapper! {
 }
 enum AppMsgIntrinsic {
     ReloadPage,
+    SendMessage(shared::ClientRequest),
 }
 shared::wrapper_enum! {
     enum AppMsgFull {
@@ -132,26 +133,44 @@ impl App {
                 reconnect::Msg::ConnectionEstablished.into(),
             ]
         });
-        let on_error = link.callback(|e| -> AppMsg {
+        let on_error = link.batch_callback(|e| {
             const TYPE_WEBSOCKET: &str = "websocket";
             const TYPE_SERDE: &str = "serde";
+            const TYPE_WEBSOCKET_CHANNEL: &str = "websocket-channel";
             match e {
                 websocket::Error::WebSocket(e) => match e {
-                    WebSocketError::ConnectionError | WebSocketError::MessageSendError(_) => {
-                        reconnect::Msg::ConnectionError.into()
+                    WebSocketError::ConnectionError => {
+                        vec![
+                            reconnect::Msg::ConnectionError.into(),
+                            websocket::Msg::Disconnect.into(),
+                        ]
                     }
-                    WebSocketError::ConnectionClose(_) => reconnect::Msg::ConnectionClose.into(),
-                    other => log::Msg::Error((
+                    WebSocketError::MessageSendError(_) => {
+                        vec![reconnect::Msg::ConnectionError.into()]
+                    }
+                    WebSocketError::ConnectionClose(_) => {
+                        vec![
+                            reconnect::Msg::ConnectionClose.into(),
+                            websocket::Msg::Disconnect.into(),
+                        ]
+                    }
+                    other => vec![log::Msg::Error((
                         TYPE_WEBSOCKET,
-                        format!("unknown WebSocketError: {other:?}"),
+                        format!("unknown WebSocketError error: {other:?}"),
                     ))
-                    .into(),
+                    .into()],
                 },
                 websocket::Error::UnexpectedBytes(bytes) => {
-                    log::Msg::Error((TYPE_WEBSOCKET, format!("unexpected bytes: {bytes:?}"))).into()
+                    vec![
+                        log::Msg::Error((TYPE_WEBSOCKET, format!("unexpected bytes: {bytes:?}")))
+                            .into(),
+                    ]
                 }
                 websocket::Error::SerdeJson(error) => {
-                    log::Msg::Error((TYPE_SERDE, format!("{error}"))).into()
+                    vec![log::Msg::Error((TYPE_SERDE, format!("{error}"))).into()]
+                }
+                websocket::Error::Send(error) => {
+                    vec![log::Msg::Error((TYPE_WEBSOCKET_CHANNEL, format!("{error}"))).into()]
                 }
             }
         });
@@ -240,10 +259,18 @@ impl Component for App {
     }
 
     fn update(&mut self, ctx: &Context<Self>, message: AppMsgFull) -> bool {
+        let ticked_all = AppMsg::tick_all(self);
         match message {
-            AppMsgFull::Main(main) => main.update_on(self, ctx),
+            AppMsgFull::Main(main) => main.update_on(self, ctx, ticked_all),
             AppMsgFull::Intrinsic(intrinsic) => match intrinsic {
                 AppMsgIntrinsic::ReloadPage => self.reload_page(ctx),
+                AppMsgIntrinsic::SendMessage(message) => {
+                    match self.websocket.write_handle() {
+                        Some(mut writer) => writer.send(&message),
+                        None => log!("unable to write {message:?}, not connected!"),
+                    }
+                    false
+                }
             },
         }
     }
@@ -253,14 +280,17 @@ impl Component for App {
         let websocket_connect = link.callback(|_| websocket::Msg::Connect);
         let websocket_disconnect = link.callback(|_| websocket::Msg::Disconnect);
         let fake_error = link.callback(|_| log::Msg::Error(("debug", "fake error".to_string())));
+        let fake_playpause =
+            link.callback(|_| AppMsgIntrinsic::SendMessage(shared::Command::PlaybackPause.into()));
         html! {
             <>
                 <header class="monospace">{ "soundbox-ii" }</header>
                 <div class="content">
-                    <button onclick={fake_error}>{ "Trigger fake error" }</button>
                     <div>
-                        {"This is a websocket test"}
-                        <br/>
+                        <button onclick={fake_error}>{ "Trigger fake error" }</button>
+                        <button onclick={fake_playpause}>{ "PlayPause" }</button>
+                    </div>
+                    <div>
                         {"Websocket "}
                         <button onclick={websocket_connect}>{"Connect"}</button>
                         <button onclick={websocket_disconnect}>{"Disconnect"}</button>

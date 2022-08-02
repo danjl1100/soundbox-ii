@@ -378,6 +378,11 @@ impl From<Shutdown> for ServerResponse {
         Self::ServerError("server is shutting down".to_string())
     }
 }
+impl From<Command> for ClientRequest {
+    fn from(command: Command) -> Self {
+        Self::Command(command)
+    }
+}
 
 impl PlaybackTiming {
     /// Predicts the position and time changed by the specified [`TimeDifference`]

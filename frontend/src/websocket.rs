@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use futures::{
-    channel::oneshot,
+    channel::{mpsc, oneshot},
     select,
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt,
@@ -25,6 +25,7 @@ shared::wrapper_enum! {
     pub enum Error {
         WebSocket(WebSocketError),
         SerdeJson(serde_json::Error),
+        Send(mpsc::SendError),
         { impl None for }
         UnexpectedBytes(Vec<u8>),
     }
@@ -34,13 +35,17 @@ type HandleWrite = SplitSink<WebSocket, Message>;
 type HandleRead = SplitStream<WebSocket>;
 pub(crate) struct Handler<T, U> {
     url: String,
-    write_handle: Option<(HandleWrite, oneshot::Receiver<shared::Never>)>,
+    write_handle: Option<(
+        mpsc::UnboundedSender<String>,
+        oneshot::Receiver<shared::Shutdown>,
+    )>,
     callbacks: Callbacks<T>,
     _phantom: PhantomData<U>,
 }
 impl<T, U> Handler<T, U>
 where
     T: DeserializeOwned + 'static,
+    U: Serialize + 'static,
 {
     pub fn new(url: String, callbacks: Callbacks<T>) -> Self {
         Self {
@@ -50,14 +55,40 @@ where
             _phantom: PhantomData,
         }
     }
+    pub fn write_handle(&mut self) -> Option<WriteHandle<'_, T, U>> {
+        self.write_handle.as_ref().map(|(write_tx, _)| {
+            let write_tx = write_tx.clone();
+            let callbacks = &self.callbacks;
+            WriteHandle {
+                write_tx,
+                callbacks,
+                _phantom: PhantomData,
+            }
+        })
+    }
     fn try_connect(&mut self) -> Result<(), JsError> {
         let ws = WebSocket::open(&self.url)?;
         let (write, read) = ws.split();
-        let (read_loop_tx, read_loop_rx) = oneshot::channel();
-        self.write_handle.replace((write, read_loop_rx));
+        let (read_loop_shutdown_tx, read_loop_shutdown_rx) = oneshot::channel();
+        let (write_tx, write_rx) = mpsc::unbounded();
+        self.write_handle.replace((write_tx, read_loop_shutdown_rx));
         let callbacks = self.callbacks.clone();
-        spawn_local(callbacks.run_reader_loop(read, read_loop_tx));
+        spawn_local(callbacks.run_writer_loop(write, write_rx));
+        let callbacks = self.callbacks.clone();
+        spawn_local(callbacks.run_reader_loop(read, read_loop_shutdown_tx));
         Ok(())
+    }
+    pub fn update_loop_health(&mut self) {
+        if let Some((write_tx, read_loop_shutdown_rx)) = &mut self.write_handle {
+            let read_loop_shutdown = match read_loop_shutdown_rx.try_recv() {
+                Ok(Some(shared::Shutdown)) | Err(oneshot::Canceled) => true,
+                Ok(None) => false,
+            };
+            if read_loop_shutdown || write_tx.is_closed() {
+                log!("websocket detected read/write loop termination, destroying connection");
+                self.write_handle.take();
+            }
+        }
     }
 }
 pub struct Callbacks<T> {
@@ -79,7 +110,7 @@ where
     async fn run_reader_loop(
         self,
         mut read: HandleRead,
-        mut shutdown: oneshot::Sender<shared::Never>,
+        mut shutdown: oneshot::Sender<shared::Shutdown>,
     ) {
         let mut shutdown = shutdown.cancellation().fuse();
         loop {
@@ -123,10 +154,24 @@ where
         log!("websocket error: {error:?}");
         self.on_error.emit(error);
     }
+    async fn run_writer_loop(
+        self,
+        mut writer: HandleWrite,
+        mut write_rx: mpsc::UnboundedReceiver<String>,
+    ) {
+        while let Some(message_str) = write_rx.next().await {
+            let send_result = writer.send(Message::Text(message_str)).await;
+            if let Err(send_err) = send_result {
+                self.handle_error(send_err.into());
+            }
+        }
+        log!("websocket write loop: Handler context ended");
+    }
 }
 impl<C: Component, T, U> UpdateDelegate<C> for Handler<T, U>
 where
     T: DeserializeOwned + 'static,
+    U: Serialize + 'static,
 {
     type Message = Msg;
     fn update(&mut self, _ctx: &Context<C>, message: Msg) -> bool {
@@ -144,6 +189,41 @@ where
                     log!("disconnected");
                 }
                 changed
+            }
+        }
+    }
+    fn tick_all(&mut self) {
+        self.update_loop_health();
+    }
+}
+
+pub(crate) struct WriteHandle<'a, T, U> {
+    write_tx: mpsc::UnboundedSender<String>,
+    callbacks: &'a Callbacks<T>,
+    _phantom: PhantomData<U>,
+}
+
+impl<'a, T, U> WriteHandle<'a, T, U>
+where
+    U: Serialize + 'static,
+{
+    /// Attempts to send the `message` to the websocket server.
+    ///
+    /// # Errors
+    /// Sends any errors encountered to the `on_error` callback.
+    pub fn send(&mut self, message: &U) {
+        match serde_json::to_string(message) {
+            Ok(message_str) => {
+                let mut write_tx = self.write_tx.clone();
+                let on_error = self.callbacks.on_error.clone();
+                spawn_local(async move {
+                    if let Err(err) = write_tx.send(message_str).await {
+                        on_error.emit(err.into());
+                    }
+                });
+            }
+            Err(err) => {
+                self.callbacks.on_error.emit(err.into());
             }
         }
     }
