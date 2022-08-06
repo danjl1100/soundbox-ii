@@ -4,9 +4,7 @@ use backoff::ExponentialBackoff;
 use gloo_timers::callback::Interval;
 use yew::prelude::*;
 
-mod fmt;
-
-mod svg;
+use crate::{fmt, svg};
 
 use controls::Controls;
 mod controls;
@@ -97,62 +95,6 @@ impl Model {
     }
 }
 impl Model {
-    fn view_disconnected(&self, ctx: &Context<Self>) -> Html {
-        const RED: svg::Renderer = svg::Renderer {
-            stroke: "none",
-            fill: "#e13e3e", // "red",
-        };
-        let reconnect_msg = if self.websocket.is_started() {
-            html! { {"Connecting..."}}
-        } else {
-            let auto_reconnect_status = self.websocket.get_reconnect_timeout_millis().map_or_else(
-                || {
-                    html! { {"Auto-reconnect has given up (not scheduled)."} }
-                },
-                |millis| {
-                    let seconds = f64::from(millis) / 1000.0;
-                    #[allow(clippy::cast_possible_truncation)]
-                    #[allow(clippy::cast_sign_loss)]
-                    let seconds = seconds.abs().trunc() as u64;
-                    html! {
-                        <>
-                        { "Trying to reconnect in " }
-                        { fmt::fmt_duration_seconds_long(seconds) }
-                        </>
-                    }
-                },
-            );
-            let onclick = ctx.link().callback(|_| MsgWebSocket::Connect);
-            html! {
-                <div>
-                    <span>{ auto_reconnect_status }</span>
-                    <span>
-                        <button {onclick}>
-                            { "Reconnect Now" }
-                        </button>
-                    </span>
-                </div>
-            }
-        };
-        let svg_image = if self.websocket.is_before_first_connect() {
-            html! {}
-        } else {
-            html! {
-                <div class="disconnected col-s-2">
-                    { RED.render(svg::X_CROSS) }
-                </div>
-            }
-        };
-        html! {
-            <div class="row">
-                { svg_image }
-                <div class="disconnected col-s-10">
-                    <span class="title">{ "Connecting to server..."}</span>
-                    { reconnect_msg }
-                </div>
-            </div>
-        }
-    }
     fn view_connected(&self, ctx: &Context<Self>) -> Html {
         let heartbeat_str = if let Some(time) = self.websocket.last_heartbeat() {
             format!("Server last seen: {:?}", time)
@@ -379,7 +321,7 @@ impl Component for Model {
         let content = if self.websocket.is_connected() {
             self.view_connected(ctx)
         } else {
-            self.view_disconnected(ctx)
+            html! {}
         };
         html! {
             <>

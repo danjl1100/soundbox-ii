@@ -67,6 +67,12 @@ where
             }
         })
     }
+    /// Returns `true` if the read/write handles are active
+    ///
+    /// NOTE: Not necessarily "Connected", as the socket may be dead (pending `WebSocketError` emit)
+    pub fn is_connection_started(&self) -> bool {
+        self.write_handle.is_some()
+    }
     fn try_connect(&mut self) -> Result<(), JsError> {
         let ws = WebSocket::open(&self.url)?;
         let (write, read) = ws.split();
@@ -79,7 +85,7 @@ where
         spawn_local(callbacks.run_reader_loop(read, read_loop_shutdown_tx));
         Ok(())
     }
-    pub fn update_loop_health(&mut self) {
+    fn update_loop_health(&mut self) {
         if let Some((write_tx, read_loop_shutdown_rx)) = &mut self.write_handle {
             let read_loop_shutdown = match read_loop_shutdown_rx.try_recv() {
                 Ok(Some(shared::Shutdown)) | Err(oneshot::Canceled) => true,

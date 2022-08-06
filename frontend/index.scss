@@ -60,7 +60,12 @@
 
 @media (prefers-color-scheme: dark) {
   html {
+    /* invert and soften contrast */
     filter: invert(85%);
+  }
+  .keep-true-color {
+    /* revert colors on SVG and images */
+    filter: invert(100%);
   }
   body {
     filter: none;

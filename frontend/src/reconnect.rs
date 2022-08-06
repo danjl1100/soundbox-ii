@@ -18,10 +18,12 @@ pub struct Callbacks {
     pub disconnect: Callback<()>,
 }
 
-pub struct Logic<B: Backoff> {
+pub struct Logic<B> {
     timeout_millis: Option<(Timeout, u32)>,
     backoff: B,
     callbacks: Callbacks,
+    is_after_first_reconnect: bool,
+    is_server_seen: bool,
     is_shutdown: bool,
 }
 impl<B: Backoff> Logic<B> {
@@ -30,6 +32,8 @@ impl<B: Backoff> Logic<B> {
             timeout_millis: None,
             backoff,
             callbacks,
+            is_after_first_reconnect: false,
+            is_server_seen: false,
             is_shutdown: false,
         }
     }
@@ -38,9 +42,18 @@ impl<B: Backoff> Logic<B> {
         self.timeout_millis = None;
     }
     /// Resets the backoff and timeout
-    fn reset_all(&mut self) {
+    fn connection_established(&mut self) {
         self.clear_timeout();
         self.backoff.reset();
+        self.is_server_seen = true;
+    }
+    /// Returns `true` if `ConnectionEstablished` is more recent than any other error message
+    pub fn is_connected(&self) -> bool {
+        self.is_server_seen // TODO is this needed -->    && !self.is_shutdown
+    }
+    /// Returns `true` after the first reconnect is scheduled (exited initial phase of app load)
+    pub fn is_after_first_reconnect(&self) -> bool {
+        self.is_after_first_reconnect
     }
     /// Returns the duration of the current scheduled timeout, in milliseconds
     pub fn get_timeout_millis(&self) -> Option<u32> {
@@ -48,6 +61,8 @@ impl<B: Backoff> Logic<B> {
     }
     /// Schedules the next connect timeout
     fn schedule_timeout(&mut self) {
+        self.is_server_seen = false;
+        self.is_after_first_reconnect = true;
         if self.timeout_millis.is_some() {
             log!("reconnect: ignore schedule timeout, already scheduled");
             return;
@@ -71,7 +86,7 @@ impl<B: Backoff, C: Component> UpdateDelegate<C> for Logic<B> {
 
     fn update(&mut self, _ctx: &Context<C>, message: Self::Message) -> bool {
         match message {
-            Msg::ConnectionEstablished => self.reset_all(), // DONE
+            Msg::ConnectionEstablished => self.connection_established(), // DONE
             message @ (Msg::ConnectionError | Msg::ConnectionClose) if self.is_shutdown => {
                 log!("reconnect ignoring: {message:?}, is_shutdown!");
             }

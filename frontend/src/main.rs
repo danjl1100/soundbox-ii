@@ -41,11 +41,23 @@ const LOG_RENDERS: bool = false;
 #[macro_use]
 mod macros;
 
+mod fmt;
+mod svg;
+mod colors {
+    pub const NONE: &str = "none";
+    pub const RED: &str = "#e13e3e";
+}
+
 mod log;
 mod reconnect;
 mod websocket;
 
 mod old_main; //TODO deleteme
+
+mod view {
+    pub use disconnected::Disconnected;
+    mod disconnected;
+}
 
 mod router {
     use yew::{html, Html};
@@ -292,26 +304,29 @@ impl Component for App {
         let websocket_disconnect = link.callback(|_| websocket::Msg::Disconnect);
         let fake_error = link.callback(|_| log::Msg::Error(("debug", "fake error".to_string())));
         let fake_playpause = link.callback(|_| shared::Command::PlaybackPause);
+        let on_reconnect_now = link.callback(|_| websocket::Msg::Connect);
         html! {
             <>
                 <header class="monospace">{ "soundbox-ii" }</header>
                 <div class="content">
-                    <div>
-                        <button onclick={fake_error}>{ "Trigger fake error" }</button>
-                        <button onclick={fake_playpause}>{ "PlayPause" }</button>
-                    </div>
-                    <div>
-                        {"Websocket "}
-                        <button onclick={websocket_connect}>{"Connect"}</button>
-                        <button onclick={websocket_disconnect}>{"Disconnect"}</button>
-                    </div>
-                    <BrowserRouter>
-                        <Switch<router::Route> render={Switch::render(router::switch_main)} />
-                    </BrowserRouter>
-                    <div style="font-size: 0.8em;">
-                        { self.model.status.heartbeat_view() }
-                        { self.logger.error_view(ctx) }
-                    </div>
+                    <view::Disconnected data={self} {on_reconnect_now}>
+                        <div>
+                            <button onclick={fake_error}>{ "Trigger fake error" }</button>
+                            <button onclick={fake_playpause}>{ "PlayPause" }</button>
+                        </div>
+                        <div>
+                            {"Websocket "}
+                            <button onclick={websocket_connect}>{"Connect"}</button>
+                            <button onclick={websocket_disconnect}>{"Disconnect"}</button>
+                        </div>
+                        <BrowserRouter>
+                            <Switch<router::Route> render={Switch::render(router::switch_main)} />
+                        </BrowserRouter>
+                        <div style="font-size: 0.8em;">
+                            { self.model.status.heartbeat_view() }
+                            { self.logger.error_view(ctx) }
+                        </div>
+                    </view::Disconnected>
                 </div>
                 <footer>{ "(c) 2021-2022 - don't keep your sounds boxed up" }</footer>
             </>
