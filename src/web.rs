@@ -1,12 +1,12 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-pub use filter::root as filter;
+pub(crate) use filter::root as filter;
 mod filter {
     use http::uri::Uri;
     use std::path::PathBuf;
     use tokio::sync::mpsc;
     use warp::{Filter, Reply};
 
-    pub fn root(
+    pub(crate) fn root(
         config: super::web_socket::Config,
         assets_dir: PathBuf,
     ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
@@ -103,7 +103,7 @@ mod filter {
 
 pub(crate) use web_socket::Config;
 mod web_socket {
-    use crate::{ReloadVersion, ShutdownReceiver};
+    use crate::{ShutdownReceiver, WebSourceChanged};
     use futures::{SinkExt, StreamExt};
     use shared::{ClientRequest, ServerResponse};
     use tokio::sync::{mpsc, watch};
@@ -112,14 +112,14 @@ mod web_socket {
     use warp::{Filter, Reply};
 
     #[derive(Clone)]
-    pub struct Config {
+    pub(crate) struct Config {
         pub action_tx: mpsc::Sender<Action>,
         pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
         pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>, //TODO use this field, or remove it!
         pub shutdown_rx: ShutdownReceiver,
-        pub reload_rx: watch::Receiver<ReloadVersion>,
+        pub reload_rx: watch::Receiver<WebSourceChanged>,
     }
-    pub fn filter(
+    pub(crate) fn filter(
         config: Config,
     ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
         warp::path("ws")
@@ -138,19 +138,14 @@ mod web_socket {
             let _ = self.run().await;
         }
         async fn run(mut self) -> Result<(), ()> {
-            let reload_base_value = *self.config.reload_rx.borrow_and_update();
+            {
+                let _ignore_initial_value = self.config.reload_rx.borrow_and_update();
+            }
             self.send_response(ServerResponse::Heartbeat).await?;
             loop {
                 let send_message = tokio::select! {
-                    Ok(_) = self.config.reload_rx.changed() => {
-                        if reload_base_value == *self.config.reload_rx.borrow() {
-                            // borrowed value was updated to identical value...  LOGIC ERROR!
-                            // however... silently proceed (non-critical ease-of-use feature)
-                            dbg!("WARNING: client code change detected, but value not changed.");
-                            None
-                        } else {
-                            Some(ServerResponse::ClientCodeChanged)
-                        }
+                    Ok(()) = self.config.reload_rx.changed() => {
+                        Some(ServerResponse::ClientCodeChanged)
                     }
                     Some(body) = self.websocket.next() => {
                         let message = match body {

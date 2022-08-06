@@ -51,16 +51,6 @@ async fn main() {
     launch(args).await;
 }
 
-/// Version of a file to reload
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
-pub struct ReloadVersion(u32);
-impl std::ops::Deref for ReloadVersion {
-    type Target = u32;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 fn print_startup_info(args: &args::Config) {
     println!(
         "  - VLC-HTTP will connect to server: {}",
@@ -97,9 +87,10 @@ fn launch_cli(
     })
 }
 
+struct WebSourceChanged;
 fn launch_hotwatch(
     server_config: &args::ServerConfig,
-    reload_tx: watch::Sender<ReloadVersion>,
+    reload_tx: watch::Sender<WebSourceChanged>,
 ) -> hotwatch::Hotwatch {
     let mut hotwatch = hotwatch::Hotwatch::new().expect("hotwatch failed to initialize");
     hotwatch
@@ -108,16 +99,8 @@ fn launch_hotwatch(
             match event {
                 Event::NoticeWrite(_) | Event::NoticeRemove(_) => {
                     // ignore "Notice" events, files are not actively reading
-                    // println!("ignoring {:?}", event);
                 }
-                _ => {
-                    // println!("changed! {:?}", event);
-                    let prev_value = *reload_tx.borrow();
-                    let next_value = prev_value.wrapping_add(1);
-                    reload_tx
-                        .send(ReloadVersion(next_value))
-                        .expect("reload receiver is alive");
-                }
+                _ => reload_tx.send_modify(|WebSourceChanged| {}),
             }
         })
         .expect("static assets folder not found");
@@ -126,7 +109,7 @@ fn launch_hotwatch(
 
 async fn launch(args: args::Config) {
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
-    let (reload_tx, reload_rx) = watch::channel(ReloadVersion::default());
+    let (reload_tx, reload_rx) = watch::channel(WebSourceChanged);
 
     let authorization = args.vlc_http_config.0.clone();
     let (controller, channels) = vlc_http::Controller::new(authorization);
