@@ -15,9 +15,10 @@ use yew::{Callback, Component, Context};
 
 use crate::macros::UpdateDelegate;
 
-pub(crate) enum Msg {
+pub(crate) enum Msg<U> {
     Connect,
     Disconnect,
+    SendMessage(U),
 }
 
 shared::wrapper_enum! {
@@ -39,7 +40,7 @@ pub(crate) struct Handler<T, U> {
         mpsc::UnboundedSender<String>,
         oneshot::Receiver<shared::Shutdown>,
     )>,
-    callbacks: Callbacks<T>,
+    callbacks: Callbacks<T, U>,
     _phantom: PhantomData<U>,
 }
 impl<T, U> Handler<T, U>
@@ -47,7 +48,7 @@ where
     T: DeserializeOwned + 'static,
     U: Serialize + 'static,
 {
-    pub fn new(url: String, callbacks: Callbacks<T>) -> Self {
+    pub fn new(url: String, callbacks: Callbacks<T, U>) -> Self {
         Self {
             url,
             callbacks,
@@ -91,19 +92,21 @@ where
         }
     }
 }
-pub struct Callbacks<T> {
+pub struct Callbacks<T, U> {
     pub on_message: Callback<T>,
     pub on_error: Callback<Error>,
+    pub on_unsent_message: Callback<U>,
 }
-impl<T> Clone for Callbacks<T> {
+impl<T, U> Clone for Callbacks<T, U> {
     fn clone(&self) -> Self {
         Self {
             on_message: self.on_message.clone(),
             on_error: self.on_error.clone(),
+            on_unsent_message: self.on_unsent_message.clone(),
         }
     }
 }
-impl<T> Callbacks<T>
+impl<T, U> Callbacks<T, U>
 where
     T: DeserializeOwned,
 {
@@ -173,8 +176,8 @@ where
     T: DeserializeOwned + 'static,
     U: Serialize + 'static,
 {
-    type Message = Msg;
-    fn update(&mut self, _ctx: &Context<C>, message: Msg) -> bool {
+    type Message = Msg<U>;
+    fn update(&mut self, _ctx: &Context<C>, message: Self::Message) -> bool {
         match message {
             Msg::Connect => {
                 log!("this is connect request!");
@@ -190,6 +193,13 @@ where
                 }
                 changed
             }
+            Msg::SendMessage(message) => {
+                match self.write_handle() {
+                    Some(mut writer) => writer.send(&message),
+                    None => self.callbacks.on_unsent_message.emit(message),
+                }
+                false
+            }
         }
     }
     fn tick_all(&mut self) {
@@ -199,7 +209,7 @@ where
 
 pub(crate) struct WriteHandle<'a, T, U> {
     write_tx: mpsc::UnboundedSender<String>,
-    callbacks: &'a Callbacks<T>,
+    callbacks: &'a Callbacks<T, U>,
     _phantom: PhantomData<U>,
 }
 

@@ -35,10 +35,7 @@ use gloo_net::websocket::WebSocketError;
 use wasm_bindgen::JsValue;
 use web_sys::Location;
 use yew::{html, Component, Context, Html};
-use yew_router::{
-    prelude::{Link, Redirect},
-    BrowserRouter, Routable, Switch,
-};
+use yew_router::{BrowserRouter, Switch};
 
 const LOG_RENDERS: bool = false;
 #[macro_use]
@@ -50,49 +47,57 @@ mod websocket;
 
 mod old_main; //TODO deleteme
 
-#[derive(Clone, Routable, PartialEq)]
-enum Route {
-    #[at("/")]
-    Root,
-    #[at("/player")]
-    Player,
-    #[not_found]
-    #[at("/404")]
-    NotFound,
-}
-impl Route {
-    fn default() -> Self {
-        Self::Player
+mod router {
+    use yew::{html, Html};
+    use yew_router::{
+        prelude::{Link, Redirect},
+        Routable,
+    };
+
+    #[derive(Clone, Routable, PartialEq)]
+    pub enum Route {
+        #[at("/")]
+        Root,
+        #[at("/player")]
+        Player,
+        #[not_found]
+        #[at("/404")]
+        NotFound,
+    }
+    impl Route {
+        fn default() -> Self {
+            Self::Player
+        }
+    }
+
+    pub fn switch_main(route: &Route) -> Html {
+        match route {
+            Route::Root => html! {
+                <Redirect<Route> to={Route::default()} />
+            },
+            Route::Player => html! {<h3>{"Player"}</h3>},
+            Route::NotFound => html! {
+                <>
+                    <h3>{"Not Found :\\"}</h3>
+                    <Link<Route> to={Route::default()}>{"Back to Home"}</Link<Route>>
+                </>
+            },
+        }
     }
 }
 
-fn switch_main(route: &Route) -> Html {
-    match route {
-        Route::Root => html! {
-            <Redirect<Route> to={Route::default()} />
-        },
-        Route::Player => html! {<h3>{"Player"}</h3>},
-        Route::NotFound => html! {
-            <>
-                <h3>{"Not Found :\\"}</h3>
-                <Link<Route> to={Route::default()}>{"Back to Home"}</Link<Route>>
-            </>
-        },
-    }
-}
-
+type WebsocketMsg = websocket::Msg<shared::ClientRequest>;
 derive_wrapper! {
     #[allow(clippy::large_enum_variant)]
     enum AppMsg for App {
         Logger(log::Msg) for self.logger,
         Reconnect(reconnect::Msg) for self.reconnect,
         Model(model::Msg) for self.model,
-        WebSocket(websocket::Msg) for self.websocket,
+        WebSocket(WebsocketMsg) for self.websocket,
     }
 }
 enum AppMsgIntrinsic {
     ReloadPage,
-    SendMessage(shared::ClientRequest),
 }
 shared::wrapper_enum! {
     enum AppMsgFull {
@@ -106,7 +111,13 @@ where
     AppMsg: From<T>,
 {
     fn from(inner: T) -> Self {
+        // redirection spans two levels
         AppMsgFull::Main(inner.into())
+    }
+}
+impl From<shared::Command> for AppMsgFull {
+    fn from(message: shared::Command) -> Self {
+        websocket::Msg::SendMessage(message.into()).into()
     }
 }
 
@@ -128,7 +139,7 @@ impl App {
         let link = ctx.link();
         let on_message = link.batch_callback(|server_response| {
             vec![
-                // log::Msg::Message(format!("{server_response:?}")).into(), //TODO deleteme, remove `Message` printouts (framework churn)
+                // log::Msg::Message(format!("{server_response:?}")).into(), //TODO deleteme, remove `Message` printouts (avoid churn in yew update framework)
                 model::Msg::Server(server_response).into(),
                 reconnect::Msg::ConnectionEstablished.into(),
             ]
@@ -174,11 +185,18 @@ impl App {
                 }
             }
         });
+        let on_unsent_message = link.callback(|msg| {
+            log::Msg::Error((
+                "app",
+                format!("disconnected, unable to send message: {msg:?}"),
+            ))
+        });
         websocket::Handler::new(
             url_websocket,
             websocket::Callbacks {
                 on_message,
                 on_error,
+                on_unsent_message,
             },
         )
     }
@@ -264,13 +282,6 @@ impl Component for App {
             AppMsgFull::Main(main) => main.update_on(self, ctx, ticked_all),
             AppMsgFull::Intrinsic(intrinsic) => match intrinsic {
                 AppMsgIntrinsic::ReloadPage => self.reload_page(ctx),
-                AppMsgIntrinsic::SendMessage(message) => {
-                    match self.websocket.write_handle() {
-                        Some(mut writer) => writer.send(&message),
-                        None => log!("unable to write {message:?}, not connected!"),
-                    }
-                    false
-                }
             },
         }
     }
@@ -280,8 +291,7 @@ impl Component for App {
         let websocket_connect = link.callback(|_| websocket::Msg::Connect);
         let websocket_disconnect = link.callback(|_| websocket::Msg::Disconnect);
         let fake_error = link.callback(|_| log::Msg::Error(("debug", "fake error".to_string())));
-        let fake_playpause =
-            link.callback(|_| AppMsgIntrinsic::SendMessage(shared::Command::PlaybackPause.into()));
+        let fake_playpause = link.callback(|_| shared::Command::PlaybackPause);
         html! {
             <>
                 <header class="monospace">{ "soundbox-ii" }</header>
@@ -296,7 +306,7 @@ impl Component for App {
                         <button onclick={websocket_disconnect}>{"Disconnect"}</button>
                     </div>
                     <BrowserRouter>
-                        <Switch<Route> render={Switch::render(switch_main)} />
+                        <Switch<router::Route> render={Switch::render(router::switch_main)} />
                     </BrowserRouter>
                     <div style="font-size: 0.8em;">
                         { self.model.status.heartbeat_view() }
