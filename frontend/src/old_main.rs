@@ -318,24 +318,10 @@ impl Component for Model {
     }
     fn view(&self, ctx: &Context<Self>) -> Html {
         log_render!("Model");
-        let content = if self.websocket.is_connected() {
+        if self.websocket.is_connected() {
             self.view_connected(ctx)
         } else {
             html! {}
-        };
-        html! {
-            <>
-                <header class="monospace">{ "soundbox-ii" }</header>
-                <div class="content">
-                    { content }
-                </div>
-                <p>
-                    { "This is some live content, cool!" }
-                    <br/>
-                    { format!("{:?}", web_sys::window().expect("window exists").location().hash()) }
-                </p>
-                <footer>{ "(c) 2021 - don't keep your sounds boxed up" }</footer>
-            </>
         }
     }
 }

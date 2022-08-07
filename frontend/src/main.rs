@@ -35,12 +35,13 @@ use gloo_net::websocket::WebSocketError;
 use wasm_bindgen::JsValue;
 use web_sys::Location;
 use yew::{html, Component, Context, Html};
-use yew_router::{BrowserRouter, Switch};
+use yew_router::BrowserRouter;
 
 const LOG_RENDERS: bool = false;
 #[macro_use]
 mod macros;
 
+// general-purpose utilities
 mod fmt;
 mod svg;
 mod colors {
@@ -48,28 +49,131 @@ mod colors {
     pub const RED: &str = "#e13e3e";
 }
 
+// update delegates
 mod log;
 mod reconnect;
 mod websocket;
 
 mod old_main; //TODO deleteme
 
+// domain-specific
+mod model;
 mod view {
     pub use disconnected::Disconnected;
     mod disconnected;
+
+    pub use heartbeat::Heartbeat;
+    mod heartbeat {
+        use std::borrow::Cow;
+        use yew::{function_component, html, html::IntoPropValue, Properties};
+
+        use crate::{model, router};
+
+        #[derive(PartialEq)]
+        pub struct Data {
+            last_heartbeat: Option<shared::Time>,
+        }
+        #[derive(Properties, PartialEq)]
+        pub struct Props {
+            pub data: Data,
+            pub show_debug: bool,
+        }
+        impl IntoPropValue<Data> for &model::Data {
+            fn into_prop_value(self) -> Data {
+                let last_heartbeat = self.last_heartbeat();
+                Data { last_heartbeat }
+            }
+        }
+
+        #[function_component(Heartbeat)]
+        pub fn heartbeat(props: &Props) -> Html {
+            let Data { last_heartbeat } = props.data;
+            html! {
+                <div>
+                    if props.show_debug {
+                        <>
+                            <router::Link to={router::Route::DebugPanel}>
+                                { "Debug" }
+                            </router::Link>
+                            { " " }
+                        </>
+                    }
+                    { "Sever last seen: " }
+                    { last_heartbeat.map_or(Cow::Borrowed("Never"), |t| format!("{t:?}").into()) }
+                </div>
+            }
+        }
+    }
+
+    pub use album_art::AlbumArt;
+    mod album_art {
+        use yew::{function_component, html, html::IntoPropValue, Properties};
+
+        #[derive(PartialEq)]
+        pub struct Data {
+            hash: u64,
+        }
+        #[derive(Properties, PartialEq)]
+        pub struct Props {
+            pub data: Data,
+        }
+        impl IntoPropValue<Data> for Option<&shared::PlaybackInfo> {
+            fn into_prop_value(self) -> Data {
+                // NOTE: less-attractive alternative: store all fields in props, and defer
+                // calculating hash until after `yew` PartialEq verifies the fields are different,
+                // in the `view` function.    (the current implementation seems best)
+                if self.is_none() {
+                    log!("AlbumArt given prop data {self:?}");
+                }
+                let hash = self.map_or(0, |info| {
+                    use std::hash::Hasher;
+                    let mut hasher = twox_hash::XxHash64::with_seed(0);
+                    let fields = [
+                        &info.title,
+                        &info.artist,
+                        &info.album,
+                        &info.date,
+                        &info.track_number,
+                    ];
+                    log!("fields are: {fields:?}");
+                    for (idx, field) in fields.iter().enumerate() {
+                        hasher.write(field.as_bytes());
+                        hasher.write_usize(idx);
+                    }
+                    hasher.finish()
+                });
+                Data { hash }
+            }
+        }
+
+        #[function_component(AlbumArt)]
+        pub fn album_art(Props { data }: &Props) -> Html {
+            let Data { hash } = data;
+            let src = format!("/v1/art?trick_reload_key={hash}");
+            html! {
+                <img {src} alt="Album Art" class="keep-true-color" />
+            }
+        }
+    }
 }
 
 mod router {
-    use yew::{html, Html};
+    use yew::{html, Callback, Context, Html, Properties};
     use yew_router::{
-        prelude::{Link, Redirect},
+        prelude::{Link as RawLink, Redirect},
         Routable,
     };
+
+    use crate::{log, model, view, websocket, App, AppMsgFull};
+
+    pub type Link = RawLink<Route>;
 
     #[derive(Clone, Routable, PartialEq)]
     pub enum Route {
         #[at("/")]
         Root,
+        #[at("/debug")]
+        DebugPanel,
         #[at("/player")]
         Player,
         #[not_found]
@@ -82,18 +186,145 @@ mod router {
         }
     }
 
-    pub fn switch_main(route: &Route) -> Html {
-        match route {
-            Route::Root => html! {
-                <Redirect<Route> to={Route::default()} />
-            },
-            Route::Player => html! {<h3>{"Player"}</h3>},
-            Route::NotFound => html! {
-                <>
-                    <h3>{"Not Found :\\"}</h3>
-                    <Link<Route> to={Route::default()}>{"Back to Home"}</Link<Route>>
-                </>
-            },
+    #[derive(Properties)]
+    pub(crate) struct Props {
+        model: model::Data,
+        on_message: Callback<AppMsgFull>,
+    }
+    impl PartialEq for Props {
+        fn eq(&self, other: &Self) -> bool {
+            let Self {
+                model,
+                on_message: _, // ignore `on_message`
+            } = self;
+            *model == other.model
+        }
+    }
+
+    pub(crate) enum Main {}
+    impl Main {
+        pub(crate) fn switch_elem(model: model::Data, ctx: &Context<App>) -> Html {
+            let on_message = ctx.link().callback(|msg| msg);
+            html! { <self::render_adapter::CustomSwitch<Self> {model} {on_message} /> }
+        }
+    }
+    impl self::render_adapter::Renderer for Main {
+        type Route = Route;
+        type Props = Props;
+
+        fn render_view(
+            route: &Self::Route,
+            ctx: &Context<self::render_adapter::CustomSwitch<Self>>,
+        ) -> Html {
+            let Props { model, on_message } = ctx.props();
+            match route {
+                Route::Root => html! {
+                    <Redirect<Route> to={Route::default()} />
+                },
+                Route::DebugPanel => {
+                    let on_websocket = on_message.reform(AppMsgFull::from);
+                    let on_log = on_message.reform(AppMsgFull::from);
+                    let on_command = on_message.reform(AppMsgFull::from);
+                    //
+                    let websocket_connect = on_websocket.reform(|_| websocket::Msg::Connect);
+                    let websocket_disconnect = on_websocket.reform(|_| websocket::Msg::Disconnect);
+                    let fake_error =
+                        on_log.reform(|_| log::Msg::Error(("debug", "fake error".to_string())));
+                    let fake_playpause = on_command.reform(|_| shared::Command::PlaybackPause);
+                    html! {
+                    <>
+                        <div>
+                            <button onclick={fake_error}>{ "Trigger fake error" }</button>
+                            <button onclick={fake_playpause}>{ "PlayPause" }</button>
+                        </div>
+                        <div>
+                            {"Websocket "}
+                            <button onclick={websocket_connect}>{"Connect"}</button>
+                            <button onclick={websocket_disconnect}>{"Disconnect"}</button>
+                        </div>
+                        <div>
+                            <Link to={Route::Root}>{ "back to Home" }</Link>
+                        </div>
+                    </>
+                    }
+                }
+                Route::Player => html! {
+                    <>
+                        <h3>{"Player"}</h3>
+                        <div class="row">
+                            <div class="playback art col-7 col-s-5">
+                                <view::AlbumArt data={model.playback_info()} />
+                            </div>
+                        </div>
+                    </>
+                },
+                Route::NotFound => html! {
+                    <>
+                        <h3>{"Not Found :\\"}</h3>
+                        <Link to={Route::default()}>{"Back to Home"}</Link>
+                    </>
+                },
+            }
+        }
+    }
+
+    mod render_adapter {
+        use std::marker::PhantomData;
+        use yew::{Component, Context, Html, Properties};
+        use yew_router::{
+            history::Location, prelude::RouterScopeExt, scope_ext::HistoryHandle, Routable,
+        };
+
+        pub trait Renderer {
+            type Route: Routable + PartialEq;
+            type Props: Properties + PartialEq + 'static;
+            fn render_view(route: &Self::Route, ctx: &Context<CustomSwitch<Self>>) -> Html
+            where
+                Self: 'static;
+        }
+
+        pub enum Msg {
+            ReRender,
+        }
+        pub struct CustomSwitch<T: ?Sized> {
+            _listener: HistoryHandle,
+            _phantom: PhantomData<T>,
+        }
+        impl<T> Component for CustomSwitch<T>
+        where
+            T: Renderer + 'static + ?Sized,
+        {
+            type Message = Msg;
+            type Properties = <T as Renderer>::Props;
+
+            fn create(ctx: &yew::Context<Self>) -> Self {
+                let link = ctx.link();
+                let listener = link
+                    .add_history_listener(link.callback(|_| Msg::ReRender))
+                    .expect("failed to create history handle. Do you have a router registered?");
+                Self {
+                    _listener: listener,
+                    _phantom: PhantomData,
+                }
+            }
+
+            fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+                match msg {
+                    Msg::ReRender => true,
+                }
+            }
+
+            fn view(&self, ctx: &Context<Self>) -> Html {
+                let route = ctx
+                    .link()
+                    .location()
+                    .and_then(|m| m.route::<<T as Renderer>::Route>());
+                if let Some(ref route) = route {
+                    T::render_view(route, ctx)
+                } else {
+                    Html::default()
+                }
+            }
         }
     }
 }
@@ -268,13 +499,10 @@ impl Component for App {
             let on_error =
                 link.callback(|e| log::Msg::Error(("model", format!("TODO - handle this? {e:?}"))));
             let reload_page = link.callback(|()| AppMsgIntrinsic::ReloadPage);
-            model::Model {
-                status: model::Status::default(),
-                callbacks: model::Callbacks {
-                    on_error,
-                    reload_page,
-                },
-            }
+            model::Model::new(model::Callbacks {
+                on_error,
+                reload_page,
+            })
         };
         let window = web_sys::window().expect("JS has window");
         // startup WebSocket
@@ -300,106 +528,23 @@ impl Component for App {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
-        let websocket_connect = link.callback(|_| websocket::Msg::Connect);
-        let websocket_disconnect = link.callback(|_| websocket::Msg::Disconnect);
-        let fake_error = link.callback(|_| log::Msg::Error(("debug", "fake error".to_string())));
-        let fake_playpause = link.callback(|_| shared::Command::PlaybackPause);
         let on_reconnect_now = link.callback(|_| websocket::Msg::Connect);
         html! {
             <>
                 <header class="monospace">{ "soundbox-ii" }</header>
                 <div class="content">
                     <view::Disconnected data={self} {on_reconnect_now}>
-                        <div>
-                            <button onclick={fake_error}>{ "Trigger fake error" }</button>
-                            <button onclick={fake_playpause}>{ "PlayPause" }</button>
-                        </div>
-                        <div>
-                            {"Websocket "}
-                            <button onclick={websocket_connect}>{"Connect"}</button>
-                            <button onclick={websocket_disconnect}>{"Disconnect"}</button>
-                        </div>
                         <BrowserRouter>
-                            <Switch<router::Route> render={Switch::render(router::switch_main)} />
+                            { router::Main::switch_elem(self.model.data.clone(), ctx) }
+                            <div style="font-size: 0.8em;">
+                                <view::Heartbeat data={&self.model.data} show_debug=true />
+                                { self.logger.error_view(ctx) }
+                            </div>
                         </BrowserRouter>
-                        <div style="font-size: 0.8em;">
-                            { self.model.status.heartbeat_view() }
-                            { self.logger.error_view(ctx) }
-                        </div>
                     </view::Disconnected>
                 </div>
                 <footer>{ "(c) 2021-2022 - don't keep your sounds boxed up" }</footer>
             </>
-        }
-    }
-}
-
-mod model {
-    use std::borrow::Cow;
-
-    use shared::ServerResponse;
-    use yew::{html, Callback, Component, Context, Html};
-
-    use crate::macros::UpdateDelegate;
-
-    pub enum Msg {
-        Server(ServerResponse),
-    }
-    #[derive(Debug)]
-    pub enum Error {
-        ServerError(String),
-    }
-
-    pub struct Model {
-        pub callbacks: Callbacks,
-        pub status: Status,
-    }
-    #[derive(Default)]
-    pub struct Status {
-        last_heartbeat: Option<shared::Time>,
-        playback: Option<shared::PlaybackStatus>,
-    }
-    pub struct Callbacks {
-        pub on_error: Callback<Error>,
-        pub reload_page: Callback<()>,
-    }
-    impl Status {
-        pub fn heartbeat_view(&self) -> Html {
-            html! {
-                <div>
-                    { "Sever last seen: " }
-                    { self.last_heartbeat.map_or(Cow::Borrowed("Never"), |t| format!("{t:?}").into()) }
-                </div>
-            }
-        }
-    }
-
-    impl<C> UpdateDelegate<C> for Model
-    where
-        C: Component,
-    {
-        type Message = Msg;
-
-        fn update(&mut self, _ctx: &Context<C>, message: Self::Message) -> bool {
-            match message {
-                Msg::Server(message) => {
-                    log!("Server message: {message:?}");
-                    match message {
-                        ServerResponse::Heartbeat | ServerResponse::Success => {}
-                        ServerResponse::ClientCodeChanged => {
-                            self.callbacks.reload_page.emit(());
-                        }
-                        ServerResponse::ServerError(err) => {
-                            self.callbacks.on_error.emit(Error::ServerError(err));
-                        }
-                        ServerResponse::PlaybackStatus(playback) => {
-                            self.status.playback.replace(playback);
-                        }
-                    }
-                    self.status.last_heartbeat.replace(shared::time_now());
-                    true // always, due to Heartbeat
-                }
-            }
         }
     }
 }

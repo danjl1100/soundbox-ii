@@ -261,7 +261,7 @@ serde_derive_unidirectional! {
         }
         /// Status of Playback
         #[must_use]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, PartialEq)]
         pub struct PlaybackStatus {
             /// Information about the current item
             pub information: Option<PlaybackInfo>,
@@ -286,7 +286,7 @@ serde_derive_unidirectional! {
         }
         /// Information about the current (playing/paused) item
         #[must_use]
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, PartialEq)]
         #[allow(missing_docs)]
         pub struct PlaybackInfo {
             pub title: String,
