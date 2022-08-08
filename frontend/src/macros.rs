@@ -20,35 +20,11 @@ macro_rules! make_console {
 }
 make_console!(log, info, error, debug);
 
-macro_rules! log_render {
-    ( $msg:expr ) => {
-        if $crate::LOG_RENDERS {
-            log!("RENDER {}", $msg);
-        }
-    };
-}
-
-// TODO remove if not needed in yew 0.19
-// macro_rules! set_detect_change {
-//     (debug; $( $self:ident . $target:ident = $source:expr ;)+) => {
-//         {
-//             $(
-//                 debug!("{:?} => {:?}  changed? {:?}", &$self.$target, &$source, $self.$target != $source);
-//             )+
-//             set_detect_change! {
-//                 $( $self . $target = $source ;)+
-//             }
-//         }
-//     };
-//     ($( $self:ident . $target:ident = $source:expr ;)+) => {
-//         {
-//             let changed = $(
-//                 ( $self.$target != $source )
-//             )||+;
-//             $(
-//                 $self.$target = $source;
-//             )+
-//             changed
+// TODO remove if not needed
+// macro_rules! log_render {
+//     ( $msg:expr ) => {
+//         if $crate::LOG_RENDERS {
+//             log!("RENDER {}", $msg);
 //         }
 //     };
 // }

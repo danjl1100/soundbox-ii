@@ -55,8 +55,6 @@ mod log;
 mod reconnect;
 mod websocket;
 
-mod old_main; //TODO deleteme
-
 // domain-specific
 mod model;
 mod router;
