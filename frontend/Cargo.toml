@@ -21,4 +21,5 @@ wasm-bindgen = { version = "0.2.81" }
 wasm-bindgen-futures = "^0.4.32"
 gloo = { version = "0.4" }
 twox-hash = "1.6.1"
+yew-hooks = "0.1.56"
 yew-router = "0.16.0"

@@ -31,23 +31,23 @@ impl Route {
 #[derive(Properties)]
 pub(crate) struct Props {
     model: model::Data,
-    on_message: Callback<AppMsgFull>,
+    on_message_opt: Callback<Option<AppMsgFull>>,
 }
 impl PartialEq for Props {
     fn eq(&self, other: &Self) -> bool {
         let Self {
             model,
-            on_message: _, // ignore `on_message`
+            on_message_opt,
         } = self;
-        *model == other.model
+        *model == other.model && *on_message_opt == other.on_message_opt
     }
 }
 
 pub(crate) enum Main {}
 impl Main {
     pub(crate) fn switch_elem(model: model::Data, ctx: &Context<App>) -> Html {
-        let on_message = ctx.link().callback(|msg| msg);
-        html! { <self::render_adapter::CustomSwitch<Self> {model} {on_message} /> }
+        let on_message_opt = ctx.link().batch_callback(|msg| msg);
+        html! { <self::render_adapter::CustomSwitch<Self> {model} {on_message_opt} /> }
     }
 }
 impl self::render_adapter::Renderer for Main {
@@ -58,16 +58,23 @@ impl self::render_adapter::Renderer for Main {
         route: &Self::Route,
         ctx: &Context<self::render_adapter::CustomSwitch<Self>>,
     ) -> Html {
-        let Props { model, on_message } = ctx.props();
+        let Props {
+            model,
+            on_message_opt,
+        } = ctx.props();
+        //
+        let on_message = on_message_opt.reform(Option::Some);
+        let on_websocket = on_message.reform(AppMsgFull::from);
+        let on_log = on_message.reform(AppMsgFull::from);
+        let on_command = on_message.reform(AppMsgFull::from);
+        let on_command_opt =
+            on_message_opt.reform(|m: Option<shared::Command>| m.map(AppMsgFull::from));
+        //
         match route {
             Route::Root => html! {
                 <Redirect<Route> to={Route::default()} />
             },
             Route::DebugPanel => {
-                let on_websocket = on_message.reform(AppMsgFull::from);
-                let on_log = on_message.reform(AppMsgFull::from);
-                let on_command = on_message.reform(AppMsgFull::from);
-                //
                 let websocket_connect = on_websocket.reform(|_| websocket::Msg::Connect);
                 let websocket_disconnect = on_websocket.reform(|_| websocket::Msg::Disconnect);
                 let fake_error =
@@ -94,6 +101,9 @@ impl self::render_adapter::Renderer for Main {
                 <>
                     <h3>{"Player"}</h3>
                     <div class="row">
+                        <div class="playback container col-5 col-s-7">
+                            <view::Playback data={model.playback_status()} {on_command_opt} />
+                        </div>
                         <div class="playback art col-7 col-s-5">
                             <view::AlbumArt data={model.playback_info()} />
                         </div>

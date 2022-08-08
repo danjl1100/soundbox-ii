@@ -20,7 +20,7 @@ pub struct Model {
 #[derive(Default, Clone, PartialEq)]
 pub struct Data {
     last_heartbeat: Option<shared::Time>,
-    playback: Option<shared::PlaybackStatus>,
+    playback: Option<(shared::PlaybackStatus, shared::Time)>,
 }
 pub struct Callbacks {
     pub on_error: Callback<Error>,
@@ -35,10 +35,13 @@ impl Model {
     }
 }
 impl Data {
+    pub fn playback_status(&self) -> Option<&(shared::PlaybackStatus, shared::Time)> {
+        self.playback.as_ref()
+    }
     pub fn playback_info(&self) -> Option<&shared::PlaybackInfo> {
         self.playback
             .as_ref()
-            .and_then(|status| status.information.as_ref())
+            .and_then(|(status, _)| status.information.as_ref())
     }
     pub fn last_heartbeat(&self) -> Option<shared::Time> {
         self.last_heartbeat
@@ -64,7 +67,8 @@ where
                         self.callbacks.on_error.emit(Error::ServerError(err));
                     }
                     ServerResponse::PlaybackStatus(playback) => {
-                        self.data.playback.replace(playback);
+                        let now = shared::time_now();
+                        self.data.playback.replace((playback, now));
                     }
                 }
                 self.data.last_heartbeat.replace(shared::time_now());
