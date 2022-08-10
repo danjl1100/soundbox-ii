@@ -93,6 +93,7 @@ mod args_def {
                 Arg::new(Self::BIND_ADDRESS)
                     .short('b')
                     .long(Self::BIND_ADDRESS)
+                    .takes_value(true)
                     // only accepts &str reference
                     //   .default_value(default_bind_address)
                     .help("Address and port to bind the HTTP server (overrides environment variable)"),
