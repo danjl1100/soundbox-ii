@@ -105,19 +105,7 @@ impl self::render_adapter::Renderer for Main {
                 </>
                 }
             }
-            Route::Player => html! {
-                <>
-                    <h3>{"Player"}</h3>
-                    <div class="row">
-                        <div class="playback container col-5 col-s-7">
-                            <view::Playback data={model.playback_status()} {on_command_opt} />
-                        </div>
-                        <div class="playback art col-7 col-s-5">
-                            <view::AlbumArt data={model.playback_info()} />
-                        </div>
-                    </div>
-                </>
-            },
+            Route::Player => view::player(model, on_command_opt),
             Route::NotFound => html! {
                 <>
                     <h3>{"Not Found :\\"}</h3>
