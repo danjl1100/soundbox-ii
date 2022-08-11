@@ -157,6 +157,32 @@ mod view {
             }
         }
     }
+
+    pub use copying::Copying;
+    mod copying {
+        use crate::router;
+        use yew::{function_component, html};
+
+        #[function_component(Copying)]
+        pub fn copying() -> Html {
+            html! {
+                <>
+                <h2>{"Copying"}</h2>
+                <div>
+                    <div>{"This program comes with ABSOLUTELY NO WARRANTY."}</div>
+                    <div>{"This is free software, and you are welcome to redistribute it under certain conditions."}</div>
+                    { router::link_to_default() }
+                    <br />
+                    <br />
+                    <div>{"See the full license text below:"}</div>
+                    <div class="legal">
+                        <pre>{ shared::license::FULL_LICENSE }</pre>
+                    </div>
+                </div>
+                </>
+            }
+        }
+    }
 }
 
 type WebsocketMsg = websocket::Msg<shared::ClientRequest>;
@@ -360,21 +386,24 @@ impl Component for App {
         let link = ctx.link();
         let on_reconnect_now = link.callback(|_| websocket::Msg::Connect);
         html! {
-            <>
-                <header class="monospace">{ "soundbox-ii" }</header>
+            <BrowserRouter>
+                <header>{ "soundbox-ii" }</header>
                 <div class="content">
                     <view::Disconnected data={self} {on_reconnect_now}>
-                        <BrowserRouter>
-                            { router::Main::switch_elem(self.model.data.clone(), ctx) }
-                            <div style="font-size: 0.8em;">
-                                <view::Heartbeat data={&self.model.data} show_debug=true />
-                                { self.logger.error_view(ctx) }
-                            </div>
-                        </BrowserRouter>
+                        { router::Main::switch_elem(self.model.data.clone(), ctx) }
+                        <div style="font-size: 0.8em;">
+                            <view::Heartbeat data={&self.model.data} show_debug=true />
+                            { self.logger.error_view(ctx) }
+                        </div>
                     </view::Disconnected>
                 </div>
-                <footer>{ "(c) 2021-2022 - don't keep your sounds boxed up" }</footer>
-            </>
+                <footer>
+                    <router::Link to={router::Route::Copying}>
+                        { "(c) 2021-2022" }
+                    </router::Link>
+                    { " - don't keep your sounds boxed up" }
+                </footer>
+            </BrowserRouter>
         }
     }
 }

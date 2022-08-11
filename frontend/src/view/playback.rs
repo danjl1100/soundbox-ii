@@ -84,33 +84,44 @@ mod info {
     #[function_component(PlaybackMeta)]
     pub fn playback_meta(props: &Props) -> Html {
         const SEPARATOR: &str = " \u{2014} ";
-        if let Some(info) = &props.playback_status.information {
-            let artist = if info.artist.is_empty() {
-                "[No Artist]"
-            } else {
-                &info.artist
-            };
-            let album = if info.album.is_empty() {
-                "[No Album]"
-            } else {
-                &info.album
-            };
-            html! {
-                <>
-                    <div>
-                        <span class="title">{ &info.title }</span>
-                    </div>
-                    <div>
+        struct Info<'a> {
+            title: &'a str,
+            artist: &'a str,
+            album: &'a str,
+        }
+        let playback_info = props.playback_status.information.as_ref().map(|info| {
+            let not_empty = |s: &&str| !s.is_empty();
+            Info {
+                title: Some(info.title.trim())
+                    .filter(not_empty)
+                    .unwrap_or("[No Title]"),
+                artist: Some(info.artist.trim())
+                    .filter(not_empty)
+                    .unwrap_or("[No Artist]"),
+                album: Some(info.album.trim())
+                    .filter(not_empty)
+                    .unwrap_or("[No Album]"),
+            }
+        });
+        html! {
+            <>
+                <div>
+                    if let Some(Info { title, .. }) = &playback_info {
+                        <span class="title">{ title }</span>
+                    } else {
+                        { "[No Active Track]" }
+                    }
+                </div>
+                <div>
+                    if let Some(Info { artist, album, .. }) = &playback_info {
                         <span>
                             <span class="artist">{ artist }</span>
                             { SEPARATOR }
                             <span class="album">{ album }</span>
                         </span>
-                    </div>
-                </>
-            }
-        } else {
-            html! {}
+                    }
+                </div>
+            </>
         }
     }
 }

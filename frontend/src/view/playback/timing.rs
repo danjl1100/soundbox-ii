@@ -109,6 +109,13 @@ impl InnerProps {
 }
 #[function_component(InnerPlaybackPosition)]
 fn inner_playback_position(props: &InnerProps) -> Html {
+    const LABEL_TIME_NONE: &str = "--:--";
+    struct Info {
+        duration_str: String,
+        position_str: String,
+        position_fmt: String,
+        remaining_fmt: String,
+    }
     let InnerProps {
         playback_timing: shared::PlaybackTiming { duration_secs, .. },
         received_time: _, // used in forecast
@@ -117,14 +124,19 @@ fn inner_playback_position(props: &InnerProps) -> Html {
         on_seek_preview,
         slider_input_ref,
     } = props;
-    let position_secs =
-        preview_position_secs.unwrap_or_else(|| props.calc_forecast_position_secs());
-    let remaining_secs = duration_secs.saturating_sub(position_secs);
-    let duration_str = format!("{duration_secs}");
-    let position_str = format!("{position_secs}");
-    let position_fmt = fmt::fmt_duration_seconds(position_secs);
-    let remaining_fmt = fmt::fmt_duration_seconds(remaining_secs);
-    {
+    let has_duration = *duration_secs > 0;
+    let info = has_duration.then_some(()).map(|()| {
+        let position_secs =
+            preview_position_secs.unwrap_or_else(|| props.calc_forecast_position_secs());
+        let remaining_secs = duration_secs.saturating_sub(position_secs);
+        Info {
+            duration_str: format!("{duration_secs}"),
+            position_str: format!("{position_secs}"),
+            position_fmt: fmt::fmt_duration_seconds(position_secs),
+            remaining_fmt: fmt::fmt_duration_seconds(remaining_secs),
+        }
+    });
+    if info.is_some() {
         // `yew_hooks` shenanigans to trigger re-render every second
         let dummy_state = yew::use_state(|| ());
         let touch_state = move || {
@@ -134,14 +146,20 @@ fn inner_playback_position(props: &InnerProps) -> Html {
     }
     html! {
         <div class="playback time">
-            { position_fmt }
-            <input type="range"
-                min="0" max={duration_str} value={position_str}
-                ref={slider_input_ref.clone()}
-                onchange={on_seek}
-                oninput={on_seek_preview}
-                />
-            { "-" }{ remaining_fmt }
+            if let Some(info) = info {
+                { info.position_fmt }
+                <input type="range"
+                    min="0" max={info.duration_str} value={info.position_str}
+                    ref={slider_input_ref.clone()}
+                    onchange={on_seek}
+                    oninput={on_seek_preview}
+                    />
+                { "-" }{ info.remaining_fmt }
+            } else {
+                { LABEL_TIME_NONE }
+                <input type="range" min="0" max="0" class="disabled" />
+                { LABEL_TIME_NONE }
+            }
         </div>
     }
 }

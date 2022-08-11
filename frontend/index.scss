@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 /* --------------------------------- */
 
 @mixin align-center {
@@ -148,6 +149,9 @@ header, footer {
 footer {
   margin-top: 20px;
   color: #222;
+  a {
+    color: #000;
+  }
 }
 
 body {
@@ -156,8 +160,22 @@ body {
 }
 
 .monospace {
-  font-size: 1.7em;
   font-family: monospace;
+}
+
+header {
+  @extend .monospace;
+  font-size: 1.7em;
+}
+
+.legal {
+  @extend .monospace;
+  display: flex;
+  justify-content: center;
+  max-height: 80vh;
+  pre {
+    overflow-y: scroll;
+  }
 }
 
 svg {
@@ -267,3 +285,8 @@ svg {
     @include media_only(padding, 10px, $desktop_width);
   }
 }
+
+input[type=range].disabled {
+  background: #000;
+}
+

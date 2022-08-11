@@ -9,11 +9,18 @@ use yew_router::{
 use crate::{log, model, view, websocket, App, AppMsgFull};
 
 pub type Link = RawLink<Route>;
+pub fn link_to_default() -> Html {
+    html! {
+        <Link to={Route::default()}>{"Back to Home"}</Link>
+    }
+}
 
 #[derive(Clone, Routable, PartialEq)]
 pub enum Route {
     #[at("/")]
     Root,
+    #[at("/COPYING")]
+    Copying,
     #[at("/debug")]
     DebugPanel,
     #[at("/player")]
@@ -74,6 +81,7 @@ impl self::render_adapter::Renderer for Main {
             Route::Root => html! {
                 <Redirect<Route> to={Route::default()} />
             },
+            Route::Copying => html! { <view::Copying /> },
             Route::DebugPanel => {
                 let websocket_connect = on_websocket.reform(|_| websocket::Msg::Connect);
                 let websocket_disconnect = on_websocket.reform(|_| websocket::Msg::Disconnect);
@@ -113,7 +121,7 @@ impl self::render_adapter::Renderer for Main {
             Route::NotFound => html! {
                 <>
                     <h3>{"Not Found :\\"}</h3>
-                    <Link to={Route::default()}>{"Back to Home"}</Link>
+                    { link_to_default() }
                 </>
             },
         }
