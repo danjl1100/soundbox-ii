@@ -8,6 +8,21 @@ use std::{
 
 use super::ItemSource;
 
+pub struct Error {
+    path: Option<String>,
+    error: std::io::Error,
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { path, error } = self;
+        if let Some(path) = path {
+            write!(f, "path {path:?}: {error}")
+        } else {
+            write!(f, "path <unknown>: {error}")
+        }
+    }
+}
+
 /// Reads items as lines from the filename specified by the filter args
 pub struct Lines {
     root: PathBuf,
@@ -31,7 +46,7 @@ impl Lines {
 }
 impl ItemSource<String> for Lines {
     type Item = String;
-    type Error = std::io::Error;
+    type Error = Error;
 
     fn lookup(&self, args: &[String]) -> Result<Vec<Self::Item>, Self::Error> {
         let mut file_path = self.root.clone();
@@ -40,13 +55,18 @@ impl ItemSource<String> for Lines {
                 file_path.push(arg);
             }
         }
-        let file = File::open(file_path)?;
+        let err_with_path = |error| {
+            let path = file_path.to_str().map(ToOwned::to_owned);
+            Error { path, error }
+        };
+        let file = File::open(&file_path).map_err(err_with_path)?;
         BufReader::new(file)
             .lines()
             .filter(|r| match r {
                 Ok(line) => !line.is_empty(),
                 Err(..) => true,
             })
-            .collect()
+            .collect::<Result<_, _>>()
+            .map_err(err_with_path)
     }
 }
