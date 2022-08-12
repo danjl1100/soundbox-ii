@@ -1,5 +1,8 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+
 use super::{Orderer, Weight};
+use crate::weight_vec::Weights;
+use std::ops::Range;
 
 #[derive(Clone, Copy, Debug)]
 struct Tally {
@@ -15,8 +18,8 @@ impl Orderer for InOrder {
     fn peek_unchecked(&self) -> Option<usize> {
         self.0.as_ref().map(|t| t.index)
     }
-    fn advance(&mut self, weights: &[Weight]) {
-        let filter_nonzero_weight = |(index, &target)| {
+    fn advance(&mut self, weights: &Weights) {
+        let filter_nonzero_weight = |(index, target)| {
             if target > 0 {
                 Some(Tally {
                     index,
@@ -30,7 +33,7 @@ impl Orderer for InOrder {
         self.0 = self
             .0
             .and_then(|Tally { index, emitted, .. }| {
-                let target = weights.get(index).copied().unwrap_or_default();
+                let target = weights.get(index).unwrap_or_default();
                 let emitted = emitted + 1;
                 if emitted < target {
                     Some(Tally {
@@ -51,17 +54,18 @@ impl Orderer for InOrder {
                 weights.iter().enumerate().find_map(filter_nonzero_weight)
             });
     }
-    fn notify_removed(&mut self, removed: usize, weights: &[Weight]) {
+    fn notify_removed(&mut self, removed: Range<usize>, weights: &Weights) {
         match self.0 {
             Some(Tally { index, .. }) if index >= weights.len() => {
                 // current is outside of range -> advance
                 self.advance(weights);
             }
-            Some(Tally { index, emitted, .. }) if removed < index => {
+            Some(Tally { index, emitted, .. }) if removed.end <= index => {
                 // removed BEFORE current -> decrement index ONLY
-                if let Some(index) = index.checked_sub(1) {
-                    let target = weights[index];
-                    self.0 = Some(Tally {
+                if let Some(index) = index.checked_sub(removed.count()) {
+                    // TODO what should happen if `index` is out of bounds?
+                    // (is this acceptable? `self.0 = None` probably so...)
+                    self.0 = weights.get(index).map(|target| Tally {
                         index,
                         emitted,
                         target,
@@ -71,12 +75,13 @@ impl Orderer for InOrder {
                     self.advance(weights);
                 }
             }
-            Some(Tally { index, .. }) if removed == index => {
+            Some(Tally { index, .. }) if removed.contains(&index) => {
                 // removed AT current -> decrement then advance
-                self.0 = index.checked_sub(1).map(|idx| Tally {
+                let index = removed.start;
+                self.0 = weights.get(index).map(|target| Tally {
                     index,
                     emitted: 0,
-                    target: weights[idx],
+                    target,
                 });
                 self.advance(weights);
             }
@@ -86,7 +91,7 @@ impl Orderer for InOrder {
         }
     }
 
-    fn notify_changed(&mut self, changed: Option<usize>, weights: &[Weight]) {
+    fn notify_changed(&mut self, changed: Option<usize>, weights: &Weights) {
         match (self.0, changed) {
             (_, None) => {
                 // reinitialize (all changed)
@@ -98,8 +103,11 @@ impl Orderer for InOrder {
                 self.advance(weights);
             }
             (Some(Tally { index, emitted, .. }), Some(changed)) if changed == index => {
-                let new_target = weights[index];
-                if emitted >= new_target {
+                if match weights.get(index) {
+                    None => true,
+                    Some(new_target) if emitted >= new_target => true,
+                    Some(_) => false,
+                } {
                     self.advance(weights);
                 }
             }
@@ -129,7 +137,7 @@ mod tests {
         let weight_vec = to_weight_vec(&[1, 2, 2, 3, 0, 5]);
         let mut s = State::from(ty);
         for _ in 0..100 {
-            for (index, &weight) in weight_vec.weights().iter().enumerate() {
+            for (index, weight) in weight_vec.weights().iter().enumerate() {
                 for _ in 0..weight {
                     assert_peek_next(&mut s, &weight_vec, Some(index));
                 }
@@ -147,7 +155,7 @@ mod tests {
             let target_len = i % (all_weights.len() + 1);
             resize_vec_to_len(&mut weight_vec, &mut s, target_len, all_weights);
             let weight_vec = to_weight_vec(&all_weights[0..target_len]);
-            for (index, &weight) in weight_vec.weights().iter().enumerate() {
+            for (index, weight) in weight_vec.weights().iter().enumerate() {
                 for _ in 0..weight {
                     assert_peek_next(&mut s, &weight_vec, Some(index));
                 }

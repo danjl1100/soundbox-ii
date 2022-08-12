@@ -119,8 +119,9 @@
 
 #![allow(clippy::module_name_repetitions)]
 
-use super::Weight;
+use crate::weight_vec::{Weight, Weights};
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
 pub use in_order::InOrder;
 mod in_order;
@@ -215,13 +216,13 @@ impl std::ops::DerefMut for State {
 }
 impl State {
     /// Returns the next element in the ordering
-    pub fn next(&mut self, weights: &[Weight]) -> Option<usize> {
+    pub fn next(&mut self, weights: &Weights) -> Option<usize> {
         let prev_value = self.peek(weights);
         self.advance(weights);
         prev_value
     }
     /// Reads what will be returned by call to [`next()`](`Self::next()`)
-    pub fn peek(&mut self, weights: &[Weight]) -> Option<usize> {
+    pub fn peek(&mut self, weights: &Weights) -> Option<usize> {
         let valid_range = 0..weights.len();
         match self.peek_unchecked() {
             Some(index) if valid_range.contains(&index) => Some(index),
@@ -261,11 +262,11 @@ pub trait Orderer {
     /// Reads the current value in the ordering
     fn peek_unchecked(&self) -> Option<usize>;
     /// Advances the next element in the ordering
-    fn advance(&mut self, weights: &[Weight]);
+    fn advance(&mut self, weights: &Weights);
     /// Notify that the specified index was removed
-    fn notify_removed(&mut self, index: usize, weights: &[Weight]);
+    fn notify_removed(&mut self, range: Range<usize>, weights: &Weights);
     /// Notify that the specified weight was changed (or `None`, meaning all indices may have changed)
-    fn notify_changed(&mut self, index: Option<usize>, weights: &[Weight]);
+    fn notify_changed(&mut self, index: Option<usize>, weights: &Weights);
 }
 
 #[cfg(test)]
@@ -293,7 +294,7 @@ mod tests {
         weight_vec: &mut WeightVec<()>,
         order_state: &mut State,
         target_len: usize,
-        all_weights: &[super::Weight],
+        all_weights: &[Weight],
     ) {
         let old_len = weight_vec.len();
         let mut weight_vec_ref = weight_vec.ref_mut(order_state);

@@ -1,9 +1,9 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::convert::TryInto;
 
-use super::{Orderer, Weight};
+use super::{Orderer, Weights};
 use rand;
 use rand_chacha::ChaCha8Rng;
+use std::{convert::TryInto, ops::Range};
 
 #[derive(Clone)]
 /// Tracks the remaining (shuffled) indices to be returned
@@ -24,20 +24,20 @@ impl Shuffle {
         let rng = ChaCha8Rng::seed_from_u64(seed);
         Self::new(rng)
     }
-    fn fill_remaining(&mut self, weights: &[Weight]) {
+    fn fill_remaining(&mut self, weights: &Weights) {
         use rand::seq::SliceRandom;
         //TODO: consider changing behavior to persist "remaining",
         // only adding items to keep weight totals in check
         let mut idxs: Vec<_> = weights
             .iter()
-            .map(|&weight| usize::try_from(weight).expect("weight fit into usize"))
+            .map(|weight| usize::try_from(weight).expect("weight fit into usize"))
             .enumerate()
             .flat_map(|(idx, weight)| std::iter::repeat(idx).take(weight))
             .collect();
         idxs.shuffle(&mut self.rng);
         self.remaining_shuffled = idxs;
     }
-    fn refill_if_empty(&mut self, weights: &[Weight]) {
+    fn refill_if_empty(&mut self, weights: &Weights) {
         if self.remaining_shuffled.is_empty() {
             self.fill_remaining(weights);
         }
@@ -55,19 +55,20 @@ impl Orderer for Shuffle {
     fn peek_unchecked(&self) -> Option<usize> {
         self.remaining_shuffled.last().copied()
     }
-    fn advance(&mut self, weights: &[Weight]) {
+    fn advance(&mut self, weights: &Weights) {
         self.remaining_shuffled.pop();
         if self.remaining_shuffled.is_empty() {
             self.fill_remaining(weights);
         }
     }
 
-    fn notify_removed(&mut self, removed: usize, weights: &[Weight]) {
+    fn notify_removed(&mut self, removed: Range<usize>, weights: &Weights) {
+        let removed_count = removed.clone().count();
         {
             // remove all occurrences of the `removed` index
             let mut search_index = 0;
-            while let Some(&value) = self.remaining_shuffled.get(search_index) {
-                if value == removed || value > weights.len() {
+            while let Some(value) = self.remaining_shuffled.get(search_index) {
+                if removed.contains(value) || *value > (weights.len() + removed_count) {
                     self.remaining_shuffled.swap_remove(search_index);
                 } else {
                     search_index += 1;
@@ -78,15 +79,15 @@ impl Orderer for Shuffle {
         for index in self
             .remaining_shuffled
             .iter_mut()
-            .filter(|index| **index > removed)
+            .filter(|index| **index >= removed.end)
         {
-            *index -= 1;
+            *index -= removed_count;
         }
         // refill if empty
         self.refill_if_empty(weights);
     }
 
-    fn notify_changed(&mut self, changed: Option<usize>, weights: &[Weight]) {
+    fn notify_changed(&mut self, changed: Option<usize>, weights: &Weights) {
         if let Some(changed) = changed {
             if let Some(weight) = weights.get(changed) {
                 // find indices matching `changed`
@@ -105,7 +106,7 @@ impl Orderer for Shuffle {
                     .expect("shuffled weight indices should fit in a u32");
                 // remove excess entries (from end)
                 let excess = match_len
-                    .checked_sub(*weight)
+                    .checked_sub(weight)
                     .map(|excess| excess.try_into().expect("excess fits into usize"));
                 if let Some(excess) = excess {
                     match_indices.sort_unstable();
@@ -175,7 +176,7 @@ mod tests {
                         .weights()
                         .iter()
                         .enumerate()
-                        .flat_map(|(idx, count)| std::iter::repeat(idx).take(*count as usize))
+                        .flat_map(|(idx, count)| std::iter::repeat(idx).take(count as usize))
                         .collect();
                     if first {
                         assert_eq!(ids, vec![0, 1, 1, 2, 2, 3, 3, 3, 3, 3]);
@@ -190,7 +191,7 @@ mod tests {
                     assert_eq!(truth, vec![3, 3, 3, 2, 2, 0, 3, 1, 1, 3]);
                 }
                 assert_eq!(
-                    weight_vec.weights().iter().copied().sum::<u32>() as usize,
+                    weight_vec.weights().iter().sum::<u32>() as usize,
                     truth.len(),
                     "for test to work"
                 );

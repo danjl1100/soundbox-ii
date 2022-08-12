@@ -7,7 +7,7 @@ use q_filter_tree::{
 };
 use serde_json::Result;
 
-const EMPTY_NODE: &str = r#"[[],{"queue":[],"filter":null,"order":"InOrder"}]"#;
+const EMPTY_NODE: &str = r#"[0,{"queue":[],"filter":null,"order":"InOrder"}]"#;
 const ONE_CHILD: &str = r#"[[0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
 const FIVE_CHILD: &str = r#"[[0,0,0,0,0],{"queue":[],"filter":null,"order":"InOrder"}]"#;
 #[test]

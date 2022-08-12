@@ -349,16 +349,15 @@ pub(crate) mod meta {
         id::{self, ty, NodeId, Sequence},
         node::{Chain, Children},
         order,
-        weight_vec::OrderVec,
-        Weight,
+        weight_vec::{OrderVec, Weights},
     };
 
     use super::Node;
     /// Serializable representation of a filter/queue/merge element in the [`Tree`](`crate::Tree`)
     #[must_use]
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub(crate) struct NodeInfo<T, F>(Vec<Weight>, NodeInfoIntrinsic<T, F>);
-    impl<T, F> From<NodeInfo<T, F>> for (Vec<Weight>, NodeInfoIntrinsic<T, F>) {
+    pub(crate) struct NodeInfo<T, F>(Weights, NodeInfoIntrinsic<T, F>);
+    impl<T, F> From<NodeInfo<T, F>> for (Weights, NodeInfoIntrinsic<T, F>) {
         fn from(node_info: NodeInfo<T, F>) -> Self {
             (node_info.0, node_info.1)
         }
@@ -371,26 +370,28 @@ pub(crate) mod meta {
                 filter,
                 sequence: _,
             } = node;
-            match children {
+            let (mut weights, info) = match children {
                 Children::Chain(Chain { nodes }) => {
                     let (order, (weights, _nodes)) = nodes.into_parts();
-                    let info_intrinsic = NodeInfoIntrinsic::Chain {
+                    let info = NodeInfoIntrinsic::Chain {
                         queue,
                         filter,
                         order,
                     };
-                    Self(weights, info_intrinsic)
+                    (weights, info)
                 }
                 Children::Items(items) => {
                     let (order, (weights, items)) = items.into_parts();
-                    let info_intrinsic = NodeInfoIntrinsic::Items {
+                    let info = NodeInfoIntrinsic::Items {
                         items,
                         filter,
                         order,
                     };
-                    Self(weights, info_intrinsic)
+                    (weights, info)
                 }
-            }
+            };
+            weights.try_simplify();
+            Self(weights, info)
         }
     }
     /// Intrinsic description of a Node

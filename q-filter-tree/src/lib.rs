@@ -48,6 +48,7 @@ pub use error::RemoveError as RemoveErrorInner;
 pub use node::RemoveResult as RemoveResultInner;
 mod node;
 
+pub use weight_vec::Weight;
 pub mod weight_vec;
 
 pub use order::Type as OrderType;
@@ -68,9 +69,6 @@ pub mod serde {
 }
 
 pub mod refs;
-
-/// Numeric type for weighting nodes in the [`Tree`], used by to fuel [`OrderType`] algorithms
-pub type Weight = u32;
 
 #[test]
 fn tree_add_to_doc_tests() {
