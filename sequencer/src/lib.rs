@@ -193,8 +193,8 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let tree = serde_json::to_string_pretty(&self.tree)
-            .unwrap_or_else(|err| format!("<<error: {err}>>"));
-        write!(f, "Sequencer {tree}")
+            .unwrap_or_else(|err| format!("<<Sequencer error: {err}>>"));
+        write!(f, "{tree}")
     }
 }
 

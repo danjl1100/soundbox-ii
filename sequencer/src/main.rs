@@ -16,7 +16,10 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use clap::{ArgEnum, Parser};
-use std::io::{stdin, BufRead};
+use std::{
+    fs::File,
+    io::{stdin, BufRead, BufReader},
+};
 
 use arg_split::ArgSplit;
 use sequencer::{
@@ -32,9 +35,9 @@ struct Args {
     #[clap(subcommand)]
     command: Option<Command>,
 }
-impl TryFrom<&String> for Args {
+impl TryFrom<&str> for Args {
     type Error = clap::Error;
-    fn try_from(line: &String) -> Result<Self, clap::Error> {
+    fn try_from(line: &str) -> Result<Self, clap::Error> {
         let line_parts = ArgSplit::split(line);
         Self::try_parse_from(line_parts)
     }
@@ -91,9 +94,22 @@ pub enum ShowCopyingLicenseType {
     Copying,
 }
 
-#[derive(Default)]
 struct Cli {
     sequencer: TypedSequencer,
+    params: Parameters,
+}
+struct Parameters {
+    /// Slience non-error output that is not explicitly requested
+    quiet: bool,
+    /// Terminates on the first error encountered (implied for `--script` mode)
+    fatal: bool,
+}
+impl Parameters {
+    fn output(&self, fmt_args: std::fmt::Arguments) {
+        if !self.quiet {
+            println!("{fmt_args}");
+        }
+    }
 }
 shared::wrapper_enum! {
     enum TypedSequencer {
@@ -119,37 +135,59 @@ macro_rules! match_seq {
 }
 
 impl Cli {
-    fn new(sequencer: TypedSequencer) -> Self {
-        Self { sequencer }
+    const COMMENT: &'static str = "#";
+    fn new(sequencer: TypedSequencer, params: Parameters) -> Self {
+        Self { sequencer, params }
     }
-    fn exec_lines<T>(&mut self, input: T) -> Result<(), std::io::Error>
+    fn exec_lines<T>(&mut self, input: T) -> Result<(), MainError>
     where
         T: BufRead,
     {
-        for line in input.lines() {
+        for (line_number, line) in input.lines().enumerate() {
             let line = line?;
-            match Args::try_from(&line) {
+            match self.exec_line(&line) {
+                Ok(Some(shared::Shutdown)) => {
+                    self.output(format_args!("exited cleanly"));
+                    return Ok(());
+                }
+                Err(()) if self.params.fatal => {
+                    let line_number = line_number + 1; // human-readable one-based counting
+                    Err(format!("failed on line {line_number}: {line:?}"))?;
+                }
+                Ok(None) | Err(()) => {}
+            }
+        }
+        self.output(format_args!("<<EOF>>"));
+        Ok(())
+    }
+    fn exec_line(&mut self, line: &str) -> Result<Option<shared::Shutdown>, ()> {
+        if line.trim_start().starts_with(Self::COMMENT) {
+            Ok(None)
+        } else {
+            match Args::try_from(line) {
                 Ok(Args {
                     command: Some(Command::Quit),
-                }) => return Ok(()),
+                }) => Ok(Some(shared::Shutdown)),
                 Ok(Args { command: Some(cmd) }) => {
                     let result = self.exec_command(cmd);
-                    if let Err(e) = result {
-                        match e {
-                            Error::Message(message) => eprintln!("ERROR: {message}"),
-                            e => eprintln!("ERROR: {e:?}"),
+                    match result {
+                        Err(e) => {
+                            match e {
+                                Error::Message(message) => eprintln!("Error: {message}"),
+                                e => eprintln!("Error: {e:?}"),
+                            }
+                            Err(())
                         }
+                        Ok(()) => Ok(None),
                     }
                 }
-                Ok(Args { command: None }) => continue,
+                Ok(Args { command: None }) => Ok(None),
                 Err(clap_err) => {
                     eprintln!("{clap_err}");
-                    continue;
+                    Err(())
                 }
             }
         }
-        eprintln!("<<STDIN EOF>>");
-        Ok(())
     }
     fn exec_command(&mut self, command: Command) -> Result<(), Error> {
         match command {
@@ -177,7 +215,7 @@ impl Cli {
                         } else {
                             inner.add_terminal_node(&parent_path, joined)
                         }?;
-                        println!("added node {node_path}");
+                        self.output(format_args!("added node {node_path}"));
                     }
                     TypedSequencer::FileLines(inner) => {
                         let node_path = if items_filter.is_empty() {
@@ -185,7 +223,7 @@ impl Cli {
                         } else {
                             inner.add_terminal_node(&parent_path, joined)
                         }?;
-                        println!("added node {node_path}");
+                        self.output(format_args!("added node {node_path}"));
                     }
                     TypedSequencer::Beet(inner) => {
                         let node_path = if items_filter.is_empty() {
@@ -193,20 +231,20 @@ impl Cli {
                         } else {
                             inner.add_terminal_node(&parent_path, items_filter)
                         }?;
-                        println!("added node {node_path}");
+                        self.output(format_args!("added node {node_path}"));
                     }
                 }
             }
             Command::Update { path } => {
                 let path = path.as_ref().map_or(".", |p| p);
                 let path = match_seq!(&mut self.sequencer, inner => inner.update_node(path)?);
-                println!("updated nodes under path {path}");
+                self.output(format_args!("updated nodes under path {path}"));
             }
             Command::Remove { id } => {
                 match_seq!(&mut self.sequencer, inner => {
                     let removed = inner.remove_node(&id)?;
                     let (weight, info) = removed;
-                    println!("removed node {id}: weight = {weight}, {info:#?}");
+                    self.output(format_args!("removed node {id}: weight = {weight}, {info:#?}"));
                 });
             }
             Command::Next { count } => {
@@ -223,6 +261,9 @@ impl Cli {
         }
         Ok(())
     }
+    fn output(&self, fmt_args: std::fmt::Arguments) {
+        self.params.output(fmt_args);
+    }
 }
 
 #[derive(Parser)]
@@ -232,6 +273,15 @@ struct MainArgs {
     source: Option<ItemSourceType>,
     /// Command to use for the [`Beet`] item source type
     beet_cmd: Option<String>,
+    /// Slience non-error output that is not explicitly requested
+    #[clap(short, long, action)]
+    quiet: bool,
+    /// Filename to read commands from, instead of standard-in
+    #[clap(long)]
+    script: Option<String>,
+    /// Terminates on the first error encountered (implied for `--script` mode)
+    #[clap(long, action)]
+    fatal: bool,
 }
 #[derive(Clone, ArgEnum)]
 enum ItemSourceType {
@@ -239,11 +289,28 @@ enum ItemSourceType {
     FileLines,
     Beet,
 }
-fn main() -> Result<(), std::io::Error> {
-    eprint!("{}", COMMAND_NAME);
-    eprintln!("{}", shared::license::WELCOME);
-
+shared::wrapper_enum! {
+    enum MainError {
+        IO(std::io::Error),
+        Message(String),
+    }
+}
+impl std::fmt::Debug for MainError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IO(e) => write!(f, "{e}"),
+            Self::Message(e) => write!(f, "{e}"),
+        }
+    }
+}
+fn main() -> Result<(), MainError> {
     let args = MainArgs::parse();
+
+    if !args.quiet {
+        eprint!("{}", COMMAND_NAME);
+        eprintln!("{}", shared::license::WELCOME);
+    }
+
     let sequencer = match args.source.unwrap_or(ItemSourceType::FileLines) {
         ItemSourceType::Debug => TypedSequencer::DebugItem(Sequencer::new(DebugItemSource)),
         ItemSourceType::FileLines => {
@@ -253,12 +320,30 @@ fn main() -> Result<(), std::io::Error> {
             if let Some(beet_cmd) = args.beet_cmd {
                 TypedSequencer::Beet(Sequencer::new(Beet::new(beet_cmd)?))
             } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "missing beet_cmd",
-                ));
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::Other, "missing beet_cmd").into(),
+                );
             }
         }
     };
-    Cli::new(sequencer).exec_lines(stdin().lock())
+    let params = {
+        let MainArgs { quiet, fatal, .. } = args;
+        let fatal = fatal | args.script.is_some();
+        Parameters { quiet, fatal }
+    };
+    let mut sequencer = Cli::new(sequencer, params);
+    if let Some(script) = args.script {
+        let script_file = File::open(&script)
+            .map_err(|err| format!("unable to open script {script:?}: {err}"))?;
+        let script_file = BufReader::new(script_file);
+        sequencer.exec_lines(script_file).map_err(|e| {
+            match e {
+                MainError::Message(msg) => format!("script {script:?} {msg}"),
+                MainError::IO(err) => format!("error reading script {script:?}: {err}"),
+            }
+            .into()
+        })
+    } else {
+        Ok(sequencer.exec_lines(stdin().lock())?)
+    }
 }
