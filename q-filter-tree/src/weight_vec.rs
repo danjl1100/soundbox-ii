@@ -297,17 +297,18 @@ pub struct RefMut<'vec, 'order, T> {
 }
 impl<'vec, 'order, T> RefMut<'vec, 'order, T> {
     /// Sets the weight of the specified index
+    /// Returns the old weight
     ///
     /// # Errors
     /// Returns an error if the index if out of bounds
-    pub fn set_weight(&mut self, index: usize, new_weight: Weight) -> Result<(), usize> {
+    pub fn set_weight(&mut self, index: usize, new_weight: Weight) -> Result<Weight, usize> {
         if let Some(weight) = self.weights.get_mut(index) {
             // changed
-            *weight = new_weight;
+            let old_weight = std::mem::replace(weight, new_weight);
             if let Some(order) = &mut self.order {
                 order.notify_changed(Some(index), self.weights);
             }
-            Ok(())
+            Ok(old_weight)
         } else {
             Err(index)
         }
@@ -456,15 +457,17 @@ pub struct RefMutWeight<'vec, 'order> {
 }
 impl<'vec, 'order> RefMutWeight<'vec, 'order> {
     /// Sets the weight to the specified value
-    pub fn set_weight(&mut self, weight: Weight) {
+    /// Returns the old weight
+    pub fn set_weight(&mut self, weight: Weight) -> Weight {
         let weight_mut = self
             .weights
             .get_mut(self.index)
             .expect("valid index in created WeightVecMutElem");
-        *weight_mut = weight;
+        let old_weight = std::mem::replace(weight_mut, weight);
         if let Some(order) = &mut self.order {
             order.notify_changed(Some(self.index), self.weights);
         }
+        old_weight
     }
     /// Returns the current weight value
     #[must_use]

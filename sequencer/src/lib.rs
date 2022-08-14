@@ -37,7 +37,7 @@ use q_filter_tree::{
     id::{ty, NodeId, NodeIdTyped, NodePathTyped},
     iter::IterDetachedNodeMut,
     serde::{NodeDescriptor, NodeIdParseError},
-    RemoveError,
+    RemoveError, Weight,
 };
 
 #[cfg(test)]
@@ -126,6 +126,48 @@ where
         let iter = self.tree.enumerate_mut_subtree(&node_path)?;
         Self::inner_update_node(&mut self.item_source, iter)?;
         Ok(old_filter)
+    }
+    /// Sets the weight of the specified item in the node
+    /// Returns the previous weight value.
+    ///
+    /// # Errors
+    /// Returns an [`Error`] when inputs do not match the inner tree state
+    pub fn set_node_item_weight(
+        &mut self,
+        node_path_str: &str,
+        item_index: usize,
+        weight: Weight,
+    ) -> Result<Weight, Error> {
+        let node_path = parse_path(node_path_str)?;
+        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let child_items = node_ref.child_items().ok_or_else(|| {
+            Error::Message(format!(
+                "cannot set items for node at path {node_path}, type is chain"
+            ))
+        })?;
+        let mut child_items = child_items.ref_mut();
+        match child_items.set_weight(item_index, weight) {
+            Ok(old_weight) => Ok(old_weight),
+            Err(invalid_index) => Err(Error::InvalidItemIndex(node_path, invalid_index)),
+        }
+    }
+    /// Sets the weight of the specified node
+    /// Returns the previous weight value.
+    ///
+    /// # Errors
+    /// Returns an [`Error`] when inputs do not match the inner tree state
+    pub fn set_node_weight(
+        &mut self,
+        node_path_str: &str,
+        weight: Weight,
+    ) -> Result<Weight, Error> {
+        let node_path = parse_path(node_path_str)?;
+        let node_path = match node_path {
+            NodePathTyped::Root(path) => Err(InvalidNodePath::from(path)),
+            NodePathTyped::Child(path) => Ok(path),
+        }?;
+        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        Ok(node_ref.set_weight(weight))
     }
     /// Updates the items for the specified node (and any children)
     ///
@@ -226,6 +268,9 @@ shared::wrapper_enum! {
         InvalidNodePath(InvalidNodePath),
         /// Node removal error
         RemoveError(RemoveError),
+        { impl None for }
+        /// Invalid index for child items
+        InvalidItemIndex(NodePathTyped, usize),
     }
 }
 

@@ -6,7 +6,7 @@ use crate::id::{
 };
 use crate::node::meta::NodeInfoIntrinsic;
 use crate::node::{self, Children, Node};
-use crate::weight_vec;
+use crate::weight_vec::{self, OrderVec};
 use crate::{Tree, Weight};
 
 /// Mutable reference to a node in the [`Tree`]
@@ -31,6 +31,13 @@ impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
                 sequence_counter,
             }),
             Children::Items(_) => None,
+        }
+    }
+    /// Returns a mut handle to the child items, if the node is type items (not chain)
+    pub fn child_items(&mut self) -> Option<&mut OrderVec<T>> {
+        match &mut self.node.children {
+            Children::Items(items) => Some(items),
+            Children::Chain(_) => None,
         }
     }
 }
@@ -100,9 +107,9 @@ pub struct NodeRefMutWeighted<'tree, 'path, T, F> {
     inner: NodeRefMut<'tree, 'path, T, F>,
 }
 impl<'tree, 'path, T, F> NodeRefMutWeighted<'tree, 'path, T, F> {
-    /// Sets the weight
-    pub fn set_weight(&mut self, weight: Weight) {
-        self.weight_ref.set_weight(weight);
+    /// Sets the weight, returning the old weight
+    pub fn set_weight(&mut self, weight: Weight) -> Weight {
+        self.weight_ref.set_weight(weight)
     }
     /// Gets the weight
     #[must_use]

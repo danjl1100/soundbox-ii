@@ -3,6 +3,8 @@ add .
 add .1 src
 
 set-filter .1 ..
+set-weight .0 2
+set-weight .1.0 --item-index 1 5
 
 print
 n 20

@@ -16,6 +16,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use clap::{ArgEnum, Parser};
+use q_filter_tree::Weight;
 use std::{
     fs::File,
     io::{stdin, BufRead, BufReader},
@@ -70,6 +71,16 @@ pub enum Command {
         path: String,
         /// New filter value
         items_filter: Vec<String>,
+    },
+    /// Set the weight for the specified node or item
+    SetWeight {
+        /// Path of the node to modify
+        path: String,
+        /// Index of the item to modify (for terminal nodes only)
+        #[clap(long)]
+        item_index: Option<usize>,
+        /// New weight value
+        weight: Weight,
     },
     /// Update items for a node
     Update {
@@ -198,6 +209,7 @@ impl Cli {
             }
         }
     }
+    #[allow(clippy::too_many_lines)] //TODO is this ok?
     fn exec_command(&mut self, command: Command) -> Result<(), Error> {
         match command {
             Command::Quit => {}
@@ -268,6 +280,20 @@ impl Cli {
                         inner.set_node_filter(&path, items_filter)?;
                     }
                 }
+            }
+            Command::SetWeight {
+                path,
+                item_index,
+                weight,
+            } => {
+                match_seq!(&mut self.sequencer, inner => {
+                    let old_weight = if let Some(item_index) = item_index {
+                        inner.set_node_item_weight(&path, item_index, weight)?
+                    } else {
+                        inner.set_node_weight(&path, weight)?
+                    };
+                    self.output(format_args!("changed weight from {old_weight} -> {weight}"));
+                });
             }
             Command::Update { path } => {
                 let path = path.as_ref().map_or(".", |p| p);
@@ -383,5 +409,19 @@ fn main() -> Result<(), MainError> {
         })
     } else {
         Ok(sequencer.exec_lines(stdin().lock())?)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use crate::{Args, MainArgs};
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_main_args() {
+        MainArgs::command().debug_assert();
+    }
+    #[test]
+    fn verify_cli_args() {
+        Args::command().debug_assert();
     }
 }
