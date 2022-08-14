@@ -44,13 +44,16 @@ impl Lines {
         Ok(Self { root })
     }
 }
-impl ItemSource<String> for Lines {
+impl<T> ItemSource<T> for Lines
+where
+    T: AsRef<str>,
+{
     type Item = String;
     type Error = Error;
 
-    fn lookup(&self, args: &[String]) -> Result<Vec<Self::Item>, Self::Error> {
+    fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error> {
         let mut file_path = self.root.clone();
-        for arg in args {
+        for arg in args.iter().map(AsRef::as_ref) {
             if !arg.is_empty() {
                 file_path.push(arg);
             }

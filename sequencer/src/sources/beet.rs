@@ -21,6 +21,15 @@ where
         self
     }
 }
+impl<T> ArgSource for &Vec<T>
+where
+    T: AsRef<OsStr>,
+{
+    type Arg = T;
+    fn get_beet_args(&self) -> &[T] {
+        self
+    }
+}
 
 /// Queries the [beets] database per the supplied filter arguments
 ///
