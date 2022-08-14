@@ -5,6 +5,8 @@ add .1 src
 set-filter .1 ..
 set-weight .0 2
 set-weight .1.0 --item-index 1 5
+set-order-type .1.0 round-robin
+set-order-type .0 shuffle
 
 print
-n 20
+n 40

@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "3.1.6", features = ["cargo", "derive"] }
-q-filter-tree = { path = "../q-filter-tree" }
+q-filter-tree = { path = "../q-filter-tree", features = ["clap"] }
 arg_split = { path = "../arg_split" }
 serde_json = "1.0.64"
 serde = "^1.0.100"

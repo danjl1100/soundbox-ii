@@ -21,7 +21,7 @@ pub struct Node<T, F> {
 }
 impl<T, F> Node<T, F> {
     /// Sets the [`OrderType`](`order::Type`)
-    pub fn set_order_type(&mut self, order: order::Type) {
+    pub fn set_order_type(&mut self, order: order::Type) -> order::Type {
         match &mut self.children {
             Children::Chain(chain) => chain.nodes.set_order(order),
             Children::Items(items) => items.set_order(order),

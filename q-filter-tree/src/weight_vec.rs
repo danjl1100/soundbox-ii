@@ -538,8 +538,8 @@ impl<T> OrderVec<T> {
     //     self.vec.iter_mut_elems_straight()
     // }
     /// Sets the [`OrderType`](`crate::order::Type`)
-    pub fn set_order(&mut self, ty: order::Type) {
-        self.order.set_type(ty);
+    pub fn set_order(&mut self, ty: order::Type) -> order::Type {
+        self.order.set_type(ty)
     }
     /// Destructures into the weight and item components
     pub fn into_parts(self) -> (order::Type, (Weights, Vec<T>)) {

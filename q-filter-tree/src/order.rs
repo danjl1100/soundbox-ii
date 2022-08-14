@@ -138,6 +138,7 @@ mod random;
 /// Method of determining Order
 #[allow(clippy::module_name_repetitions)]
 #[derive(Default, Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "clap", derive(clap::Subcommand))]
 pub enum Type {
     /// Picks [`Weight`] items from one node before moving to the next node
     #[default]
@@ -238,10 +239,12 @@ impl State {
         *self = Self::from(ty);
     }
     /// Sets the order type and clears the state
-    pub fn set_type(&mut self, new_ty: Type) {
-        if new_ty != Type::from(&*self) {
+    pub fn set_type(&mut self, new_ty: Type) -> Type {
+        let old_ty = Type::from(&*self);
+        if new_ty != old_ty {
             *self = Self::from(new_ty);
         }
+        old_ty
     }
 }
 impl PartialEq for State {

@@ -16,7 +16,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use clap::{ArgEnum, Parser};
-use q_filter_tree::Weight;
+use q_filter_tree::{OrderType, Weight};
 use std::{
     fs::File,
     io::{stdin, BufRead, BufReader},
@@ -81,6 +81,14 @@ pub enum Command {
         item_index: Option<usize>,
         /// New weight value
         weight: Weight,
+    },
+    /// Set the order type for the specified node
+    SetOrderType {
+        /// Path of the node to modify
+        path: String,
+        /// Method of ordering
+        #[clap(subcommand)]
+        order_type: OrderType,
     },
     /// Update items for a node
     Update {
@@ -268,16 +276,24 @@ impl Cli {
                 let joined = items_filter.join(" ");
                 match &mut self.sequencer {
                     TypedSequencer::DebugItem(inner) => {
-                        inner.set_node_filter(&path, joined)?;
+                        let new = joined;
+                        let old = inner.set_node_filter(&path, new.clone())?;
+                        self.output(format_args!("changed filter from {old:?} -> {new:?}"));
                     }
                     TypedSequencer::FileLines(inner) => {
-                        inner.set_node_filter(&path, joined)?;
+                        let new = joined;
+                        let old = inner.set_node_filter(&path, new.clone())?;
+                        self.output(format_args!("changed filter from {old:?} -> {new:?}"));
                     }
                     TypedSequencer::FolderListing(inner) => {
-                        inner.set_node_filter(&path, joined)?;
+                        let new = joined;
+                        let old = inner.set_node_filter(&path, new.clone())?;
+                        self.output(format_args!("changed filter from {old:?} -> {new:?}"));
                     }
                     TypedSequencer::Beet(inner) => {
-                        inner.set_node_filter(&path, items_filter)?;
+                        let new = items_filter;
+                        let old = inner.set_node_filter(&path, new.clone())?;
+                        self.output(format_args!("changed filter from {old:?} -> {new:?}"));
                     }
                 }
             }
@@ -293,6 +309,12 @@ impl Cli {
                         inner.set_node_weight(&path, weight)?
                     };
                     self.output(format_args!("changed weight from {old_weight} -> {weight}"));
+                });
+            }
+            Command::SetOrderType { path, order_type } => {
+                match_seq!(&mut self.sequencer, inner => {
+                    let old = inner.set_node_order_type(&path, order_type)?;
+                    self.output(format_args!("changed order type from {old:?} -> {order_type:?}"));
                 });
             }
             Command::Update { path } => {

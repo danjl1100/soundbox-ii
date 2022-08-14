@@ -37,7 +37,7 @@ use q_filter_tree::{
     id::{ty, NodeId, NodeIdTyped, NodePathTyped},
     iter::IterDetachedNodeMut,
     serde::{NodeDescriptor, NodeIdParseError},
-    RemoveError, Weight,
+    OrderType, RemoveError, Weight,
 };
 
 #[cfg(test)]
@@ -168,6 +168,20 @@ where
         }?;
         let mut node_ref = node_path.try_ref(&mut self.tree)?;
         Ok(node_ref.set_weight(weight))
+    }
+    /// Sets the order type of the specified node
+    /// Returns the previous order type.
+    ///
+    /// # Errors
+    /// Returns an [`Error`] when inputs do not match the inner tree state
+    pub fn set_node_order_type(
+        &mut self,
+        node_path_str: &str,
+        order_type: OrderType,
+    ) -> Result<OrderType, Error> {
+        let node_path = parse_path(node_path_str)?;
+        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        Ok(node_ref.set_order_type(order_type))
     }
     /// Updates the items for the specified node (and any children)
     ///
