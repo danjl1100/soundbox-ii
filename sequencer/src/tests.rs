@@ -148,3 +148,26 @@ fn update_subtree() -> Result<(), Error> {
     assert_next(&mut s, &filters_child3, 3, 8);
     Ok(())
 }
+#[test]
+fn set_filter_updates_only_subtree() -> Result<(), Error> {
+    let mut s = Sequencer::new(UpdateTrackingItemSource(7));
+    s.add_node(".", "first_parent".to_string())?;
+    s.add_terminal_node(".0", "first_leaf".to_string())?;
+    s.add_node(".", "old_filter_value".to_string())?;
+    s.add_terminal_node(".1", "second_leaf".to_string())?;
+    let filters1 = vec!["", "first_parent", "first_leaf"];
+    let filters2_old = vec!["", "old_filter_value", "second_leaf"];
+    assert_next(&mut s, &filters1, 0, 7);
+    assert_next(&mut s, &filters2_old, 0, 7);
+    assert_next(&mut s, &filters1, 1, 7);
+    assert_next(&mut s, &filters2_old, 1, 7);
+    //
+    s.ref_item_source().set_rev(1);
+    s.set_node_filter(".1", "NEW_filter_value".to_string())?;
+    let filters2 = vec!["", "NEW_filter_value", "second_leaf"];
+    assert_next(&mut s, &filters1, 2, 7);
+    assert_next(&mut s, &filters2, 2, 1);
+    assert_next(&mut s, &filters1, 3, 7);
+    assert_next(&mut s, &filters2, 3, 1);
+    Ok(())
+}

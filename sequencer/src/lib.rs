@@ -112,12 +112,28 @@ where
         )?;
         Ok(serialize_id(new_node_id)?)
     }
+    /// Sets the filter of the specified node
+    /// Returns the previous filter value.
+    ///
+    /// # Errors
+    /// Returns an [`Error`] when inputs do not match the inner tree state
+    pub fn set_node_filter(&mut self, node_path_str: &str, filter: F) -> Result<F, Error> {
+        let node_path = parse_path(node_path_str)?;
+        // set the filter
+        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let old_filter = std::mem::replace(&mut node_ref.filter, filter);
+        // update node (recursively)
+        let iter = self.tree.enumerate_mut_subtree(&node_path)?;
+        Self::inner_update_node(&mut self.item_source, iter)?;
+        Ok(old_filter)
+    }
     /// Updates the items for the specified node (and any children)
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
     pub fn update_node(&mut self, node_path_str: &str) -> Result<String, Error> {
         let node_path = parse_path(node_path_str)?;
+        // update node (recursively)
         let iter = self.tree.enumerate_mut_subtree(&node_path)?;
         Self::inner_update_node(&mut self.item_source, iter)?;
         Ok(serialize_path(node_path)?)

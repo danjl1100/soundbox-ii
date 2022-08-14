@@ -23,7 +23,7 @@ use std::{
 
 use arg_split::ArgSplit;
 use sequencer::{
-    sources::{Beet, FileLines},
+    sources::{Beet, FileLines, FolderListing},
     DebugItemSource, Error, Sequencer,
 };
 
@@ -62,6 +62,13 @@ pub enum Command {
         /// Path of the parent for the new node (use "." for the root node)
         parent_path: String,
         /// Filename source, for terminal nodes only (optional)
+        items_filter: Vec<String>,
+    },
+    /// Set the filter for the specified node
+    SetFilter {
+        /// Path of the node to modify
+        path: String,
+        /// New filter value
         items_filter: Vec<String>,
     },
     /// Update items for a node
@@ -115,6 +122,7 @@ shared::wrapper_enum! {
     enum TypedSequencer {
         DebugItem(Sequencer<DebugItemSource, String>),
         FileLines(Sequencer<FileLines, String>),
+        FolderListing(Sequencer<FolderListing, String>),
         Beet(Sequencer<Beet, Vec<String>>),
     }
 }
@@ -129,6 +137,7 @@ macro_rules! match_seq {
         match $seq {
             TypedSequencer::DebugItem($bound) => $call,
             TypedSequencer::FileLines($bound) => $call,
+            TypedSequencer::FolderListing($bound) => $call,
             TypedSequencer::Beet($bound) => $call,
         }
     };
@@ -225,6 +234,14 @@ impl Cli {
                         }?;
                         self.output(format_args!("added node {node_path}"));
                     }
+                    TypedSequencer::FolderListing(inner) => {
+                        let node_path = if items_filter.is_empty() {
+                            inner.add_node(&parent_path, joined)
+                        } else {
+                            inner.add_terminal_node(&parent_path, joined)
+                        }?;
+                        self.output(format_args!("added node {node_path}"));
+                    }
                     TypedSequencer::Beet(inner) => {
                         let node_path = if items_filter.is_empty() {
                             inner.add_node(&parent_path, items_filter)
@@ -232,6 +249,23 @@ impl Cli {
                             inner.add_terminal_node(&parent_path, items_filter)
                         }?;
                         self.output(format_args!("added node {node_path}"));
+                    }
+                }
+            }
+            Command::SetFilter { path, items_filter } => {
+                let joined = items_filter.join(" ");
+                match &mut self.sequencer {
+                    TypedSequencer::DebugItem(inner) => {
+                        inner.set_node_filter(&path, joined)?;
+                    }
+                    TypedSequencer::FileLines(inner) => {
+                        inner.set_node_filter(&path, joined)?;
+                    }
+                    TypedSequencer::FolderListing(inner) => {
+                        inner.set_node_filter(&path, joined)?;
+                    }
+                    TypedSequencer::Beet(inner) => {
+                        inner.set_node_filter(&path, items_filter)?;
                     }
                 }
             }
@@ -287,6 +321,7 @@ struct MainArgs {
 enum ItemSourceType {
     Debug,
     FileLines,
+    FolderListing,
     Beet,
 }
 shared::wrapper_enum! {
@@ -315,6 +350,9 @@ fn main() -> Result<(), MainError> {
         ItemSourceType::Debug => TypedSequencer::DebugItem(Sequencer::new(DebugItemSource)),
         ItemSourceType::FileLines => {
             TypedSequencer::FileLines(Sequencer::new(FileLines::new(".".into())?))
+        }
+        ItemSourceType::FolderListing => {
+            TypedSequencer::FolderListing(Sequencer::new(FolderListing::new(".".into())?))
         }
         ItemSourceType::Beet => {
             if let Some(beet_cmd) = args.beet_cmd {

@@ -77,6 +77,7 @@ pub(crate) enum LowCommand {
         /// Path to the file to enqueue
         uri: String,
     },
+    // TODO: PlaylistDelete { item_id: String },
     /// Play the specified item in the playlist
     PlaylistPlay {
         /// Identifier of the playlist item
@@ -226,6 +227,7 @@ impl<'a, 'b> From<LowCommand> for RequestIntent<'a, 'b> {
                 command: "in_enqueue",
                 args: vec![("input", uri)],
             })),
+            //TODO PlaylistDelete  pl_delete    vec![("id", item_id)]
             LowCommand::PlaylistPlay { item_id } => RequestIntent::Status(Some(CmdArgs {
                 command: "pl_play",
                 args: item_id.map(|id| vec![("id", id)]).unwrap_or_default(),

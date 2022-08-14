@@ -2,5 +2,5 @@ default_job = "script"
 [jobs]
 
 [jobs.script]
-command = ["cargo", "run", "--color", "always", "--", "--quiet", "--script", "src/input.txt"]
+command = ["cargo", "run", "--color", "always", "--", "--quiet", "--script", "src/test_script.txt", "folder-listing"]
 need_stdout = true

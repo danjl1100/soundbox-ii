@@ -1,0 +1,8 @@
+add . src
+add .
+add .1 src
+
+set-filter .1 ..
+
+print
+n 20

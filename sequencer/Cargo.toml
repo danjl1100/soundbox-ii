@@ -12,3 +12,4 @@ arg_split = { path = "../arg_split" }
 serde_json = "1.0.64"
 serde = "^1.0.100"
 shared = { path = "../shared" }
+walkdir = "2"
