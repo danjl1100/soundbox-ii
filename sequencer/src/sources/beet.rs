@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use super::ItemSource;
+use super::{ItemSource, PathError};
 use std::{
     ffi::OsStr,
     io::{BufRead, BufReader, Error, ErrorKind},
@@ -42,14 +42,17 @@ impl Beet {
     ///
     /// # Errors
     /// Returns an error if the specified command does not exist
-    pub fn new(command: String) -> Result<Self, std::io::Error> {
+    pub fn new(command: String) -> Result<Self, PathError> {
         let command = PathBuf::from(command);
         if command.is_file() {
             Ok(Self { command })
         } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "file not found",
+            Err(PathError::new(
+                &command,
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "beet command executable not found",
+                ),
             ))
         }
     }

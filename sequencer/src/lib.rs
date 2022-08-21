@@ -30,7 +30,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use std::{borrow::Cow, iter};
+use std::borrow::Cow;
 
 use q_filter_tree::{
     error::InvalidNodePath,
@@ -39,6 +39,8 @@ use q_filter_tree::{
     serde::{NodeDescriptor, NodeIdParseError},
     OrderType, RemoveError, Weight,
 };
+
+mod iter;
 
 #[cfg(test)]
 mod tests;
@@ -103,13 +105,9 @@ where
         let new_node_id = self.inner_add_node(node_path_str)?;
         let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
         node_ref.filter = filter;
-        node_ref.overwrite_child_items_uniform(iter::empty());
-        Self::inner_update_node(
-            &mut self.item_source,
-            self.tree
-                .enumerate_mut_subtree(&new_node_id)
-                .expect("created node exists"),
-        )?;
+        node_ref.overwrite_child_items_uniform(std::iter::empty());
+        let iter = self.tree.enumerate_mut_subtree(&new_node_id);
+        Self::inner_update_node(&mut self.item_source, iter.expect("created node exists"))?;
         Ok(serialize_id(new_node_id)?)
     }
     /// Sets the filter of the specified node
@@ -291,11 +289,14 @@ shared::wrapper_enum! {
 /// [`ItemSource`] used for debugging
 #[derive(Default)]
 pub struct DebugItemSource;
-impl ItemSource<String> for DebugItemSource {
+impl<T> ItemSource<T> for DebugItemSource
+where
+    T: std::fmt::Debug,
+{
     type Item = String;
     type Error = shared::Never;
 
-    fn lookup(&self, args: &[String]) -> Result<Vec<Self::Item>, Self::Error> {
+    fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error> {
         let debug_label = format!("{args:?}");
         Ok((0..10)
             .map(|n| format!("item # {n} for {}", &debug_label))

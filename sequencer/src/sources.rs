@@ -1,7 +1,11 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! [`ItemSource`] types
 
-use std::{ffi::OsStr, io, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    io,
+    path::{Path, PathBuf},
+};
 
 pub use file::FolderListing;
 pub use file::Lines as FileLines;
@@ -9,6 +13,8 @@ mod file;
 
 pub use beet::Beet;
 mod beet;
+
+pub mod multi_select;
 
 /// Source of items for the [`Sequencer`](`super::Sequencer`)
 ///
@@ -78,10 +84,11 @@ impl std::fmt::Display for PathError {
     }
 }
 impl PathError {
-    fn with_path_fn(file_path: PathBuf) -> impl Fn(std::io::Error) -> Self {
-        move |error| {
-            let path = file_path.to_str().map(ToOwned::to_owned);
-            PathError { path, error }
-        }
+    fn new(path: &Path, error: std::io::Error) -> Self {
+        let path = path.to_str().map(ToOwned::to_owned);
+        PathError { path, error }
+    }
+    fn with_path_fn(path: PathBuf) -> impl Fn(std::io::Error) -> Self {
+        move |error| Self::new(&path, error)
     }
 }
