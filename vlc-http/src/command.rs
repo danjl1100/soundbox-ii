@@ -2,6 +2,7 @@
 use std::convert::TryFrom;
 
 /// High-level Commands for VLC
+// Internally, routed to either LowCommand (single command) or HighCommand (sequence of commands)
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone)]
 pub enum PublicCommand {
@@ -10,6 +11,12 @@ pub enum PublicCommand {
     PlaylistAdd {
         /// Path to the file to enqueue
         uri: String,
+    },
+    /// Deletes the specified item from the playlist
+    //TODO: move to LowCommand (only)
+    PlaylistDelete {
+        /// Identifier of the playlist item to remove
+        item_id: String,
     },
     /// Play the specified item in the playlist
     //TODO: move to LowCommand (only)
@@ -77,7 +84,11 @@ pub(crate) enum LowCommand {
         /// Path to the file to enqueue
         uri: String,
     },
-    // TODO: PlaylistDelete { item_id: String },
+    /// Deletes the specified item from the playlist
+    PlaylistDelete {
+        /// Identifier of the playlist item to remove
+        item_id: String,
+    },
     /// Play the specified item in the playlist
     PlaylistPlay {
         /// Identifier of the playlist item
@@ -227,7 +238,10 @@ impl<'a, 'b> From<LowCommand> for RequestIntent<'a, 'b> {
                 command: "in_enqueue",
                 args: vec![("input", uri)],
             })),
-            //TODO PlaylistDelete  pl_delete    vec![("id", item_id)]
+            LowCommand::PlaylistDelete { item_id } => RequestIntent::Playlist(Some(CmdArgs {
+                command: "pl_delete",
+                args: vec![("id", item_id)],
+            })),
             LowCommand::PlaylistPlay { item_id } => RequestIntent::Status(Some(CmdArgs {
                 command: "pl_play",
                 args: item_id.map(|id| vec![("id", id)]).unwrap_or_default(),
@@ -297,6 +311,7 @@ impl TryFrom<PublicCommand> for LowCommand {
         use PublicCommand as Public;
         Ok(match command {
             Public::PlaylistAdd { uri } => Self::PlaylistAdd { uri },
+            Public::PlaylistDelete { item_id } => Self::PlaylistDelete { item_id },
             Public::PlaylistPlay { item_id } => Self::PlaylistPlay { item_id },
             Public::PlaybackResume => Self::PlaybackResume,
             Public::PlaybackPause => Self::PlaybackPause,
@@ -419,6 +434,15 @@ mod tests {
             })),
         );
         let id_str = String::from("some id");
+        assert_encode(
+            LowCommand::PlaylistDelete {
+                item_id: id_str.clone(),
+            },
+            RequestIntent::Playlist(Some(CmdArgs {
+                command: "pl_delete",
+                args: vec![("id", id_str.clone())],
+            })),
+        );
         assert_encode(
             LowCommand::PlaylistPlay {
                 item_id: Some(id_str.clone()),

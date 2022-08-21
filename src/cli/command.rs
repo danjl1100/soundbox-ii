@@ -28,6 +28,11 @@ pub enum Subcommand {
         /// Item to add
         uri: String,
     },
+    /// Deletes an item from the playlist
+    Delete {
+        /// Item to delete
+        item_id: String,
+    },
     /// Start command
     Start {
         /// Optional item id
@@ -124,6 +129,7 @@ impl Subcommand {
             Self::Pause => Command::PlaybackPause.into(),
             Self::Stop => Command::PlaybackStop.into(),
             Self::Add { uri } => Command::PlaylistAdd { uri }.into(),
+            Self::Delete { item_id } => Command::PlaylistDelete { item_id }.into(),
             Self::Start { item_id } => Command::PlaylistPlay { item_id }.into(),
             Self::Next => Command::SeekNext.into(),
             Self::Prev => Command::SeekPrevious.into(),

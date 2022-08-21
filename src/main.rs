@@ -111,7 +111,10 @@ async fn launch(args: args::Config) {
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
     let (reload_tx, reload_rx) = watch::channel(WebSourceChanged);
 
-    let authorization = args.vlc_http_config.0.clone();
+    print_startup_info(&args);
+    let is_interactive = args.is_interactive();
+
+    let authorization = args.vlc_http_config.0;
     let (controller, channels) = vlc_http::Controller::new(authorization);
     let vlc_http::controller::Channels {
         action_tx,
@@ -119,9 +122,7 @@ async fn launch(args: args::Config) {
         playlist_info_rx,
     } = channels;
 
-    print_startup_info(&args);
-
-    let cli_handle = if args.is_interactive() {
+    let cli_handle = if is_interactive {
         let action_tx = action_tx.clone();
         let playback_status_rx = playback_status_rx.clone();
         let playlist_info_rx = playlist_info_rx.clone();
@@ -139,7 +140,7 @@ async fn launch(args: args::Config) {
         None
     };
 
-    let hotwatch_handle = args.server_config.as_ref().map(|server_config| {
+    let hotwatch_handle = args.server_config.as_ref().and_then(|server_config| {
         if server_config.watch_assets {
             Some(launch_hotwatch(server_config, reload_tx))
         } else {
