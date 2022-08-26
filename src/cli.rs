@@ -82,15 +82,15 @@ impl Prompt {
                 break;
             }
             match self.run_line(&buffer) {
-                Ok(Ok(Some(Shutdown))) => {
+                Ok(Some(Shutdown)) => {
                     eprintln!("exit");
                     break;
                 }
-                Ok(Ok(None)) => {}
-                Ok(Err(clap_err)) => {
+                Ok(None) => {}
+                Err(Error::Clap(clap_err)) => {
                     eprintln!("{}", clap_err);
                 }
-                Err(e) => {
+                Err(Error::Message(e)) => {
                     eprintln!("ERROR: {}", e);
                 }
             };
@@ -99,19 +99,23 @@ impl Prompt {
     }
 }
 
+shared::wrapper_enum! {
+    enum Error {
+        Clap(clap::Error),
+        Message(String),
+    }
+}
+
 impl Prompt {
-    fn run_line(&mut self, line: &str) -> Result<Result<Option<Shutdown>, clap::Error>, String> {
+    fn run_line(&mut self, line: &str) -> Result<Option<Shutdown>, Error> {
         use clap::Parser;
         // split args - allow quoted strings with whitespace, and allow escape characters (`\"`) etc
         let line_parts = ArgSplit::split(line);
-        let parsed = match command::InteractiveArgs::try_parse_from(line_parts) {
-            Ok(parsed) => parsed,
-            Err(clap_err) => return Ok(Err(clap_err)),
-        };
+        let parsed = command::InteractiveArgs::try_parse_from(line_parts)?;
         if let Some(command) = parsed.command {
             // execute action and print result
-            match command.build() {
-                Err(shutdown_option) => return Ok(Ok(shutdown_option)),
+            match command.try_build()? {
+                Err(shutdown_option) => return Ok(shutdown_option),
                 Ok(result_and_rx) => match result_and_rx {
                     ActionAndReceiver::Command(action, result_rx) => {
                         self.send_and_print_result(action, result_rx)
@@ -133,7 +137,7 @@ impl Prompt {
             println!("Playlist: {:#?}", playlist);
         }
 
-        Ok(Ok(None))
+        Ok(None)
     }
 
     fn send_and_print_result<T>(

@@ -1303,6 +1303,7 @@ dependencies = [
  "serde_json",
  "shared",
  "tokio",
+ "url",
  "vlc-http",
  "warp",
 ]
@@ -1638,6 +1639,7 @@ dependencies = [
  "serde_json",
  "shared",
  "tokio",
+ "url",
  "urlencoding",
 ]
 

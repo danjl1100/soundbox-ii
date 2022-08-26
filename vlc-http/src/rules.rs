@@ -389,7 +389,7 @@ mod tests {
             duration_secs: None,
             id: "".to_string(),
             name: "".to_string(),
-            uri: "".to_string(),
+            url: "".to_string(),
         }
     }
 
@@ -483,11 +483,10 @@ mod tests {
         let fas = FetchAfterSeek;
         assert!(fas.is_trigger(&Command::SeekNext, None));
         assert!(fas.is_trigger(&Command::SeekPrevious, None));
+        let url = url::Url::parse("file:///some_url").expect("url parses");
         // ignores non-seek commands
         let ignored_cmds = &[
-            Command::PlaylistAdd {
-                uri: "some_uri".to_string(),
-            },
+            Command::PlaylistAdd { url },
             Command::PlaylistPlay {
                 item_id: Some("id".to_string()),
             },
@@ -593,11 +592,10 @@ mod tests {
         assert_eq!(far.cmd_time, Some(time(1)));
         far.notify_command(time(2), &Command::PlaybackPause);
         assert_eq!(far.cmd_time, Some(time(2)));
+        let url = url::Url::parse("file:///some_url").expect("url parses");
         // ignores non-volume commands
         let ignored_cmds = &[
-            Command::PlaylistAdd {
-                uri: "some_uri".to_string(),
-            },
+            Command::PlaylistAdd { url },
             Command::PlaylistPlay {
                 item_id: Some("id".to_string()),
             },
@@ -712,11 +710,10 @@ mod tests {
         let fav = FetchAfterVolume;
         assert!(fav.is_trigger(&Command::Volume { percent: 20 }, None));
         assert!(fav.is_trigger(&Command::VolumeRelative { percent_delta: -30 }, None));
+        let url = url::Url::parse("file:///some_url").expect("url parses");
         // ignores non-volume commands
         let ignored_cmds = &[
-            Command::PlaylistAdd {
-                uri: "some_uri".to_string(),
-            },
+            Command::PlaylistAdd { url },
             Command::PlaylistPlay {
                 item_id: Some("id".to_string()),
             },

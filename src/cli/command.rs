@@ -26,12 +26,21 @@ pub enum Subcommand {
     /// Add an item to the playlist
     Add {
         /// Item to add
-        uri: String,
+        url: String,
     },
     /// Deletes an item from the playlist
     Delete {
         /// Item to delete
         item_id: String,
+    },
+    //TODO remove from InteractiveArgs and have a rule polling a legit Sequencer, tracking track completions to trigger
+    PlaylistSet {
+        /// Maximum number of history (past-played) items to retain
+        max_history_count: usize,
+        /// Path to file currently playing or most-recently played
+        current_or_past_url: String,
+        /// Path to the file(s) to queue next (after the current/past)
+        next_urls: Vec<String>,
     },
     /// Start command
     Start {
@@ -123,13 +132,33 @@ impl From<Repeat> for vlc_http::RepeatMode {
     }
 }
 impl Subcommand {
-    pub(super) fn build(self) -> Result<ActionAndReceiver, Option<Shutdown>> {
-        Ok(match self {
+    pub(super) fn try_build(self) -> Result<Result<ActionAndReceiver, Option<Shutdown>>, String> {
+        Ok(Ok(match self {
             Self::Play => Command::PlaybackResume.into(),
             Self::Pause => Command::PlaybackPause.into(),
             Self::Stop => Command::PlaybackStop.into(),
-            Self::Add { uri } => Command::PlaylistAdd { uri }.into(),
+            Self::Add { url } => {
+                let url = parse_url(&url)?;
+                Command::PlaylistAdd { url }.into()
+            }
             Self::Delete { item_id } => Command::PlaylistDelete { item_id }.into(),
+            Self::PlaylistSet {
+                current_or_past_url,
+                next_urls,
+                max_history_count,
+            } => {
+                let current_or_past_url = parse_url(&current_or_past_url)?;
+                let next_urls = next_urls
+                    .iter()
+                    .map(parse_url)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Command::PlaylistSet {
+                    current_or_past_url,
+                    next_urls,
+                    max_history_count,
+                }
+                .into()
+            }
             Self::Start { item_id } => Command::PlaylistPlay { item_id }.into(),
             Self::Next => Command::SeekNext.into(),
             Self::Prev => Command::SeekPrevious.into(),
@@ -145,7 +174,7 @@ impl Subcommand {
             Self::Status => ActionAndReceiver::query_playback_status(),
             Self::Playlist => ActionAndReceiver::query_playlist_info(),
             Self::Quit => {
-                return Err(Some(Shutdown));
+                return Ok(Err(Some(Shutdown)));
             }
             Self::Show { ty } => {
                 eprintln!();
@@ -157,10 +186,10 @@ impl Subcommand {
                         eprintln!("{}", shared::license::REDISTRIBUTION);
                     }
                 }
-                return Err(None);
+                return Ok(Err(None));
             }
             Self::Help => unreachable!("built-in help displayed by clap"),
-        })
+        }))
     }
 }
 
@@ -188,13 +217,56 @@ impl ActionAndReceiver {
     }
 }
 
+fn parse_url<T>(s: T) -> Result<url::Url, String>
+where
+    T: AsRef<str>,
+{
+    fn parse_simple(s: &str) -> Result<url::Url, url::ParseError> {
+        url::Url::parse(s)
+    }
+    fn parse_relative_cwd(s: &str) -> Option<url::Url> {
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| {
+                cwd.to_str()
+                    .and_then(|cwd| parse_simple(&format!("file://{cwd}/")).ok())
+            })
+            .and_then(|cwd_url| cwd_url.join(s).ok())
+    }
+    fn parse(s: &str) -> Result<url::Url, url::ParseError> {
+        parse_simple(s).or_else(|err| parse_relative_cwd(s).ok_or(err))
+    }
+    let s = s.as_ref();
+    parse(s).map_err(|e| format!("{e} in: {s:?}"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::InteractiveArgs;
+    use super::{parse_url, InteractiveArgs};
 
     #[test]
     fn verify_prompt() {
         use clap::CommandFactory;
         InteractiveArgs::command().debug_assert();
+    }
+
+    #[test]
+    fn parse_url_coercion() -> Result<(), String> {
+        // valid absolute URL -> passthru
+        assert_eq!(parse_url("file:///a.mp3")?.to_string(), "file:///a.mp3");
+        assert_eq!(
+            parse_url("http://a.host:3030/then/the/path/to/file.txt")?.to_string(),
+            "http://a.host:3030/then/the/path/to/file.txt"
+        );
+        // relative URL -> adds "file" scheme and current directory
+        let cwd = std::env::current_dir()
+            .ok()
+            .and_then(|p| p.to_str().map(ToString::to_string))
+            .unwrap_or_default();
+        assert_eq!(
+            parse_url("simple_string_path.zip")?.to_string(),
+            format!("file://{cwd}/simple_string_path.zip")
+        );
+        Ok(())
     }
 }

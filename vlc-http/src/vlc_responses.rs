@@ -220,7 +220,8 @@ mod playlist {
         duration_secs: i64,
         id: String,
         name: String,
-        uri: String,
+        #[serde(rename = "uri")]
+        url: String,
     }
     /// Item in the playlist (track, playlist, folder, etc.)
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,7 +232,7 @@ mod playlist {
         /// Playlist ID
         pub id: String,
         pub name: String,
-        pub uri: String,
+        pub url: String,
     }
     impl From<ItemJSON> for Item {
         fn from(other: ItemJSON) -> Self {
@@ -239,13 +240,13 @@ mod playlist {
                 duration_secs,
                 id,
                 name,
-                uri,
+                url,
             } = other;
             Self {
                 duration_secs: duration_secs.try_into().ok(),
                 id,
                 name,
-                uri,
+                url,
             }
         }
     }
@@ -255,32 +256,28 @@ mod playlist {
                 items,
                 received_time,
             } = self;
-            writeln!(f, "Playlist items @ {:?} [", received_time)?;
+            writeln!(f, "Playlist items @ {received_time:?} [")?;
             for item in items {
                 let Item {
                     duration_secs,
                     id,
                     name,
-                    uri,
+                    url,
                 } = item;
                 //
-                write!(f, r#"   [{id}] "{name}""#, id = id, name = name)?;
+                write!(f, r#"   [{id}] "{name}""#)?;
                 //
                 if let Some(duration_secs) = duration_secs {
                     let duration_hour = (duration_secs / 60) / 60;
                     let duration_min = (duration_secs / 60) % 60;
                     let duration_sec = duration_secs % 60;
                     if duration_hour == 0 {
-                        write!(f, " ({}:{:02})", duration_min, duration_sec)?;
+                        write!(f, " ({duration_min}:{duration_sec:02})")?;
                     } else {
-                        write!(
-                            f,
-                            " ({}:{:02}:{:02})",
-                            duration_hour, duration_min, duration_sec
-                        )?;
+                        write!(f, " ({duration_hour}:{duration_min:02}:{duration_sec:02})")?;
                     }
                 }
-                writeln!(f, "\n\t{uri}", uri = uri)?;
+                writeln!(f, "\n\t{url}")?;
             }
             writeln!(f, "]")
         }

@@ -17,3 +17,4 @@ serde_json = "1.0.64"
 shared = { path = "../shared", features = ["time_now"] }
 futures = "^0.3"
 urlencoding = "2.1.0"
+url = "2.2.2"

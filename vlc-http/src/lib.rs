@@ -163,29 +163,28 @@ mod action {
     }
 }
 
-/// Error from the `run()` function
-#[derive(Debug)]
-pub enum Error {
-    /// Hyper client-side error
-    Hyper(hyper::Error),
-    /// Deserialization error
-    Serde(serde_json::Error),
-}
-impl From<hyper::Error> for Error {
-    fn from(err: hyper::Error) -> Self {
-        Self::Hyper(err)
-    }
-}
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Self::Serde(err)
+shared::wrapper_enum! {
+    /// Error from the `run()` function
+    #[derive(Debug)]
+    pub enum Error {
+        /// Hyper client-side error
+        Hyper(hyper::Error),
+        /// Deserialization error
+        Serde(serde_json::Error),
+        { impl None for }
+        /// Invalid URL
+        InvalidUrl(String),
+        /// Logic error
+        Logic(String),
     }
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Hyper(e) => write!(f, "vlc_http hyper error: {}", e),
-            Self::Serde(e) => write!(f, "vlc_http serde error: {}", e),
+            Self::Hyper(e) => write!(f, "vlc_http hyper error: {e}"),
+            Self::Serde(e) => write!(f, "vlc_http serde error: {e}"),
+            Self::InvalidUrl(e) => write!(f, "vlc_http invalid-url: {e}"),
+            Self::Logic(e) => write!(f, "vlc_http logic error: {e}"),
         }
     }
 }
@@ -194,6 +193,7 @@ impl std::error::Error for Error {
         match self {
             Self::Hyper(e) => Some(e),
             Self::Serde(e) => Some(e),
+            Self::InvalidUrl(..) | Self::Logic(..) => None,
         }
     }
 }

@@ -191,7 +191,7 @@ impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
         let format_err_port = |(port_str, err)| format!("invalid port \"{port_str}\" ({err})");
         let format_err_partial =
             |partial| format!("incomplete VLC-HTTP {partial}\n{NOTE_CMD_HELP}");
-        let format_err_uri = |(uri, err)| format!("invalid VLC-HTTP host/port ({err} \"{uri}\")");
+        let format_err_url = |(url, err)| format!("invalid VLC-HTTP host/port ({err} \"{url}\")");
         let unwrap_val = |key| matches.value_of(key).map(String::from).ok_or(());
         let merge_with_env = |arg_config| {
             let env_config = PartialConfig::from_env();
@@ -211,7 +211,7 @@ impl<'a> TryFrom<&'a clap::ArgMatches> for VlcHttpConfig {
             let complete = input.map_err(format_err_partial)?;
             complete.map_err(format_err_port)?
         };
-        let auth = Authorization::try_from(credentials).map_err(format_err_uri)?;
+        let auth = Authorization::try_from(credentials).map_err(format_err_url)?;
         Ok(Self(auth))
     }
 }

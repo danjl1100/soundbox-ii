@@ -10,7 +10,7 @@ pub enum PublicCommand {
     //TODO: move to LowCommand (only)
     PlaylistAdd {
         /// Path to the file to enqueue
-        uri: String,
+        url: url::Url,
     },
     /// Deletes the specified item from the playlist
     //TODO: move to LowCommand (only)
@@ -23,6 +23,18 @@ pub enum PublicCommand {
     PlaylistPlay {
         /// Identifier of the playlist item
         item_id: Option<String>,
+    },
+    /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count.
+    ///
+    /// NOTE: `current_or_past_url` is accepted as previously-played if it is the most recent history item.
+    /// NOTE: Forces the playback mode to `{ repeat: RepeatMode::Off, random: false }`
+    PlaylistSet {
+        /// Path to file currently playing or most-recently played
+        current_or_past_url: url::Url,
+        /// Path to the file(s) to queue next (after the current/past)
+        next_urls: Vec<url::Url>,
+        /// Maximum number of history (past-played) items to retain
+        max_history_count: usize,
     },
     /// Force playback to resume
     PlaybackResume,
@@ -68,7 +80,16 @@ pub enum PublicCommand {
         speed: f64,
     },
 }
+#[derive(Debug)]
 pub(crate) enum HighCommand {
+    PlaylistSet {
+        /// Path to file currently playing or most-recently played
+        current_or_past_url: url::Url,
+        /// Path to the file(s) to queue next (after the current/past)
+        next_urls: Vec<url::Url>,
+        /// Maximum number of history (past-played) items to retain
+        max_history_count: usize,
+    },
     PlaybackMode {
         #[allow(missing_docs)]
         repeat: RepeatMode,
@@ -77,12 +98,12 @@ pub(crate) enum HighCommand {
     },
 }
 /// Low-level Control commands for VLC
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LowCommand {
     /// Add the specified item to the playlist
     PlaylistAdd {
         /// Path to the file to enqueue
-        uri: String,
+        url: url::Url,
     },
     /// Deletes the specified item from the playlist
     PlaylistDelete {
@@ -230,13 +251,18 @@ fn fmt_volume_delta(volume_delta: i16) -> String {
     let magnitude = encode_volume_val(magnitude);
     format!("{}{}", sign_char, magnitude)
 }
+fn decode_url(url: &url::Url) -> String {
+    urlencoding::decode(url.as_ref())
+        .expect("UTF8 input on all URLs")
+        .to_string()
+}
 impl<'a, 'b> From<LowCommand> for RequestIntent<'a, 'b> {
     /// Creates a request for the specified command
     fn from(command: LowCommand) -> Self {
         match command {
-            LowCommand::PlaylistAdd { uri } => RequestIntent::Playlist(Some(CmdArgs {
+            LowCommand::PlaylistAdd { url } => RequestIntent::Playlist(Some(CmdArgs {
                 command: "in_enqueue",
-                args: vec![("input", uri)],
+                args: vec![("input", decode_url(&url))],
             })),
             LowCommand::PlaylistDelete { item_id } => RequestIntent::Playlist(Some(CmdArgs {
                 command: "pl_delete",
@@ -310,9 +336,20 @@ impl TryFrom<PublicCommand> for LowCommand {
     fn try_from(command: PublicCommand) -> Result<Self, Self::Error> {
         use PublicCommand as Public;
         Ok(match command {
-            Public::PlaylistAdd { uri } => Self::PlaylistAdd { uri },
+            Public::PlaylistAdd { url } => Self::PlaylistAdd { url },
             Public::PlaylistDelete { item_id } => Self::PlaylistDelete { item_id },
             Public::PlaylistPlay { item_id } => Self::PlaylistPlay { item_id },
+            Public::PlaylistSet {
+                current_or_past_url,
+                next_urls,
+                max_history_count,
+            } => {
+                return Err(HighCommand::PlaylistSet {
+                    current_or_past_url,
+                    next_urls,
+                    max_history_count,
+                });
+            }
             Public::PlaybackResume => Self::PlaybackResume,
             Public::PlaybackPause => Self::PlaybackPause,
             Public::PlaybackStop => Self::PlaybackStop,
@@ -423,14 +460,12 @@ mod tests {
     }
     #[test]
     fn exec_url_encoded() {
-        let uri_str = String::from("SENTINEL_ _URI_%^$");
+        let url = url::Url::parse("file:///SENTINEL_%20_URL_%20%5E%24").expect("valid url");
         assert_encode(
-            LowCommand::PlaylistAdd {
-                uri: uri_str.clone(),
-            },
+            LowCommand::PlaylistAdd { url },
             RequestIntent::Playlist(Some(CmdArgs {
                 command: "in_enqueue",
-                args: vec![("input", uri_str)],
+                args: vec![("input", "file:///SENTINEL_ _URL_ ^$".to_string())],
             })),
         );
         let id_str = String::from("some id");
