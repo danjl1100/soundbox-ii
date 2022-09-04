@@ -8,7 +8,7 @@ pub struct Command {
     pub repeat: RepeatMode,
     pub random: bool,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Converter;
 impl<'a> ConverterIterator<'a> for Converter {
     type Status = &'a PlaybackStatus;

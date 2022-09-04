@@ -1,8 +1,31 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{playback_mode, ConverterIterator, LowAction};
-use crate::controller::{LowCommand, PlaybackStatus, PlaylistInfo, RepeatMode};
-use crate::vlc_responses::PlaylistItem;
+use crate::controller::{PlaybackStatus, PlaylistInfo, RepeatMode};
+
+#[cfg(test)]
+macro_rules! items {
+    ($($url:expr),* $(,)?) => {
+        {
+            let item_urls = &[ $($url),* ];
+            $crate::controller::high_converter::playlist_set::tests::
+                playlist_items_with_urls(item_urls)
+        }
+    };
+    ($($id:expr => $url:expr),* $(,)?) => {
+        {
+            let item_ids_urls: &[(usize, &str)] = &[ $( ($id, $url) ),* ];
+            $crate::controller::high_converter::playlist_set::tests::
+                playlist_items_with_ids_urls(item_ids_urls.iter().copied())
+        }
+    };
+}
+
+mod previous;
+
+mod current;
+
+mod next;
 
 #[derive(Debug)]
 pub struct Command {
@@ -11,7 +34,7 @@ pub struct Command {
     pub max_history_count: usize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ComparisonStart {
     index: usize,
     skip_current: bool,
@@ -41,7 +64,7 @@ impl ComparisonStart {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Converter {
     converter_mode: playback_mode::Converter,
     // marker to only allow sending "play" ONCE (in case it fails, for a nonexistent file)
@@ -81,9 +104,9 @@ impl<'a> ConverterIterator<'a> for Converter {
                 .find(|(_, item)| (item.id == current_id_str))
         });
         // [STEP 1] remove prior to 'current_or_past_url', to match `max_history_count`
-        Self::remove_prior_items(items, current_index_item, command)?;
+        Self::remove_previous_items(items, current_index_item, command)?;
         // [STEP 2] set current item
-        let comparison_start = self.set_current_item(items, current_index_item, command)?;
+        let comparison_start = self.prep_comparison_start(items, current_index_item, command)?;
         //
         for (index, item) in items.iter().enumerate() {
             let url = &item.url;
@@ -94,95 +117,41 @@ impl<'a> ConverterIterator<'a> for Converter {
         Ok(())
     }
 }
-impl Converter {
-    fn remove_prior_items(
-        items: &[PlaylistItem],
-        current_index_item: Option<(usize, &PlaylistItem)>,
-        command: &Command,
-    ) -> Result<(), LowCommand> {
-        let Command {
-            max_history_count, ..
-        } = command;
-        let current_index = current_index_item.map(|(index, _)| index);
-        // [1] remove prior to 'current_or_past_url', to match `max_history_count`
-        if let Some(PlaylistItem { id: first_id, .. }) = items.first() {
-            let remove_first = match current_index {
-                Some(current_index) if current_index > *max_history_count => true,
-                None if items.len() > *max_history_count => true,
-                _ => false, // history length within bounds
-            };
-            if remove_first {
-                let item_id = first_id.clone();
-                Err(LowCommand::PlaylistDelete { item_id })?;
-            }
-        }
-        Ok(())
+
+#[cfg(test)]
+mod tests {
+    use crate::vlc_responses::PlaylistItem;
+
+    pub(super) fn playlist_items_with_urls(urls: &[&str]) -> Vec<PlaylistItem> {
+        playlist_items_with_ids_urls(urls.iter().copied().enumerate())
     }
-    fn set_current_item(
-        &mut self,
-        items: &[PlaylistItem],
-        current_index_item: Option<(usize, &PlaylistItem)>,
-        command: &Command,
-    ) -> Result<ComparisonStart, LowCommand> {
-        let current_or_past_url_str = command.current_or_past_url.to_string();
-        let current_index = current_index_item.map(|(index, _)| index);
-        let previous_item = current_index
-            .and_then(|current| current.checked_sub(1))
-            .and_then(|prev| items.get(prev));
-        // TODO deleteme, or rename to `next_or_last_item`
-        // let end_item = current_index
-        //     .and_then(|current| items.get(current + 1))
-        //     .or_else(|| items.last());
-        let end_item = items.last();
-        // [2] set current item
-        match (current_index_item, previous_item, end_item) {
-            (Some((current_index, current)), _, _) if current.url == current_or_past_url_str => {
-                // start comparison after current
-                Ok(ComparisonStart::at(current_index + 1))
-            }
-            (Some((current_index, _)), Some(prev), _) if prev.url == current_or_past_url_str => {
-                // start comparison at current
-                Ok(ComparisonStart::at(current_index))
-            }
-            (Some((_, wrong_current_item)), _, _) => {
-                // current item is wrong URI, delete it
-                let item_id = wrong_current_item.id.clone();
-                Err(LowCommand::PlaylistDelete { item_id })
-            }
-            (None, _, Some(last)) if last.url == current_or_past_url_str => {
-                if self.play_command.take().is_some() {
-                    // start last item, it's a match!
-                    let item_id = Some(last.id.clone());
-                    Err(LowCommand::PlaylistPlay { item_id })
-                } else {
-                    // failed to start, attempt to continue setting playlist
-                    Ok(ComparisonStart::at(items.len()))
-                }
-            }
-            (None, _, _) => Ok(ComparisonStart::at(items.len()).include_current()), // no current item, start at end
-        }
+    pub(super) fn playlist_items_with_ids_urls<'a, T, U>(ids_urls: T) -> Vec<PlaylistItem>
+    where
+        T: IntoIterator<Item = (U, &'a str)>,
+        U: ToString,
+    {
+        ids_urls
+            .into_iter()
+            .map(|(id, url)| PlaylistItem {
+                duration_secs: None,
+                id: id.to_string(),
+                name: String::default(),
+                url: file_url(url).to_string(),
+            })
+            .collect()
     }
-    fn compare(
-        items: &[PlaylistItem],
-        start: ComparisonStart,
-        command: &Command,
-    ) -> Result<(), LowCommand> {
-        // [3] compare next_urls to items, starting with index from previous step
-        let mut items = items.iter().skip(start.index);
-        let source_urls = start.iter_source_urls(command);
-        for next_url in source_urls {
-            match items.next() {
-                Some(item) if item.url == *next_url.to_string() => continue,
-                Some(wrong_item) => {
-                    let item_id = wrong_item.id.clone();
-                    Err(LowCommand::PlaylistDelete { item_id })?;
-                }
-                None => {
-                    let url = next_url.clone();
-                    Err(LowCommand::PlaylistAdd { url })?;
-                }
-            }
-        }
-        Ok(())
+    pub(super) fn file_url(s: &str) -> url::Url {
+        url::Url::parse(&format!("file:///{s}")).expect("url")
+    }
+    pub(super) fn calc_current_item_index<'a>(
+        items: &'a [PlaylistItem],
+        current_url: &Option<String>,
+    ) -> Option<(usize, &'a PlaylistItem)> {
+        current_url.as_ref().and_then(|current_url| {
+            items
+                .iter()
+                .enumerate()
+                .find(|(_, item)| (item.url == *current_url))
+        })
     }
 }
