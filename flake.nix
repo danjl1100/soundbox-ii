@@ -42,6 +42,7 @@
           bin-crates = dirs: builtins.concatLists (builtins.map bin-crate dirs);
         };
         src-license = [
+          ./shared/src/license/COPYING
           ./shared/src/license/COPYING.REDISTRIBUTION
           ./shared/src/license/COPYING.WARRANTY
           ./shared/src/license/COPYING.WELCOME
@@ -146,7 +147,7 @@
             # export XDG_CACHE_HOME=$(pwd)/fake-cache
             # echo XDG_CACHE_HOME is $XDG_CACHE_HOME
             # mkdir -p "$XDG_CACHE_HOME"
-            trunk build --dist dist
+            trunk build --dist dist --release
           '';
           # TODO: need to set mtime of the resulting files to the commit time (but can't use `current time` when unstaged, since that's not pure)
           # OR another bogus time?

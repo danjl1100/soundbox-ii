@@ -19,6 +19,14 @@ case $APP in
   soundbox-ii_bin | soundbox-ii)
     ATTEMPT_SHELL_USAGE=1
     ;;
+  vlc)
+    uname -a | grep "Darwin" -q
+    if [ $? -eq 0 ]; then
+      ./launch_vlc.sh macos
+      exit $?
+    fi
+    # fall through to default case below
+    ;&
   *)
     ATTEMPT_SHELL_USAGE=0
     ;;
