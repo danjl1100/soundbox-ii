@@ -25,8 +25,8 @@ case $APP in
       ./launch_vlc.sh macos
       exit $?
     fi
-    # fall through to default case below
-    ;&
+    ATTEMPT_SHELL_USAGE=0
+    ;;
   *)
     ATTEMPT_SHELL_USAGE=0
     ;;
