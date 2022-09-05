@@ -8,4 +8,4 @@ pub const WARRANTY: &str = include_str!("COPYING.WARRANTY");
 /// Redistribution information
 pub const REDISTRIBUTION: &str = include_str!("COPYING.REDISTRIBUTION");
 /// Full license text
-pub const FULL_LICENSE: &str = include_str!("../../../COPYING");
+pub const FULL_LICENSE: &str = include_str!("COPYING");
