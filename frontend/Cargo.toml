@@ -17,8 +17,8 @@ gloo-timers = "0.2.1"
 gloo-net = { version = "^0.2.3", features = [ "websocket" ]}
 backoff = { version = "0.3.0", features = ["wasm-bindgen"] }
 web-sys = { version = "0.3.53", features = ["Location", "Window"] }
-wasm-bindgen = { version = "0.2.81" }
-wasm-bindgen-futures = "^0.4.32"
+wasm-bindgen = "=0.2.81" #strict equality, to keep in sync with Trunk build pipeline in `flake.nix`
+wasm-bindgen-futures = "^0.4.31"
 gloo = { version = "0.4" }
 twox-hash = "1.6.1"
 yew-hooks = "0.1.56"

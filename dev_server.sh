@@ -5,10 +5,7 @@
 #  2) ./dev_shell.sh              (launches soundbox-ii server)
 #  3) cd frontend && ./watch.sh   (launches trunk build watcher)
 #
-export VLC_HOST=127.0.0.1
-export VLC_BIND_HOST=${VLC_HOST}
-export VLC_PORT=8891
-export VLC_PASSWORD=notsecure_at_all
+source .envrc
 
 APP=${1:-soundbox-ii_bin}
 shift
