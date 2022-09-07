@@ -58,12 +58,15 @@ pub struct Converter {
     converter_mode: playback_mode::Converter,
     // marker to only allow sending "play" ONCE (in case it fails, for a nonexistent file)
     play_command: Option<()>,
+    // marker to allow +1 history count while the current was added but not yet played
+    keep_unplayed_added_current: Option<sealed::CurrentUrlType>,
 }
 impl Converter {
     pub fn new() -> Self {
         Self {
             converter_mode: playback_mode::Converter,
             play_command: Some(()),
+            keep_unplayed_added_current: None,
         }
     }
 }
@@ -93,7 +96,7 @@ impl<'a> ConverterIterator<'a> for Converter {
                 .find(|(_, item)| (item.id == current_id_str))
         });
         // [STEP 1] remove prior to 'current_or_past_url', to match `max_history_count`
-        Self::remove_previous_items(items, current_index_item, command)?;
+        self.remove_previous_items(items, current_index_item, command)?;
         // [STEP 2] set current item
         let comparison_start = self.prep_comparison_start(items, current_index_item, command)?;
         //
@@ -102,7 +105,7 @@ impl<'a> ConverterIterator<'a> for Converter {
             println!("DEBUG ITEM #{index}: {url}");
         }
         // [STEP 3] compare next_urls to items, starting with index from step 2
-        Self::compare(items, comparison_start, command)?;
+        self.compare(items, comparison_start, command)?;
         Ok(())
     }
 }
@@ -123,16 +126,44 @@ impl ComparisonStart {
         self.skip_current = false;
         self
     }
-    fn iter_current<T>(&self, current: T) -> impl Iterator<Item = T> {
-        std::iter::once(current).skip(if self.skip_current { 1 } else { 0 })
-    }
-    fn iter_source_urls<'a>(&self, command: &'a Command) -> impl Iterator<Item = &'a url::Url> {
+    fn iter_source_urls<'a>(
+        &self,
+        command: &'a Command,
+    ) -> impl Iterator<Item = (SourceUrlType, &'a url::Url)> {
         let Command {
             current_or_past_url,
             next_urls,
             ..
         } = command;
         self.iter_current(current_or_past_url)
-            .chain(next_urls.iter())
+            .chain(next_urls.iter().map(|elem| (SourceUrlType::Next, elem)))
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceUrlType {
+    Current(sealed::CurrentUrlType),
+    Next,
+}
+mod sealed {
+    use super::{ComparisonStart, SourceUrlType};
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct CurrentUrlType {
+        sealed: (),
+    }
+    impl ComparisonStart {
+        pub fn iter_current<T>(&self, current: T) -> impl Iterator<Item = (SourceUrlType, T)> {
+            let current = (
+                SourceUrlType::Current(CurrentUrlType { sealed: () }),
+                current,
+            );
+            std::iter::once(current).skip(if self.skip_current { 1 } else { 0 })
+        }
+    }
+    #[cfg(test)]
+    impl SourceUrlType {
+        pub(super) fn permutations() -> impl Iterator<Item = Self> {
+            [Self::Next, Self::Current(CurrentUrlType { sealed: () })].into_iter()
+        }
     }
 }

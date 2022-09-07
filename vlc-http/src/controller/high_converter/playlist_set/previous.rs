@@ -10,19 +10,24 @@ impl Converter {
     ///
     /// For no current item, assumes current item is past the end of the list.
     pub(super) fn remove_previous_items(
+        &self,
         items: &[PlaylistItem],
         current_index_item: Option<(usize, &PlaylistItem)>,
         command: &Command,
     ) -> Result<(), LowCommand> {
-        let Command {
-            max_history_count, ..
-        } = command;
+        let max_history_count = {
+            let max_history_count = usize::from(command.max_history_count);
+            match self.keep_unplayed_added_current {
+                Some(_) => max_history_count + 1,
+                None => max_history_count,
+            }
+        };
         let current_index = current_index_item.map(|(index, _)| index);
         // [1] remove prior to 'current_or_past_url', to match `max_history_count`
         if let Some(PlaylistItem { id: first_id, .. }) = items.first() {
             let remove_first = match current_index {
-                Some(current_index) if current_index > (*max_history_count).into() => true,
-                None if items.len() > (*max_history_count).into() => true,
+                Some(current_index) if current_index > max_history_count => true,
+                None if items.len() > max_history_count => true,
                 _ => false, // history length within bounds
             };
             if remove_first {
@@ -38,15 +43,29 @@ impl Converter {
 mod tests {
     use super::super::{
         tests::{calc_current_item_index, file_url},
-        Command, Converter,
+        Command, Converter, SourceUrlType,
     };
-    use crate::{command::LowCommand, vlc_responses::PlaylistItem};
+    use crate::{
+        command::LowCommand,
+        controller::high_converter::playlist_set::tests::converter_permutations,
+        vlc_responses::PlaylistItem,
+    };
 
     macro_rules! assert_remove {
         (
             items = $items:expr;
             current_url = $current_url:expr;
             max_history_count = $max_history_count:expr;
+            $expected:expr
+        ) => {
+            assert_remove!( items = $items; current_url = $current_url; max_history_count = $max_history_count;
+                converter = &Converter::new(); $expected);
+        };
+        (
+            items = $items:expr;
+            current_url = $current_url:expr;
+            max_history_count = $max_history_count:expr;
+            converter = $converter:expr;
             $expected:expr
         ) => {
             {
@@ -57,10 +76,14 @@ mod tests {
                 let current_index_item = calc_current_item_index(items, &current_url);
                 let max_history_count: usize = $max_history_count;
                 let command = command_with_max_history_count(max_history_count);
+                let converter: &Converter = $converter;
+                let extra_keep_mode = if converter.keep_unplayed_added_current.is_some() {
+                    ", keep_unplayed_added_current is some"
+                } else { "" };
                 assert_eq!(
-                    Converter::remove_previous_items(items, current_index_item, &command),
+                    converter.remove_previous_items(items, current_index_item, &command),
                     $expected.into(),
-                    "items {items_debug:?}, current_url {current_url:?}, max_history_count {max_history_count}"
+                    "items {items_debug:?}, current_url {current_url:?}, max_history_count {max_history_count}{extra_keep_mode}"
                 );
             }
         };
@@ -98,6 +121,29 @@ mod tests {
                 max_history_count = 1;
                 Err(LowCommand::PlaylistDelete { item_id })
             );
+        }
+    }
+    #[test]
+    fn two_if_keep_mode() {
+        let items_full = &items!["alpha", "beta", "cauli", "deno", "edifice", "fence", "gentry"];
+        for len in 2..items_full.len() {
+            let items = &items_full[..len];
+            for (ty, converter) in converter_permutations() {
+                let expected = match ty {
+                    SourceUrlType::Current(_) => Ok(()),
+                    SourceUrlType::Next => {
+                        let item_id = 0.to_string();
+                        Err(LowCommand::PlaylistDelete { item_id })
+                    }
+                };
+                assert_remove!(
+                    items = items;
+                    current_url = None;
+                    max_history_count = items.len() - 1;
+                    converter = &converter;
+                    expected
+                );
+            }
         }
     }
     #[test]
