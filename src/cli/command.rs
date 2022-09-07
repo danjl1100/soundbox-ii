@@ -1,5 +1,6 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::Shutdown;
+use std::num::NonZeroUsize;
 use vlc_http::{self, Action, Command, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
 pub const COMMAND_NAME: &str = "soundbox-ii";
@@ -36,7 +37,7 @@ pub enum Subcommand {
     //TODO remove from InteractiveArgs and have a rule polling a legit Sequencer, tracking track completions to trigger
     PlaylistSet {
         /// Maximum number of history (past-played) items to retain
-        max_history_count: usize,
+        max_history_count: NonZeroUsize,
         /// Path to file currently playing or most-recently played
         current_or_past_url: String,
         /// Path to the file(s) to queue next (after the current/past)

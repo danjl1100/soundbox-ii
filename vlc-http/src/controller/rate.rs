@@ -17,7 +17,7 @@ impl Limiter {
             let since_last_act = now - last_act_time;
             let remaining_delay = self.interval - since_last_act;
             if let Ok(delay) = remaining_delay.to_std() {
-                dbg!("waiting {:?}", delay);
+                println!("waiting {delay:?}");
                 tokio::time::sleep(delay).await;
             }
         }

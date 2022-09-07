@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::convert::TryFrom;
+use std::{convert::TryFrom, num::NonZeroUsize};
 
 /// High-level Commands for VLC
 // Internally, routed to either LowCommand (single command) or HighCommand (sequence of commands)
@@ -34,7 +34,11 @@ pub enum PublicCommand {
         /// Path to the file(s) to queue next (after the current/past)
         next_urls: Vec<url::Url>,
         /// Maximum number of history (past-played) items to retain
-        max_history_count: usize,
+        ///
+        /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
+        ///  * detect the "past" case of `current_or_past_url`, and
+        ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
+        max_history_count: NonZeroUsize,
     },
     /// Force playback to resume
     PlaybackResume,
@@ -88,7 +92,11 @@ pub(crate) enum HighCommand {
         /// Path to the file(s) to queue next (after the current/past)
         next_urls: Vec<url::Url>,
         /// Maximum number of history (past-played) items to retain
-        max_history_count: usize,
+        ///
+        /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
+        ///  * detect the "past" case of `current_or_past_url`, and
+        ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
+        max_history_count: NonZeroUsize,
     },
     PlaybackMode {
         #[allow(missing_docs)]

@@ -1,16 +1,34 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+use std::num::NonZeroUsize;
+
 use super::{playback_mode, ConverterIterator, LowAction};
 use crate::controller::{PlaybackStatus, PlaylistInfo, RepeatMode};
 
+// NOTE needs to be located "exactly here", for relative use in sub-modules' tests
 #[cfg(test)]
 macro_rules! items {
+    ($($url:expr),* ; ..$remaining_urls:expr) => {
+        {
+            let mut front = items!($($url),*);
+            let mut back = items!(@slice $remaining_urls);
+            let front_len = front.len();
+            for (back_idx, back_item) in back.iter_mut().enumerate() {
+                back_item.id = (front_len + back_idx).to_string();
+            }
+            front.append(&mut back);
+            front
+        }
+    };
     ($($url:expr),* $(,)?) => {
         {
             let item_urls = &[ $($url),* ];
-            $crate::controller::high_converter::playlist_set::tests::
-                playlist_items_with_urls(item_urls)
+            items!(@slice item_urls)
         }
+    };
+    (@slice $urls:expr) => {
+        $crate::controller::high_converter::playlist_set::tests::
+            playlist_items_with_urls($urls)
     };
     ($($id:expr => $url:expr),* $(,)?) => {
         {
@@ -20,48 +38,19 @@ macro_rules! items {
         }
     };
 }
-
-mod previous;
+#[cfg(test)]
+mod tests;
 
 mod current;
-
 mod next;
+mod previous;
 
 #[derive(Debug)]
 pub struct Command {
     pub current_or_past_url: url::Url,
     pub next_urls: Vec<url::Url>,
-    pub max_history_count: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ComparisonStart {
-    index: usize,
-    skip_current: bool,
-}
-impl ComparisonStart {
-    fn at(index: usize) -> Self {
-        Self {
-            index,
-            skip_current: true,
-        }
-    }
-    fn include_current(mut self) -> Self {
-        self.skip_current = false;
-        self
-    }
-    fn iter_current<T>(&self, current: T) -> impl Iterator<Item = T> {
-        std::iter::once(current).skip(if self.skip_current { 1 } else { 0 })
-    }
-    fn iter_source_urls<'a>(&self, command: &'a Command) -> impl Iterator<Item = &'a url::Url> {
-        let Command {
-            current_or_past_url,
-            next_urls,
-            ..
-        } = command;
-        self.iter_current(current_or_past_url)
-            .chain(next_urls.iter())
-    }
+    /// See documentation for [`crate::command::HighCommand`]
+    pub max_history_count: NonZeroUsize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,40 +107,32 @@ impl<'a> ConverterIterator<'a> for Converter {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::vlc_responses::PlaylistItem;
-
-    pub(super) fn playlist_items_with_urls(urls: &[&str]) -> Vec<PlaylistItem> {
-        playlist_items_with_ids_urls(urls.iter().copied().enumerate())
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ComparisonStart {
+    index: usize,
+    skip_current: bool,
+}
+impl ComparisonStart {
+    fn at(index: usize) -> Self {
+        Self {
+            index,
+            skip_current: true,
+        }
     }
-    pub(super) fn playlist_items_with_ids_urls<'a, T, U>(ids_urls: T) -> Vec<PlaylistItem>
-    where
-        T: IntoIterator<Item = (U, &'a str)>,
-        U: ToString,
-    {
-        ids_urls
-            .into_iter()
-            .map(|(id, url)| PlaylistItem {
-                duration_secs: None,
-                id: id.to_string(),
-                name: String::default(),
-                url: file_url(url).to_string(),
-            })
-            .collect()
+    fn include_current(mut self) -> Self {
+        self.skip_current = false;
+        self
     }
-    pub(super) fn file_url(s: &str) -> url::Url {
-        url::Url::parse(&format!("file:///{s}")).expect("url")
+    fn iter_current<T>(&self, current: T) -> impl Iterator<Item = T> {
+        std::iter::once(current).skip(if self.skip_current { 1 } else { 0 })
     }
-    pub(super) fn calc_current_item_index<'a>(
-        items: &'a [PlaylistItem],
-        current_url: &Option<String>,
-    ) -> Option<(usize, &'a PlaylistItem)> {
-        current_url.as_ref().and_then(|current_url| {
-            items
-                .iter()
-                .enumerate()
-                .find(|(_, item)| (item.url == *current_url))
-        })
+    fn iter_source_urls<'a>(&self, command: &'a Command) -> impl Iterator<Item = &'a url::Url> {
+        let Command {
+            current_or_past_url,
+            next_urls,
+            ..
+        } = command;
+        self.iter_current(current_or_past_url)
+            .chain(next_urls.iter())
     }
 }

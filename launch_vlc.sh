@@ -19,7 +19,7 @@ case "$1" in
     echo ""
     echo "Press enter to launch visual interface (macos app)"
     read a
-    open /Applications/VLC.app --args ${ARGS}
+    open -na /Applications/VLC.app --args ${ARGS}
     ;;
   "-v")
     echo "!!!NOTE!!! Need to click menu:  View > Add Interface > Web"

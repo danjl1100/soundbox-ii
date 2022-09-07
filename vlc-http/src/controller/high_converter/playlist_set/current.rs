@@ -93,7 +93,7 @@ mod tests {
             let command = Command {
                 current_or_past_url,
                 next_urls: vec![],
-                max_history_count: 0,
+                max_history_count: 1.try_into().expect("nonzero"),
             };
             let converter: &mut Converter = $converter;
             let converter_clone = (*converter).clone();

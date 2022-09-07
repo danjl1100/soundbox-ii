@@ -21,8 +21,8 @@ impl Converter {
         // [1] remove prior to 'current_or_past_url', to match `max_history_count`
         if let Some(PlaylistItem { id: first_id, .. }) = items.first() {
             let remove_first = match current_index {
-                Some(current_index) if current_index > *max_history_count => true,
-                None if items.len() > *max_history_count => true,
+                Some(current_index) if current_index > (*max_history_count).into() => true,
+                None if items.len() > (*max_history_count).into() => true,
                 _ => false, // history length within bounds
             };
             if remove_first {
@@ -69,7 +69,7 @@ mod tests {
         Command {
             current_or_past_url: url::Url::parse("file:///").expect("url"),
             next_urls: vec![],
-            max_history_count,
+            max_history_count: max_history_count.try_into().expect("nonzero"),
         }
     }
 
@@ -78,13 +78,13 @@ mod tests {
         assert_remove!(
             items = &items![];
             current_url = None;
-            max_history_count = 0;
+            max_history_count = 1;
             Ok(())
         );
         assert_remove!(
             items = &items![];
             current_url = Some("a");
-            max_history_count = 0;
+            max_history_count = 1;
             Ok(())
         );
     }
@@ -93,27 +93,29 @@ mod tests {
         for item_num in 0..100 {
             let item_id = item_num.to_string();
             assert_remove!(
-                items = &items![item_num => "alpha"];
+                items = &items![item_num => "alpha", 200 => "beta"];
                 current_url = None;
-                max_history_count = 0;
+                max_history_count = 1;
                 Err(LowCommand::PlaylistDelete { item_id })
             );
         }
     }
     #[test]
     fn keeps_current() {
+        // NOTE: Arguably, since `max_history_count` is NonZeroUsize, this test is pointless
+        // but it does verify the behavior is identical to before ...?
         for item_num in 0..100 {
             assert_remove!(
                 items = &items![item_num => "alpha"];
                 current_url = Some("alpha");
-                max_history_count = 0;
+                max_history_count = 1;
                 Ok(())
             );
         }
     }
     #[test]
     fn keeps_before_current() {
-        for max_history_count in 0..20 {
+        for max_history_count in 1..20 {
             for first_id in 0..10 {
                 let expected = if max_history_count >= 3 {
                     Ok(())
@@ -132,7 +134,7 @@ mod tests {
     }
     #[test]
     fn keeps_no_current() {
-        for max_history_count in 0..20 {
+        for max_history_count in 1..20 {
             for first_id in 0..10 {
                 let expected = if max_history_count >= 4 {
                     Ok(())

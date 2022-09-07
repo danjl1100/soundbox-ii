@@ -62,7 +62,7 @@ mod tests {
             let command = Command {
                 current_or_past_url,
                 next_urls,
-                max_history_count: 0,
+                max_history_count: 1.try_into().expect("nonzero"),
             };
             assert_eq!(
                 Converter::compare(&items, start, &command),
