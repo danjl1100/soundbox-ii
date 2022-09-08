@@ -16,8 +16,6 @@
 //
 //! Binary crate for running the soundbox-ii logic
 
-// TODO: only while building
-#![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
 // no unsafe
@@ -125,7 +123,6 @@ async fn launch(args: args::Config) {
     let cli_handle = if is_interactive {
         let action_tx = action_tx.clone();
         let playback_status_rx = playback_status_rx.clone();
-        let playlist_info_rx = playlist_info_rx.clone();
         let shutdown_rx = shutdown_rx.clone();
         Some(launch_cli(
             cli::Config {
@@ -154,13 +151,11 @@ async fn launch(args: args::Config) {
         let api = {
             let action_tx = action_tx.clone();
             let playback_status_rx = playback_status_rx.clone();
-            let shutdown_rx = shutdown_rx.clone();
             web::filter(
                 web::Config {
                     action_tx,
                     playback_status_rx,
-                    playlist_info_rx,
-                    shutdown_rx,
+                    // playlist_info_rx,
                     reload_rx,
                 },
                 server_config.static_assets,

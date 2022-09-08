@@ -103,11 +103,11 @@ mod filter {
 
 pub(crate) use web_socket::Config;
 mod web_socket {
-    use crate::{ShutdownReceiver, WebSourceChanged};
+    use crate::WebSourceChanged;
     use futures::{SinkExt, StreamExt};
     use shared::{ClientRequest, ServerResponse};
     use tokio::sync::{mpsc, watch};
-    use vlc_http::{Action, IntoAction, PlaybackStatus, PlaylistInfo};
+    use vlc_http::{Action, IntoAction, PlaybackStatus};
     use warp::ws::Message;
     use warp::{Filter, Reply};
 
@@ -115,8 +115,7 @@ mod web_socket {
     pub(crate) struct Config {
         pub action_tx: mpsc::Sender<Action>,
         pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
-        pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>, //TODO use this field, or remove it!
-        pub shutdown_rx: ShutdownReceiver,
+        // pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>, //TODO use this field, or remove it!
         pub reload_rx: watch::Receiver<WebSourceChanged>,
     }
     pub(crate) fn filter(
