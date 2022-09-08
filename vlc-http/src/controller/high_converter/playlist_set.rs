@@ -3,7 +3,9 @@
 use std::num::NonZeroUsize;
 
 use super::{playback_mode, ConverterIterator, LowAction};
+use crate::command::LowCommand;
 use crate::controller::{PlaybackStatus, PlaylistInfo, RepeatMode};
+use crate::vlc_responses::PlaylistItem;
 
 // NOTE needs to be located "exactly here", for relative use in sub-modules' tests
 #[cfg(test)]
@@ -60,6 +62,8 @@ pub struct Converter {
     play_command: Option<()>,
     // marker to allow +1 history count while the current was added but not yet played
     keep_unplayed_added_current: Option<sealed::CurrentUrlType>,
+    // previously-accepted comparison point
+    accepted_comparison_start: Option<ComparisonStart>,
 }
 impl Converter {
     pub fn new() -> Self {
@@ -67,6 +71,7 @@ impl Converter {
             converter_mode: playback_mode::Converter,
             play_command: Some(()),
             keep_unplayed_added_current: None,
+            accepted_comparison_start: None,
         }
     }
 }
@@ -86,6 +91,25 @@ impl<'a> ConverterIterator<'a> for Converter {
                 random: false,
             },
         )?;
+        let result = self.next_playlist_set((status, playlist), command);
+        {
+            // DEBUG
+            let current_id = status.information.as_ref().and_then(|i| i.playlist_item_id);
+            println!(
+                "DEBUG RESULT {result:?} for current_id {current_id:?}, playlist {items:#?}",
+                result = ResultFmt(&result),
+                items = ItemsFmt(&playlist.items),
+            );
+        }
+        result
+    }
+}
+impl Converter {
+    fn next_playlist_set(
+        &mut self,
+        (status, playlist): (&PlaybackStatus, &PlaylistInfo),
+        command: &Command,
+    ) -> Result<(), LowAction> {
         let items = &playlist.items;
         let current_id = status.information.as_ref().and_then(|i| i.playlist_item_id);
         let current_index_item = current_id.and_then(|id| {
@@ -99,11 +123,10 @@ impl<'a> ConverterIterator<'a> for Converter {
         self.remove_previous_items(items, current_index_item, command)?;
         // [STEP 2] set current item
         let comparison_start = self.prep_comparison_start(items, current_index_item, command)?;
-        //
-        for (index, item) in items.iter().enumerate() {
-            let url = &item.url;
-            println!("DEBUG ITEM #{index}: {url}");
-        }
+        self.accepted_comparison_start.replace(comparison_start);
+
+        println!("DEBUG {comparison_start:?}"); // DEBUG (TODO deleteme)
+
         // [STEP 3] compare next_urls to items, starting with index from step 2
         self.compare(items, comparison_start, command)?;
         Ok(())
@@ -164,6 +187,31 @@ mod sealed {
     impl SourceUrlType {
         pub(super) fn permutations() -> impl Iterator<Item = Self> {
             [Self::Next, Self::Current(CurrentUrlType { sealed: () })].into_iter()
+        }
+    }
+}
+
+/// Debug-coercion for `PlaylistItem`s to be simple "id => url" pairs
+#[derive(PartialEq, Eq)]
+struct ItemsFmt<'a>(&'a [PlaylistItem]);
+impl<'a> std::fmt::Debug for ItemsFmt<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|item| (&item.id, item.url.to_string())))
+            .finish()
+    }
+}
+/// Debug-coercion for `PlaylistAdd` urls to be literal strings
+#[derive(PartialEq)]
+struct ResultFmt<'a>(&'a Result<(), LowAction>);
+impl<'a> std::fmt::Debug for ResultFmt<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Err(LowAction::Command(LowCommand::PlaylistAdd { url })) => f
+                .debug_struct("PlaylistAdd")
+                .field("url", &url.to_string())
+                .finish(),
+            inner => write!(f, "{:?}", inner),
         }
     }
 }

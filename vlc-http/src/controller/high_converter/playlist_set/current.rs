@@ -28,10 +28,9 @@ impl Converter {
                 // start comparison at current
                 Ok(ComparisonStart::at(current_index))
             }
-            (Some((_, wrong_current_item)), _, _) => {
-                // current item is wrong URI, delete it
-                let item_id = wrong_current_item.id.clone();
-                Err(LowCommand::PlaylistDelete { item_id })
+            (Some((current_index, _wrong_current_item)), _, _) => {
+                // current item is wrong URI, start comparison at current
+                Ok(ComparisonStart::at(current_index).include_current())
             }
             (None, _, Some(last)) if last.url == current_or_past_url_str => {
                 if self.play_command.take().is_some() {
@@ -43,7 +42,14 @@ impl Converter {
                     Ok(ComparisonStart::at(items.len()))
                 }
             }
-            (None, _, _) => Ok(ComparisonStart::at(items.len()).include_current()), // no current item, start at end
+            (None, _, _) => {
+                // no current item
+                Ok(self
+                    .accepted_comparison_start // use previously-accepted start
+                    .unwrap_or_else(
+                        || ComparisonStart::at(items.len()).include_current(), // start at end
+                    ))
+            }
         }
     }
 }
@@ -207,11 +213,11 @@ mod tests {
                         }
                         Some(_) => {
                             // unsatisfied `command.current_or_past_url`,
-                            // DELETE the incorrect `current` (rewrites fraction-of-a-track history)
-                            let item_id = current_id_num
-                                .expect("inhabited current has id num/index")
-                                .to_string();
-                            Err(LowCommand::PlaylistDelete { item_id })
+                            // starts at the current, including current
+                            let current_index = current_id_num
+                                .expect("current_filtered implies current_id_num")
+                                - start_idx;
+                            Ok(ComparisonStart::at(current_index).include_current())
                         }
                         None => {
                             // No current track, executing on END only
