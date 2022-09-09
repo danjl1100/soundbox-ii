@@ -154,21 +154,6 @@ pub(crate) enum LowCommand {
         speed: f64,
     },
 }
-//TODO deleteme, if unused
-/// Common commands (equivalent on public and low-level interfaces)
-#[derive(Debug, Clone)]
-pub(crate) enum SimpleCommand {
-    PlaybackResume,
-    PlaybackPause,
-    PlaybackStop,
-    SeekNext,
-    SeekPrevious,
-    SeekTo { seconds: u32 },
-    SeekRelative { seconds_delta: i32 },
-    Volume { percent: u16 },
-    VolumeRelative { percent_delta: i16 },
-    PlaybackSpeed { speed: f64 },
-}
 
 /// Rule for selecting the next playback item in the VLC queue
 ///
