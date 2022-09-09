@@ -23,13 +23,18 @@ mod ret;
 mod tests;
 
 /// Channels for interfacing with a [`Controller`]
-pub struct Channels {
+pub struct ExternalChannels {
     /// Sender for [`Action`]s
     pub action_tx: mpsc::Sender<Action>,
     /// Receiver for [`PlaybackStatus`]
     pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
     /// Receiver for [`PlaylistInfo`]
     pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
+}
+struct Channels {
+    action_rx: mpsc::Receiver<Action>,
+    playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
+    playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
 }
 
 /// Control interface for VLC-HTTP
@@ -51,22 +56,20 @@ pub struct Channels {
 /// //   tokio::spawn(async_task)
 /// ```
 pub struct Controller {
-    action_rx: mpsc::Receiver<Action>,
-    playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
-    playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
+    channels: Channels,
     context: Context,
     rules: Rules,
     rate_limit_action_rx: rate::Limiter,
 }
 impl Controller {
     const RATE_LIMIT_MS: u32 = 90;
-    /// Creates a [`Controller`] with the associated control [`Channels`]
-    pub fn new(authorization: Authorization) -> (Self, Channels) {
+    /// Creates a [`Controller`] with the associated control channels
+    pub fn new(authorization: Authorization) -> (Self, ExternalChannels) {
         // Channels
         let (action_tx, action_rx) = mpsc::channel(1);
         let (playback_status_tx, playback_status_rx) = watch::channel(None);
         let (playlist_info_tx, playlist_info_rx) = watch::channel(None);
-        let channels = Channels {
+        let channels = ExternalChannels {
             action_tx,
             playback_status_rx,
             playlist_info_rx,
@@ -75,10 +78,13 @@ impl Controller {
         let controller = {
             let context = Context::new(authorization);
             let rules = Rules::new();
-            Self {
+            let channels = Channels {
                 action_rx,
                 playback_status_tx,
                 playlist_info_tx,
+            };
+            Self {
+                channels,
                 context,
                 rules,
                 rate_limit_action_rx: rate::Limiter::new(Self::RATE_LIMIT_MS),
@@ -86,8 +92,6 @@ impl Controller {
         };
         (controller, channels)
     }
-}
-impl Controller {
     /// Executes the all received actions
     ///
     /// # Errors
@@ -102,7 +106,7 @@ impl Controller {
             let action = {
                 tokio::select! {
                     biased; // prioritize External over Internal actions
-                    external_action = self.action_rx.recv() => {
+                    external_action = self.channels.action_rx.recv() => {
                         let external_action = external_action.ok_or(Shutdown)?;
                         // rate-limit commands only (allow rule-based actions)
                         self.rate_limit_action_rx.enter().await;
@@ -165,9 +169,6 @@ impl Controller {
             }
         }
     }
-}
-
-impl Controller {
     async fn run_low_command(&mut self, low_command: LowCommand) -> Result<(), Error> {
         // notify rules
         {
@@ -229,8 +230,12 @@ impl Controller {
     fn update_status(&mut self, typed_response: response::Typed) {
         let Self {
             rules,
-            playback_status_tx,
-            playlist_info_tx,
+            channels:
+                Channels {
+                    playback_status_tx,
+                    playlist_info_tx,
+                    ..
+                },
             ..
         } = self;
         match typed_response {

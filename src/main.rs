@@ -114,7 +114,7 @@ async fn launch(args: args::Config) {
 
     let authorization = args.vlc_http_config.0;
     let (controller, channels) = vlc_http::Controller::new(authorization);
-    let vlc_http::controller::Channels {
+    let vlc_http::controller::ExternalChannels {
         action_tx,
         playback_status_rx,
         playlist_info_rx,

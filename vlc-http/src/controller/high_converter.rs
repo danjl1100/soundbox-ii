@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::{
     command::LowCommand,
-    controller::{ret, Controller, HighCommand},
+    controller::{ret, Channels, Controller, HighCommand},
     vlc_responses, Error,
 };
 
@@ -61,7 +61,7 @@ impl State {
     pub async fn run(mut self, controller: &mut Controller) -> Result<(), Error> {
         let mut runaway_counter = None;
         let mut count = 0;
-        while let Err(low_action) = self.next(controller, &()) {
+        while let Err(low_action) = self.next(&mut controller.channels, &()) {
             {
                 assert!(count < 20, "exceeded training-wheels counter {count}");
                 count += 1;
@@ -120,19 +120,19 @@ with_define! {
     const QUERY_PLAYLIST_INFO: LowAction = LowAction::QueryPlaylistInfo;
 }
 impl<'a> ConverterIterator<'a> for State {
-    type Status = &'a Controller;
+    type Status = &'a Channels;
     type Command = ();
-    fn next(&mut self, controller: &'a Controller, _: &()) -> Result<(), LowAction> {
+    fn next(&mut self, channels: &'a Channels, _: &()) -> Result<(), LowAction> {
         match self {
             State::PlaybackMode { converter, command } => {
-                with_status!(if let Ok(status) = borrow(controller.playback_status_tx) {
+                with_status!(if let Ok(status) = borrow(channels.playback_status_tx) {
                     converter.next(status, command)
                 })
             }
 
             State::PlaylistSet { converter, command } => {
-                with_status!(if let Ok(status) = borrow(controller.playback_status_tx) {
-                    with_playlist!(if let Ok(playlist) = borrow(controller.playlist_info_tx) {
+                with_status!(if let Ok(status) = borrow(channels.playback_status_tx) {
+                    with_playlist!(if let Ok(playlist) = borrow(channels.playlist_info_tx) {
                         converter.next((status, playlist), command)
                     })
                 })
