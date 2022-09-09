@@ -6,6 +6,7 @@ pub use playback::Status as PlaybackStatus;
 pub use shared::{PlaybackState, PlaybackTiming};
 mod playback {
     use crate::command;
+    use crate::http_client::intent::FromSliceAtTime;
     use shared::{PlaybackTiming, PositionFraction, RateRatio, Time};
 
     use serde::Deserialize;
@@ -35,11 +36,8 @@ mod playback {
         /// Received Time
         pub received_time: Time,
     }
-    impl Status {
-        pub(crate) fn from_slice(
-            bytes: &[u8],
-            received_time: Time,
-        ) -> Result<Self, serde_json::Error> {
+    impl FromSliceAtTime for Status {
+        fn from_slice(bytes: &[u8], received_time: Time) -> Result<Self, serde_json::Error> {
             let json_struct: StatusJSON = serde_json::from_slice(bytes)?;
             Ok(Self::from((json_struct, received_time)))
         }
@@ -165,6 +163,7 @@ mod playback {
 pub use playlist::Info as PlaylistInfo;
 pub use playlist::Item as PlaylistItem;
 mod playlist {
+    use crate::http_client::intent::FromSliceAtTime;
     use serde::Deserialize;
     use shared::Time;
     use std::convert::TryInto;
@@ -178,11 +177,8 @@ mod playlist {
         /// Received Time
         pub received_time: Time,
     }
-    impl Info {
-        pub(crate) fn from_slice(
-            bytes: &[u8],
-            received_time: Time,
-        ) -> Result<Self, serde_json::Error> {
+    impl FromSliceAtTime for Info {
+        fn from_slice(bytes: &[u8], received_time: Time) -> Result<Self, serde_json::Error> {
             let json_struct: RootJSON = serde_json::from_slice(bytes)?;
             Ok(Self::from((json_struct, received_time)))
         }

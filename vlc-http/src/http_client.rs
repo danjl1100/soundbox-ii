@@ -1,8 +1,85 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-Client specific functions
 
+pub(crate) mod intent {
+    use shared::Time;
+
+    use crate::{
+        request::RequestInfo,
+        vlc_responses::{PlaybackStatus, PlaylistInfo},
+    };
+
+    pub trait FromSliceAtTime
+    where
+        Self: Sized,
+    {
+        fn from_slice(bytes: &[u8], received_time: Time) -> Result<Self, serde_json::Error>;
+    }
+    /// Plan for how to request a specific type of data
+    pub(crate) trait Intent {
+        type Output: FromSliceAtTime;
+        fn get_request_info(&self) -> RequestInfo;
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct CmdArgs {
+        pub command: &'static str,
+        pub args: Vec<(&'static str, String)>,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) struct StatusIntent(pub Option<CmdArgs>);
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) struct PlaylistIntent(pub Option<CmdArgs>);
+    impl Intent for StatusIntent {
+        type Output = PlaybackStatus;
+        fn get_request_info(&self) -> RequestInfo {
+            self.into()
+        }
+    }
+    impl Intent for PlaylistIntent {
+        type Output = PlaylistInfo;
+        fn get_request_info(&self) -> RequestInfo {
+            self.into()
+        }
+    }
+
+    #[must_use]
+    #[derive(Debug, PartialEq, Eq)]
+    pub(crate) enum TextIntent {
+        Status(StatusIntent),
+        Playlist(PlaylistIntent),
+    }
+    impl TextIntent {
+        pub(crate) fn status(command: &'static str) -> Self {
+            Self::Status(StatusIntent(Some(CmdArgs {
+                command,
+                args: vec![],
+            })))
+        }
+    }
+    impl From<StatusIntent> for TextIntent {
+        fn from(inner: StatusIntent) -> Self {
+            Self::Status(inner)
+        }
+    }
+    impl From<PlaylistIntent> for TextIntent {
+        fn from(inner: PlaylistIntent) -> Self {
+            Self::Playlist(inner)
+        }
+    }
+
+    /// Query for Album Artwork for the current item
+    pub(crate) struct ArtRequestIntent {
+        pub id: Option<String>,
+    }
+}
+
 pub(crate) mod response {
-    use crate::{command::TextResponseType, Error, PlaybackStatus, PlaylistInfo};
+    use super::intent::{FromSliceAtTime, Intent};
+    use crate::Error;
+    use crate::{PlaybackStatus, PlaylistInfo};
+    use shared::Time;
     shared::wrapper_enum! {
         #[derive(Debug)]
         #[allow(clippy::large_enum_variant)]
@@ -12,33 +89,11 @@ pub(crate) mod response {
         }
     }
 
-    pub async fn try_parse_body_text(
-        response: Result<(TextResponseType, hyper::Response<hyper::Body>), hyper::Error>,
-    ) -> Result<Typed, Error> {
-        let now = shared::time_now();
-        match response {
-            Ok((TextResponseType::Status, response)) => {
-                parse_typed_body(response, PlaybackStatus::from_slice, now)
-                    .await
-                    .map(Typed::Playback)
-            }
-            Ok((TextResponseType::Playlist, response)) => {
-                parse_typed_body(response, PlaylistInfo::from_slice, now)
-                    .await
-                    .map(Typed::Playlist)
-            }
-            Err(e) => Err(e.into()),
-        }
-    }
-    async fn parse_typed_body<F, T, E>(
+    pub(crate) async fn try_parse_body_text<T: Intent>(
         response: hyper::Response<hyper::Body>,
-        map_fn: F,
-        now: shared::Time,
-    ) -> Result<T, Error>
-    where
-        F: FnOnce(&[u8], shared::Time) -> Result<T, E>,
-        Error: From<E>,
-    {
+        now: Time,
+    ) -> Result<T::Output, Error> {
+        let map_fn = T::Output::from_slice;
         hyper::body::to_bytes(response.into_body())
             .await
             .map_err(Into::into)
@@ -81,17 +136,14 @@ mod context {
     type Client = HyperClient<hyper::client::connect::HttpConnector, Body>;
     type Request = HyperRequest<Body>;
 
-    /// Execution context for [`RequestIntent`]s
+    /// Execution context for [`TextIntent`]s
     pub(crate) struct Context(Client, Authorization);
     impl Context {
         pub fn new(credentials: Authorization) -> Self {
             let client = ClientBuilder::default().build_http();
             Self(client, credentials)
         }
-        pub async fn run<'a, 'b, T>(
-            &self,
-            request_intent: T,
-        ) -> Result<hyper::Response<Body>, hyper::Error>
+        pub async fn run<T>(&self, request_intent: T) -> Result<hyper::Response<Body>, hyper::Error>
         where
             RequestInfo: From<T>,
         {

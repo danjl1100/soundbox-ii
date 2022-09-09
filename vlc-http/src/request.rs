@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-specific primitives (interchange for test purposes)
 
-use super::command::{ArtRequestIntent, CmdArgs, RequestIntent};
+use crate::http_client::intent::{ArtRequestIntent, CmdArgs, PlaylistIntent, StatusIntent};
 use std::fmt::Write;
 
 pub use http::{
@@ -16,22 +16,20 @@ pub(crate) struct RequestInfo {
     pub path_and_query: PathAndQuery,
     pub method: Method,
 }
-impl From<&RequestIntent<'_, '_>> for RequestInfo {
-    fn from(intent: &RequestIntent<'_, '_>) -> Self {
+impl From<&StatusIntent> for RequestInfo {
+    fn from(intent: &StatusIntent) -> Self {
         const STATUS_JSON: &str = "/requests/status.json";
-        const PLAYLIST_JSON: &str = "/requests/playlist.json";
-        let path_and_query = match intent {
-            RequestIntent::Status(Some(CmdArgs { command, args })) => {
-                Self::format_cmd_args(STATUS_JSON, command, args)
-            }
-            RequestIntent::Playlist(Some(CmdArgs { command, args })) => {
-                Self::format_cmd_args(PLAYLIST_JSON, command, args)
-            }
-            RequestIntent::Status(None) => PathAndQuery::from_static(STATUS_JSON),
-            RequestIntent::Playlist(None) => PathAndQuery::from_static(PLAYLIST_JSON),
-        };
         Self {
-            path_and_query,
+            path_and_query: Self::format_cmd_args(STATUS_JSON, &intent.0),
+            method: Method::GET,
+        }
+    }
+}
+impl From<&PlaylistIntent> for RequestInfo {
+    fn from(intent: &PlaylistIntent) -> Self {
+        const PLAYLIST_JSON: &str = "/requests/playlist.json";
+        Self {
+            path_and_query: Self::format_cmd_args(PLAYLIST_JSON, &intent.0),
             method: Method::GET,
         }
     }
@@ -51,12 +49,17 @@ impl From<&ArtRequestIntent> for RequestInfo {
     }
 }
 impl RequestInfo {
-    fn format_cmd_args(path: &str, command: &str, args: &[(&str, String)]) -> PathAndQuery {
-        let query = QueryBuilder::new()
-            .append("command", command)
-            .extend(args)
-            .finish();
-        Self::format_path_query(path, &query)
+    fn format_cmd_args(path: &'static str, cmd_args: &Option<CmdArgs>) -> PathAndQuery {
+        cmd_args.as_ref().map_or_else(
+            || PathAndQuery::from_static(path),
+            |CmdArgs { command, args }| {
+                let query = QueryBuilder::new()
+                    .append("command", command)
+                    .extend(args)
+                    .finish();
+                Self::format_path_query(path, &query)
+            },
+        )
     }
     fn format_path_query(path: &str, query: &str) -> PathAndQuery {
         format!("{path}?{query}")
@@ -100,7 +103,7 @@ mod tests {
     use super::*;
     #[test]
     fn encodes_status_request() {
-        let empty = RequestIntent::Status(Some(CmdArgs {
+        let empty = StatusIntent(Some(CmdArgs {
             command: "sentinel_command",
             args: vec![],
         }));
@@ -114,7 +117,7 @@ mod tests {
             }
         );
         //
-        let with_args = RequestIntent::Status(Some(CmdArgs {
+        let with_args = StatusIntent(Some(CmdArgs {
             command: "second",
             args: vec![
                 ("first", "this".to_string()),
@@ -134,7 +137,7 @@ mod tests {
     }
     #[test]
     fn encodes_playlist_request() {
-        let empty = RequestIntent::Playlist(Some(CmdArgs {
+        let empty = PlaylistIntent(Some(CmdArgs {
             command: "do_something",
             args: vec![],
         }));
@@ -148,7 +151,7 @@ mod tests {
             }
         );
         //
-        let with_args = RequestIntent::Playlist(Some(CmdArgs {
+        let with_args = PlaylistIntent(Some(CmdArgs {
             command: "ditherous",
             args: vec![
                 ("everything", "is".to_string()),
@@ -185,7 +188,7 @@ mod tests {
     }
     #[test]
     fn encodes_playback_status_request() {
-        let status = RequestIntent::Status(None);
+        let status = StatusIntent(None);
         assert_eq!(
             RequestInfo::from(&status),
             RequestInfo {
@@ -196,7 +199,7 @@ mod tests {
     }
     #[test]
     fn encodes_playlist_status_request() {
-        let playlist = RequestIntent::Playlist(None);
+        let playlist = PlaylistIntent(None);
         assert_eq!(
             RequestInfo::from(&playlist),
             RequestInfo {

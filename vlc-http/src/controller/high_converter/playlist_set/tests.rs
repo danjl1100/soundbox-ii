@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
-    command::{LowCommand, RequestIntent, TextResponseType},
+    command::{LowCommand, TextIntent},
     controller::high_converter::{
         playlist_set::{ItemsFmt, ResultFmt},
         ConverterIterator, LowAction,
@@ -220,10 +220,10 @@ impl TestHarnessData {
         }
     }
     fn selective_copy_to(&self, command: LowCommand, dest: &mut Self) {
-        let intent_type = RequestIntent::from(command).get_type();
-        match intent_type {
-            TextResponseType::Status => self.copy_status_to(dest),
-            TextResponseType::Playlist => self.clone_playlist_to(dest),
+        let intent = TextIntent::from(command);
+        match intent {
+            TextIntent::Status(_) => self.copy_status_to(dest),
+            TextIntent::Playlist(_) => self.clone_playlist_to(dest),
         }
     }
     fn copy_status_to(&self, dest: &mut Self) {

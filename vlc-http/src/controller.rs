@@ -4,10 +4,13 @@
 use std::convert::TryFrom;
 
 use crate::{
-    command::{ArtRequestIntent, HighCommand, RequestIntent},
-    http_client::{response, Context},
+    command::HighCommand,
+    http_client::{
+        intent::{ArtRequestIntent, Intent, PlaylistIntent, StatusIntent, TextIntent},
+        response, Context,
+    },
     rules::Rules,
-    Action, Authorization, Error, LowCommand, PlaybackStatus, PlaylistInfo, Query, RepeatMode,
+    Action, Authorization, Error, LowCommand, PlaybackStatus, PlaylistInfo, RepeatMode,
 };
 use shared::{Never, Shutdown};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -173,25 +176,20 @@ impl Controller {
         }
         // run action
         {
-            let result = self.run_and_parse_text(low_command).await;
-            result.map(|typed| {
-                self.update_status(typed);
-            })
+            let typed = match TextIntent::from(low_command) {
+                TextIntent::Status(request) => self.run_and_parse_text(request).await?.into(),
+                TextIntent::Playlist(request) => self.run_and_parse_text(request).await?.into(),
+            };
+            self.update_status(typed);
+            Ok(())
         }
     }
     async fn run_query_playback_status<T>(&mut self) -> Result<T::Return, Error>
     where
         T: ret::Returner<PlaybackStatus>,
     {
-        self.run_and_parse_text(Query::PlaybackStatus)
+        self.run_and_parse_text(StatusIntent(None))
             .await
-            .map(|response| match response {
-                response::Typed::Playback(playback) => playback,
-                response::Typed::Playlist(_) => {
-                    //TODO change from `should` to `enforced by type system`
-                    unreachable!("PlaybackRequest should be type Playback")
-                }
-            })
             .map(|playback| {
                 T::apply_with(playback, |p| {
                     self.update_status(p.into());
@@ -202,38 +200,22 @@ impl Controller {
     where
         T: ret::Returner<PlaylistInfo>,
     {
-        self.run_and_parse_text(Query::PlaylistInfo)
+        self.run_and_parse_text(PlaylistIntent(None))
             .await
-            .map(|response| match response {
-                response::Typed::Playlist(playlist) => playlist,
-                response::Typed::Playback(_) => {
-                    //TODO change from `should` to `enforced by type system`
-                    /* use something like this inside vlc_http/src/http_client.rs
-                    trait ResponseType
-                    where
-                        Self: Sized,
-                    {
-                        type Error: Into<Error>;
-                        fn from_slice(bytes: &[u8], received_time: shared::Time) -> Result<Self, Self::Error>;
-                    }
-                    */
-                    unreachable!("PlaylistRequest should be type Playlist")
-                }
-            })
             .map(|playlist| {
                 T::apply_with(playlist, |p| {
                     self.update_status(p.into());
                 })
             })
     }
-    async fn run_and_parse_text<'a, 'b, T>(&mut self, request: T) -> Result<response::Typed, Error>
+    async fn run_and_parse_text<T>(&mut self, request: T) -> Result<T::Output, Error>
     where
-        RequestIntent<'a, 'b>: From<T>,
+        T: Intent,
     {
-        let request = RequestIntent::from(request);
-        let req_type = request.get_type();
-        let result = self.context.run(&request).await;
-        response::try_parse_body_text(result.map(|r| (req_type, r))).await
+        let request_info = request.get_request_info();
+        let result = self.context.run(request_info).await?;
+        let now = shared::time_now();
+        response::try_parse_body_text::<T>(result, now).await
     }
     fn send_result<T>(result: T, result_tx: oneshot::Sender<T>)
     where

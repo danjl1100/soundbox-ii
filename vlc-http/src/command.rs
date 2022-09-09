@@ -1,6 +1,9 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use std::{convert::TryFrom, num::NonZeroUsize};
 
+pub(crate) use crate::http_client::intent::{CmdArgs, TextIntent};
+use crate::http_client::intent::{PlaylistIntent, StatusIntent};
+
 /// High-level Commands for VLC
 // Internally, routed to either LowCommand (single command) or HighCommand (sequence of commands)
 #[allow(clippy::module_name_repetitions)]
@@ -151,6 +154,7 @@ pub(crate) enum LowCommand {
         speed: f64,
     },
 }
+//TODO deleteme, if unused
 /// Common commands (equivalent on public and low-level interfaces)
 #[derive(Debug, Clone)]
 pub(crate) enum SimpleCommand {
@@ -164,14 +168,6 @@ pub(crate) enum SimpleCommand {
     Volume { percent: u16 },
     VolumeRelative { percent_delta: i16 },
     PlaybackSpeed { speed: f64 },
-}
-/// Information queries for VLC
-#[derive(Debug, Clone)]
-pub(crate) enum Query {
-    /// Playback status for the current playing item
-    PlaybackStatus,
-    /// Playlist items
-    PlaylistInfo,
 }
 
 /// Rule for selecting the next playback item in the VLC queue
@@ -193,45 +189,6 @@ impl RepeatMode {
     pub(crate) fn is_repeat_one(self) -> bool {
         matches!(self, Self::One)
     }
-}
-
-/// Type of a response
-#[allow(missing_docs)]
-pub enum TextResponseType {
-    Status,
-    Playlist,
-}
-
-/// Description of a request to be executed
-#[must_use]
-#[allow(missing_docs)]
-#[derive(Debug, PartialEq, Eq)]
-pub enum RequestIntent<'a, 'b> {
-    Status(Option<CmdArgs<'a, 'b>>),
-    Playlist(Option<CmdArgs<'a, 'b>>),
-}
-#[derive(Debug, PartialEq, Eq)]
-pub struct CmdArgs<'a, 'b> {
-    pub command: &'a str,
-    pub args: Vec<(&'b str, String)>,
-}
-impl<'a, 'b> RequestIntent<'a, 'b> {
-    pub(crate) fn status(command: &'a str) -> Self {
-        Self::Status(Some(CmdArgs {
-            command,
-            args: vec![],
-        }))
-    }
-    pub fn get_type(&self) -> TextResponseType {
-        match self {
-            Self::Status(_) => TextResponseType::Status,
-            Self::Playlist(_) => TextResponseType::Playlist,
-        }
-    }
-}
-/// Query for Album Artwork for the current item
-pub(crate) struct ArtRequestIntent {
-    pub id: Option<String>,
 }
 
 pub(crate) fn encode_volume_val(percent: u16) -> u32 {
@@ -264,58 +221,58 @@ fn decode_url(url: &url::Url) -> String {
         .expect("UTF8 input on all URLs")
         .to_string()
 }
-impl<'a, 'b> From<LowCommand> for RequestIntent<'a, 'b> {
+impl From<LowCommand> for TextIntent {
     /// Creates a request for the specified command
     fn from(command: LowCommand) -> Self {
         match command {
-            LowCommand::PlaylistAdd { url } => RequestIntent::Playlist(Some(CmdArgs {
+            LowCommand::PlaylistAdd { url } => PlaylistIntent(Some(CmdArgs {
                 command: "in_enqueue",
                 args: vec![("input", decode_url(&url))],
-            })),
-            LowCommand::PlaylistDelete { item_id } => RequestIntent::Playlist(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::PlaylistDelete { item_id } => PlaylistIntent(Some(CmdArgs {
                 command: "pl_delete",
                 args: vec![("id", item_id)],
-            })),
-            LowCommand::PlaylistPlay { item_id } => RequestIntent::Status(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::PlaylistPlay { item_id } => StatusIntent(Some(CmdArgs {
                 command: "pl_play",
                 args: item_id.map(|id| vec![("id", id)]).unwrap_or_default(),
-            })),
-            LowCommand::PlaybackResume => RequestIntent::status("pl_forceresume"),
-            LowCommand::PlaybackPause => RequestIntent::status("pl_forcepause"),
-            LowCommand::PlaybackStop => RequestIntent::status("pl_stop"),
-            LowCommand::SeekNext => RequestIntent::status("pl_next"),
-            LowCommand::SeekPrevious => RequestIntent::status("pl_previous"),
-            LowCommand::SeekTo { seconds } => RequestIntent::Status(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::PlaybackResume => TextIntent::status("pl_forceresume"),
+            LowCommand::PlaybackPause => TextIntent::status("pl_forcepause"),
+            LowCommand::PlaybackStop => TextIntent::status("pl_stop"),
+            LowCommand::SeekNext => TextIntent::status("pl_next"),
+            LowCommand::SeekPrevious => TextIntent::status("pl_previous"),
+            LowCommand::SeekTo { seconds } => StatusIntent(Some(CmdArgs {
                 command: "seek",
                 args: vec![("val", seconds.to_string())],
-            })),
-            LowCommand::SeekRelative { seconds_delta } => RequestIntent::Status(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::SeekRelative { seconds_delta } => StatusIntent(Some(CmdArgs {
                 command: "seek",
                 args: vec![("val", fmt_seconds_delta(seconds_delta))],
-            })),
-            LowCommand::Volume { percent } => RequestIntent::Status(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::Volume { percent } => StatusIntent(Some(CmdArgs {
                 command: "volume",
                 args: vec![("val", encode_volume_val(percent).to_string())],
-            })),
-            LowCommand::VolumeRelative { percent_delta } => RequestIntent::Status(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::VolumeRelative { percent_delta } => StatusIntent(Some(CmdArgs {
                 command: "volume",
                 args: vec![("val", fmt_volume_delta(percent_delta))],
-            })),
-            LowCommand::ToggleRandom => RequestIntent::status("pl_random"),
-            LowCommand::ToggleRepeatOne => RequestIntent::status("pl_repeat"),
-            LowCommand::ToggleLoopAll => RequestIntent::status("pl_loop"),
-            LowCommand::PlaybackSpeed { speed } => RequestIntent::Status(Some(CmdArgs {
+            }))
+            .into(),
+            LowCommand::ToggleRandom => TextIntent::status("pl_random"),
+            LowCommand::ToggleRepeatOne => TextIntent::status("pl_repeat"),
+            LowCommand::ToggleLoopAll => TextIntent::status("pl_loop"),
+            LowCommand::PlaybackSpeed { speed } => StatusIntent(Some(CmdArgs {
                 command: "rate",
                 args: vec![("val", speed.to_string())],
-            })),
-        }
-    }
-}
-impl<'a, 'b> From<Query> for RequestIntent<'a, 'b> {
-    fn from(query: Query) -> Self {
-        match query {
-            Query::PlaybackStatus => RequestIntent::Status(None),
-            Query::PlaylistInfo => RequestIntent::Playlist(None),
+            }))
+            .into(),
         }
     }
 }
@@ -380,87 +337,89 @@ mod tests {
     use super::*;
 
     #[allow(clippy::needless_pass_by_value)]
-    fn assert_encode<'a, 'b, T>(value: T, expected: RequestIntent)
+    #[allow(clippy::trait_duplication_in_bounds)] //TODO remove this, needed (?) for clippy 0.1.62,
+                                                  // but not duplicated on playground's clippy 0.1.65
+    fn assert_encode<T, U>(value: T, expected: U)
     where
-        RequestIntent<'a, 'b>: From<T>,
+        TextIntent: From<T> + From<U>,
     {
-        assert_eq!(RequestIntent::from(value), expected);
+        assert_eq!(TextIntent::from(value), TextIntent::from(expected));
     }
     #[test]
     fn execs_simple_cmds() {
         assert_encode(
             LowCommand::PlaylistPlay { item_id: None },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_play",
                 args: vec![],
             })),
         );
         assert_encode(
             LowCommand::PlaybackResume,
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_forceresume",
                 args: vec![],
             })),
         );
         assert_encode(
             LowCommand::PlaybackPause,
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_forcepause",
                 args: vec![],
             })),
         );
         assert_encode(
             LowCommand::PlaybackStop,
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_stop",
                 args: vec![],
             })),
         );
         assert_encode(
             LowCommand::SeekNext,
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_next",
                 args: vec![],
             })),
         );
         assert_encode(
             LowCommand::SeekPrevious,
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_previous",
                 args: vec![],
             })),
         );
         assert_encode(
             LowCommand::SeekTo { seconds: 259 },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "seek",
                 args: vec![("val", "259".to_string())],
             })),
         );
         assert_encode(
             LowCommand::SeekRelative { seconds_delta: 32 },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "seek",
                 args: vec![("val", "+32".to_string())],
             })),
         );
         assert_encode(
             LowCommand::SeekRelative { seconds_delta: -57 },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "seek",
                 args: vec![("val", "-57".to_string())],
             })),
         );
         assert_encode(
             LowCommand::SeekRelative { seconds_delta: 0 },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "seek",
                 args: vec![("val", "+0".to_string())],
             })),
         );
         assert_encode(
             LowCommand::PlaybackSpeed { speed: 0.21 },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "rate",
                 args: vec![("val", "0.21".to_string())],
             })),
@@ -471,7 +430,7 @@ mod tests {
         let url = url::Url::parse("file:///SENTINEL_%20_URL_%20%5E%24").expect("valid url");
         assert_encode(
             LowCommand::PlaylistAdd { url },
-            RequestIntent::Playlist(Some(CmdArgs {
+            PlaylistIntent(Some(CmdArgs {
                 command: "in_enqueue",
                 args: vec![("input", "file:///SENTINEL_ _URL_ ^$".to_string())],
             })),
@@ -481,7 +440,7 @@ mod tests {
             LowCommand::PlaylistDelete {
                 item_id: id_str.clone(),
             },
-            RequestIntent::Playlist(Some(CmdArgs {
+            PlaylistIntent(Some(CmdArgs {
                 command: "pl_delete",
                 args: vec![("id", id_str.clone())],
             })),
@@ -490,7 +449,7 @@ mod tests {
             LowCommand::PlaylistPlay {
                 item_id: Some(id_str.clone()),
             },
-            RequestIntent::Status(Some(CmdArgs {
+            StatusIntent(Some(CmdArgs {
                 command: "pl_play",
                 args: vec![("id", id_str)],
             })),
@@ -513,7 +472,7 @@ mod tests {
             assert_eq!(decode_volume_to_percent(*val), *percent);
             assert_encode(
                 LowCommand::Volume { percent: *percent },
-                RequestIntent::Status(Some(CmdArgs {
+                StatusIntent(Some(CmdArgs {
                     command: "volume",
                     args: vec![("val", format!("{}", val))],
                 })),
@@ -522,7 +481,7 @@ mod tests {
             let check_relative = |sign, percent_delta| {
                 assert_encode(
                     LowCommand::VolumeRelative { percent_delta },
-                    RequestIntent::Status(Some(CmdArgs {
+                    StatusIntent(Some(CmdArgs {
                         command: "volume",
                         args: vec![("val", format!("{}{}", sign, val))],
                     })),
@@ -535,10 +494,5 @@ mod tests {
                 check_relative("-", -percent_signed);
             }
         }
-    }
-    #[test]
-    fn execs_simple_queries() {
-        assert_encode(Query::PlaybackStatus, RequestIntent::Status(None));
-        assert_encode(Query::PlaylistInfo, RequestIntent::Playlist(None));
     }
 }

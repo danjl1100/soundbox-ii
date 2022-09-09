@@ -16,8 +16,6 @@
 //
 //! Reads state and sends commands to HTTP interface of VLC
 
-// TODO: only while building
-#![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
 // no unsafe
@@ -36,7 +34,7 @@ pub mod auth;
 pub use controller::Controller;
 pub mod controller;
 
-use command::{LowCommand, Query};
+use command::LowCommand;
 pub use command::{PublicCommand as Command, RepeatMode};
 mod command;
 
@@ -53,7 +51,7 @@ pub use action::{Action, IntoAction, ResultReceiver, ResultSender};
 mod action {
     use tokio::sync::oneshot;
 
-    use crate::{command::Query, Command, Error, PlaybackStatus, PlaylistInfo};
+    use crate::{Command, Error, PlaybackStatus, PlaylistInfo};
 
     /// Sender for an action result
     pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
@@ -132,8 +130,8 @@ mod action {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             match self {
                 Self::Command(command, _) => write!(f, "{:?}", command),
-                Self::QueryPlaybackStatus(_) => write!(f, "{:?}", Query::PlaybackStatus),
-                Self::QueryPlaylistInfo(_) => write!(f, "{:?}", Query::PlaylistInfo),
+                Self::QueryPlaybackStatus(_) => write!(f, "QueryPlaybackStatus"),
+                Self::QueryPlaylistInfo(_) => write!(f, "QueryPlaylistInfo"),
                 Self::QueryArt(_) => write!(f, "QueryArt"),
             }
         }
