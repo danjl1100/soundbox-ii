@@ -5,8 +5,8 @@ use vlc_http::{self, Action, PlaybackStatus, PlaylistInfo, ResultReceiver};
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
 
+pub use command::{parse_url, COMMAND_NAME};
 /// Definition of all interactive commands
-pub use command::COMMAND_NAME;
 mod command;
 use command::ActionAndReceiver;
 

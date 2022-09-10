@@ -38,6 +38,7 @@ mod web;
 mod args;
 
 use task::{AsyncTasks, ShutdownReceiver};
+use vlc_http::vlc_responses::UrlsFmt;
 mod task;
 
 #[tokio::main]
@@ -118,6 +119,7 @@ async fn launch(args: args::Config) {
         action_tx,
         playback_status_rx,
         playlist_info_rx,
+        cmd_playlist_tx,
     } = channels;
 
     let cli_handle = if is_interactive {
@@ -178,6 +180,11 @@ async fn launch(args: args::Config) {
     // run controller
     tasks.spawn("vlc controller", controller.run());
 
+    // // run Sequencer test add-in
+    // tasks.spawn("sequencer", async move {
+    //     test_sequencer_fn(cmd_playlist_tx).await
+    // });
+
     // join all async tasks and thread(s)
     tasks.join_all().await.expect("tasks end with no panics");
     if let Some(warp_handle) = warp_graceful_handle {
@@ -190,4 +197,40 @@ async fn launch(args: args::Config) {
 
     // end of MAIN
     println!("[main exit]");
+}
+
+async fn test_sequencer_fn(
+    cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
+) -> Result<shared::Never, Shutdown> {
+    // TODO move logic to `sequencer`, with sequencer::Command passing channels
+    // (e.g. to allow both `web` and `cli` to command and examine the sequencer)
+    let vlc_http::cmd_playlist_items::Sender {
+        urls_tx,
+        mut remove_rx,
+    } = cmd_playlist_tx;
+    urls_tx.send_modify(|data| {
+        data.items = (0..7)
+            .map(|n| cli::parse_url(&format!("{n}AM.mp3")).expect("valid test url"))
+            .collect();
+    });
+    while let Ok(()) = remove_rx.changed().await {
+        let removed_url_str = remove_rx.borrow().clone();
+        urls_tx.send_modify(|data| {
+            match data.items.first() {
+                Some(first) if first.to_string() == removed_url_str => {
+                    data.items.remove(0);
+                }
+                Some(first_mismatched) => {
+                    dbg!("mismatch!! ohno!", first_mismatched);
+                }
+                None => {
+                    println!("all done");
+                }
+            }
+            dbg!(UrlsFmt(&data.items[..]));
+            dbg!(data.max_history_count);
+        });
+    }
+    // TODO is this shutdown correct?
+    Err(Shutdown)
 }

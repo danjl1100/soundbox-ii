@@ -38,6 +38,9 @@ use command::LowCommand;
 pub use command::{PublicCommand as Command, RepeatMode};
 mod command;
 
+/// Command interface for setting playlist items
+pub mod cmd_playlist_items;
+
 mod request;
 
 mod rules;
@@ -51,7 +54,7 @@ pub use action::{Action, IntoAction, ResultReceiver, ResultSender};
 mod action {
     use tokio::sync::oneshot;
 
-    use crate::{Command, Error, PlaybackStatus, PlaylistInfo};
+    use crate::{vlc_responses::UrlsFmt, Command, Error, PlaybackStatus, PlaylistInfo};
 
     /// Sender for an action result
     pub type ResultSender<T> = oneshot::Sender<Result<T, Error>>;
@@ -129,7 +132,7 @@ mod action {
     impl std::fmt::Display for Action {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             match self {
-                Self::Command(command, _) => write!(f, "{:?}", command),
+                Self::Command(command, _) => write!(f, "{:?}", CommandFmt(command)),
                 Self::QueryPlaybackStatus(_) => write!(f, "QueryPlaybackStatus"),
                 Self::QueryPlaylistInfo(_) => write!(f, "QueryPlaylistInfo"),
                 Self::QueryArt(_) => write!(f, "QueryArt"),
@@ -139,6 +142,29 @@ mod action {
     impl std::cmp::PartialEq for Action {
         fn eq(&self, rhs: &Self) -> bool {
             ActionType::from(self) == ActionType::from(rhs)
+        }
+    }
+    /// Debug-coercion for `PlaylistAdd` urls to be literal strings
+    struct CommandFmt<'a>(&'a Command);
+    impl<'a> std::fmt::Debug for CommandFmt<'a> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.0 {
+                Command::PlaylistSet {
+                    current_or_past_url,
+                    next_urls,
+                    max_history_count,
+                } => f
+                    .debug_struct("PlaylistSet")
+                    .field("current_or_past_url", &current_or_past_url.to_string())
+                    .field("next_urls", &UrlsFmt(next_urls))
+                    .field("max_history_count", max_history_count)
+                    .finish(),
+                Command::PlaylistAdd { url } => f
+                    .debug_struct("PlaylistAdd")
+                    .field("url", &url.to_string())
+                    .finish(),
+                inner => write!(f, "{:?}", inner),
+            }
         }
     }
 

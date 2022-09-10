@@ -82,7 +82,6 @@ pub(crate) mod response {
     use shared::Time;
     shared::wrapper_enum! {
         #[derive(Debug)]
-        #[allow(clippy::large_enum_variant)]
         pub enum Typed {
             Playback(PlaybackStatus),
             Playlist(PlaylistInfo),

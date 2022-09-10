@@ -4,6 +4,7 @@
 use std::convert::TryFrom;
 
 use crate::{
+    cmd_playlist_items,
     command::HighCommand,
     http_client::{
         intent::{ArtRequestIntent, Intent, PlaylistIntent, StatusIntent, TextIntent},
@@ -30,11 +31,14 @@ pub struct ExternalChannels {
     pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
     /// Receiver for [`PlaylistInfo`]
     pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
+    /// Sender for commanded Playlist Items
+    pub cmd_playlist_tx: cmd_playlist_items::Sender,
 }
 struct Channels {
     action_rx: mpsc::Receiver<Action>,
     playback_status_tx: watch::Sender<Option<PlaybackStatus>>,
     playlist_info_tx: watch::Sender<Option<PlaylistInfo>>,
+    cmd_playlist_rx: cmd_playlist_items::Receiver,
 }
 
 /// Control interface for VLC-HTTP
@@ -69,10 +73,13 @@ impl Controller {
         let (action_tx, action_rx) = mpsc::channel(1);
         let (playback_status_tx, playback_status_rx) = watch::channel(None);
         let (playlist_info_tx, playlist_info_rx) = watch::channel(None);
+        let (cmd_playlist_tx, cmd_playlist_rx) =
+            cmd_playlist_items::channel(10.try_into().expect("nonzero"));
         let channels = ExternalChannels {
             action_tx,
             playback_status_rx,
             playlist_info_rx,
+            cmd_playlist_tx,
         };
         // Controller
         let controller = {
@@ -82,6 +89,7 @@ impl Controller {
                 action_rx,
                 playback_status_tx,
                 playlist_info_tx,
+                cmd_playlist_rx,
             };
             Self {
                 channels,
@@ -111,6 +119,16 @@ impl Controller {
                         // rate-limit commands only (allow rule-based actions)
                         self.rate_limit_action_rx.enter().await;
                         external_action
+                    }
+                    Some(cmd_result) = self.channels.cmd_playlist_rx.recv_clone_cmd() => {
+                        use crate::action::IntoAction;
+                        let cmd = cmd_result.map_err(|cmd_playlist_rx_err| {
+                            dbg!(cmd_playlist_rx_err);
+                            Shutdown
+                        })?;
+                        let (action, _) = cmd.to_action_rx();
+                        //TODO is it OK (philosophically, morally) to drop the Receiver? (for errors?)
+                        action
                     }
                     Some(internal_action) = self.rules.next_action(decision_time) => {
                         internal_action
@@ -234,6 +252,7 @@ impl Controller {
                 Channels {
                     playback_status_tx,
                     playlist_info_tx,
+                    cmd_playlist_rx,
                     ..
                 },
             ..
@@ -242,11 +261,13 @@ impl Controller {
             response::Typed::Playback(playback) => {
                 send_if_changed(playback, playback_status_tx, move |p| {
                     rules.notify_playback(p);
+                    cmd_playlist_rx.notify_playback(p);
                 });
             }
             response::Typed::Playlist(playlist) => {
                 send_if_changed(playlist, playlist_info_tx, move |p| {
                     rules.notify_playlist(p);
+                    cmd_playlist_rx.notify_playlist(p);
                 });
             }
         }

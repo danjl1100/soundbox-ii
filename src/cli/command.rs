@@ -218,7 +218,7 @@ impl ActionAndReceiver {
     }
 }
 
-fn parse_url<T>(s: T) -> Result<url::Url, String>
+pub fn parse_url<T>(s: T) -> Result<url::Url, String>
 where
     T: AsRef<str>,
 {

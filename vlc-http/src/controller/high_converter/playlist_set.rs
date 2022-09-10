@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use super::{playback_mode, ConverterIterator, LowAction};
 use crate::command::LowCommand;
 use crate::controller::{PlaybackStatus, PlaylistInfo, RepeatMode};
-use crate::vlc_responses::PlaylistItem;
+use crate::vlc_responses::ItemsFmt;
 
 // NOTE needs to be located "exactly here", for relative use in sub-modules' tests
 #[cfg(test)]
@@ -83,6 +83,14 @@ impl<'a> ConverterIterator<'a> for Converter {
         (status, playlist): Self::Status,
         command: &Command,
     ) -> Result<(), LowAction> {
+        //TODO idea enhance user exerience:
+        // - keep the current-playing item in the history (it was indeed *started*)
+        // - accept the reality that current-playing item may change quickly at any point
+        //    (e.g. need tests to verify correct behavior when current advances by 1-5 tracks per cmd)
+        // - only delete incorrect-current items AFTER the correct items are fully staged
+        //    (pros: allow VLC to catch-up on file metadata loading)
+        //    (cons: delays the change-over when many-many items need adding)
+
         // [STEP 0] ensure playback mode is correct for in-order consumption
         self.converter_mode.next(
             status,
@@ -191,16 +199,6 @@ mod sealed {
     }
 }
 
-/// Debug-coercion for `PlaylistItem`s to be simple "id => url" pairs
-#[derive(PartialEq, Eq)]
-struct ItemsFmt<'a>(&'a [PlaylistItem]);
-impl<'a> std::fmt::Debug for ItemsFmt<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_map()
-            .entries(self.0.iter().map(|item| (&item.id, item.url.to_string())))
-            .finish()
-    }
-}
 /// Debug-coercion for `PlaylistAdd` urls to be literal strings
 #[derive(PartialEq)]
 struct ResultFmt<'a>(&'a Result<(), LowAction>);

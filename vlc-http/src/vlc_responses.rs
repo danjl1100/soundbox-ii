@@ -343,6 +343,28 @@ mod external_conversions {
         }
     }
 }
+
+/// Debug-coercion for `PlaylistItem`s to be simple "id => url" pairs
+#[derive(PartialEq, Eq)]
+pub struct ItemsFmt<'a>(pub &'a [PlaylistItem]);
+impl<'a> std::fmt::Debug for ItemsFmt<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|item| (&item.id, item.url.to_string())))
+            .finish()
+    }
+}
+/// Debug-coercion for [`url::Url`]s
+#[derive(PartialEq, Eq)]
+pub struct UrlsFmt<'a>(pub &'a [url::Url]);
+impl<'a> std::fmt::Debug for UrlsFmt<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.0.iter().map(url::Url::to_string))
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod for_tests {
     use super::{playback, playlist};

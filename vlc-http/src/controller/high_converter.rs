@@ -63,7 +63,8 @@ impl State {
         let mut count = 0;
         while let Err(low_action) = self.next(&mut controller.channels, &()) {
             {
-                assert!(count < 20, "exceeded training-wheels counter {count}");
+                //TODO remove training-wheels (When you are Ready,  use the force,  etc.)
+                assert!(count < 200, "exceeded training-wheels counter {count}");
                 count += 1;
                 runaway_counter = match runaway_counter.take() {
                     Some((count, prev_action)) if count > 10 => {
