@@ -39,14 +39,12 @@ impl From<HighCommand> for State {
     fn from(command: HighCommand) -> Self {
         match command {
             HighCommand::PlaylistSet {
-                current_or_past_url,
-                next_urls,
+                urls,
                 max_history_count,
             } => Self::PlaylistSet {
                 converter: playlist_set::Converter::new(),
                 command: playlist_set::Command {
-                    current_or_past_url,
-                    next_urls,
+                    urls,
                     max_history_count,
                 },
             },

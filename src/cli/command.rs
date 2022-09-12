@@ -38,10 +38,8 @@ pub enum Subcommand {
     PlaylistSet {
         /// Maximum number of history (past-played) items to retain
         max_history_count: NonZeroUsize,
-        /// Path to file currently playing or most-recently played
-        current_or_past_url: String,
-        /// Path to the file(s) to queue next (after the current/past)
-        next_urls: Vec<String>,
+        /// Path to the file(s) to queue next, starting with the current/past item
+        urls: Vec<String>,
     },
     /// Start command
     Start {
@@ -144,18 +142,12 @@ impl Subcommand {
             }
             Self::Delete { item_id } => Command::PlaylistDelete { item_id }.into(),
             Self::PlaylistSet {
-                current_or_past_url,
-                next_urls,
+                urls,
                 max_history_count,
             } => {
-                let current_or_past_url = parse_url(&current_or_past_url)?;
-                let next_urls = next_urls
-                    .iter()
-                    .map(parse_url)
-                    .collect::<Result<Vec<_>, _>>()?;
+                let urls = urls.iter().map(parse_url).collect::<Result<Vec<_>, _>>()?;
                 Command::PlaylistSet {
-                    current_or_past_url,
-                    next_urls,
+                    urls,
                     max_history_count,
                 }
                 .into()

@@ -32,10 +32,8 @@ pub enum PublicCommand {
     /// NOTE: `current_or_past_url` is accepted as previously-played if it is the most recent history item.
     /// NOTE: Forces the playback mode to `{ repeat: RepeatMode::Off, random: false }`
     PlaylistSet {
-        /// Path to file currently playing or most-recently played
-        current_or_past_url: url::Url,
-        /// Path to the file(s) to queue next (after the current/past)
-        next_urls: Vec<url::Url>,
+        /// Path to the file(s) to queue next, starting with the current/past item
+        urls: Vec<url::Url>,
         /// Maximum number of history (past-played) items to retain
         ///
         /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
@@ -90,10 +88,8 @@ pub enum PublicCommand {
 #[derive(Debug)]
 pub(crate) enum HighCommand {
     PlaylistSet {
-        /// Path to file currently playing or most-recently played
-        current_or_past_url: url::Url,
-        /// Path to the file(s) to queue next (after the current/past)
-        next_urls: Vec<url::Url>,
+        /// Path to the file(s) to queue next, starting with the current/past item
+        urls: Vec<url::Url>,
         /// Maximum number of history (past-played) items to retain
         ///
         /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
@@ -290,13 +286,11 @@ impl TryFrom<PublicCommand> for LowCommand {
             Public::PlaylistDelete { item_id } => Self::PlaylistDelete { item_id },
             Public::PlaylistPlay { item_id } => Self::PlaylistPlay { item_id },
             Public::PlaylistSet {
-                current_or_past_url,
-                next_urls,
+                urls,
                 max_history_count,
             } => {
                 return Err(HighCommand::PlaylistSet {
-                    current_or_past_url,
-                    next_urls,
+                    urls,
                     max_history_count,
                 });
             }

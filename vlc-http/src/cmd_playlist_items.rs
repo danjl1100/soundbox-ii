@@ -88,19 +88,10 @@ impl ReceiverInner {
             items,
             max_history_count,
         } = &*self.urls_rx.borrow();
-        let command = items.split_first().map_or_else(
-            || Command::PlaybackStop,
-            |(first, next)| {
-                let first = first.clone();
-                let next = next.to_vec();
-                let max_history_count = *max_history_count;
-                Command::PlaylistSet {
-                    current_or_past_url: first,
-                    next_urls: next,
-                    max_history_count,
-                }
-            },
-        );
+        let command = Command::PlaylistSet {
+            urls: items.clone(),
+            max_history_count: *max_history_count,
+        };
         Ok(command)
     }
     fn notify_playback(&mut self, status: &PlaybackStatus) -> Option<Destroy> {

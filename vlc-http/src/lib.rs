@@ -150,13 +150,11 @@ mod action {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self.0 {
                 Command::PlaylistSet {
-                    current_or_past_url,
-                    next_urls,
+                    urls,
                     max_history_count,
                 } => f
                     .debug_struct("PlaylistSet")
-                    .field("current_or_past_url", &current_or_past_url.to_string())
-                    .field("next_urls", &UrlsFmt(next_urls))
+                    .field("urls", &UrlsFmt(urls))
                     .field("max_history_count", max_history_count)
                     .finish(),
                 Command::PlaylistAdd { url } => f
