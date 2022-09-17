@@ -274,8 +274,7 @@ impl Cli {
                 items_filter,
                 source_type: requested_type,
             } => {
-                let parent_path = &parent_path;
-                let source_type = self.calculate_existing_type(parent_path, requested_type)?;
+                let source_type = self.calculate_existing_type(&parent_path, requested_type)?;
                 let node_path =
                     if let Some(filter) = self.parse_filter_args(items_filter, source_type) {
                         self.run(command::AddTerminalNode {
@@ -297,11 +296,11 @@ impl Cli {
             } => {
                 let source_type = self.calculate_existing_type(&path, requested_type)?;
                 let filter = self.parse_filter_args(items_filter, source_type);
-                let old = self.run(command::SetNodeFilter {
-                    path: &path,
-                    filter: filter.clone(),
-                });
-                self.output(format_args!("changed filter from {old:?} -> {filter:?}"));
+                let filter_print = filter.clone();
+                let old = self.run(command::SetNodeFilter { path, filter });
+                self.output(format_args!(
+                    "changed filter from {old:?} -> {filter_print:?}"
+                ));
             }
             Command::SetWeight {
                 path,
@@ -310,37 +309,33 @@ impl Cli {
             } => {
                 let old_weight = if let Some(item_index) = item_index {
                     self.run(command::SetNodeItemWeight {
-                        path: &path,
+                        path,
                         item_index,
                         weight,
                     })
                 } else {
-                    self.run(command::SetNodeWeight {
-                        path: &path,
-                        weight,
-                    })
+                    self.run(command::SetNodeWeight { path, weight })
                 }?;
                 self.output(format_args!("changed weight from {old_weight} -> {weight}"));
             }
             Command::SetOrderType { path, order_type } => {
-                let old = self.run(command::SetNodeOrderType {
-                    path: &path,
-                    order_type,
-                })?;
+                let old = self.run(command::SetNodeOrderType { path, order_type })?;
                 self.output(format_args!(
                     "changed order type from {old:?} -> {order_type:?}"
                 ));
             }
             Command::Update { path } => {
-                let path = path.as_ref().map_or(".", |p| p);
+                let path = path.unwrap_or_else(|| ".".to_string());
+                let path_print = path.clone();
                 self.run(command::UpdateNodes { path })?;
-                self.output(format_args!("updated nodes under path {path}"));
+                self.output(format_args!("updated nodes under path {path_print}"));
             }
             Command::Remove { id } => {
-                self.run(command::RemoveNode { id: &id })?;
+                let id_print = id.clone();
+                self.run(command::RemoveNode { id })?;
                 // let removed = self.sequencer.remove_node(&id)?;
                 // let (weight, info) = removed;
-                self.output(format_args!("removed node {id}"));
+                self.output(format_args!("removed node {id_print}"));
             }
             Command::Next { count } => {
                 let count = count.unwrap_or(1);

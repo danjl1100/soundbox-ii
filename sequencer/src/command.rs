@@ -8,63 +8,63 @@ use crate::{sources::ItemSource, Error, NodeIdStr, Sequencer};
 type Success = ();
 command_enum! {
     /// Operations to perform on a [`Sequencer`]
-    pub enum Command<'a, F>
+    pub enum Command<F>
     where
         F: Clone,
     {
         /// Add a new node
-        AddNode<'a, F> -> NodeIdStr {
+        AddNode<F> -> NodeIdStr {
             /// Target parent path for the new node
-            parent_path: &'a str,
+            parent_path: String,
             /// Filter for the new node
             filter: F,
         },
         /// Add a new terminal node
-        AddTerminalNode<'a, F> -> NodeIdStr {
+        AddTerminalNode<F> -> NodeIdStr {
             /// Target parent path for the new terminal node
-            parent_path: &'a str,
+            parent_path: String,
             /// Filter for the new terminal node
             filter: F,
         },
         /// Set filter for an existing node
-        SetNodeFilter<'a, F> -> Filter {
+        SetNodeFilter<F> -> Filter {
             /// Target node path
-            path: &'a str,
+            path: String,
             /// New filter value
             filter: F,
         },
         /// Set weight of an item in a terminal node
-        SetNodeItemWeight<'a> -> Weight {
+        SetNodeItemWeight -> Weight {
             /// Target node path
-            path: &'a str,
+            path: String,
             /// Index of the item to set
             item_index: usize,
             /// New weight value
             weight: Weight,
         },
         /// Set weight of a node
-        SetNodeWeight<'a> -> Weight {
+        SetNodeWeight -> Weight {
             /// Target node path
-            path: &'a str,
+            path: String,
             /// New weight value
             weight: Weight,
         },
         /// Set ordering type of a node
-        SetNodeOrderType<'a> -> OrderType {
+        SetNodeOrderType -> OrderType {
             /// Target node path
-            path: &'a str,
+            path: String,
             /// New order type value
             order_type: OrderType,
         },
         /// Update the items for all terminal nodes reachable from the specified parent
-        UpdateNodes<'a> -> Success {
+        UpdateNodes -> Success {
             /// Target node path
-            path: &'a str,
+            path: String,
         },
         /// Removes the specified node
-        RemoveNode<'a> -> Success {
+        RemoveNode -> Success {
             /// Target node id
-            id: &'a str,
+            id: String,
         },
     }
     mod out {
@@ -98,75 +98,75 @@ pub trait Runnable<F> {
 }
 
 command_runnable! {
-    impl<'a, F> Runnable<F> for AddNode<'a, F> {
+    impl<F> Runnable<F> for AddNode<F> {
         fn run(self, seq) -> Result<NodeIdStr, Error> {
             let Self {
                 parent_path,
                 filter,
             } = self;
-            seq.add_node(parent_path, filter)
+            seq.add_node(&parent_path, filter)
         }
     }
-    impl<'a, F> Runnable<F> for AddTerminalNode<'a, F> {
+    impl<F> Runnable<F> for AddTerminalNode<F> {
         fn run(self, seq) -> Result<NodeIdStr, Error> {
             let Self {
                 parent_path,
                 filter,
             } = self;
-            seq.add_terminal_node(parent_path, filter)
+            seq.add_terminal_node(&parent_path, filter)
         }
     }
-    impl<'a, F> Runnable<F> for SetNodeFilter<'a, F> {
+    impl<F> Runnable<F> for SetNodeFilter<F> {
         fn run(self, seq) -> Result<F, Error> {
             let Self {
                 path,
                 filter,
             } = self;
-            seq.set_node_filter(path, filter)
+            seq.set_node_filter(&path, filter)
         }
     }
-    impl<'a, F> Runnable<F> for SetNodeItemWeight<'a> {
+    impl<F> Runnable<F> for SetNodeItemWeight {
         fn run(self, seq) -> Result<Weight, Error> {
             let Self {
                 path,
                 item_index,
                 weight,
             } = self;
-            seq.set_node_item_weight(path, item_index, weight)
+            seq.set_node_item_weight(&path, item_index, weight)
         }
     }
-    impl<'a, F> Runnable<F> for SetNodeWeight<'a> {
+    impl<F> Runnable<F> for SetNodeWeight {
         fn run(self, seq) -> Result<Weight, Error> {
             let Self {
                 path,
                 weight,
             } = self;
-            seq.set_node_weight(path, weight)
+            seq.set_node_weight(&path, weight)
         }
     }
-    impl<'a, F> Runnable<F> for SetNodeOrderType<'a> {
+    impl<F> Runnable<F> for SetNodeOrderType {
         fn run(self, seq) -> Result<OrderType, Error> {
             let Self {
                 path,
                 order_type,
             } = self;
-            seq.set_node_order_type(path, order_type)
+            seq.set_node_order_type(&path, order_type)
         }
     }
-    impl<'a, F> Runnable<F> for UpdateNodes<'a> {
+    impl<F> Runnable<F> for UpdateNodes {
         fn run(self, seq) -> Result<Success, Error> {
             let Self {
                 path,
             } = self;
-            seq.update_nodes(path)
+            seq.update_nodes(&path)
         }
     }
-    impl<'a, F> Runnable<F> for RemoveNode<'a> {
+    impl<F> Runnable<F> for RemoveNode {
         fn run(self, seq) -> Result<Success, Error> {
             let Self {
                 id
             } = self;
-            seq.remove_node(id).map(|_| ())
+            seq.remove_node(&id).map(|_| ())
         }
     }
 }

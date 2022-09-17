@@ -3,7 +3,7 @@
 macro_rules! command_enum {
     (
         $(#[$enum_meta:meta])*
-        $enum_vis:vis enum $Enum:ident <'a, F>
+        $enum_vis:vis enum $Enum:ident <F>
         where
             F: Clone,
         {
@@ -28,7 +28,10 @@ macro_rules! command_enum {
         }
     ) => {
         $(#[$enum_meta])*
-        $enum_vis enum $Enum <'a, F> {
+        $enum_vis enum $Enum <F>
+        where
+            F: Clone,
+        {
             $(
                 $(#[$struct_meta])*
                 $Struct( $Struct $(<$($struct_gen),+>)? )
@@ -44,7 +47,10 @@ macro_rules! command_enum {
             }
         )*
         $(
-            impl<'a, F> From<$Struct $(<$($struct_gen),+>)? > for $Enum<'a, F> {
+            impl<F> From<$Struct $(<$($struct_gen),+>)? > for $Enum<F>
+            where
+                F: Clone,
+            {
                 fn from(other: $Struct $(<$($struct_gen),+>)? ) -> Self {
                     Self::$Struct(other)
                 }
@@ -60,7 +66,7 @@ macro_rules! command_enum {
                 ),*
             }
         }
-        fn _assert_run_outs<'a, F>(never: shared::Never, typed: $out_mod::$OutputEnum <$mainF> ) {
+        fn _assert_run_outs<F>(never: shared::Never, typed: $out_mod::$OutputEnum <$mainF> ) {
             fn _assert<T, F, O>(_: &shared::Never, _output: &O)
             where
                 T: crate::command::Runnable<F, Output=O> {}
@@ -72,7 +78,10 @@ macro_rules! command_enum {
                 }
             )*
         }
-        impl<'a, F> crate::command::Runnable<F> for $Enum <'a, F> {
+        impl<F> crate::command::Runnable<F> for $Enum <F>
+        where
+            F: Clone,
+        {
             type Output = $out_mod::$OutputEnum<$mainF>;
             fn run<T>(self, sequencer: &mut Sequencer<T, F>) -> Result<Self::Output, Error>
             where
