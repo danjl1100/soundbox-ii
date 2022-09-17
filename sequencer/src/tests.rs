@@ -30,7 +30,7 @@ impl ItemSource<String> for UpdateTrackingItemSource {
 fn create_item_node() -> Result<(), Error> {
     let filename = "filename1.txt";
 
-    let mut s = Sequencer::new(DebugItemSource);
+    let mut s = Sequencer::new(DebugItemSource, String::default());
     s.add_terminal_node(".", filename.to_string())?;
     for n in 0..10 {
         assert_eq!(
@@ -47,7 +47,7 @@ fn create_item_node() -> Result<(), Error> {
 
 #[test]
 fn remove_node() -> Result<(), Error> {
-    let mut s = Sequencer::new(DebugItemSource);
+    let mut s = Sequencer::new(DebugItemSource, String::default());
     assert_eq!(s.tree.sum_node_count(), 1, "beginning length");
     // add
     s.add_node(".", "".to_string())?;
@@ -80,18 +80,18 @@ fn assert_next(
 fn update_node() -> Result<(), Error> {
     let filename = "foo_bar_file";
 
-    let mut s = Sequencer::new(UpdateTrackingItemSource(0));
+    let mut s = Sequencer::new(UpdateTrackingItemSource(0), String::default());
     s.add_terminal_node(".", filename.to_string())?;
     let filters = vec!["", filename];
     assert_next(&mut s, &filters, 0, 0);
     assert_next(&mut s, &filters, 1, 0);
     assert_next(&mut s, &filters, 2, 0);
     //
-    s.ref_item_source().set_rev(52);
+    s.item_source.set_rev(52);
     assert_next(&mut s, &filters, 3, 0);
     assert_next(&mut s, &filters, 4, 0);
     assert_next(&mut s, &filters, 5, 0);
-    s.update_node(".")?;
+    s.update_nodes(".")?;
     assert_next(&mut s, &filters, 6, 52);
     assert_next(&mut s, &filters, 7, 52);
     assert_next(&mut s, &filters, 8, 52);
@@ -99,7 +99,7 @@ fn update_node() -> Result<(), Error> {
 }
 #[test]
 fn update_subtree() -> Result<(), Error> {
-    let mut s = Sequencer::new(UpdateTrackingItemSource(0));
+    let mut s = Sequencer::new(UpdateTrackingItemSource(0), String::default());
     s.add_node(".", "base1".to_string())?;
     s.add_terminal_node(".0", "child1".to_string())?;
     s.add_terminal_node(".0", "child2".to_string())?;
@@ -114,34 +114,34 @@ fn update_subtree() -> Result<(), Error> {
     assert_next(&mut s, &filters_child2, 0, 0);
     assert_next(&mut s, &filters_child3, 1, 0);
     //
-    s.ref_item_source().set_rev(5);
+    s.item_source.set_rev(5);
     assert_next(&mut s, &filters_child1, 1, 0);
     assert_next(&mut s, &filters_child3, 2, 0);
     assert_next(&mut s, &filters_child2, 1, 0);
     assert_next(&mut s, &filters_child3, 3, 0);
-    s.update_node(".1.0")?;
+    s.update_nodes(".1.0")?;
     assert_next(&mut s, &filters_child1, 2, 0);
     assert_next(&mut s, &filters_child3, 4, 5);
     assert_next(&mut s, &filters_child2, 2, 0);
     assert_next(&mut s, &filters_child3, 5, 5);
     //
-    s.ref_item_source().set_rev(8);
+    s.item_source.set_rev(8);
     assert_next(&mut s, &filters_child1, 3, 0);
     assert_next(&mut s, &filters_child3, 6, 5);
     assert_next(&mut s, &filters_child2, 3, 0);
     assert_next(&mut s, &filters_child3, 7, 5);
-    s.update_node(".1")?;
+    s.update_nodes(".1")?;
     assert_next(&mut s, &filters_child1, 4, 0);
     assert_next(&mut s, &filters_child3, 8, 8);
     assert_next(&mut s, &filters_child2, 4, 0);
     assert_next(&mut s, &filters_child3, 9, 8);
     //
-    s.ref_item_source().set_rev(9);
+    s.item_source.set_rev(9);
     assert_next(&mut s, &filters_child1, 5, 0);
     assert_next(&mut s, &filters_child3, 0, 8);
     assert_next(&mut s, &filters_child2, 5, 0);
     assert_next(&mut s, &filters_child3, 1, 8);
-    s.update_node(".0")?;
+    s.update_nodes(".0")?;
     assert_next(&mut s, &filters_child1, 6, 9);
     assert_next(&mut s, &filters_child3, 2, 8);
     assert_next(&mut s, &filters_child2, 6, 9);
@@ -150,7 +150,7 @@ fn update_subtree() -> Result<(), Error> {
 }
 #[test]
 fn set_filter_updates_only_subtree() -> Result<(), Error> {
-    let mut s = Sequencer::new(UpdateTrackingItemSource(7));
+    let mut s = Sequencer::new(UpdateTrackingItemSource(7), String::default());
     s.add_node(".", "first_parent".to_string())?;
     s.add_terminal_node(".0", "first_leaf".to_string())?;
     s.add_node(".", "old_filter_value".to_string())?;
@@ -162,7 +162,7 @@ fn set_filter_updates_only_subtree() -> Result<(), Error> {
     assert_next(&mut s, &filters1, 1, 7);
     assert_next(&mut s, &filters2_old, 1, 7);
     //
-    s.ref_item_source().set_rev(1);
+    s.item_source.set_rev(1);
     s.set_node_filter(".1", "NEW_filter_value".to_string())?;
     let filters2 = vec!["", "NEW_filter_value", "second_leaf"];
     assert_next(&mut s, &filters1, 2, 7);

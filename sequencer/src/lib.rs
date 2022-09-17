@@ -16,8 +16,6 @@
 //
 //! Sequences tracks from various sources
 
-// TODO: only while building
-#![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
 // no unsafe
@@ -40,6 +38,9 @@ use q_filter_tree::{
     OrderType, RemoveError, Weight,
 };
 
+#[macro_use]
+mod macros;
+
 mod iter;
 
 #[cfg(test)]
@@ -48,9 +49,12 @@ mod tests;
 use sources::ItemSource;
 pub mod sources;
 
+pub mod command;
+
 // conversions, for ergonomic use with `ItemSource`
 type Item<T, F> = <T as ItemSource<F>>::Item;
-type ItemError<T, F> = <T as ItemSource<F>>::Error;
+// TODO deleteme
+// type ItemError<T, F> = <T as ItemSource<F>>::Error;
 type Tree<T, F> = q_filter_tree::Tree<Item<T, F>, F>;
 type NodeInfo<T, F> = q_filter_tree::NodeInfo<Item<T, F>, F>;
 
@@ -62,27 +66,26 @@ pub struct Sequencer<T: ItemSource<F>, F> {
 }
 impl<T: ItemSource<F>, F> Sequencer<T, F>
 where
-    F: Default + Clone,
+    F: Clone,
 {
     /// Creates a new, empty Sequencer
-    pub fn new(item_source: T) -> Self {
+    pub fn new(item_source: T, root_filter: F) -> Self {
         Self {
-            tree: q_filter_tree::Tree::new(),
+            tree: q_filter_tree::Tree::new_with_filter(root_filter),
             item_source,
         }
     }
-    /// Returns a mutable reference to the inner item source
-    //TODO - should this be `pub`?  (e.g. is this a valid use-case outside of tests?)
-    fn ref_item_source(&mut self) -> &mut T {
-        &mut self.item_source
-    }
-    fn inner_add_node(&mut self, parent_path_str: &str) -> Result<NodeId<ty::Child>, Error> {
+    fn inner_add_node(
+        &mut self,
+        parent_path_str: &str,
+        filter: F,
+    ) -> Result<NodeId<ty::Child>, Error> {
         let parent_path = parse_path(parent_path_str)?;
         let mut parent_ref = parent_path.try_ref(&mut self.tree)?;
         let mut child_nodes = parent_ref
             .child_nodes()
             .ok_or_else(|| format!("Node {parent_path} does not have child_nodes"))?;
-        let new_node_id = child_nodes.add_child_default();
+        let new_node_id = child_nodes.add_child_filter(filter);
         Ok(new_node_id)
     }
     /// Adds a `Node` to the specified path.
@@ -90,10 +93,8 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn add_node(&mut self, parent_path_str: &str, filter: F) -> Result<String, Error> {
-        let new_node_id = self.inner_add_node(parent_path_str)?;
-        let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
-        node_ref.filter = filter;
+    fn add_node(&mut self, parent_path_str: &str, filter: F) -> Result<NodeIdStr, Error> {
+        let new_node_id = self.inner_add_node(parent_path_str, filter)?;
         Ok(serialize_id(NodeIdTyped::from(new_node_id))?)
     }
     /// Adds a terminal `Node` to the specified path.
@@ -101,10 +102,13 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn add_terminal_node(&mut self, node_path_str: &str, filter: F) -> Result<String, Error> {
-        let new_node_id = self.inner_add_node(node_path_str)?;
+    pub fn add_terminal_node(
+        &mut self,
+        parent_path_str: &str,
+        filter: F,
+    ) -> Result<NodeIdStr, Error> {
+        let new_node_id = self.inner_add_node(parent_path_str, filter)?;
         let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
-        node_ref.filter = filter;
         node_ref.overwrite_child_items_uniform(std::iter::empty());
         let iter = self.tree.enumerate_mut_subtree(&new_node_id);
         Self::inner_update_node(&mut self.item_source, iter.expect("created node exists"))?;
@@ -185,12 +189,14 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn update_node(&mut self, node_path_str: &str) -> Result<String, Error> {
+    pub fn update_nodes(&mut self, node_path_str: &str) -> Result<(), Error> {
         let node_path = parse_path(node_path_str)?;
         // update node (recursively)
         let iter = self.tree.enumerate_mut_subtree(&node_path)?;
         Self::inner_update_node(&mut self.item_source, iter)?;
-        Ok(serialize_path(node_path)?)
+        // TODO deleteme, no reason to repeat back (sanitized?) version of input param
+        // Ok(serialize_path(node_path)?)
+        Ok(())
     }
     fn inner_update_node(
         item_source: &mut T,
@@ -227,12 +233,13 @@ where
     }
 }
 
-fn serialize_id<T: Into<NodeIdTyped>>(id: T) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&id.into())
+fn serialize_id<T: Into<NodeIdTyped>>(id: T) -> Result<NodeIdStr, serde_json::Error> {
+    serde_json::to_string(&id.into()).map(NodeIdStr)
 }
-fn serialize_path<T: Into<NodePathTyped>>(path: T) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&path.into())
-}
+// TODO deleteme, unused
+// fn serialize_path<T: Into<NodePathTyped>>(path: T) -> Result<Path, serde_json::Error> {
+//     serde_json::to_string(&path.into()).map(Path)
+// }
 fn parse_path(input_str: &str) -> Result<NodePathTyped, String> {
     match parse_descriptor(input_str)? {
         NodeDescriptor::Path(node_path) => Ok(node_path),
@@ -267,6 +274,25 @@ where
         write!(f, "{tree}")
     }
 }
+
+/// Serialized [`q_filter_tree::id::NodeId`]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeIdStr(pub String);
+impl std::fmt::Display for NodeIdStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// TODO deleteme, unused
+// /// Serialized [`q_filter_tree::NodePath`]
+// #[derive(Clone, Debug, PartialEq, Eq)]
+// pub struct Path(pub String);
+// impl std::fmt::Display for Path {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self.0)
+//     }
+// }
 
 shared::wrapper_enum! {
     /// Error generated by [`Sequencer`] commands

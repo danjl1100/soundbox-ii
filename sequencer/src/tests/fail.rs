@@ -28,7 +28,7 @@ fn build_dummy_path(length: usize) -> String {
 #[allow(clippy::panic)]
 fn lookup_fails() {
     let allowed_count = 3;
-    let mut s = Sequencer::new(FailSource { allowed_count });
+    let mut s = Sequencer::new(FailSource { allowed_count }, ());
     for count in 0..100 {
         let parent_path = build_dummy_path(count);
         let child_count = count + 1;

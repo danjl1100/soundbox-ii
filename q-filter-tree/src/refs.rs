@@ -65,14 +65,22 @@ pub struct NodeChildrenRefMut<'tree, 'path, T, F> {
     path: NodePathRefTyped<'path>,
     sequence_counter: &'tree mut node::SequenceCounter,
 }
+impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
+    const DEFAULT_WEIGHT: Weight = 1;
+    /// Adds an empty node with the specified filter
+    pub fn add_child_filter(&mut self, filter: F) -> NodeId<ty::Child> {
+        let weight = Self::DEFAULT_WEIGHT;
+        let info = NodeInfoIntrinsic::default_with_filter(filter);
+        self.add_child_from(weight, info)
+    }
+}
 impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F>
 where
     F: Default,
 {
     /// Adds an empty child node, with the default weight
     pub fn add_child_default(&mut self) -> NodeId<ty::Child> {
-        const DEFAULT_WEIGHT: Weight = 1;
-        self.add_child_from(DEFAULT_WEIGHT, NodeInfoIntrinsic::default())
+        self.add_child_from(Self::DEFAULT_WEIGHT, NodeInfoIntrinsic::default())
     }
     /// Adds an empty child node, with optional weight
     pub fn add_child(&mut self, weight: Weight) -> NodeId<ty::Child> {

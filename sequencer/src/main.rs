@@ -23,7 +23,11 @@ use std::{
 };
 
 use arg_split::ArgSplit;
-use sequencer::{sources::multi_select::Mismatch, Error, Sequencer};
+use sequencer::{
+    command::{self, Runnable},
+    sources::multi_select::Mismatch,
+    Error, Sequencer,
+};
 
 const COMMAND_NAME: &str = "sequencer";
 
@@ -111,6 +115,12 @@ pub(crate) enum Command {
         /// Number of items to print
         count: Option<usize>,
     },
+    // TODO
+    // /// Set the minimum number of staged (determined) items at the root node
+    // SetRootStaged {
+    //     /// Minimum number of items to stage
+    //     count: usize,
+    // },
 }
 /// Types of License snippets available to show
 #[derive(clap::Subcommand, Debug)]
@@ -187,7 +197,7 @@ mod source {
 impl Cli {
     const COMMENT: &'static str = "#";
     fn new(source: source::Source, source_type: source::Type, params: Parameters) -> Self {
-        let sequencer = Sequencer::new(source);
+        let sequencer = Sequencer::new(source, None);
         Self {
             sequencer,
             source_type,
@@ -264,12 +274,19 @@ impl Cli {
                 items_filter,
                 source_type: requested_type,
             } => {
-                let source_type = self.calculate_existing_type(&parent_path, requested_type)?;
+                let parent_path = &parent_path;
+                let source_type = self.calculate_existing_type(parent_path, requested_type)?;
                 let node_path =
                     if let Some(filter) = self.parse_filter_args(items_filter, source_type) {
-                        self.sequencer.add_terminal_node(&parent_path, Some(filter))
+                        self.run(command::AddTerminalNode {
+                            parent_path,
+                            filter: Some(filter),
+                        })
                     } else {
-                        self.sequencer.add_node(&parent_path, None)
+                        self.run(command::AddNode {
+                            parent_path,
+                            filter: None,
+                        })
                     }?;
                 self.output(format_args!("added node {node_path}"));
             }
@@ -280,7 +297,10 @@ impl Cli {
             } => {
                 let source_type = self.calculate_existing_type(&path, requested_type)?;
                 let filter = self.parse_filter_args(items_filter, source_type);
-                let old = self.sequencer.set_node_filter(&path, filter.clone())?;
+                let old = self.run(command::SetNodeFilter {
+                    path: &path,
+                    filter: filter.clone(),
+                });
                 self.output(format_args!("changed filter from {old:?} -> {filter:?}"));
             }
             Command::SetWeight {
@@ -289,30 +309,38 @@ impl Cli {
                 weight,
             } => {
                 let old_weight = if let Some(item_index) = item_index {
-                    self.sequencer
-                        .set_node_item_weight(&path, item_index, weight)?
+                    self.run(command::SetNodeItemWeight {
+                        path: &path,
+                        item_index,
+                        weight,
+                    })
                 } else {
-                    self.sequencer.set_node_weight(&path, weight)?
-                };
+                    self.run(command::SetNodeWeight {
+                        path: &path,
+                        weight,
+                    })
+                }?;
                 self.output(format_args!("changed weight from {old_weight} -> {weight}"));
             }
             Command::SetOrderType { path, order_type } => {
-                let old = self.sequencer.set_node_order_type(&path, order_type)?;
+                let old = self.run(command::SetNodeOrderType {
+                    path: &path,
+                    order_type,
+                })?;
                 self.output(format_args!(
                     "changed order type from {old:?} -> {order_type:?}"
                 ));
             }
             Command::Update { path } => {
                 let path = path.as_ref().map_or(".", |p| p);
-                let path = self.sequencer.update_node(path)?;
+                self.run(command::UpdateNodes { path })?;
                 self.output(format_args!("updated nodes under path {path}"));
             }
             Command::Remove { id } => {
-                let removed = self.sequencer.remove_node(&id)?;
-                let (weight, info) = removed;
-                self.output(format_args!(
-                    "removed node {id}: weight = {weight}, {info:#?}"
-                ));
+                self.run(command::RemoveNode { id: &id })?;
+                // let removed = self.sequencer.remove_node(&id)?;
+                // let (weight, info) = removed;
+                self.output(format_args!("removed node {id}"));
             }
             Command::Next { count } => {
                 let count = count.unwrap_or(1);
@@ -328,6 +356,12 @@ impl Cli {
             }
         }
         Ok(())
+    }
+    fn run<T>(&mut self, command: T) -> Result<T::Output, Error>
+    where
+        T: Runnable<Option<source::TypedArg>>,
+    {
+        self.sequencer.run(command)
     }
     fn parse_filter_args(
         &self,

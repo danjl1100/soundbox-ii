@@ -169,6 +169,11 @@ where
     }
 }
 impl<T, F> Tree<T, F> {
+    /// Creates a tree with the specified filter on the root node
+    pub fn new_with_filter(root_filter: F) -> Self {
+        let node_info = node::meta::NodeInfoIntrinsic::default_with_filter(root_filter);
+        Self::new_with_root(node_info)
+    }
     /// Creates a tree with the specified root info
     pub(crate) fn new_with_root(node_info: node::meta::NodeInfoIntrinsic<T, F>) -> Self {
         let (root, sequence_counter) = node_info.construct_root();

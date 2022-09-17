@@ -423,14 +423,17 @@ pub(crate) mod meta {
     }
     impl<T, F: Default> Default for NodeInfoIntrinsic<T, F> {
         fn default() -> Self {
-            Self::Chain {
-                queue: VecDeque::default(),
-                filter: F::default(),
-                order: order::Type::default(),
-            }
+            Self::default_with_filter(F::default())
         }
     }
     impl<T, F> NodeInfoIntrinsic<T, F> {
+        pub(crate) fn default_with_filter(filter: F) -> Self {
+            Self::Chain {
+                queue: VecDeque::default(),
+                filter,
+                order: order::Type::default(),
+            }
+        }
         pub(crate) fn construct_root(self) -> (Node<T, F>, SequenceCounter) {
             const ROOT_ID: NodeId<ty::Root> = id::ROOT;
             let root = self.make_node(ROOT_ID.sequence());
