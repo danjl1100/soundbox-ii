@@ -123,6 +123,13 @@ pub(crate) enum Command {
         /// Path of the target node (default is root)
         path: Option<String>,
     },
+    /// Removes an item from the queue of the specified node
+    QueueRemove {
+        /// Index of the queue item to remove
+        index: usize,
+        /// Path of the target node (default is root)
+        path: Option<String>,
+    },
 }
 /// Types of License snippets available to show
 #[derive(clap::Subcommand, Debug)]
@@ -353,6 +360,9 @@ impl Cli {
             }
             Command::SetPrefill { path, min_count } => {
                 self.run(command::SetNodePrefill { path, min_count })?;
+            }
+            Command::QueueRemove { index, path } => {
+                self.run(command::QueueRemove { path, index })?;
             }
         }
         Ok(())

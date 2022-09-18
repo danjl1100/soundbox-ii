@@ -72,6 +72,13 @@ command_enum! {
             /// Minimum number of items to stage
             min_count: usize,
         },
+        /// Removes an item from the queue of the specified node
+        QueueRemove -> Success {
+            /// Path of the target node (default is root)
+            path: Option<String>,
+            /// Index of the queue item to remove
+            index: usize,
+        },
     }
     mod out {
         /// Typed outputs
@@ -156,6 +163,12 @@ command_runnable! {
         fn run(self, seq) -> Result<(), Error> {
             let Self { path, min_count } = self;
             seq.set_node_prefill_count(path.as_deref(), min_count)
+        }
+    }
+    impl<F> Runnable<F> for QueueRemove {
+        fn run(self, seq) -> Result<(), Error> {
+            let Self { path, index } = self;
+            seq.queue_remove_item(path.as_deref(), index)
         }
     }
 }

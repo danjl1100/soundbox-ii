@@ -236,6 +236,19 @@ where
         node_ref.set_queue_prefill_len(min_count);
         Ok(())
     }
+    fn queue_remove_item(&mut self, path: Option<&str>, index: usize) -> Result<(), Error> {
+        let node_path = path
+            .map(parse_path)
+            .transpose()?
+            .unwrap_or_else(|| self.tree.root_id().into());
+        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        node_ref.queue_remove(index).map(|_| ()).ok_or_else(|| {
+            Error::Message(format!(
+                "failed to remove from queue index {index}, max length {}",
+                node_ref.queue_len()
+            ))
+        })
+    }
 }
 
 fn serialize_id<T: Into<NodeIdTyped>>(id: T) -> Result<NodeIdStr, serde_json::Error> {

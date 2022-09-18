@@ -159,9 +159,9 @@ macro_rules! source_multi_select {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
                     $(
-                        Self::$field_variant(err) => write!(f, "{err}"),
+                        Self::$field_variant(err) => write!(f, "{}", err),
                     )+
-                    Self::TypeMismatch(mismatch) => write!(f, "arg type {mismatch}"),
+                    Self::TypeMismatch(mismatch) => write!(f, "arg type {}", mismatch),
                     Self::NoType => write!(f, "args untyped"),
                 }
             }

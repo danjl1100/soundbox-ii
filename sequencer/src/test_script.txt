@@ -1,16 +1,66 @@
 add . src
 add .
-add .1 src
+# add .1 src
+add .1 ../q-filter-tree/tests
 
-set-filter .1 ..
+# set-filter .1 ..
 set-weight .0 2
 set-weight .1.0 --item-index 1 5
 set-order-type .1.0 round-robin
 set-order-type .0 shuffle
 
 prefill 5
-print
 prefill 2 .0
+prefill 2 .1.0
+
+# remove from queue, to only have "q-filter-tree test prefill" elements
+# .1.0 is [x, O]
+queue-remove 0 .1.0
+# .1.0 is [O, x]
+queue-remove 4
+# .1.0 is [x, x] for a while...
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 0 .1.0
+# .1.0 is [O, x]
+queue-remove 3
+queue-remove 4
+queue-remove 4
+# root is now [x, x, x, O, O]
+# .1.0 is [x, x]
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+# .1.0 is [x, O]
+queue-remove 0 .1.0
+queue-remove 2
+queue-remove 4
+queue-remove 4
+# root is now [x, x, O, O, O]
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 0 .1.0
+# .1.0 is [O, x]
+queue-remove 1
+queue-remove 4
+queue-remove 4
+# root is now [x, O, O, O, O]
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 1 .1.0
+queue-remove 0 .1.0
+# .1.0 is [O, x]
+queue-remove 0
+queue-remove 4
+queue-remove 4
 print
-n
+n 5
 print

@@ -50,6 +50,12 @@ impl<T, F> Node<T, F> {
     }
 }
 impl<T: Clone, F> Node<T, F> {
+    /// Removes the specified item from the queue
+    pub fn queue_remove(&mut self, index: usize) -> Option<T> {
+        let removed = self.queue.remove(index);
+        self.queue_prefill(false);
+        removed
+    }
     /// Sets the number of elements to automatically pre-fill into the queue
     pub fn set_queue_prefill_len(&mut self, new_len: usize) {
         self.queue_prefill_len = new_len;
@@ -76,7 +82,8 @@ impl<T: Clone, F> Node<T, F> {
     }
     /// Pops an item from child node queues (if available) then references items
     pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
-        self.queue_prefill(true);
+        // NOTE only pre-fill at the side of the actual `pop_front`
+        // self.queue_prefill(true);
         self.inner_pop_item(None)
     }
     fn inner_pop_item(&mut self, ignore_queue: Option<IgnoreQueue>) -> Option<Cow<'_, T>> {
@@ -143,7 +150,10 @@ impl<T: Clone, F> Node<T, F> {
         } else {
             let queued = ignore_queue
                 .is_none()
-                .then(|| self.queue.pop_front())
+                .then(|| {
+                    self.queue_prefill(true);
+                    self.queue.pop_front()
+                })
                 .flatten();
             match (queued, &mut self.children) {
                 (Some(queued), _) => Cow::Owned(queued),
