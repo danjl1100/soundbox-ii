@@ -116,10 +116,12 @@ pub(crate) enum Command {
         count: Option<usize>,
     },
     /// Set the minimum number of staged (determined) items at the root node
-    #[clap(alias("stage"))]
-    SetRootStaged {
+    #[clap(alias("prefill"))]
+    SetPrefill {
         /// Minimum number of items to stage
         min_count: usize,
+        /// Path of the target node (default is root)
+        path: Option<String>,
     },
 }
 /// Types of License snippets available to show
@@ -349,8 +351,8 @@ impl Cli {
                     }
                 }
             }
-            Command::SetRootStaged { min_count } => {
-                self.run(command::SetRootStaged { min_count })?;
+            Command::SetPrefill { path, min_count } => {
+                self.run(command::SetNodePrefill { path, min_count })?;
             }
         }
         Ok(())

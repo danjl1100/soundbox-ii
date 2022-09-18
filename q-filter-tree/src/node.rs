@@ -40,6 +40,14 @@ impl<T, F> Node<T, F> {
     pub fn push_item(&mut self, item: T) {
         self.queue.push_back(item);
     }
+    /// Returns a the length of the queue
+    pub fn queue_len(&self) -> usize {
+        self.queue.len()
+    }
+    /// Returns an iterator over the queue
+    pub fn queue_iter(&self) -> impl Iterator<Item = &T> {
+        self.queue.iter()
+    }
 }
 impl<T: Clone, F> Node<T, F> {
     /// Sets the number of elements to automatically pre-fill into the queue
@@ -57,8 +65,7 @@ impl<T: Clone, F> Node<T, F> {
         if queue_prefill_len > 0 {
             let min_count = queue_prefill_len + if will_pop { 1 } else { 0 };
             while self.queue.len() < min_count {
-                let ignore_queue = Some(());
-                if let Some(popped) = self.inner_pop_item(ignore_queue) {
+                if let Some(popped) = self.inner_pop_item(Some(IgnoreQueue)) {
                     let popped = popped.into_owned();
                     self.push_item(popped);
                 } else {
@@ -72,17 +79,20 @@ impl<T: Clone, F> Node<T, F> {
         self.queue_prefill(true);
         self.inner_pop_item(None)
     }
-    fn inner_pop_item(&mut self, ignore_queue: Option<()>) -> Option<Cow<'_, T>> {
+    fn inner_pop_item(&mut self, ignore_queue: Option<IgnoreQueue>) -> Option<Cow<'_, T>> {
         // 1) search Node for path to:
         //    1.a) Node X has queued item (Owned)
         //    1.b) Node X has an item to (Borrowed)
         self.find_reverse_path_to_pop(ignore_queue).map(|path| {
             // 2) retrieve the Owned or Borrowed item from the specified node
-            self.pop_at_reverse_path(&path)
+            self.pop_at_reverse_path(&path, ignore_queue)
         })
         // This all occurs in one `&mut self` function, so no intermediate access can occur.
     }
-    fn find_reverse_path_to_pop(&mut self, ignore_queue: Option<()>) -> Option<Vec<NodePathElem>> {
+    fn find_reverse_path_to_pop(
+        &mut self,
+        ignore_queue: Option<IgnoreQueue>,
+    ) -> Option<Vec<NodePathElem>> {
         const INVALID_INDEX: &str = "valid index from next_index";
         if self.queue.is_empty() || ignore_queue.is_some() {
             match &mut self.children {
@@ -112,7 +122,11 @@ impl<T: Clone, F> Node<T, F> {
             Some(vec![])
         }
     }
-    fn pop_at_reverse_path(&mut self, reverse_path: &[NodePathElem]) -> Cow<'_, T> {
+    fn pop_at_reverse_path(
+        &mut self,
+        reverse_path: &[NodePathElem],
+        ignore_queue: Option<IgnoreQueue>,
+    ) -> Cow<'_, T> {
         if let Some((child_index, remainder)) = reverse_path.split_last() {
             match &mut self.children {
                 Children::Chain(chain) => {
@@ -120,18 +134,23 @@ impl<T: Clone, F> Node<T, F> {
                         .nodes
                         .get_elem_mut(*child_index)
                         .expect("attempt to pop from a path descendent outside of range");
-                    child.pop_at_reverse_path(remainder)
+                    child.pop_at_reverse_path(remainder, None)
                 }
                 Children::Items(_) => {
                     unreachable!("attempt to pop from a path descendent of an items node")
                 }
             }
-        } else if let Some(queued) = self.queue.pop_front() {
-            Cow::Owned(queued)
         } else {
-            match &mut self.children {
-                Children::Chain(_) => unreachable!("attempt to pop at a chain node with no queue"),
-                Children::Items(items) => {
+            let queued = ignore_queue
+                .is_none()
+                .then(|| self.queue.pop_front())
+                .flatten();
+            match (queued, &mut self.children) {
+                (Some(queued), _) => Cow::Owned(queued),
+                (None, Children::Chain(_)) => {
+                    unreachable!("attempt to pop at a chain node with no queue")
+                }
+                (None, Children::Items(items)) => {
                     let item = items
                         .next_item()
                         // Panic if the promised source of the item is `None` (logic error)
@@ -231,6 +250,10 @@ impl<T, F> std::fmt::Debug for Node<T, F> {
         f.debug_struct("Node").finish()
     }
 }
+
+/// Marker for operations which shall ignore the queue
+#[derive(Clone, Copy)]
+struct IgnoreQueue;
 
 #[derive(Clone)]
 pub(crate) enum Children<T, F> {

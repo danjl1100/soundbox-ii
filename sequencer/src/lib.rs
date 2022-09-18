@@ -223,10 +223,18 @@ where
     pub fn pop_next(&mut self) -> Option<Cow<'_, Item<T, F>>> {
         self.tree.pop_item()
     }
-    fn set_root_stage_min_count(&mut self, min_count: usize) {
-        let root_id = self.tree.root_id();
-        let mut root_ref = root_id.try_ref(&mut self.tree);
-        root_ref.set_queue_prefill_len(min_count);
+    fn set_node_prefill_count(
+        &mut self,
+        path: Option<&str>,
+        min_count: usize,
+    ) -> Result<(), Error> {
+        let node_path = path
+            .map(parse_path)
+            .transpose()?
+            .unwrap_or_else(|| self.tree.root_id().into());
+        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        node_ref.set_queue_prefill_len(min_count);
+        Ok(())
     }
 }
 

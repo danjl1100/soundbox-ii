@@ -8,7 +8,9 @@ set-weight .1.0 --item-index 1 5
 set-order-type .1.0 round-robin
 set-order-type .0 shuffle
 
-stage 5
+prefill 5
+print
+prefill 2 .0
 print
 n
 print

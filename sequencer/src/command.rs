@@ -65,8 +65,10 @@ command_enum! {
             /// Target node id
             id: String,
         },
-        /// Sets the minimum count of items to keep staged in the root node's queue
-        SetRootStaged -> Success {
+        /// Sets the minimum count of items to keep staged in the specified node's queue
+        SetNodePrefill -> Success {
+            /// Target node path (default is root)
+            path: Option<String>,
             /// Minimum number of items to stage
             min_count: usize,
         },
@@ -104,78 +106,56 @@ pub trait Runnable<F> {
 command_runnable! {
     impl<F> Runnable<F> for AddNode<F> {
         fn run(self, seq) -> Result<NodeIdStr, Error> {
-            let Self {
-                parent_path,
-                filter,
-            } = self;
+            let Self { parent_path, filter } = self;
             seq.add_node(&parent_path, filter)
         }
     }
     impl<F> Runnable<F> for AddTerminalNode<F> {
         fn run(self, seq) -> Result<NodeIdStr, Error> {
-            let Self {
-                parent_path,
-                filter,
-            } = self;
+            let Self { parent_path, filter } = self;
             seq.add_terminal_node(&parent_path, filter)
         }
     }
     impl<F> Runnable<F> for SetNodeFilter<F> {
         fn run(self, seq) -> Result<F, Error> {
-            let Self {
-                path,
-                filter,
-            } = self;
+            let Self { path, filter } = self;
             seq.set_node_filter(&path, filter)
         }
     }
     impl<F> Runnable<F> for SetNodeItemWeight {
         fn run(self, seq) -> Result<Weight, Error> {
-            let Self {
-                path,
-                item_index,
-                weight,
-            } = self;
+            let Self { path, item_index, weight } = self;
             seq.set_node_item_weight(&path, item_index, weight)
         }
     }
     impl<F> Runnable<F> for SetNodeWeight {
         fn run(self, seq) -> Result<Weight, Error> {
-            let Self {
-                path,
-                weight,
-            } = self;
+            let Self { path, weight } = self;
             seq.set_node_weight(&path, weight)
         }
     }
     impl<F> Runnable<F> for SetNodeOrderType {
         fn run(self, seq) -> Result<OrderType, Error> {
-            let Self {
-                path,
-                order_type,
-            } = self;
+            let Self { path, order_type } = self;
             seq.set_node_order_type(&path, order_type)
         }
     }
     impl<F> Runnable<F> for UpdateNodes {
         fn run(self, seq) -> Result<(), Error> {
-            let Self {
-                path,
-            } = self;
+            let Self { path } = self;
             seq.update_nodes(&path)
         }
     }
     impl<F> Runnable<F> for RemoveNode {
         fn run(self, seq) -> Result<(), Error> {
-            let Self {
-                id
-            } = self;
+            let Self { id } = self;
             seq.remove_node(&id).map(|_| ())
         }
     }
-    impl<F> Runnable<F> for SetRootStaged {
+    impl<F> Runnable<F> for SetNodePrefill {
         fn run(self, seq) -> Result<(), Error> {
-            Ok(seq.set_root_stage_min_count(self.min_count))
+            let Self { path, min_count } = self;
+            seq.set_node_prefill_count(path.as_deref(), min_count)
         }
     }
 }
