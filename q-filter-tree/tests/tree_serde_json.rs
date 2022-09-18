@@ -104,7 +104,7 @@ fn simple_deserialize() -> Result<()> {
     println!(
         "input:\n\t{}\ndeserialized to:\n\t{}",
         tree_json,
-        serde_json::to_string(&t)?
+        serde_json::to_string_pretty(&t)?
     );
     //
     let root = t.root_id();
@@ -155,7 +155,7 @@ fn complex_deserialize() -> Result<()> {
       }],
       ".0.0#2": [ [], {
         "queue": [],
-        "filter": null,
+        "filter": "double O",
         "order": "InOrder"
       }],
       ".0.1#3": [ [], {
@@ -180,11 +180,12 @@ fn complex_deserialize() -> Result<()> {
       }],
       ".0.4#7": [ [], {
         "items": ["ping", "pong"],
-        "filter": null,
+        "queue": [],
+        "filter": "oh-four",
         "order": "InOrder"
       }]
     }"#;
-    let mut t: Tree<&str, Option<()>> = serde_json::from_str(tree_json)?;
+    let mut t: Tree<&str, Option<String>> = serde_json::from_str(tree_json)?;
     //
     println!(
         "input:\n\t{}\ndeserialized to:\n\t{}",
@@ -194,19 +195,19 @@ fn complex_deserialize() -> Result<()> {
     //
     let root = t.root_id();
     assert_eq!(root.try_ref(&mut t).pop_item(), None);
-    const CHILD_PATH_STRS: &[&str] = &[
-        "\".0\"",
-        "\".0.0\"",
-        "\".0.1\"",
-        "\".0.2\"",
-        "\".0.3\"",
-        "\".0.3.0\"",
-        "\".0.4\"",
+    let child_path_strs = [
+        ("\".0\"", None),
+        ("\".0.0\"", Some("double O".to_string())),
+        ("\".0.1\"", None),
+        ("\".0.2\"", None),
+        ("\".0.3\"", None),
+        ("\".0.3.0\"", None),
+        ("\".0.4\"", Some("oh-four".to_string())),
     ];
-    for child_path_str in CHILD_PATH_STRS {
+    for (child_path_str, expected_filter) in child_path_strs {
         let child = unwrap_child_path(serde_json::from_str(child_path_str)?);
         let child_ref = child.try_ref(&mut t).expect("child exists");
-        assert_eq!(child_ref.filter, None);
+        assert_eq!(child_ref.filter, expected_filter);
     }
     //
     assert_eq!(t.pop_item(), None);

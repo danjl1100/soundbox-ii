@@ -55,6 +55,7 @@ fn remove_node() -> Result<(), Error> {
     // remove
     let expect_removed = q_filter_tree::NodeInfo::Chain {
         queue: VecDeque::new(),
+        queue_prefill_len: 0,
         filter: String::new(),
         order: OrderType::default(),
     };

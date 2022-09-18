@@ -102,11 +102,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn add_terminal_node(
-        &mut self,
-        parent_path_str: &str,
-        filter: F,
-    ) -> Result<NodeIdStr, Error> {
+    fn add_terminal_node(&mut self, parent_path_str: &str, filter: F) -> Result<NodeIdStr, Error> {
         let new_node_id = self.inner_add_node(parent_path_str, filter)?;
         let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
         node_ref.overwrite_child_items_uniform(std::iter::empty());
@@ -119,7 +115,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn set_node_filter(&mut self, node_path_str: &str, filter: F) -> Result<F, Error> {
+    fn set_node_filter(&mut self, node_path_str: &str, filter: F) -> Result<F, Error> {
         let node_path = parse_path(node_path_str)?;
         // set the filter
         let mut node_ref = node_path.try_ref(&mut self.tree)?;
@@ -134,7 +130,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn set_node_item_weight(
+    fn set_node_item_weight(
         &mut self,
         node_path_str: &str,
         item_index: usize,
@@ -158,11 +154,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn set_node_weight(
-        &mut self,
-        node_path_str: &str,
-        weight: Weight,
-    ) -> Result<Weight, Error> {
+    fn set_node_weight(&mut self, node_path_str: &str, weight: Weight) -> Result<Weight, Error> {
         let node_path = parse_path(node_path_str)?;
         let node_path = match node_path {
             NodePathTyped::Root(path) => Err(InvalidNodePath::from(path)),
@@ -176,7 +168,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn set_node_order_type(
+    fn set_node_order_type(
         &mut self,
         node_path_str: &str,
         order_type: OrderType,
@@ -189,7 +181,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn update_nodes(&mut self, node_path_str: &str) -> Result<(), Error> {
+    fn update_nodes(&mut self, node_path_str: &str) -> Result<(), Error> {
         let node_path = parse_path(node_path_str)?;
         // update node (recursively)
         let iter = self.tree.enumerate_mut_subtree(&node_path)?;
@@ -217,7 +209,7 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    pub fn remove_node(
+    fn remove_node(
         &mut self,
         node_id_str: &str,
     ) -> Result<(q_filter_tree::Weight, NodeInfo<T, F>), Error> {
@@ -230,6 +222,11 @@ where
     /// Returns the next [`Item`](`ItemSource::Item`)
     pub fn pop_next(&mut self) -> Option<Cow<'_, Item<T, F>>> {
         self.tree.pop_item()
+    }
+    fn set_root_stage_min_count(&mut self, min_count: usize) {
+        let root_id = self.tree.root_id();
+        let mut root_ref = root_id.try_ref(&mut self.tree);
+        root_ref.set_queue_prefill_len(min_count);
     }
 }
 

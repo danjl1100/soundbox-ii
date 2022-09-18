@@ -20,8 +20,12 @@ impl Lines {
     /// # Errors
     /// Returns an error if the specified root path is not a directory
     pub fn new(root: PathBuf) -> Result<Self, io::Error> {
-        let root = RootFolder::new(root)?;
-        Ok(Self { root })
+        Ok(Self::from(RootFolder::new(root)?))
+    }
+}
+impl From<RootFolder> for Lines {
+    fn from(root: RootFolder) -> Self {
+        Self { root }
     }
 }
 impl<T> ItemSource<T> for Lines
@@ -57,8 +61,12 @@ impl FolderListing {
     /// # Errors
     /// Returns an error if the specified root path is not a directory
     pub fn new(root: PathBuf) -> Result<Self, io::Error> {
-        let root = RootFolder::new(root)?;
-        Ok(Self { root })
+        Ok(Self::from(RootFolder::new(root)?))
+    }
+}
+impl From<RootFolder> for FolderListing {
+    fn from(root: RootFolder) -> Self {
+        Self { root }
     }
 }
 impl<T> ItemSource<T> for FolderListing

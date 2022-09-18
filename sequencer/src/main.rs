@@ -106,7 +106,7 @@ pub(crate) enum Command {
     Remove {
         /// Id of the target node to delete
         id: String,
-        //TODO
+        //TODO is this appropriate?
         // recursive: bool,
     },
     /// Print the next item(s)
@@ -115,12 +115,12 @@ pub(crate) enum Command {
         /// Number of items to print
         count: Option<usize>,
     },
-    // TODO
-    // /// Set the minimum number of staged (determined) items at the root node
-    // SetRootStaged {
-    //     /// Minimum number of items to stage
-    //     count: usize,
-    // },
+    /// Set the minimum number of staged (determined) items at the root node
+    #[clap(alias("stage"))]
+    SetRootStaged {
+        /// Minimum number of items to stage
+        min_count: usize,
+    },
 }
 /// Types of License snippets available to show
 #[derive(clap::Subcommand, Debug)]
@@ -348,6 +348,9 @@ impl Cli {
                         break;
                     }
                 }
+            }
+            Command::SetRootStaged { min_count } => {
+                self.run(command::SetRootStaged { min_count })?;
             }
         }
         Ok(())

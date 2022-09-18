@@ -31,13 +31,15 @@ pub trait ItemSource<T> {
     fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error>;
 }
 
-struct RootFolder(PathBuf);
+/// Handle to a root folder, for use in creating [`FileLines`] or [`FolderListing`]
+#[derive(Clone)]
+pub struct RootFolder(PathBuf);
 impl RootFolder {
     /// Attempts to reference the specified root path
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    fn new(root: PathBuf) -> Result<Self, io::Error> {
+    pub fn new(root: PathBuf) -> Result<Self, io::Error> {
         if !root.exists() {
             // TODO change to ErrorKind::NotFound, when stabilized
             return Err(io::Error::new(io::ErrorKind::Other, "not found"));

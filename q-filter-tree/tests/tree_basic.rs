@@ -169,6 +169,7 @@ fn node_removal() {
                 filter: None,
                 order: OrderType::InOrder,
                 queue: VecDeque::new(),
+                queue_prefill_len: 0,
             }
         )))
     );
@@ -180,6 +181,7 @@ fn node_removal() {
                 filter: None,
                 order: OrderType::InOrder,
                 queue: VecDeque::from_iter(2..10),
+                queue_prefill_len: 0,
             }
         )))
     );

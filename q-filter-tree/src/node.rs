@@ -15,6 +15,8 @@ pub struct Node<T, F> {
     pub(crate) children: Children<T, F>,
     /// Items queue polled from child nodes/items
     queue: VecDeque<T>,
+    /// Number of elements to automatically pre-fill into the queue
+    queue_prefill_len: usize,
     /// Filter qualifier
     pub filter: F,
     pub(crate) sequence: Sequence,
@@ -40,20 +42,49 @@ impl<T, F> Node<T, F> {
     }
 }
 impl<T: Clone, F> Node<T, F> {
+    /// Sets the number of elements to automatically pre-fill into the queue
+    pub fn set_queue_prefill_len(&mut self, new_len: usize) {
+        self.queue_prefill_len = new_len;
+        self.queue_prefill(false);
+    }
+    fn queue_prefill(&mut self, will_pop: bool) {
+        let queue_prefill_len = match &self.children {
+            Children::Chain(_) => self.queue_prefill_len,
+            Children::Items(items) => self.queue_prefill_len.min(items.len()),
+        };
+        // NOTE: guarded to ensure `prefill = 0` allows Cow::Borrowed usage
+        // (otherwise, `will_pop = true` unconditionally clones *every* element)
+        if queue_prefill_len > 0 {
+            let min_count = queue_prefill_len + if will_pop { 1 } else { 0 };
+            while self.queue.len() < min_count {
+                let ignore_queue = Some(());
+                if let Some(popped) = self.inner_pop_item(ignore_queue) {
+                    let popped = popped.into_owned();
+                    self.push_item(popped);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
     /// Pops an item from child node queues (if available) then references items
     pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
+        self.queue_prefill(true);
+        self.inner_pop_item(None)
+    }
+    fn inner_pop_item(&mut self, ignore_queue: Option<()>) -> Option<Cow<'_, T>> {
         // 1) search Node for path to:
         //    1.a) Node X has queued item (Owned)
         //    1.b) Node X has an item to (Borrowed)
-        self.find_reverse_path_to_pop().map(|path| {
+        self.find_reverse_path_to_pop(ignore_queue).map(|path| {
             // 2) retrieve the Owned or Borrowed item from the specified node
             self.pop_at_reverse_path(&path)
         })
         // This all occurs in one `&mut self` function, so no intermediate access can occur.
     }
-    fn find_reverse_path_to_pop(&mut self) -> Option<Vec<NodePathElem>> {
+    fn find_reverse_path_to_pop(&mut self, ignore_queue: Option<()>) -> Option<Vec<NodePathElem>> {
         const INVALID_INDEX: &str = "valid index from next_index";
-        if self.queue.is_empty() {
+        if self.queue.is_empty() || ignore_queue.is_some() {
             match &mut self.children {
                 Children::Items(items) if items.is_empty() => None,
                 Children::Items(_) => Some(vec![]),
@@ -69,7 +100,7 @@ impl<T: Clone, F> Node<T, F> {
                             .take()?;
                         //
                         let node = nodes.get_elem_mut(node_index).expect(INVALID_INDEX);
-                        if let Some(mut path) = node.find_reverse_path_to_pop() {
+                        if let Some(mut path) = node.find_reverse_path_to_pop(None) {
                             path.push(node_index);
                             break Some(path);
                         }
@@ -367,6 +398,7 @@ pub(crate) mod meta {
             let Node {
                 children,
                 queue,
+                queue_prefill_len,
                 filter,
                 sequence: _,
             } = node;
@@ -375,6 +407,7 @@ pub(crate) mod meta {
                     let (order, (weights, _nodes)) = nodes.into_parts();
                     let info = NodeInfoIntrinsic::Chain {
                         queue,
+                        queue_prefill_len,
                         filter,
                         order,
                     };
@@ -383,6 +416,8 @@ pub(crate) mod meta {
                 Children::Items(items) => {
                     let (order, (weights, items)) = items.into_parts();
                     let info = NodeInfoIntrinsic::Items {
+                        queue,
+                        queue_prefill_len,
                         items,
                         filter,
                         order,
@@ -394,30 +429,41 @@ pub(crate) mod meta {
             Self(weights, info)
         }
     }
+    #[allow(clippy::trivially_copy_pass_by_ref)] // required by serde derive
+    fn skip_if_zero(queue_prefill_len: &usize) -> bool {
+        *queue_prefill_len == 0
+    }
     /// Intrinsic description of a Node
     #[must_use]
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(untagged)]
     pub enum NodeInfoIntrinsic<T, F> {
-        /// Node containing nodes as children
-        Chain {
-            /// Items queue polled from child nodes
-            queue: VecDeque<T>,
-            /// Filtering value
-            filter: F,
-            // TODO
-            // /// Minimum number of items to retain in queue, beyond which [`PopError::NeedsPush`] is raised
-            // pub retain_count: usize,
-            /// Ordering type for child nodes
-            order: order::Type,
-        },
         /// Node containing only child items (no child nodes)
+        // NOTE: need to put the "larger" variant first, otherwise Serde-untagged falls over
+        // (picks first matching variant, apparently)
         Items {
             /// Items
             items: Vec<T>,
+            /// Items manually queued, or prefilled from next available
+            queue: VecDeque<T>,
+            /// Minimum number of items to retain in queue (best-effort)
+            #[serde(default, rename = "prefill", skip_serializing_if = "skip_if_zero")]
+            queue_prefill_len: usize,
             /// Filtering value
             filter: F,
             /// Ordering type for child items
+            order: order::Type,
+        },
+        /// Node containing nodes as children
+        Chain {
+            /// Items manually queued, or prefilled from next available
+            queue: VecDeque<T>,
+            /// Minimum number of items to retain in queue (best-effort)
+            #[serde(default, rename = "prefill", skip_serializing_if = "skip_if_zero")]
+            queue_prefill_len: usize,
+            /// Filtering value
+            filter: F,
+            /// Ordering type for child nodes
             order: order::Type,
         },
     }
@@ -430,6 +476,7 @@ pub(crate) mod meta {
         pub(crate) fn default_with_filter(filter: F) -> Self {
             Self::Chain {
                 queue: VecDeque::default(),
+                queue_prefill_len: 0,
                 filter,
                 order: order::Type::default(),
             }
@@ -447,22 +494,27 @@ pub(crate) mod meta {
             match self {
                 Self::Chain {
                     queue,
+                    queue_prefill_len,
                     filter,
                     order,
                 } => Node {
                     children: Chain::new(order).into(),
                     queue,
+                    queue_prefill_len,
                     filter,
                     sequence,
                 },
                 Self::Items {
                     items,
+                    queue,
+                    queue_prefill_len,
                     filter,
                     order,
                 } => Node {
                     children: OrderVec::from((order, items.into_iter().map(|item| (1, item))))
                         .into(),
-                    queue: VecDeque::new(),
+                    queue,
+                    queue_prefill_len,
                     filter,
                     sequence,
                 },

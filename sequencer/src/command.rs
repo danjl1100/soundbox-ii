@@ -5,7 +5,6 @@ use q_filter_tree::{OrderType, Weight};
 
 use crate::{sources::ItemSource, Error, NodeIdStr, Sequencer};
 
-type Success = ();
 command_enum! {
     /// Operations to perform on a [`Sequencer`]
     pub enum Command<F>
@@ -65,6 +64,11 @@ command_enum! {
         RemoveNode -> Success {
             /// Target node id
             id: String,
+        },
+        /// Sets the minimum count of items to keep staged in the root node's queue
+        SetRootStaged -> Success {
+            /// Minimum number of items to stage
+            min_count: usize,
         },
     }
     mod out {
@@ -154,7 +158,7 @@ command_runnable! {
         }
     }
     impl<F> Runnable<F> for UpdateNodes {
-        fn run(self, seq) -> Result<Success, Error> {
+        fn run(self, seq) -> Result<(), Error> {
             let Self {
                 path,
             } = self;
@@ -162,11 +166,16 @@ command_runnable! {
         }
     }
     impl<F> Runnable<F> for RemoveNode {
-        fn run(self, seq) -> Result<Success, Error> {
+        fn run(self, seq) -> Result<(), Error> {
             let Self {
                 id
             } = self;
             seq.remove_node(&id).map(|_| ())
+        }
+    }
+    impl<F> Runnable<F> for SetRootStaged {
+        fn run(self, seq) -> Result<(), Error> {
+            Ok(seq.set_root_stage_min_count(self.min_count))
         }
     }
 }
