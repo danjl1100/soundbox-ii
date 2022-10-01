@@ -2,7 +2,7 @@
 use super::{ItemSource, PathError};
 use std::{
     ffi::OsStr,
-    io::{BufRead, BufReader, Error, ErrorKind},
+    io::{BufRead, BufReader},
     ops::Not,
     path::PathBuf,
     process::{Command, Stdio},
@@ -34,6 +34,7 @@ where
 /// Queries the [beets] database per the supplied filter arguments
 ///
 /// [beets]: (https://beets.io/)
+#[derive(Clone)]
 pub struct Beet {
     command: PathBuf,
 }
@@ -44,17 +45,22 @@ impl Beet {
     /// Returns an error if the specified command does not exist
     pub fn new(command: String) -> Result<Self, PathError> {
         let command = PathBuf::from(command);
-        if command.is_file() {
-            Ok(Self { command })
-        } else {
-            Err(PathError::new(
-                &command,
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "beet command executable not found",
-                ),
-            ))
-        }
+        // TODO add a timeout, or print-out a message in case of infinite-hanging process provided
+        let canary_result = Command::new(&command)
+            .args(&["--version"])
+            .stdout(Stdio::null())
+            .status();
+        let err = match canary_result {
+            Ok(status) if status.success() => {
+                return Ok(Self { command });
+            }
+            Ok(status) => std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("beet command executable returned non-zero result {status}"),
+            ),
+            Err(e) => e,
+        };
+        Err(PathError::new(&command, err))
     }
 }
 impl<T: ArgSource> ItemSource<T> for Beet {
@@ -67,10 +73,9 @@ impl<T: ArgSource> ItemSource<T> for Beet {
             .args(arg_elems)
             .stdout(Stdio::piped())
             .spawn()?;
-        let stdout = child
-            .stdout
-            .as_mut()
-            .ok_or_else(|| Error::new(ErrorKind::Other, "unable to capture stdout"))?;
+        let stdout = child.stdout.as_mut().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::Other, "unable to capture stdout")
+        })?;
         let reader = BufReader::new(stdout);
         let items = reader
             .lines()

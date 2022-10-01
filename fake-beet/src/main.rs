@@ -8,7 +8,17 @@
 use std::{str::FromStr, time::Duration};
 
 fn main() -> Result<(), String> {
-    let args: Vec<_> = std::env::args().collect();
+    let args: Vec<_> = std::env::args()
+        // remove executable name (passed as 0th arg)
+        .skip(1)
+        .collect();
+
+    if let Some(first_arg) = args.first() {
+        if first_arg == "--version" && args.len() == 1 {
+            println!("beets version FAKE");
+            return Ok(());
+        }
+    }
 
     let result = parse_result(&args);
 

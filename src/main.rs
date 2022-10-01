@@ -28,6 +28,8 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use crate::args::SequencerConfig;
+use sequencer::Sequencer;
 use shared::Shutdown;
 use tokio::sync::watch;
 
@@ -38,7 +40,6 @@ mod web;
 mod args;
 
 use task::{AsyncTasks, ShutdownReceiver};
-use vlc_http::vlc_responses::UrlsFmt;
 mod task;
 
 #[tokio::main]
@@ -52,7 +53,19 @@ async fn main() {
 
 fn print_startup_info(args: &args::Config) {
     println!(
-        "  - VLC-HTTP will connect to server: {}",
+        "  - Interactive mode {}",
+        if args.is_interactive() {
+            if args.server_config.is_some() {
+                "enabled"
+            } else {
+                "enabled (default when not serving)"
+            }
+        } else {
+            "disabled (pass --interactive to enable)"
+        }
+    );
+    println!(
+        "  - VLC-HTTP will connect to: {}",
         args.vlc_http_config.0.authority_str()
     );
     if let Some(server_config) = args.server_config.as_ref() {
@@ -121,6 +134,23 @@ async fn launch(args: args::Config) {
         playlist_info_rx,
         cmd_playlist_tx,
     } = channels;
+    let (sequencer_state_tx, sequencer_state_rx) = watch::channel(String::new());
+
+    let (sequencer_task, sequencer_tx) = {
+        let sequencer: cli::Sequencer = {
+            let SequencerConfig {
+                root_folder,
+                beet_cmd,
+            } = args.sequencer_config;
+            let item_source = cli::command::source::Source::new(root_folder, beet_cmd);
+            let root_filter = None;
+            Sequencer::new(item_source, root_filter)
+        };
+        let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);
+        let sequencer_task =
+            sequencer_task(sequencer, sequencer_rx, cmd_playlist_tx, sequencer_state_tx);
+        (sequencer_task, sequencer_tx)
+    };
 
     let cli_handle = if is_interactive {
         let action_tx = action_tx.clone();
@@ -129,6 +159,8 @@ async fn launch(args: args::Config) {
         Some(launch_cli(
             cli::Config {
                 action_tx,
+                sequencer_tx,
+                sequencer_state_rx,
                 playback_status_rx,
                 playlist_info_rx,
             },
@@ -180,10 +212,8 @@ async fn launch(args: args::Config) {
     // run controller
     tasks.spawn("vlc controller", controller.run());
 
-    // // run Sequencer test add-in
-    // tasks.spawn("sequencer", async move {
-    //     test_sequencer_fn(cmd_playlist_tx).await
-    // });
+    // run Sequencer test add-in
+    tasks.spawn("sequencer", sequencer_task);
 
     // join all async tasks and thread(s)
     tasks.join_all().await.expect("tasks end with no panics");
@@ -199,38 +229,59 @@ async fn launch(args: args::Config) {
     println!("[main exit]");
 }
 
-async fn test_sequencer_fn(
+// TODO move this to module `sequence`, along with command::{seq as cmd, source}
+async fn sequencer_task(
+    mut sequencer: cli::Sequencer,
+    mut sequencer_rx: tokio::sync::mpsc::Receiver<cli::SequencerCommand>,
     cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
+    state_tx: watch::Sender<String>,
 ) -> Result<shared::Never, Shutdown> {
-    // TODO move logic to `sequencer`, with sequencer::Command passing channels
-    // (e.g. to allow both `web` and `cli` to command and examine the sequencer)
     let vlc_http::cmd_playlist_items::Sender {
         urls_tx,
         mut remove_rx,
     } = cmd_playlist_tx;
-    urls_tx.send_modify(|data| {
-        data.items = (0..7)
-            .map(|n| cli::parse_url(&format!("{n}AM.mp3")).expect("valid test url"))
-            .collect();
-    });
-    while let Ok(()) = remove_rx.changed().await {
-        let removed_url_str = remove_rx.borrow().clone();
-        urls_tx.send_modify(|data| {
-            match data.items.first() {
-                Some(first) if first.to_string() == removed_url_str => {
-                    data.items.remove(0);
-                }
-                Some(first_mismatched) => {
-                    dbg!("mismatch!! ohno!", first_mismatched);
-                }
-                None => {
-                    println!("all done");
+    loop {
+        // publish state
+        match serde_json::to_string_pretty(&sequencer.tree_serializable()) {
+            Ok(tree_str) => {
+                if let Err(send_err) = state_tx.send(tree_str) {
+                    dbg!(send_err);
                 }
             }
-            dbg!(UrlsFmt(&data.items[..]));
-            dbg!(data.max_history_count);
-        });
+            Err(serde_json_err) => {
+                dbg!(serde_json_err);
+            }
+        }
+        tokio::select! {
+            Some(command) = sequencer_rx.recv() => {
+                let result = sequencer.run(command);
+                if let Err(sequencer_err) = result {
+                    dbg!(sequencer_err);
+                }
+            }
+            Ok(()) = remove_rx.changed() => {
+                let popped = sequencer.pop_next();
+                println!("remove_rx changed! popped {popped:?}");
+            }
+            else => {
+                break;
+            }
+        }
+        // update cmd_playlist items
+        let new_urls = sequencer
+            .get_root_queue_items()
+            .map(cli::parse_url)
+            .collect();
+        match new_urls {
+            Ok(new_urls) => {
+                urls_tx.send_modify(|data| {
+                    data.items = new_urls;
+                });
+            }
+            Err(url_err) => {
+                dbg!(url_err);
+            }
+        }
     }
-    // TODO is this shutdown correct?
     Err(Shutdown)
 }

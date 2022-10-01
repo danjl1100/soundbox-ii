@@ -164,14 +164,10 @@
           pname = "${name}_frontend";
           version = "0.1.0";
         };
-        bin_wrapped = pkgs.symlinkJoin {
-          inherit name;
-          paths = [ bin frontend ];
-          buildInputs = [ pkgs.makeWrapper ];
-          postBuild = ''
-            wrapProgram $out/bin/soundbox-ii --add-flags "--static-assets \"${frontend}/share/frontend\""
-          '';
-        };
+        bin_wrapped = pkgs.writeShellScriptBin "soundbox-ii" ''
+          export STATIC_ASSETS="${frontend}/share/frontend"
+          ${bin}/bin/soundbox-ii $*
+        '';
 
         mkVlcApp = { name, visual }: flake-utils.lib.mkApp {
           inherit name;

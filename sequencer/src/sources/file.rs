@@ -11,6 +11,7 @@ use walkdir::WalkDir;
 use super::{ItemSource, PathError, RootFolder};
 
 /// Reads items as lines from the filename specified by the filter args
+#[derive(Clone)]
 pub struct Lines {
     root: RootFolder,
 }
@@ -52,6 +53,7 @@ where
 }
 
 /// Lists files recursively from the folder specified by the filter args
+#[derive(Clone)]
 pub struct FolderListing {
     root: RootFolder,
 }

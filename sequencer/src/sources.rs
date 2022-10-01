@@ -40,6 +40,13 @@ impl RootFolder {
     /// # Errors
     /// Returns an error if the specified root path is not a directory
     pub fn new(root: PathBuf) -> Result<Self, io::Error> {
+        Self::check_to_inner(root).map(Self)
+    }
+    /// Verifies the [`PathBuf`] is a valid existing directory
+    ///
+    /// # Errors
+    /// Returns an error if the specified root path is not a directory
+    pub fn check_to_inner(root: PathBuf) -> Result<PathBuf, io::Error> {
         if !root.exists() {
             // TODO change to ErrorKind::NotFound, when stabilized
             return Err(io::Error::new(io::ErrorKind::Other, "not found"));
@@ -48,7 +55,7 @@ impl RootFolder {
             // TODO change to ErrorKind::NotADirectory, when stabilized
             return Err(io::Error::new(io::ErrorKind::Other, "not a directory"));
         }
-        Ok(Self(root))
+        Ok(root)
     }
     fn clone_to_child_path<T>(&self, path_elems: &[T]) -> PathBuf
     where

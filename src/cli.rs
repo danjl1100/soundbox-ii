@@ -1,13 +1,13 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use shared::Shutdown;
-use vlc_http::{self, Action, PlaybackStatus, PlaylistInfo, ResultReceiver};
+use vlc_http::{self, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
 
 pub use command::{parse_url, COMMAND_NAME};
 /// Definition of all interactive commands
-mod command;
+pub(crate) mod command;
 use command::ActionAndReceiver;
 
 use arg_split::ArgSplit;
@@ -32,14 +32,21 @@ fn blocking_recv<T, F: Fn()>(
         wait_fn();
     }
 }
+pub(crate) type Sequencer = sequencer::Sequencer<command::source::Source, SequencerFilter>;
+pub(crate) type SequencerFilter = Option<command::source::TypedArg>;
+pub(crate) type SequencerCommand = sequencer::command::Command<SequencerFilter>;
 
 pub struct Config {
-    pub action_tx: mpsc::Sender<Action>,
+    pub action_tx: mpsc::Sender<vlc_http::Action>,
+    pub sequencer_tx: mpsc::Sender<SequencerCommand>,
+    pub sequencer_state_rx: watch::Receiver<String>,
     pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
     pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
 }
 pub struct Prompt {
-    action_tx: mpsc::Sender<Action>,
+    action_tx: mpsc::Sender<vlc_http::Action>,
+    sequencer_tx: mpsc::Sender<SequencerCommand>,
+    sequencer_state: SyncWatchReceiver<String>,
     playback_status: SyncWatchReceiver<Option<PlaybackStatus>>,
     playlist_info: SyncWatchReceiver<Option<PlaylistInfo>>,
     stdout: std::io::Stdout,
@@ -48,11 +55,15 @@ impl Config {
     pub(crate) fn build(self) -> Prompt {
         let Self {
             action_tx,
+            sequencer_tx,
+            sequencer_state_rx,
             playback_status_rx,
             playlist_info_rx,
         } = self;
         Prompt {
             action_tx,
+            sequencer_tx,
+            sequencer_state: SyncWatchReceiver::new(sequencer_state_rx),
             playback_status: SyncWatchReceiver::new(playback_status_rx),
             playlist_info: SyncWatchReceiver::new(playlist_info_rx),
             stdout: std::io::stdout(),
@@ -117,13 +128,17 @@ impl Prompt {
             match command.try_build()? {
                 Err(shutdown_option) => return Ok(shutdown_option),
                 Ok(result_and_rx) => match result_and_rx {
-                    ActionAndReceiver::Command(action, result_rx) => {
+                    ActionAndReceiver::VlcCommand(action, result_rx) => {
                         self.send_and_print_result(action, result_rx)
                     }
-                    ActionAndReceiver::QueryPlaybackStatus(action, result_rx) => {
+                    ActionAndReceiver::SequencerCommand(command) => self
+                        .sequencer_tx
+                        .blocking_send(command)
+                        .map_err(|_| "Failed to send sequencer-command result".to_string()),
+                    ActionAndReceiver::VlcQueryPlayback(action, result_rx) => {
                         self.send_and_print_result(action, result_rx)
                     }
-                    ActionAndReceiver::QueryPlaylistInfo(action, result_rx) => {
+                    ActionAndReceiver::VlcQueryPlaylist(action, result_rx) => {
                         self.send_and_print_result(action, result_rx)
                     }
                 },
@@ -136,20 +151,23 @@ impl Prompt {
         if let Some(Some(playlist)) = self.playlist_info.poll_update() {
             println!("Playlist: {:#?}", playlist);
         }
+        if let Some(sequencer_state) = self.sequencer_state.poll_update() {
+            println!("Sequencer state: {}", sequencer_state);
+        }
 
         Ok(None)
     }
 
     fn send_and_print_result<T>(
         &mut self,
-        action: Action,
+        action: vlc_http::Action,
         result_rx: ResultReceiver<T>,
     ) -> Result<(), String>
     where
         T: std::fmt::Debug,
     {
         // print action
-        eprint!("running {} ", action);
+        eprint!("running vlc {action} ");
         let print_a_dot = || {
             eprint!(".");
             drop(self.stdout.lock().flush());
@@ -158,7 +176,7 @@ impl Prompt {
         // send command
         let send_result = self.action_tx.blocking_send(action);
         if send_result.is_err() {
-            return Err("Failed to send command result".to_string());
+            return Err("Failed to send vlc-command result".to_string());
         }
         // wait for result
         match blocking_recv(
@@ -172,7 +190,7 @@ impl Prompt {
             }
             Some(Err(action_err)) => {
                 dbg!(action_err);
-                Err("Action returned error".to_string())
+                Err("vlc-action returned error".to_string())
             }
             None => Err("Failed to obtain command result".to_string()),
         }

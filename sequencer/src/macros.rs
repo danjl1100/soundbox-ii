@@ -28,6 +28,7 @@ macro_rules! command_enum {
         }
     ) => {
         $(#[$enum_meta])*
+        #[derive(Debug)]
         $enum_vis enum $Enum <F>
         where
             F: Clone,
@@ -39,6 +40,7 @@ macro_rules! command_enum {
         }
         $(
             $(#[$struct_meta])*
+            #[derive(Debug)]
             $enum_vis struct $Struct $(<$($struct_gen),+>)? {
                 $(
                     $(#[$field_meta])*

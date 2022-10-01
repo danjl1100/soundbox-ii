@@ -16,7 +16,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use clap::{ArgEnum, Parser};
-use q_filter_tree::{id::NodePathTyped, OrderType, Weight};
+use q_filter_tree::{OrderType, Weight};
 use std::{
     fs::File,
     io::{stdin, BufRead, BufReader},
@@ -25,7 +25,6 @@ use std::{
 use arg_split::ArgSplit;
 use sequencer::{
     command::{self, Runnable},
-    sources::multi_select::Mismatch,
     Error, Sequencer,
 };
 
@@ -206,7 +205,8 @@ mod source {
 impl Cli {
     const COMMENT: &'static str = "#";
     fn new(source: source::Source, source_type: source::Type, params: Parameters) -> Self {
-        let sequencer = Sequencer::new(source, None);
+        let sequencer: Sequencer<source::Source, Option<source::TypedArg>> =
+            Sequencer::new(source, None);
         Self {
             sequencer,
             source_type,
@@ -396,33 +396,9 @@ impl Cli {
         path: &str,
         requested_type: Option<source::Type>,
     ) -> Result<Option<source::Type>, Error> {
-        let mut existing_path_type = Ok(None);
-        let mut accumulator = |path: &NodePathTyped, filter: &Option<source::TypedArg>| {
-            let new_type = filter.as_ref().map(source::Type::from);
-            // detect and **REPORT** bad state
-            if let Ok(existing_opt) = &mut existing_path_type {
-                //TODO simplify in the future using Option::unzip
-                // [tracking issue for Option::unzip](https://github.com/rust-lang/rust/issues/87800)
-                let (existing_path, existing_type) = if let Some((path, ty)) = existing_opt.take() {
-                    (Some(path), Some(ty))
-                } else {
-                    (None, None)
-                };
-                existing_path_type = Mismatch::combine_verify(new_type, existing_type)
-                    .map(|matched| matched.map(|ty| (path.clone(), ty)))
-                    .map_err(|mismatch| {
-                        let existing_path_str = existing_path
-                            .map_or_else(String::default, |p| format!(" from path {p}"));
-                        format!("at path {path} arg type {mismatch} from path {existing_path_str}")
-                    });
-            }
-        };
         self.sequencer
-            .with_ancestor_filters(path, &mut accumulator)?;
-        let existing_type = existing_path_type?.map(|(_, ty)| ty);
-        let source_type =
-            Mismatch::combine_verify(existing_type, requested_type).map_err(|e| format!("{e}"))?;
-        Ok(source_type)
+            .calculate_required_type(path, requested_type)?
+            .map_err(|mismatch_label| format!("{mismatch_label}").into())
     }
     fn output(&self, fmt_args: std::fmt::Arguments) {
         self.params.output(fmt_args);

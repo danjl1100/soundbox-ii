@@ -46,7 +46,7 @@ mod iter;
 #[cfg(test)]
 mod tests;
 
-use sources::ItemSource;
+use sources::{multi_select::Mismatch, ItemSource};
 pub mod sources;
 
 pub mod command;
@@ -223,6 +223,11 @@ where
     pub fn pop_next(&mut self) -> Option<Cow<'_, Item<T, F>>> {
         self.tree.pop_item()
     }
+    /// Returns an [`Iterator`] for the queue of the root node
+    pub fn get_root_queue_items(&self) -> impl Iterator<Item = &Item<T, F>> {
+        let root_ref = self.tree.root_node_shared();
+        root_ref.queue_iter()
+    }
     fn set_node_prefill_count(
         &mut self,
         path: Option<&str>,
@@ -248,6 +253,64 @@ where
                 node_ref.queue_len()
             ))
         })
+    }
+}
+/// [`Mismatch`] with associated label string
+pub struct MismatchLabel<T>(Mismatch<T>, String);
+impl<T> std::fmt::Display for MismatchLabel<T>
+where
+    T: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(mismatch, label) = self;
+        write!(f, "{label} {mismatch}")
+    }
+}
+impl<T, F> Sequencer<T, Option<F>>
+where
+    T: ItemSource<Option<F>>,
+    F: Clone,
+{
+    /// Calculates the required type `V` for the given path, with optional `requested_type`
+    ///
+    /// # Errors
+    /// Returns [`Mismatch`] if the specified path type is incompatible with its ancestors, or the requested type (if any)
+    pub fn calculate_required_type<V>(
+        &self,
+        path: &str,
+        requested_type: Option<V>,
+    ) -> Result<Result<Option<V>, MismatchLabel<V>>, Error>
+    where
+        V: for<'a> From<&'a F> + std::fmt::Debug + Eq,
+    {
+        let mut existing_path_type: Result<Option<(NodePathTyped, V)>, MismatchLabel<V>> = Ok(None);
+        let mut accumulator = |path: &NodePathTyped, filter: &Option<F>| {
+            let new_type = filter.as_ref().map(V::from);
+            // detect and **REPORT** bad state
+            if let Ok(existing_opt) = &mut existing_path_type {
+                //TODO simplify in the future using Option::unzip
+                // [tracking issue for Option::unzip](https://github.com/rust-lang/rust/issues/87800)
+                let (existing_path, existing_type) = if let Some((path, ty)) = existing_opt.take() {
+                    (Some(path), Some(ty))
+                } else {
+                    (None, None)
+                };
+                existing_path_type = Mismatch::combine_verify(new_type, existing_type)
+                    .map(|matched| matched.map(|ty| (path.clone(), ty)))
+                    .map_err(|mismatch| {
+                        let existing_path_str = existing_path
+                            .map_or_else(String::default, |p| format!(" from path {p}"));
+                        MismatchLabel(mismatch, format!("path {path}{existing_path_str}"))
+                    });
+            }
+        };
+        self.with_ancestor_filters(path, &mut accumulator)?;
+        Ok(existing_path_type
+            .map(|path_type| path_type.map(|(_, ty)| ty))
+            .and_then(|existing_type| {
+                Mismatch::combine_verify(existing_type, requested_type)
+                    .map_err(|mismatch| MismatchLabel(mismatch, path.to_string()))
+            }))
     }
 }
 
@@ -282,6 +345,15 @@ fn parse_descriptor(input_str: &str) -> Result<NodeDescriptor, String> {
         .map_err(|e: NodeIdParseError| e.to_string())
 }
 
+impl<T: ItemSource<F>, F> Sequencer<T, F>
+where
+    F: serde::Serialize + Clone,
+{
+    /// Returns a serializable representation of the inner [`Tree`](`q_filter_tree::Tree`)
+    pub fn tree_serializable(&self) -> impl serde::Serialize + '_ {
+        &self.tree
+    }
+}
 impl<T: ItemSource<F>, F> std::fmt::Display for Sequencer<T, F>
 where
     F: serde::Serialize + Clone,
@@ -331,7 +403,7 @@ shared::wrapper_enum! {
 }
 
 /// [`ItemSource`] used for debugging
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct DebugItemSource;
 impl<T> ItemSource<T> for DebugItemSource
 where

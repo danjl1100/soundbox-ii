@@ -187,6 +187,10 @@ impl<T, F> Tree<T, F> {
         #![allow(clippy::unused_self)]
         id::ROOT
     }
+    /// Returns the root [`Node`]
+    pub fn root_node_shared(&self) -> &Node<T, F> {
+        &self.root
+    }
     /// Removes an empty node
     ///
     /// **Note:** Explicit [`NodeId`] is required to preserve idempotency.
