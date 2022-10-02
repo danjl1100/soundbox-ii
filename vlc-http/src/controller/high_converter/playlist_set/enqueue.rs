@@ -10,9 +10,8 @@ impl Converter {
         let mut comparison_items = comparison_items.iter();
         let mut first_matched_id = None;
         'outer: for url in &command.urls {
-            let url_str = url.to_string();
             for existing in comparison_items.by_ref() {
-                if existing.url == url_str {
+                if existing.url == *url {
                     // matched existing, continue to next command_url
                     if first_matched_id.is_none() {
                         first_matched_id = Some(existing.id.clone());
@@ -30,10 +29,10 @@ impl Converter {
         comparison_items: &[PlaylistItem],
         command: &Command,
     ) -> Result<(), LowCommand> {
-        let mut command_url_strs = command.urls.iter().map(url::Url::to_string);
+        let mut command_urls = command.urls.iter();
         for existing in comparison_items {
-            match command_url_strs.next() {
-                Some(url_str) if url_str == existing.url => {}
+            match command_urls.next() {
+                Some(url) if *url == existing.url => {}
                 _ => {
                     let item_id = existing.id.clone();
                     return Err(LowCommand::PlaylistDelete { item_id });

@@ -228,16 +228,19 @@ mod playlist {
         /// Playlist ID
         pub id: String,
         pub name: String,
-        pub url: String,
+        pub url: url::Url,
     }
     impl From<ItemJSON> for Item {
+        #[allow(clippy::panic)]
         fn from(other: ItemJSON) -> Self {
             let ItemJSON {
                 duration_secs,
                 id,
                 name,
-                url,
+                url: url_str,
             } = other;
+            let url = url::Url::parse(&url_str)
+                .unwrap_or_else(|err| panic!("VLC-reported URI is a valid URL, {err} {url_str:?}"));
             Self {
                 duration_secs: duration_secs.try_into().ok(),
                 id,

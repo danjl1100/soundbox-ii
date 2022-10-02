@@ -106,8 +106,8 @@ impl ReceiverInner {
         self.playlist_item_urls.clear();
         for item in &playlist.items {
             if let Ok(id) = u64::from_str(&item.id) {
-                let url = item.url.clone();
-                self.playlist_item_urls.push((id, url));
+                let url_str = item.url.to_string();
+                self.playlist_item_urls.push((id, url_str));
             }
         }
         self.on_update()

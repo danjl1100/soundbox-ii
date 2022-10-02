@@ -21,10 +21,10 @@ where
 {
     ids_urls
         .into_iter()
-        .map(|(id, url)| playlist_item_with_id_url(&id, &file_url(url)))
+        .map(|(id, url)| playlist_item_with_id_url(&id, file_url(url)))
         .collect()
 }
-fn playlist_item_with_id_url<T>(id: &T, url: &url::Url) -> PlaylistItem
+fn playlist_item_with_id_url<T>(id: &T, url: url::Url) -> PlaylistItem
 where
     T: ToString,
 {
@@ -32,7 +32,7 @@ where
         duration_secs: None,
         id: id.to_string(),
         name: String::default(),
-        url: url.to_string(),
+        url,
     }
 }
 fn parse_id(item: &PlaylistItem) -> u64 {
@@ -169,7 +169,7 @@ impl TestHarnessData {
         match command {
             LowCommand::PlaylistAdd { url } => {
                 self.playlist_items
-                    .push(playlist_item_with_id_url(&next_id, url));
+                    .push(playlist_item_with_id_url(&next_id, url.clone()));
             }
             LowCommand::PlaylistPlay { item_id } => {
                 use std::str::FromStr;

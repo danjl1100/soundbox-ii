@@ -139,7 +139,7 @@ mod tests {
             duration_secs: None,
             id: "".to_string(),
             name: "".to_string(),
-            url: "".to_string(),
+            url: url::Url::parse("file:///").expect("valid url"),
         }
     }
 

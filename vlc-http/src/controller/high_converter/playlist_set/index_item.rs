@@ -34,14 +34,14 @@ impl<'a> IndexItem<'a> {
                 .enumerate()
                 .find_map(|(index, item)| (item.id == current_id_str).then_some(index))?
         };
-        let command_url_str = command.urls.first()?.to_string();
+        let command_url = command.urls.first()?;
         //NOTE panics if caller doesn't provide index matching the provided slice
         let current_item = items
             .get(current_index)
             .expect("current_index with bounds of provided items");
         let current = {
             // check current item
-            (current_item.url == command_url_str).then_some(IndexItem {
+            (current_item.url == *command_url).then_some(IndexItem {
                 ty: Some(DesiredType::Current),
                 index: current_index,
                 item: current_item,
@@ -53,7 +53,7 @@ impl<'a> IndexItem<'a> {
             let previous_item = items
                 .get(previous_index)
                 .expect("current_index - 1 within bounds, since current_index was");
-            (previous_item.url == command_url_str).then_some(IndexItem {
+            (previous_item.url == *command_url).then_some(IndexItem {
                 ty: Some(DesiredType::Previous),
                 index: previous_index,
                 item: previous_item,
