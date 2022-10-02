@@ -1,16 +1,15 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+use crate::seq;
+use arg_split::ArgSplit;
 use shared::Shutdown;
-use vlc_http::{self, PlaybackStatus, PlaylistInfo, ResultReceiver};
-
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, oneshot, watch};
+use vlc_http::{self, PlaybackStatus, PlaylistInfo, ResultReceiver};
 
+use command::ActionAndReceiver;
 pub use command::{parse_url, COMMAND_NAME};
 /// Definition of all interactive commands
 pub(crate) mod command;
-use command::ActionAndReceiver;
-
-use arg_split::ArgSplit;
 
 fn blocking_recv<T, F: Fn()>(
     mut rx: oneshot::Receiver<T>,
@@ -32,20 +31,16 @@ fn blocking_recv<T, F: Fn()>(
         wait_fn();
     }
 }
-pub(crate) type Sequencer = sequencer::Sequencer<command::source::Source, SequencerFilter>;
-pub(crate) type SequencerFilter = Option<command::source::TypedArg>;
-pub(crate) type SequencerCommand = sequencer::command::Command<SequencerFilter>;
-
 pub struct Config {
     pub action_tx: mpsc::Sender<vlc_http::Action>,
-    pub sequencer_tx: mpsc::Sender<SequencerCommand>,
+    pub sequencer_tx: mpsc::Sender<seq::SequencerCommand>,
     pub sequencer_state_rx: watch::Receiver<String>,
     pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
     pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>,
 }
 pub struct Prompt {
     action_tx: mpsc::Sender<vlc_http::Action>,
-    sequencer_tx: mpsc::Sender<SequencerCommand>,
+    sequencer_tx: mpsc::Sender<seq::SequencerCommand>,
     sequencer_state: SyncWatchReceiver<String>,
     playback_status: SyncWatchReceiver<Option<PlaybackStatus>>,
     playlist_info: SyncWatchReceiver<Option<PlaylistInfo>>,

@@ -39,6 +39,8 @@ mod web;
 
 mod args;
 
+mod seq;
+
 use task::{AsyncTasks, ShutdownReceiver};
 mod task;
 
@@ -137,18 +139,18 @@ async fn launch(args: args::Config) {
     let (sequencer_state_tx, sequencer_state_rx) = watch::channel(String::new());
 
     let (sequencer_task, sequencer_tx) = {
-        let sequencer: cli::Sequencer = {
+        let sequencer: seq::Sequencer = {
             let SequencerConfig {
                 root_folder,
                 beet_cmd,
             } = args.sequencer_config;
-            let item_source = cli::command::source::Source::new(root_folder, beet_cmd);
+            let item_source = seq::source::Source::new(root_folder, beet_cmd);
             let root_filter = None;
             Sequencer::new(item_source, root_filter)
         };
         let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);
         let sequencer_task =
-            sequencer_task(sequencer, sequencer_rx, cmd_playlist_tx, sequencer_state_tx);
+            seq::sequencer_task(sequencer, sequencer_rx, cmd_playlist_tx, sequencer_state_tx);
         (sequencer_task, sequencer_tx)
     };
 
@@ -227,61 +229,4 @@ async fn launch(args: args::Config) {
 
     // end of MAIN
     println!("[main exit]");
-}
-
-// TODO move this to module `sequence`, along with command::{seq as cmd, source}
-async fn sequencer_task(
-    mut sequencer: cli::Sequencer,
-    mut sequencer_rx: tokio::sync::mpsc::Receiver<cli::SequencerCommand>,
-    cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
-    state_tx: watch::Sender<String>,
-) -> Result<shared::Never, Shutdown> {
-    let vlc_http::cmd_playlist_items::Sender {
-        urls_tx,
-        mut remove_rx,
-    } = cmd_playlist_tx;
-    loop {
-        // publish state
-        match serde_json::to_string_pretty(&sequencer.tree_serializable()) {
-            Ok(tree_str) => {
-                if let Err(send_err) = state_tx.send(tree_str) {
-                    dbg!(send_err);
-                }
-            }
-            Err(serde_json_err) => {
-                dbg!(serde_json_err);
-            }
-        }
-        tokio::select! {
-            Some(command) = sequencer_rx.recv() => {
-                let result = sequencer.run(command);
-                if let Err(sequencer_err) = result {
-                    dbg!(sequencer_err);
-                }
-            }
-            Ok(()) = remove_rx.changed() => {
-                let popped = sequencer.pop_next();
-                println!("remove_rx changed! popped {popped:?}");
-            }
-            else => {
-                break;
-            }
-        }
-        // update cmd_playlist items
-        let new_urls = sequencer
-            .get_root_queue_items()
-            .map(cli::parse_url)
-            .collect();
-        match new_urls {
-            Ok(new_urls) => {
-                urls_tx.send_modify(|data| {
-                    data.items = new_urls;
-                });
-            }
-            Err(url_err) => {
-                dbg!(url_err);
-            }
-        }
-    }
-    Err(Shutdown)
 }
