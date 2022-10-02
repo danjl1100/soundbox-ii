@@ -40,8 +40,10 @@ pub(crate) async fn sequencer_task(
                 }
             }
             Ok(()) = remove_rx.changed() => {
-                let popped = sequencer.pop_next();
-                println!("remove_rx changed! popped {popped:?}");
+                if let Some(removed) = &*remove_rx.borrow() {
+                    let popped = sequencer.pop_next();
+                    println!("remove_rx changed! removed {removed}, and popped {popped:?}");
+                }
             }
             else => {
                 break;

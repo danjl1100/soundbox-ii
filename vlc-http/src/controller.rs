@@ -126,8 +126,13 @@ impl Controller {
                             dbg!(cmd_playlist_rx_err);
                             Shutdown
                         })?;
-                        let (action, _) = cmd.to_action_rx();
-                        //TODO is it OK (philosophically, morally) to drop the Receiver? (for errors?)
+                        let (action, result_rx) = cmd.to_action_rx();
+                        tokio::spawn(async move {
+                            // instead of immediately dropping `result_rx`, report any errors via dbg!()
+                            if let Err(cmd_playlist_result_err) = result_rx.await {
+                                dbg!("ignoring", cmd_playlist_result_err);
+                            }
+                        });
                         action
                     }
                     Some(internal_action) = self.rules.next_action(decision_time) => {
@@ -241,8 +246,8 @@ impl Controller {
         T: std::fmt::Debug,
     {
         let send_result = result_tx.send(result);
-        if let Err(send_err) = send_result {
-            println!("WARNING: result_tx send error: {:?}", send_err);
+        if let Err(unsent_result) = send_result {
+            println!("WARNING: result_tx send error: {unsent_result:?}");
         }
     }
     fn update_status(&mut self, typed_response: response::Typed) {

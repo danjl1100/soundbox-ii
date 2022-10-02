@@ -27,14 +27,14 @@ pub struct Sender {
     /// Sender for commanded Playlist Items
     pub urls_tx: watch::Sender<Data>,
     /// Receiver for signal to remove_current
-    pub remove_rx: watch::Receiver<String>,
+    pub remove_rx: watch::Receiver<Option<url::Url>>,
 }
 pub(crate) struct Receiver(Option<ReceiverInner>);
 struct ReceiverInner {
     urls_rx: watch::Receiver<Data>,
-    remove_tx: watch::Sender<String>,
+    remove_tx: watch::Sender<Option<url::Url>>,
     current_item_id: Option<u64>,
-    playlist_item_urls: Vec<(u64, String)>,
+    playlist_item_urls: Vec<(u64, url::Url)>,
 }
 
 pub(crate) fn channel(max_history_count: NonZeroUsize) -> (Sender, Receiver) {
@@ -42,7 +42,7 @@ pub(crate) fn channel(max_history_count: NonZeroUsize) -> (Sender, Receiver) {
         items: vec![],
         max_history_count,
     });
-    let (remove_tx, remove_rx) = watch::channel(String::default());
+    let (remove_tx, remove_rx) = watch::channel(None);
     (
         Sender { urls_tx, remove_rx },
         Receiver(Some(ReceiverInner {
@@ -106,22 +106,22 @@ impl ReceiverInner {
         self.playlist_item_urls.clear();
         for item in &playlist.items {
             if let Ok(id) = u64::from_str(&item.id) {
-                let url_str = item.url.to_string();
-                self.playlist_item_urls.push((id, url_str));
+                let url = item.url.clone();
+                self.playlist_item_urls.push((id, url));
             }
         }
         self.on_update()
     }
     fn on_update(&mut self) -> Option<Destroy> {
         let current_item_id = self.current_item_id?;
-        let cmd_current_url_str = self.urls_rx.borrow().items.first()?.to_string();
-        let matched_url_str = self.playlist_item_urls.windows(2).find_map(|window| {
-            let (_, previous_url_str) = &window[0];
+        let cmd_current_url = self.urls_rx.borrow().items.first()?.clone();
+        let matched_url = self.playlist_item_urls.windows(2).find_map(|window| {
+            let (_, previous_url) = &window[0];
             let (current_id, _) = &window[1];
-            (*current_id == current_item_id && *previous_url_str == cmd_current_url_str)
-                .then_some(previous_url_str)
+            (*current_id == current_item_id && *previous_url == cmd_current_url)
+                .then_some(previous_url)
         })?;
-        let send_result = self.remove_tx.send(matched_url_str.to_string());
+        let send_result = self.remove_tx.send(Some(matched_url.clone()));
         if send_result.is_err() {
             // no more receivers, mark as not needed
             Some(Destroy)
