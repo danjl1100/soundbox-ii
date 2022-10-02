@@ -21,7 +21,25 @@ impl Rule for FetchAfterTrackEnd {
                 let delay = timing
                     .duration_secs
                     .checked_sub(timing.position_secs)
-                    .map(Duration::from_secs)
+                    .map(|delay| {
+                        let rate_ratio = timing.rate_ratio.0;
+                        if rate_ratio > 0.0 {
+                            // NOTE: No risk of precision loss for human-lifespan appropriate durations
+                            //   (e.g. acceptable for long-form media, such as movies and audiobooks)
+                            let delay_ms = delay * 1000;
+                            #[allow(clippy::cast_precision_loss)]
+                            let delay_float = delay_ms as f64;
+                            let delay_adjusted = delay_float / rate_ratio;
+                            // NOTE: checked `rate_ratio` is > 0.0, and `delay` is the non-negative result of checked_sub
+                            #[allow(clippy::cast_sign_loss)]
+                            // NOTE: Padding the result with `Self::DELAY_MS`, so precision is not super critical
+                            #[allow(clippy::cast_possible_truncation)]
+                            let delay_adjusted = delay_adjusted.ceil() as u64;
+                            Duration::from_millis(delay_adjusted)
+                        } else {
+                            Duration::from_secs(delay)
+                        }
+                    })
                     .map(|remaining| remaining + Duration::from_millis(Self::DELAY_MS));
                 Some((Some(delay?), Action::fetch_playback_status()))
             }
@@ -113,5 +131,31 @@ mod tests {
             );
         }
         assert_eq!(count_playing, 1);
+    }
+
+    #[test]
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    fn fetches_after_track_end_rate() {
+        for rate_ratio in [1.0, 1.5, 2.0, 1.75, 0.5, 0.25, 0.125] {
+            let mut fate = FetchAfterTrackEnd::default();
+            let state = shared::PlaybackState::Playing;
+            fate.notify_playback(&PlaybackStatus {
+                timing: PlaybackTiming {
+                    duration_secs: 60,
+                    position_secs: 0,
+                    rate_ratio: shared::RateRatio(rate_ratio),
+                    state,
+                    ..PlaybackTiming::default()
+                },
+                ..PlaybackStatus::default()
+            });
+            assert_eq!(
+                fate.get_need(time(0)),
+                some_millis(
+                    ((60_000.0 / rate_ratio).ceil() as u64) + FetchAfterTrackEnd::DELAY_MS,
+                    Action::fetch_playback_status()
+                )
+            );
+        }
     }
 }
