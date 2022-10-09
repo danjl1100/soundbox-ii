@@ -515,9 +515,8 @@ pub(crate) mod meta {
             }
         }
         pub(crate) fn construct_root(self) -> (Node<T, F>, SequenceCounter) {
-            const ROOT_ID: NodeId<ty::Root> = id::ROOT;
-            let root = self.make_node(ROOT_ID.sequence());
-            let counter = SequenceCounter::new(&ROOT_ID);
+            let root = self.make_node(id::ROOT.sequence());
+            let counter = SequenceCounter::new(id::ROOT);
             (root, counter)
         }
         pub(crate) fn construct(self, counter: &mut SequenceCounter) -> Node<T, F> {
@@ -559,7 +558,7 @@ pub(crate) mod meta {
     #[derive(Debug)]
     pub(crate) struct SequenceCounter(Sequence);
     impl SequenceCounter {
-        fn new(from_id: &NodeId<ty::Root>) -> Self {
+        fn new(from_id: NodeId<ty::Root>) -> Self {
             Self(from_id.sequence())
         }
         /// Returns the next Sequence value in the counter

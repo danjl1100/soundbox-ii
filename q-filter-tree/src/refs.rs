@@ -186,7 +186,7 @@ impl NodePath<ty::Child> {
     /// Returns a the specified weight and `Node` reference within the `Tree`
     ///
     /// # Errors
-    /// Returns an erorr if the [`NodePath`] is not a valid path for the specified `Tree`
+    /// Returns an error if the [`NodePath`] is not a valid path for the specified `Tree`
     pub fn try_ref_shared<'tree, T, F>(
         &self,
         tree: &'tree Tree<T, F>,

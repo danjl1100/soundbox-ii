@@ -65,7 +65,7 @@ pub mod ty {
     pub struct Child(Vec<NodePathElem>);
 
     /// The referrent node has no parent (e.g. root)
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Root;
 
     mod private {
@@ -173,7 +173,7 @@ impl NodePathTyped {
 impl<'a> NodePathRefTyped<'a> {
     pub(crate) fn clone_inner(&self) -> NodePathTyped {
         match self {
-            Self::Root(path) => NodePathTyped::Root((*path).clone()),
+            Self::Root(path) => NodePathTyped::Root(**path),
             Self::Child(path) => NodePathTyped::Child((*path).clone()),
         }
     }
@@ -205,14 +205,14 @@ impl SequenceSource for NodeIdTyped {
 
 /// Unique identifier for a node in the [`Tree`](`super::Tree`)
 #[allow(clippy::module_name_repetitions)]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct NodeId<T: Type> {
     path: NodePath<T>,
     sequence: Sequence,
 }
 
 /// Path to a node in the [`Tree`](`crate::Tree`)
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodePath<T: Type>(T);
 
 impl NodePath<Root> {

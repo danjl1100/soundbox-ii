@@ -1,4 +1,5 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+use super::IterMutBreadcrumb;
 use crate::id::{NodePathRefTyped, NodePathTyped};
 use shared::{IgnoreNever, Never};
 
@@ -71,7 +72,7 @@ macro_rules! assert_iter {
 #[test]
 fn empty() {
     let (mut t, root) = super::tests::create_empty();
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_next(
         filters = [()],
         path = &root,
@@ -86,7 +87,7 @@ fn single() {
     // \ root
     // |--  child1
     {
-        let mut iter = t.enumerate_mut();
+        let mut iter = t.enumerate_mut_filters();
         assert_iter!(iter.with_next(
             filters = ["this is root".to_string()],
             path = &root,
@@ -100,7 +101,7 @@ fn single() {
         assert_iter!(drop(iter));
     }
     //
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_all(
         [
             filters = ["this is root".to_string()],
@@ -122,7 +123,7 @@ fn single_line() {
     // |--\ child1
     //    |--\ child2
     //       |-- child3
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_all(
         [
             filters = ["the root"], //
@@ -145,8 +146,12 @@ fn single_line() {
             child_len = 0,
         ]
     ));
+    drop(iter); // TODO why is this needed?
+
     //
-    let mut iter_child2 = t.enumerate_mut_subtree(&child2).expect("child2 exists");
+    let mut iter_child2 = t
+        .enumerate_mut_subtree_filters(&child2)
+        .expect("child2 exists");
     assert_iter!(iter_child2.with_all(
         [
             filters = ["the root", "foo", "bar"],
@@ -159,8 +164,12 @@ fn single_line() {
             child_len = 0,
         ]
     ));
+    drop(iter_child2); // TODO why is this needed?
+
     //
-    let mut iter_child3 = t.enumerate_mut_subtree(&child3).expect("child3 exists");
+    let mut iter_child3 = t
+        .enumerate_mut_subtree_filters(&child3)
+        .expect("child3 exists");
     assert_iter!(iter_child3.with_next(
         filters = ["the root", "foo", "bar", "baz"],
         path = &child3,
@@ -175,7 +184,7 @@ fn double() {
     // \ root
     // |--  child1
     // |--  child2
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_all(
         [
             filters = ["thorny root"], //
@@ -193,15 +202,23 @@ fn double() {
             child_len = 0,
         ],
     ));
+    drop(iter); // TODO why is this needed?
+
     //
-    let mut iter_child1 = t.enumerate_mut_subtree(&child1).expect("child1 exists");
+    let mut iter_child1 = t
+        .enumerate_mut_subtree_filters(&child1)
+        .expect("child1 exists");
     assert_iter!(iter_child1.with_all([
         filters = ["thorny root", "child1 carrot"],
         path = &child1,
         child_len = 0,
     ]));
+    drop(iter_child1); // TODO why is this needed?
+
     //
-    let mut iter_child2 = t.enumerate_mut_subtree(&child2).expect("child2 exists");
+    let mut iter_child2 = t
+        .enumerate_mut_subtree_filters(&child2)
+        .expect("child2 exists");
     assert_iter!(iter_child2.with_all([
         filters = ["thorny root", "child2 lemon"],
         path = &child2,
@@ -222,7 +239,7 @@ fn complex() {
     //       |--  child4_child
     //    |--  child5
     // from ROOT
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_all(
         [
             filters = ["root"], //
@@ -265,8 +282,10 @@ fn complex() {
             child_len = 0,
         ],
     ));
+    drop(iter); // TODO why is this needed?
+
     // from BASE
-    let mut iter_base = t.enumerate_mut_subtree(&base).expect("base exists");
+    let mut iter_base = t.enumerate_mut_subtree_filters(&base).expect("base exists");
     assert_iter!(iter_base.with_all(
         [
             filters = ["root", "base"], //
@@ -304,8 +323,12 @@ fn complex() {
             child_len = 0,
         ],
     ));
+    drop(iter_base); // TODO why is this needed?
+
     // from CHILD4
-    let mut iter_child4 = t.enumerate_mut_subtree(&child4).expect("child4 exists");
+    let mut iter_child4 = t
+        .enumerate_mut_subtree_filters(&child4)
+        .expect("child4 exists");
     assert_iter!(iter_child4.with_all(
         [
             filters = ["root", "base", "child4"],
@@ -344,7 +367,7 @@ fn complex2() {
     //       |--\ child4_child
     //          |--  chil4_child_child
     //    |--  child5
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_all(
         [
             filters = ["root"], //
@@ -402,8 +425,12 @@ fn complex2() {
             child_len = 0,
         ],
     ));
+    drop(iter); // TODO why is this needed?
+
     //
-    let mut iter_child2 = t.enumerate_mut_subtree(&child2).expect("child2 exists");
+    let mut iter_child2 = t
+        .enumerate_mut_subtree_filters(&child2)
+        .expect("child2 exists");
     assert_iter!(iter_child2.with_all(
         [
             filters = ["root", "base", "child2"],
@@ -421,8 +448,12 @@ fn complex2() {
             child_len = 0,
         ],
     ));
+    drop(iter_child2); // TODO why is this needed?
+
     //
-    let mut iter_child4 = t.enumerate_mut_subtree(&child4).expect("child4 exists");
+    let mut iter_child4 = t
+        .enumerate_mut_subtree_filters(&child4)
+        .expect("child4 exists");
     assert_iter!(iter_child4.with_all(
         [
             filters = ["root", "base", "child4"],
@@ -440,9 +471,11 @@ fn complex2() {
             child_len = 0,
         ],
     ));
+    drop(iter_child4); // TODO why is this needed?
+
     //
     let mut iter_child4_child = t
-        .enumerate_mut_subtree(&child4_child)
+        .enumerate_mut_subtree_filters(&child4_child)
         .expect("child4_child exists");
     assert_iter!(iter_child4_child.with_all(
         [
@@ -456,8 +489,12 @@ fn complex2() {
             child_len = 0,
         ],
     ));
+    drop(iter_child4_child); // TODO why is this needed?
+
     //
-    let mut iter_child5 = t.enumerate_mut_subtree(&child5).expect("child5 exists");
+    let mut iter_child5 = t
+        .enumerate_mut_subtree_filters(&child5)
+        .expect("child5 exists");
     assert_iter!(iter_child5.with_all([
         filters = ["root", "base", "child5"],
         path = &child5,
@@ -474,7 +511,7 @@ fn root_siblings() {
     // |-- child3
     // |-- child4
     //
-    let mut iter = t.enumerate_mut();
+    let mut iter = t.enumerate_mut_filters();
     assert_iter!(iter.with_all(
         [filters = ["root"], path = &root, child_len = 4],
         [filters = ["root", "child1"], path = &child1, child_len = 0],

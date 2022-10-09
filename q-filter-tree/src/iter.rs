@@ -2,15 +2,13 @@
 //! Iterator functionality for [`Tree`]
 //!
 //! See specific functions for details:
-//!  * Mutable iterators - [`Tree::enumerate_mut`] and [`Tree::enumerate_mut_subtree`]
+//!  * Mutable iterators - [`Tree::enumerate_mut`], [`Tree::enumerate_mut_subtree`],
+//!      [`Tree::enumerate_mut_filters`], and [`Tree::enumerate_mut_subtree_filters`]
 //!  * Shared/reference iterators - [`Tree::iter_ids`] and [`Tree::enumerate`]
-use crate::{
-    error::InvalidNodePath,
-    id::{NodeIdTyped, NodePathElem, NodePathRefTyped, NodePathTyped},
-    node::Children,
-    refs::NodeRefMut,
-    Node, Tree,
-};
+#![allow(clippy::module_name_repetitions)]
+
+#[allow(unused_imports)] // for doc comments, above
+use crate::Tree;
 
 #[cfg(test)]
 mod tests;
@@ -18,211 +16,127 @@ mod tests;
 #[cfg(test)]
 mod tests_mut;
 
-impl<T, F> Tree<T, F> {
-    /// Creates a depth-first iterator over [`NodeIdTyped`]s
-    pub fn iter_ids(&self) -> impl Iterator<Item = NodeIdTyped> + '_ {
-        self.enumerate().map(|(id, _)| id)
-    }
-    /// Creates a depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
-    pub fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
-        IterIdSharedRefs {
-            parent_idxs: vec![],
-            next: Some(&self.root),
+mod shared_ref {
+    use crate::{
+        id::{NodeIdTyped, NodePathElem, NodePathTyped},
+        node::Children,
+        Node, Tree,
+    };
+    impl<T, F> Tree<T, F> {
+        /// Creates a depth-first iterator over [`NodeIdTyped`]s
+        pub fn iter_ids(&self) -> impl Iterator<Item = NodeIdTyped> + '_ {
+            self.enumerate().map(|(id, _)| id)
+        }
+        /// Creates a depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
+        pub fn enumerate(&self) -> impl Iterator<Item = (NodeIdTyped, &'_ Node<T, F>)> + '_ {
+            Iter {
+                parent_idxs: vec![],
+                next: Some(&self.root),
+            }
         }
     }
-}
-/// Depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
-struct IterIdSharedRefs<'a, T, F> {
-    /// Parent "Node and Index" pairs that lead to the tail node
-    parent_idxs: Vec<(&'a Node<T, F>, NodePathElem)>,
-    /// Next node to emit (with the child index to be explored)
-    next: Option<&'a Node<T, F>>,
-}
-impl<'a, T, F> IterIdSharedRefs<'a, T, F> {
-    /// Collects `parent_idxs` into a [`NodePathTyped`]
-    fn collect_parent_path(&self) -> NodePathTyped {
-        self.parent_idxs.iter().map(|(_, idx)| *idx).collect()
+    /// Depth-first iterator over [`NodeIdTyped`]s and [`Node`]s
+    struct Iter<'a, T, F> {
+        /// Parent "Node and Index" pairs that lead to the tail node
+        parent_idxs: Vec<(&'a Node<T, F>, NodePathElem)>,
+        /// Next node to emit (with the child index to be explored)
+        next: Option<&'a Node<T, F>>,
     }
-}
-impl<'a, T, F> Iterator for IterIdSharedRefs<'a, T, F> {
-    type Item = (NodeIdTyped, &'a Node<T, F>);
-    fn next(&mut self) -> Option<Self::Item> {
-        let current_node = self.next.take()?;
-        let current_node_id = self.collect_parent_path().with_sequence(current_node);
-        self.next = {
-            let mut last_idx = None;
-            let mut parent_node = current_node;
-            loop {
-                match &parent_node.children {
-                    Children::Chain(chain) => {
-                        let lookup_idx = last_idx.map_or(0, |x| x + 1);
-                        if let Some((_, child_node)) = chain.nodes.get(lookup_idx) {
-                            // found child
-                            self.parent_idxs.push((parent_node, lookup_idx));
-                            break Some(child_node);
-                        }
-                    }
-                    Children::Items(_) => {}
-                }
-                if let Some((node, idx)) = self.parent_idxs.pop() {
-                    // re-lookup parent
-                    last_idx = Some(idx);
-                    parent_node = node;
-                    continue;
-                }
-                // no parents left to pop
-                break None;
-            }
-        };
-        Some((current_node_id, current_node))
-    }
-}
-
-impl<T, F: Clone> Tree<T, F> {
-    /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and [`NodeRefMut`]s
-    pub fn enumerate_mut(&mut self) -> IterDetachedNodeMut<'_, T, F> {
-        let root = self.root_id();
-        self.enumerate_mut_subtree(&root).expect("valid root path")
-    }
-    /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and [`NodeRefMut`]s
-    /// for the subtree starting at the specified path
-    ///
-    /// # Errors
-    /// Returns an error if the specified `limit_path` is invalid for this [`Tree`]
-    pub fn enumerate_mut_subtree<'a, R>(
-        &mut self,
-        limit_path: R,
-    ) -> Result<IterDetachedNodeMut<'_, T, F>, InvalidNodePath>
-    where
-        R: Into<NodePathRefTyped<'a>>,
-    {
-        IterDetachedNodeMut::new(self, limit_path.into())
-    }
-}
-
-// NOTE
-// Ideally, want an Iterator that yields (&[&F], NodePathTyped, &mut OrderVec<T>)
-// BUT this is impossible in Safe Rust  (compiler cannot prove that each returned &mut is non-overlapping)
-//
-// Instead, redefine as a "next" function that accepts a closure of what-to-do.
-
-/// Iterator-like helper for depth-first traversal over [`NodePathRefTyped`]s and [`NodeRefMut`]s
-/// from a [`Tree`].
-///
-/// Created by [`Tree::enumerate_mut`] and [`Tree::enumerate_mut_subtree`].
-#[allow(clippy::module_name_repetitions)]
-pub struct IterDetachedNodeMut<'tree, T, F> {
-    tree: &'tree mut Tree<T, F>,
-    limit_path_length: usize,
-    filter_args: Vec<F>,
-    current_path: Option<NodePathTyped>,
-}
-impl<'tree, T, F: Clone> IterDetachedNodeMut<'tree, T, F> {
-    /// Attempts to create a new `IterDetachedNodeMut` iterator instance
-    ///
-    /// Returns an error if the specified `limit_path` is invalid for this [`Tree`]
-    fn new(
-        tree: &'tree mut Tree<T, F>,
-        limit_path: NodePathRefTyped<'_>,
-    ) -> Result<Self, InvalidNodePath> {
-        let (start_path, filter_args) = {
-            let mut filter_args = Vec::with_capacity(limit_path.elems().len() + 1);
-            let mut path = NodePathTyped::from(tree.root_id());
-            for &elem in limit_path.elems() {
-                let (_, node) = path.try_ref_shared(tree)?;
-                filter_args.push(node.filter.clone()); //TODO clone seems unavoidable for this setup... is it?
-                path = path.append(elem).into();
-            }
-            // assert_eq!(NodePathRefTyped::from(&path), limit_path);
-            assert_eq!(path.as_ref(), limit_path);
-            (path, filter_args)
-        };
-        Ok(Self {
-            tree,
-            limit_path_length: limit_path.elems().len(),
-            filter_args,
-            current_path: Some(start_path),
-        })
-    }
-    /// Performs the specified operation to all remaining elements
-    ///
-    /// See [`with_next()`] for the closure arguments' description.
-    ///
-    /// # Errors
-    /// Returns an error on the first occurrence of the `consume_fn` returning an error.
-    /// Note this means the iteration may be interrupted at an arbitrary step.
-    ///
-    /// [`with_next()`]: Self::with_next
-    pub fn with_all<U, E>(&mut self, mut consume_fn: U) -> Result<(), E>
-    where
-        U: FnMut(&[F], NodePathRefTyped<'_>, NodeRefMut<'_, '_, T, F>) -> Result<(), E>,
-    {
-        while let Some(result) = self.with_next(&mut consume_fn) {
-            match result {
-                Err(err) => return Err(err),
-                Ok(()) => continue,
-            }
+    impl<'a, T, F> Iter<'a, T, F> {
+        /// Collects `parent_idxs` into a [`NodePathTyped`]
+        fn collect_parent_path(&self) -> NodePathTyped {
+            self.parent_idxs.iter().map(|(_, idx)| *idx).collect()
         }
-        Ok(())
     }
-    /// Performs the specified operation to the next yielded element
-    ///
-    /// # Arguments
-    /// * `consume_fn` - the action to perform on all nodes
-    ///     * `&[F]` - filter elements from the base node to the current node (prior to iteration)
-    ///     * `NodePathRefTyped` - path for the current node
-    ///     * `NodeRefMut` - current node
-    pub fn with_next<U, V>(&mut self, consume_fn: U) -> Option<V>
-    where
-        U: FnOnce(&[F], NodePathRefTyped<'_>, NodeRefMut<'_, '_, T, F>) -> V,
-    {
-        const INVALID_INDEX: &str = "valid index from internal IterDetachedNodeMut iterator state";
-        if let Some(current_path) = self.current_path.take() {
-            let mut last_idx = None;
-            let mut popped_count = 0;
-            self.current_path = {
-                let mut next_path = current_path.clone(); // TODO if possible, remove this clone
+    impl<'a, T, F> Iterator for Iter<'a, T, F> {
+        type Item = (NodeIdTyped, &'a Node<T, F>);
+        fn next(&mut self) -> Option<Self::Item> {
+            let current_node = self.next.take()?;
+            let current_node_id = self.collect_parent_path().with_sequence(current_node);
+            self.next = {
+                let mut last_idx = None;
+                let mut parent_node = current_node;
                 loop {
-                    let (_, parent_node) =
-                        next_path.try_ref_shared(self.tree).expect(INVALID_INDEX);
-                    let lookup_idx = last_idx.map_or(0, |x| x + 1);
                     match &parent_node.children {
                         Children::Chain(chain) => {
-                            if let Some((_, _child_node)) = chain.nodes.get(lookup_idx) {
+                            let lookup_idx = last_idx.map_or(0, |x| x + 1);
+                            if let Some((_, child_node)) = chain.nodes.get(lookup_idx) {
                                 // found child
-                                break Some(next_path.append(lookup_idx).into());
+                                self.parent_idxs.push((parent_node, lookup_idx));
+                                break Some(child_node);
                             }
                         }
                         Children::Items(_) => {}
                     }
-                    if next_path.elems().len() <= self.limit_path_length {
-                        // reached end of the `limit_path`
-                        break None;
-                    }
-                    if let NodePathTyped::Child(child_path) = next_path {
-                        let (parent_path, idx) = child_path.into_parent();
+                    if let Some((node, idx)) = self.parent_idxs.pop() {
                         // re-lookup parent
                         last_idx = Some(idx);
-                        next_path = parent_path;
-                        // mark additional `pop` required for `filter_args`
-                        popped_count += 1;
+                        parent_node = node;
                         continue;
                     }
                     // no parents left to pop
                     break None;
                 }
             };
-            // execute `consume_fn` for current node
-            let current_node = current_path.try_ref(self.tree).expect(INVALID_INDEX);
-            self.filter_args.push(current_node.filter.clone());
-            let result = consume_fn(&self.filter_args, (&current_path).into(), current_node);
-            // apply pop to `filter_args`, for next iteration
-            self.filter_args
-                .truncate(self.filter_args.len().saturating_sub(popped_count));
-            // return the result
-            Some(result)
-        } else {
-            None
+            Some((current_node_id, current_node))
         }
+    }
+}
+
+pub use mut_ref::{IterMut, IterMutBreadcrumb};
+mod mut_ref {
+    use crate::{error::InvalidNodePath, id::NodePathRefTyped, Node, Tree};
+
+    pub use breadcrumb::IterMutBreadcrumb;
+    mod breadcrumb;
+
+    pub use wrapper::IterMut;
+    mod wrapper;
+
+    impl<T, F> Tree<T, F> {
+        /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and
+        /// [`NodeRefMut`](`crate::refs::NodeRefMut`)s
+        pub fn enumerate_mut(&mut self) -> impl IterMut<T, F> + '_ {
+            wrapper::new(self, None).expect("valid root path")
+        }
+        /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and
+        /// [`NodeRefMut`](`crate::refs::NodeRefMut`)s
+        /// for the subtree starting at the specified path
+        ///
+        /// # Errors
+        /// Returns an error if the specified `limit_path` is invalid for this [`Tree`]
+        pub fn enumerate_mut_subtree<'a>(
+            &mut self,
+            limit_path: impl Into<NodePathRefTyped<'a>>,
+        ) -> Result<impl IterMut<T, F> + '_, InvalidNodePath> {
+            wrapper::new(self, Some(limit_path.into()))
+        }
+    }
+    impl<T, F: Clone> Tree<T, F> {
+        /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and
+        /// [`NodeRefMut`](`crate::refs::NodeRefMut`)s
+        pub fn enumerate_mut_filters(&mut self) -> impl IterMutBreadcrumb<T, F, F> + '_ {
+            breadcrumb::Walker::new(self, None, Some(node_filter_clone)).expect("valid root path")
+        }
+        /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and
+        /// [`NodeRefMut`](`crate::refs::NodeRefMut`)s
+        /// for the subtree starting at the specified path
+        ///
+        /// # Errors
+        /// Returns an error if the specified `limit_path` is invalid for this [`Tree`]
+        pub fn enumerate_mut_subtree_filters<'a>(
+            &mut self,
+            subtree_limit_path: impl Into<NodePathRefTyped<'a>>,
+        ) -> Result<impl IterMutBreadcrumb<T, F, F> + '_, InvalidNodePath> {
+            breadcrumb::Walker::new(
+                self,
+                Some(subtree_limit_path.into()),
+                Some(node_filter_clone),
+            )
+        }
+    }
+    fn node_filter_clone<T, F: Clone>(node: &Node<T, F>) -> F {
+        //TODO clone seems unavoidable for this setup... is it?
+        node.filter.clone()
     }
 }

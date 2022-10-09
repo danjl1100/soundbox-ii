@@ -32,8 +32,7 @@ use std::borrow::Cow;
 
 use q_filter_tree::{
     error::InvalidNodePath,
-    id::{ty, NodeId, NodeIdTyped, NodePathTyped},
-    iter::IterDetachedNodeMut,
+    id::{ty, NodeId, NodeIdTyped, NodePathRefTyped, NodePathTyped},
     serde::{NodeDescriptor, NodeIdParseError},
     OrderType, RemoveError, Weight,
 };
@@ -106,8 +105,7 @@ where
         let new_node_id = self.inner_add_node(parent_path_str, filter)?;
         let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
         node_ref.overwrite_child_items_uniform(std::iter::empty());
-        let iter = self.tree.enumerate_mut_subtree(&new_node_id);
-        Self::inner_update_node(&mut self.item_source, iter.expect("created node exists"))?;
+        self.inner_update_node(&new_node_id)?;
         Ok(serialize_id(new_node_id)?)
     }
     /// Sets the filter of the specified node
@@ -121,8 +119,7 @@ where
         let mut node_ref = node_path.try_ref(&mut self.tree)?;
         let old_filter = std::mem::replace(&mut node_ref.filter, filter);
         // update node (recursively)
-        let iter = self.tree.enumerate_mut_subtree(&node_path)?;
-        Self::inner_update_node(&mut self.item_source, iter)?;
+        self.inner_update_node(&node_path)?;
         Ok(old_filter)
     }
     /// Sets the weight of the specified item in the node
@@ -184,26 +181,29 @@ where
     fn update_nodes(&mut self, node_path_str: &str) -> Result<(), Error> {
         let node_path = parse_path(node_path_str)?;
         // update node (recursively)
-        let iter = self.tree.enumerate_mut_subtree(&node_path)?;
-        Self::inner_update_node(&mut self.item_source, iter)?;
+        self.inner_update_node(&node_path)?;
         // TODO deleteme, no reason to repeat back (sanitized?) version of input param
         // Ok(serialize_path(node_path)?)
         Ok(())
     }
-    fn inner_update_node(
-        item_source: &mut T,
-        mut iter: IterDetachedNodeMut<'_, Item<T, F>, F>,
+    fn inner_update_node<'a>(
+        &mut self,
+        path: impl Into<NodePathRefTyped<'a>>,
     ) -> Result<(), Error> {
-        iter.with_all(|args, _path, mut node_ref| {
-            let is_items = node_ref.child_nodes().is_none();
-            if is_items {
-                let items = item_source
-                    .lookup(args)
-                    .map_err(|e| format!("item lookup error: {e}"))?;
-                node_ref.merge_child_items_uniform(items);
-            }
-            Ok(())
-        })
+        use q_filter_tree::iter::IterMutBreadcrumb;
+        self.tree
+            .enumerate_mut_subtree_filters(path)?
+            .with_all(|args, _path, mut node_ref| {
+                let is_items = node_ref.child_nodes().is_none();
+                if is_items {
+                    let items = self
+                        .item_source
+                        .lookup(args)
+                        .map_err(|e| format!("item lookup error: {e}"))?;
+                    node_ref.merge_child_items_uniform(items);
+                }
+                Ok(())
+            })
     }
     /// Removes a `Node` at the specified id (path`#`sequence)
     ///
