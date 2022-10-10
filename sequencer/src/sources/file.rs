@@ -80,7 +80,7 @@ where
 
     fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error> {
         let folder_path = self.root.clone_to_child_path(args);
-        let files = WalkDir::new(folder_path)
+        let mut files: Vec<_> = WalkDir::new(folder_path)
             .into_iter()
             // ignore errors (usually permission errors)
             .filter_map(Result::ok)
@@ -89,6 +89,8 @@ where
             // clone into String, ignore non-UTF8 filenames
             .filter_map(|entry| entry.path().to_str().map(String::from))
             .collect();
+        // ensure determinstic ordering
+        files.sort();
         Ok(files)
     }
 }

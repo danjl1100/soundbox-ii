@@ -228,6 +228,17 @@ impl<T: Clone, F> Tree<T, F> {
     pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
         self.root.pop_item()
     }
+    /// Refreshes `prefill` on all nodes
+    pub fn refresh_prefill(&mut self) {
+        use iter::IterMut;
+        use shared::{IgnoreNever, Never};
+        self.enumerate_mut()
+            .with_all(|_path, mut node| {
+                node.update_queue_prefill();
+                Ok::<_, Never>(())
+            })
+            .ignore_never();
+    }
 }
 impl<T, F> Default for Tree<T, F>
 where
@@ -235,6 +246,31 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+/// Mutable reference to a [`Tree`], to ensure [`Tree::refresh_prefill`] is called on [`Drop`]
+///
+/// See [`Tree::guard`] for construction.
+pub struct TreeGuard<'a, T: Clone, F>(&'a mut Tree<T, F>);
+impl<T: Clone, F> Tree<T, F> {
+    /// Mutable handle to the [`Tree`], usable in [`id::NodeIdTyped::try_ref`] via [`AsMut`]
+    pub fn guard(&mut self) -> TreeGuard<'_, T, F> {
+        TreeGuard(self)
+    }
+}
+impl<'a, T: Clone, F> Drop for TreeGuard<'a, T, F> {
+    fn drop(&mut self) {
+        self.0.refresh_prefill();
+    }
+}
+impl<T, F> AsMut<Tree<T, F>> for Tree<T, F> {
+    fn as_mut(&mut self) -> &mut Tree<T, F> {
+        self
+    }
+}
+impl<'a, T: Clone, F> AsMut<Tree<T, F>> for TreeGuard<'a, T, F> {
+    fn as_mut(&mut self) -> &mut Tree<T, F> {
+        self.0
     }
 }
 

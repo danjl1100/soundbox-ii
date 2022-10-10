@@ -51,16 +51,32 @@ impl<T, F> Node<T, F> {
 }
 impl<T: Clone, F> Node<T, F> {
     /// Removes the specified item from the queue
-    pub fn queue_remove(&mut self, index: usize) -> Option<T> {
-        let removed = self.queue.remove(index);
-        self.queue_prefill(false);
-        removed
+    ///
+    /// # Errors
+    /// Returns an error of the current length, if the specified index is out of bounds
+    pub fn try_queue_remove(&mut self, index: usize) -> Result<Option<T>, usize> {
+        let queue_len = self.queue.len();
+        if index < queue_len {
+            let removed = self.queue.remove(index);
+            self.queue_prefill(false);
+            Ok(removed)
+        } else {
+            Err(queue_len)
+        }
     }
     /// Sets the number of elements to automatically pre-fill into the queue
     pub fn set_queue_prefill_len(&mut self, new_len: usize) {
         self.queue_prefill_len = new_len;
         self.queue_prefill(false);
     }
+    /// Verifies the queue pre-fill is updated
+    pub(crate) fn update_queue_prefill(&mut self) {
+        self.queue_prefill(false);
+    }
+    // TODO define criteria for when to speculatively `prefill` parent nodes
+    //     e.g. on ANY change?  or only when more items are added?
+    //    NOTE: `Node` methods have NO ACCESS to parent nodes.  Must be `Tree`-level function
+    // Current workaround - client opt-in using TreeGuard to pre-fill nodes after mutating
     fn queue_prefill(&mut self, will_pop: bool) {
         let queue_prefill_len = match &self.children {
             Children::Chain(_) => self.queue_prefill_len,

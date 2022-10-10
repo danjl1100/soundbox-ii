@@ -142,7 +142,11 @@ impl<T, F> std::ops::DerefMut for NodeRefMutWeighted<'_, '_, T, F> {
 }
 impl NodePath<ty::Root> {
     /// Returns `NodeRefMut` within the specified `Tree`
-    pub fn try_ref<'tree, T, F>(&self, tree: &'tree mut Tree<T, F>) -> NodeRefMut<'tree, '_, T, F> {
+    pub fn try_ref<'tree, T, F>(
+        &self,
+        tree: &'tree mut impl AsMut<Tree<T, F>>,
+    ) -> NodeRefMut<'tree, '_, T, F> {
+        let tree = tree.as_mut();
         let path = self.into();
         let Tree {
             root,
@@ -163,8 +167,9 @@ impl NodePath<ty::Child> {
     ///
     pub fn try_ref<'tree, T, F>(
         &self,
-        tree: &'tree mut Tree<T, F>,
+        tree: &'tree mut impl AsMut<Tree<T, F>>,
     ) -> Result<NodeRefMutWeighted<'tree, '_, T, F>, InvalidNodePath> {
+        let tree = tree.as_mut();
         let path = self;
         match &mut tree.root.children {
             Children::Chain(chain) => {
@@ -206,8 +211,9 @@ impl NodePathTyped {
     ///
     pub fn try_ref<'tree, T, F>(
         &self,
-        tree: &'tree mut Tree<T, F>,
+        tree: &'tree mut impl AsMut<Tree<T, F>>,
     ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
+        let tree = tree.as_mut();
         match self {
             Self::Root(path) => Ok(path.try_ref(tree)),
             Self::Child(path) => path.try_ref(tree).map(NodeRefMutWeighted::into_inner),
@@ -238,8 +244,9 @@ impl NodeIdTyped {
     ///
     pub fn try_ref<'path, 'tree, T, F>(
         &'path self,
-        tree: &'tree mut Tree<T, F>,
+        tree: &'tree mut impl AsMut<Tree<T, F>>,
     ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
+        let tree = tree.as_mut();
         match self {
             Self::Root(id) => Ok(id.try_ref(tree)),
             Self::Child(id) => id.try_ref(tree).map(NodeRefMutWeighted::into_inner),

@@ -55,32 +55,42 @@ type Item<T, F> = <T as ItemSource<F>>::Item;
 // TODO deleteme
 // type ItemError<T, F> = <T as ItemSource<F>>::Error;
 type Tree<T, F> = q_filter_tree::Tree<Item<T, F>, F>;
+type TreeGuard<'a, T, F> = q_filter_tree::TreeGuard<'a, Item<T, F>, F>;
 type NodeInfo<T, F> = q_filter_tree::NodeInfo<Item<T, F>, F>;
 
 /// Sequencer for tracks (using [`q_filter_tree`] back-end) from a user-specified source
 #[derive(Default)]
 pub struct Sequencer<T: ItemSource<F>, F> {
-    tree: Tree<T, F>,
+    raw_tree: Tree<T, F>,
     item_source: T,
+}
+impl<T: ItemSource<F>, F> Sequencer<T, F> {
+    /// Creates a new, empty Sequencer
+    pub fn new(item_source: T, root_filter: F) -> Self {
+        Self {
+            raw_tree: q_filter_tree::Tree::new_with_filter(root_filter),
+            item_source,
+        }
+    }
+    fn tree_guard(&mut self) -> TreeGuard<'_, T, F> {
+        self.raw_tree.guard()
+    }
+    fn tree_ref(&self) -> &Tree<T, F> {
+        &self.raw_tree
+    }
 }
 impl<T: ItemSource<F>, F> Sequencer<T, F>
 where
     F: Clone,
 {
-    /// Creates a new, empty Sequencer
-    pub fn new(item_source: T, root_filter: F) -> Self {
-        Self {
-            tree: q_filter_tree::Tree::new_with_filter(root_filter),
-            item_source,
-        }
-    }
     fn inner_add_node(
         &mut self,
         parent_path_str: &str,
         filter: F,
     ) -> Result<NodeId<ty::Child>, Error> {
         let parent_path = parse_path(parent_path_str)?;
-        let mut parent_ref = parent_path.try_ref(&mut self.tree)?;
+        let mut tree_guard = self.tree_guard();
+        let mut parent_ref = parent_path.try_ref(&mut tree_guard)?;
         let mut child_nodes = parent_ref
             .child_nodes()
             .ok_or_else(|| format!("Node {parent_path} does not have child_nodes"))?;
@@ -103,9 +113,10 @@ where
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn add_terminal_node(&mut self, parent_path_str: &str, filter: F) -> Result<NodeIdStr, Error> {
         let new_node_id = self.inner_add_node(parent_path_str, filter)?;
-        let mut node_ref = new_node_id.try_ref(&mut self.tree)?;
+        let mut tree_guard = self.raw_tree.guard();
+        let mut node_ref = new_node_id.try_ref(&mut tree_guard)?;
         node_ref.overwrite_child_items_uniform(std::iter::empty());
-        self.inner_update_node(&new_node_id)?;
+        Self::inner_update_node(&mut self.item_source, &new_node_id, &mut tree_guard)?;
         Ok(serialize_id(new_node_id)?)
     }
     /// Sets the filter of the specified node
@@ -116,10 +127,11 @@ where
     fn set_node_filter(&mut self, node_path_str: &str, filter: F) -> Result<F, Error> {
         let node_path = parse_path(node_path_str)?;
         // set the filter
-        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let mut tree_guard = self.raw_tree.guard();
+        let mut node_ref = node_path.try_ref(&mut tree_guard)?;
         let old_filter = std::mem::replace(&mut node_ref.filter, filter);
         // update node (recursively)
-        self.inner_update_node(&node_path)?;
+        Self::inner_update_node(&mut self.item_source, &node_path, &mut tree_guard)?;
         Ok(old_filter)
     }
     /// Sets the weight of the specified item in the node
@@ -134,7 +146,8 @@ where
         weight: Weight,
     ) -> Result<Weight, Error> {
         let node_path = parse_path(node_path_str)?;
-        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let mut tree_guard = self.tree_guard();
+        let mut node_ref = node_path.try_ref(&mut tree_guard)?;
         let child_items = node_ref.child_items().ok_or_else(|| {
             Error::Message(format!(
                 "cannot set items for node at path {node_path}, type is chain"
@@ -157,7 +170,8 @@ where
             NodePathTyped::Root(path) => Err(InvalidNodePath::from(path)),
             NodePathTyped::Child(path) => Ok(path),
         }?;
-        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let mut tree_guard = self.tree_guard();
+        let mut node_ref = node_path.try_ref(&mut tree_guard)?;
         Ok(node_ref.set_weight(weight))
     }
     /// Sets the order type of the specified node
@@ -171,7 +185,8 @@ where
         order_type: OrderType,
     ) -> Result<OrderType, Error> {
         let node_path = parse_path(node_path_str)?;
-        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let mut tree_guard = self.tree_guard();
+        let mut node_ref = node_path.try_ref(&mut tree_guard)?;
         Ok(node_ref.set_order_type(order_type))
     }
     /// Updates the items for the specified node (and any children)
@@ -181,23 +196,25 @@ where
     fn update_nodes(&mut self, node_path_str: &str) -> Result<(), Error> {
         let node_path = parse_path(node_path_str)?;
         // update node (recursively)
-        self.inner_update_node(&node_path)?;
+        let mut tree_guard = self.raw_tree.guard();
+        Self::inner_update_node(&mut self.item_source, &node_path, &mut tree_guard)?;
         // TODO deleteme, no reason to repeat back (sanitized?) version of input param
         // Ok(serialize_path(node_path)?)
         Ok(())
     }
-    fn inner_update_node<'a>(
-        &mut self,
+    fn inner_update_node<'a, 'b>(
+        item_source: &mut T,
         path: impl Into<NodePathRefTyped<'a>>,
+        tree_guard: &mut TreeGuard<'b, T, F>,
     ) -> Result<(), Error> {
         use q_filter_tree::iter::IterMutBreadcrumb;
-        self.tree
+        tree_guard
+            .as_mut()
             .enumerate_mut_subtree_filters(path)?
             .with_all(|args, _path, mut node_ref| {
                 let is_items = node_ref.child_nodes().is_none();
                 if is_items {
-                    let items = self
-                        .item_source
+                    let items = item_source
                         .lookup(args)
                         .map_err(|e| format!("item lookup error: {e}"))?;
                     node_ref.merge_child_items_uniform(items);
@@ -217,42 +234,53 @@ where
             NodeIdTyped::Root(..) => Err(Error::Message("cannot remove root node".to_string())),
             NodeIdTyped::Child(child) => Ok(child),
         }?;
-        Ok(self.tree.remove_node(&node_id)??)
+        let mut tree_guard = self.raw_tree.guard();
+        let tree = tree_guard.as_mut();
+        Ok(tree.remove_node(&node_id)??)
     }
     /// Returns the next [`Item`](`ItemSource::Item`)
-    pub fn pop_next(&mut self) -> Option<Cow<'_, Item<T, F>>> {
-        self.tree.pop_item()
+    pub fn pop_next(&mut self) -> Option<Item<T, F>> {
+        let mut tree_guard = self.raw_tree.guard();
+        let tree = tree_guard.as_mut();
+        tree.pop_item().map(Cow::into_owned)
     }
     /// Returns an [`Iterator`] for the queue of the root node
     pub fn get_root_queue_items(&self) -> impl Iterator<Item = &Item<T, F>> {
-        let root_ref = self.tree.root_node_shared();
+        let root_ref = self.tree_ref().root_node_shared();
         root_ref.queue_iter()
+    }
+    fn parse_path_or_root(
+        &mut self,
+        path: Option<&str>,
+    ) -> Result<(NodePathTyped, TreeGuard<'_, T, F>), Error> {
+        let mut tree_guard = self.tree_guard();
+        let node_path = path
+            .map(parse_path)
+            .transpose()?
+            .unwrap_or_else(|| tree_guard.as_mut().root_id().into());
+        Ok((node_path, tree_guard))
     }
     fn set_node_prefill_count(
         &mut self,
         path: Option<&str>,
         min_count: usize,
     ) -> Result<(), Error> {
-        let node_path = path
-            .map(parse_path)
-            .transpose()?
-            .unwrap_or_else(|| self.tree.root_id().into());
-        let mut node_ref = node_path.try_ref(&mut self.tree)?;
+        let (node_path, mut tree_guard) = self.parse_path_or_root(path)?;
+        let mut node_ref = node_path.try_ref(&mut tree_guard)?;
         node_ref.set_queue_prefill_len(min_count);
         Ok(())
     }
     fn queue_remove_item(&mut self, path: Option<&str>, index: usize) -> Result<(), Error> {
-        let node_path = path
-            .map(parse_path)
-            .transpose()?
-            .unwrap_or_else(|| self.tree.root_id().into());
-        let mut node_ref = node_path.try_ref(&mut self.tree)?;
-        node_ref.queue_remove(index).map(|_| ()).ok_or_else(|| {
-            Error::Message(format!(
-                "failed to remove from queue index {index}, max length {}",
-                node_ref.queue_len()
-            ))
-        })
+        let (node_path, mut tree_guard) = self.parse_path_or_root(path)?;
+        let mut node_ref = node_path.try_ref(&mut tree_guard)?;
+        node_ref
+            .try_queue_remove(index)
+            .map(drop)
+            .map_err(|queue_len| {
+                Error::Message(format!(
+                    "failed to remove from queue index {index}, max length {queue_len}"
+                ))
+            })
     }
 }
 /// [`Mismatch`] with associated label string
@@ -351,7 +379,7 @@ where
 {
     /// Returns a serializable representation of the inner [`Tree`](`q_filter_tree::Tree`)
     pub fn tree_serializable(&self) -> impl serde::Serialize + '_ {
-        &self.tree
+        self.tree_ref()
     }
 }
 impl<T: ItemSource<F>, F> std::fmt::Display for Sequencer<T, F>
@@ -359,7 +387,7 @@ where
     F: serde::Serialize + Clone,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let tree = serde_json::to_string_pretty(&self.tree)
+        let tree = serde_json::to_string_pretty(self.tree_ref())
             .unwrap_or_else(|err| format!("<<Sequencer error: {err}>>"));
         write!(f, "{tree}")
     }
