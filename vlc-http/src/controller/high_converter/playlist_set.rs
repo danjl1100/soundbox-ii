@@ -114,11 +114,11 @@ impl Converter {
             let current_item = IndexItem::new(current_id, items, command);
             let current_index = current_item.map(|c| (c.ty, c.index));
             Self::check_remove_first(items, current_index, command)?;
-            let comparison_start =
-                current_item.map_or_else(|| items.len(), |c| c.get_comparison_start());
-            self.accepted_comparison_start = Some(comparison_start);
-            comparison_start
+            current_item.map_or_else(|| items.len(), |c| c.get_comparison_start())
         };
+        // shrink `accepted` if items.len has shrunk
+        let comparison_start = comparison_start.min(items.len());
+        self.accepted_comparison_start = Some(comparison_start);
         let comparison_items = &items[comparison_start..];
         // - only delete incorrect-current items AFTER the correct items are fully staged
         //    (pros: allow VLC to catch-up on file metadata loading)

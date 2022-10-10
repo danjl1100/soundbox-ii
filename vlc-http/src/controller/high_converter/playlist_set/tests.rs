@@ -247,7 +247,7 @@ fn test_harness_empty() {
 fn deletes_one() {
     let items = items!["a", "b", "Q", "d"];
     let mut uut = TestHarness::new(Command {
-        urls: vec![file_url("c"), file_url("d")],
+        urls: make_urls("c", &["d"]),
         max_history_count: 99.try_into().expect("nonzero"),
     });
     uut.publish_playlist_items(items);
@@ -381,6 +381,27 @@ fn handles_changing_current_item() {
     uut.publish_playback_current_id(Some(14));
     uut.assert_next(add("j"), &final_items[..], Some(14));
     uut.assert_done(&final_items[..], Some(14));
+}
+#[test]
+fn handles_shortened_items_list() {
+    // - accept the reality that items may quickly change at any point
+    let urls = make_urls("a", &[]);
+    let mut uut = TestHarness::new(Command {
+        urls,
+        max_history_count: 99.try_into().expect("nonzero"),
+    });
+    uut.publish_playlist_items(items!["0", "1", "a"]);
+    uut.publish_playback_current_id(Some(0));
+    uut.assert_next(delete(1), &items![0=>"0", 2=>"a"], Some(0));
+    // clear playlist
+    let empty_items = items![];
+    uut.publish_playlist_items(empty_items);
+    uut.publish_playback_current_id(None);
+    // verify operation continues (with no panic)
+    let final_items = &items![3=>"a"];
+    uut.assert_next(add("a"), final_items, None);
+    uut.assert_next(play(3), final_items, Some(3));
+    uut.assert_done(final_items, Some(3));
 }
 #[test]
 fn never_plays_last_item_far_far_away() {
