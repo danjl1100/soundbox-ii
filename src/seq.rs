@@ -36,6 +36,7 @@ pub(crate) async fn sequencer_task(
             Some(command) = sequencer_rx.recv() => {
                 let result = sequencer.run(command);
                 if let Err(sequencer_err) = result {
+                    // TODO include a oneshot receiver in the command, to signal success/failure message?
                     dbg!(sequencer_err);
                 }
             }

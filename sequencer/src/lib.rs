@@ -214,6 +214,8 @@ where
             .with_all(|args, _path, mut node_ref| {
                 let is_items = node_ref.child_nodes().is_none();
                 if is_items {
+                    // TODO add `NodeId` to the item, so user can diagnose
+                    //   where specific queued item came from
                     let items = item_source
                         .lookup(args)
                         .map_err(|e| format!("item lookup error: {e}"))?;
@@ -270,6 +272,10 @@ where
         node_ref.set_queue_prefill_len(min_count);
         Ok(())
     }
+    // TODO add `item` to the specified Items node, at the index
+    // fn queue_add_item(&mut self, path: Option<&str>, item: T, index: Option<usize>) -> Result<(), Error> {
+    //     todo!()
+    // }
     fn queue_remove_item(&mut self, path: Option<&str>, index: usize) -> Result<(), Error> {
         let (node_path, mut tree_guard) = self.parse_path_or_root(path)?;
         let mut node_ref = node_path.try_ref(&mut tree_guard)?;

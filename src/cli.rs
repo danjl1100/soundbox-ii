@@ -139,6 +139,11 @@ impl Prompt {
                 },
             }?;
         }
+        //TODO: if there is a command error, these status print-outs can obscure the error
+        // --> need to defer these on error (show a symbol for "press enter to see update")
+        //      OR find a way to print the error *below* these status updates,
+        //      possibly re-printing the user input for clarity
+
         // poll and print status
         if let Some(Some(playback)) = self.playback_status.poll_update() {
             println!("Playback: {:#?}", playback);
