@@ -8,7 +8,7 @@
 //! Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
 //! ```
 //! use std::borrow::Cow;
-//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! use q_filter_tree::{Tree, error::PopError, OrderType, SequenceAndItem};
 //! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
@@ -28,14 +28,15 @@
 //! childC_ref.push_item("C1");
 //! childC_ref.push_item("C2");
 //! childC_ref.push_item("C3");
+//! let item = |seq, item| SequenceAndItem::new(seq, Cow::Owned(item));
 //! //
 //! let mut root_ref = root.try_ref(&mut t);
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A1")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A2")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("B1")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C1")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C2")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C3")));
+//! assert_eq!(root_ref.pop_item(), Some(item(1, "A1")));
+//! assert_eq!(root_ref.pop_item(), Some(item(1, "A2")));
+//! assert_eq!(root_ref.pop_item(), Some(item(2, "B1")));
+//! assert_eq!(root_ref.pop_item(), Some(item(3, "C1")));
+//! assert_eq!(root_ref.pop_item(), Some(item(3, "C2")));
+//! assert_eq!(root_ref.pop_item(), Some(item(3, "C3")));
 //! assert_eq!(root_ref.pop_item(), None);
 //! ```
 //!
@@ -44,7 +45,7 @@
 //! Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
 //! ```
 //! use std::borrow::Cow;
-//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! use q_filter_tree::{Tree, error::PopError, OrderType, SequenceAndItem};
 //! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
@@ -64,14 +65,15 @@
 //! childC_ref.push_item("C1");
 //! childC_ref.push_item("C2");
 //! childC_ref.push_item("C3");
+//! let item = |seq, item| SequenceAndItem::new(seq, Cow::Owned(item));
 //! //
 //! let mut root_ref = root.try_ref(&mut t);
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A1")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("B1")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C1")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("A2")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C2")));
-//! assert_eq!(root_ref.pop_item(), Some(Cow::Owned("C3")));
+//! assert_eq!(root_ref.pop_item(), Some(item(1, "A1")));
+//! assert_eq!(root_ref.pop_item(), Some(item(2, "B1")));
+//! assert_eq!(root_ref.pop_item(), Some(item(3, "C1")));
+//! assert_eq!(root_ref.pop_item(), Some(item(1, "A2")));
+//! assert_eq!(root_ref.pop_item(), Some(item(3, "C2")));
+//! assert_eq!(root_ref.pop_item(), Some(item(3, "C3")));
 //! assert_eq!(root_ref.pop_item(), None);
 //! ```
 //!
@@ -107,7 +109,7 @@
 //! let mut root_ref = root.try_ref(&mut t);
 //! let mut popped = vec![];
 //! for _ in 0..6 {
-//!     popped.push(root_ref.pop_item().unwrap().into_owned());
+//!     popped.push(root_ref.pop_item().unwrap().into_item().into_owned());
 //! }
 //! // non-deterministic ordering of `popped`, so instead
 //! // check some properties of `popped`

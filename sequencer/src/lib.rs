@@ -28,14 +28,14 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use std::borrow::Cow;
-
 use q_filter_tree::{
     error::InvalidNodePath,
     id::{ty, NodeId, NodeIdTyped, NodePathRefTyped, NodePathTyped},
     serde::{NodeDescriptor, NodeIdParseError},
     OrderType, RemoveError, Weight,
 };
+
+use std::borrow::Cow;
 
 #[macro_use]
 mod macros;
@@ -52,8 +52,7 @@ pub mod command;
 
 // conversions, for ergonomic use with `ItemSource`
 type Item<T, F> = <T as ItemSource<F>>::Item;
-// TODO deleteme
-// type ItemError<T, F> = <T as ItemSource<F>>::Error;
+type SeqItem<T, F> = q_filter_tree::SequenceAndItem<Item<T, F>>;
 type Tree<T, F> = q_filter_tree::Tree<Item<T, F>, F>;
 type TreeGuard<'a, T, F> = q_filter_tree::TreeGuard<'a, Item<T, F>, F>;
 type NodeInfo<T, F> = q_filter_tree::NodeInfo<Item<T, F>, F>;
@@ -241,13 +240,14 @@ where
         Ok(tree.remove_node(&node_id)??)
     }
     /// Returns the next [`Item`](`ItemSource::Item`)
-    pub fn pop_next(&mut self) -> Option<Item<T, F>> {
+    pub fn pop_next(&mut self) -> Option<SeqItem<T, F>> {
         let mut tree_guard = self.raw_tree.guard();
         let tree = tree_guard.as_mut();
-        tree.pop_item().map(Cow::into_owned)
+        tree.pop_item()
+            .map(|seq_item| seq_item.map(Cow::into_owned))
     }
     /// Returns an [`Iterator`] for the queue of the root node
-    pub fn get_root_queue_items(&self) -> impl Iterator<Item = &Item<T, F>> {
+    pub fn get_root_queue_items(&self) -> impl Iterator<Item = &SeqItem<T, F>> {
         let root_ref = self.tree_ref().root_node_shared();
         root_ref.queue_iter()
     }

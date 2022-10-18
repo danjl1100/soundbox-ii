@@ -10,63 +10,84 @@ pub(crate) type Sequencer = sequencer::Sequencer<source::Source, SequencerFilter
 pub(crate) type SequencerFilter = Option<source::TypedArg>;
 pub(crate) type SequencerCommand = sequencer::command::Command<SequencerFilter>;
 
-pub(crate) async fn sequencer_task(
-    mut sequencer: Sequencer,
-    mut sequencer_rx: tokio::sync::mpsc::Receiver<SequencerCommand>,
-    cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
-    state_tx: watch::Sender<String>,
-) -> Result<shared::Never, Shutdown> {
-    let vlc_http::cmd_playlist_items::Sender {
-        urls_tx,
-        mut remove_rx,
-    } = cmd_playlist_tx;
-    loop {
-        // publish state
-        match serde_json::to_string_pretty(&sequencer.tree_serializable()) {
-            Ok(tree_str) => {
-                if let Err(send_err) = state_tx.send(tree_str) {
-                    dbg!(send_err);
+pub(crate) struct Task {
+    pub sequencer: Sequencer,
+    pub sequencer_rx: tokio::sync::mpsc::Receiver<SequencerCommand>,
+    pub cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
+    pub state_tx: watch::Sender<String>,
+}
+impl Task {
+    pub(crate) async fn run(self) -> Result<shared::Never, Shutdown> {
+        let Self {
+            mut sequencer,
+            mut sequencer_rx,
+            cmd_playlist_tx,
+            state_tx,
+        } = self;
+        let vlc_http::cmd_playlist_items::Sender {
+            urls_tx,
+            mut remove_rx,
+        } = cmd_playlist_tx;
+        loop {
+            // publish state
+            match serde_json::to_string_pretty(&sequencer.tree_serializable()) {
+                Ok(tree_str) => {
+                    if let Err(send_err) = state_tx.send(tree_str) {
+                        dbg!(send_err);
+                    }
+                }
+                Err(serde_json_err) => {
+                    dbg!(serde_json_err);
                 }
             }
-            Err(serde_json_err) => {
-                dbg!(serde_json_err);
+            tokio::select! {
+                Some(command) = sequencer_rx.recv() => {
+                    Self::exec_command(command, &mut sequencer);
+                }
+                Ok(()) = remove_rx.changed() => {
+                    if let Some(removed) = &*remove_rx.borrow() {
+                        Self::exec_remove(removed, &mut sequencer);
+                    }
+                }
+                else => {
+                    break;
+                }
+            }
+            // update cmd_playlist items
+            let new_urls = sequencer
+                .get_root_queue_items()
+                .map(cli::parse_url)
+                .collect();
+            match new_urls {
+                Ok(new_urls) => {
+                    urls_tx.send_modify(|data| {
+                        data.items = new_urls;
+                    });
+                }
+                Err(url_err) => {
+                    dbg!(url_err);
+                }
             }
         }
-        tokio::select! {
-            Some(command) = sequencer_rx.recv() => {
-                let result = sequencer.run(command);
-                if let Err(sequencer_err) = result {
-                    // TODO include a oneshot receiver in the command, to signal success/failure message?
-                    dbg!(sequencer_err);
-                }
-            }
-            Ok(()) = remove_rx.changed() => {
-                if let Some(removed) = &*remove_rx.borrow() {
-                    let popped = sequencer.pop_next();
-                    println!("remove_rx changed! removed {removed}, and popped {popped:?}");
-                }
-            }
-            else => {
-                break;
-            }
-        }
-        // update cmd_playlist items
-        let new_urls = sequencer
-            .get_root_queue_items()
-            .map(cli::parse_url)
-            .collect();
-        match new_urls {
-            Ok(new_urls) => {
-                urls_tx.send_modify(|data| {
-                    data.items = new_urls;
-                });
-            }
-            Err(url_err) => {
-                dbg!(url_err);
-            }
+        Err(Shutdown)
+    }
+    fn exec_command(command: SequencerCommand, sequencer: &mut Sequencer) {
+        let result = sequencer.run(command);
+        if let Err(sequencer_err) = result {
+            // TODO include a oneshot receiver in the command, to signal success/failure message?
+            dbg!(sequencer_err);
         }
     }
-    Err(Shutdown)
+    fn exec_remove(removed: &url::Url, sequencer: &mut Sequencer) {
+        println!("remove_rx changed! removed {removed}");
+        let popped = sequencer.pop_next();
+        if let Some(popped) = popped {
+            let (node_seq, popped) = popped.into_parts();
+            println!("\tpopped {popped:?} from node #{node_seq}");
+        } else {
+            println!("\tpopped {popped:?}", popped = None::<()>);
+        }
+    }
 }
 
 pub use cmd::Cmd;

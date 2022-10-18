@@ -2,7 +2,7 @@
 use std::collections::VecDeque;
 
 use crate::{DebugItemSource, Error, ItemSource, Sequencer};
-use q_filter_tree::OrderType;
+use q_filter_tree::{OrderType, SequenceAndItem};
 
 mod fail;
 
@@ -32,10 +32,11 @@ fn create_item_node() -> Result<(), Error> {
 
     let mut s = Sequencer::new(DebugItemSource, String::default());
     s.add_terminal_node(".", filename.to_string())?;
+    let item = |s| SequenceAndItem::new(1, s);
     for n in 0..10 {
         assert_eq!(
             s.pop_next(),
-            Some(format!("item # {n} for {:?}", vec!["", filename]))
+            Some(item(format!("item # {n} for {:?}", vec!["", filename])))
         );
     }
 
@@ -66,12 +67,17 @@ fn assert_next(
     filters: &[&str],
     sequence: usize,
     rev: usize,
+    NodeSeq(node_sequence): NodeSeq,
 ) {
     assert_eq!(
         sequencer.pop_next(),
-        Some(format!("item # {sequence} for {filters:?} rev {rev}"))
+        Some(SequenceAndItem::new(
+            node_sequence,
+            format!("item # {sequence} for {filters:?} rev {rev}")
+        ))
     );
 }
+struct NodeSeq(q_filter_tree::id::Sequence);
 #[test]
 fn update_node() -> Result<(), Error> {
     let filename = "foo_bar_file";
@@ -79,18 +85,18 @@ fn update_node() -> Result<(), Error> {
     let mut s = Sequencer::new(UpdateTrackingItemSource(0), String::default());
     s.add_terminal_node(".", filename.to_string())?;
     let filters = vec!["", filename];
-    assert_next(&mut s, &filters, 0, 0);
-    assert_next(&mut s, &filters, 1, 0);
-    assert_next(&mut s, &filters, 2, 0);
+    assert_next(&mut s, &filters, 0, 0, NodeSeq(1));
+    assert_next(&mut s, &filters, 1, 0, NodeSeq(1));
+    assert_next(&mut s, &filters, 2, 0, NodeSeq(1));
     //
     s.item_source.set_rev(52);
-    assert_next(&mut s, &filters, 3, 0);
-    assert_next(&mut s, &filters, 4, 0);
-    assert_next(&mut s, &filters, 5, 0);
+    assert_next(&mut s, &filters, 3, 0, NodeSeq(1));
+    assert_next(&mut s, &filters, 4, 0, NodeSeq(1));
+    assert_next(&mut s, &filters, 5, 0, NodeSeq(1));
     s.update_nodes(".")?;
-    assert_next(&mut s, &filters, 6, 52);
-    assert_next(&mut s, &filters, 7, 52);
-    assert_next(&mut s, &filters, 8, 52);
+    assert_next(&mut s, &filters, 6, 52, NodeSeq(1));
+    assert_next(&mut s, &filters, 7, 52, NodeSeq(1));
+    assert_next(&mut s, &filters, 8, 52, NodeSeq(1));
     Ok(())
 }
 #[test]
@@ -105,43 +111,43 @@ fn update_subtree() -> Result<(), Error> {
     let filters_child2 = vec!["", "base1", "child2"];
     let filters_child3 = vec!["", "base2", "child3"];
     //
-    assert_next(&mut s, &filters_child1, 0, 0);
-    assert_next(&mut s, &filters_child3, 0, 0);
-    assert_next(&mut s, &filters_child2, 0, 0);
-    assert_next(&mut s, &filters_child3, 1, 0);
+    assert_next(&mut s, &filters_child1, 0, 0, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 0, 0, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 0, 0, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 1, 0, NodeSeq(5));
     //
     s.item_source.set_rev(5);
-    assert_next(&mut s, &filters_child1, 1, 0);
-    assert_next(&mut s, &filters_child3, 2, 0);
-    assert_next(&mut s, &filters_child2, 1, 0);
-    assert_next(&mut s, &filters_child3, 3, 0);
+    assert_next(&mut s, &filters_child1, 1, 0, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 2, 0, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 1, 0, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 3, 0, NodeSeq(5));
     s.update_nodes(".1.0")?;
-    assert_next(&mut s, &filters_child1, 2, 0);
-    assert_next(&mut s, &filters_child3, 4, 5);
-    assert_next(&mut s, &filters_child2, 2, 0);
-    assert_next(&mut s, &filters_child3, 5, 5);
+    assert_next(&mut s, &filters_child1, 2, 0, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 4, 5, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 2, 0, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 5, 5, NodeSeq(5));
     //
     s.item_source.set_rev(8);
-    assert_next(&mut s, &filters_child1, 3, 0);
-    assert_next(&mut s, &filters_child3, 6, 5);
-    assert_next(&mut s, &filters_child2, 3, 0);
-    assert_next(&mut s, &filters_child3, 7, 5);
+    assert_next(&mut s, &filters_child1, 3, 0, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 6, 5, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 3, 0, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 7, 5, NodeSeq(5));
     s.update_nodes(".1")?;
-    assert_next(&mut s, &filters_child1, 4, 0);
-    assert_next(&mut s, &filters_child3, 8, 8);
-    assert_next(&mut s, &filters_child2, 4, 0);
-    assert_next(&mut s, &filters_child3, 9, 8);
+    assert_next(&mut s, &filters_child1, 4, 0, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 8, 8, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 4, 0, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 9, 8, NodeSeq(5));
     //
     s.item_source.set_rev(9);
-    assert_next(&mut s, &filters_child1, 5, 0);
-    assert_next(&mut s, &filters_child3, 0, 8);
-    assert_next(&mut s, &filters_child2, 5, 0);
-    assert_next(&mut s, &filters_child3, 1, 8);
+    assert_next(&mut s, &filters_child1, 5, 0, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 0, 8, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 5, 0, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 1, 8, NodeSeq(5));
     s.update_nodes(".0")?;
-    assert_next(&mut s, &filters_child1, 6, 9);
-    assert_next(&mut s, &filters_child3, 2, 8);
-    assert_next(&mut s, &filters_child2, 6, 9);
-    assert_next(&mut s, &filters_child3, 3, 8);
+    assert_next(&mut s, &filters_child1, 6, 9, NodeSeq(2));
+    assert_next(&mut s, &filters_child3, 2, 8, NodeSeq(5));
+    assert_next(&mut s, &filters_child2, 6, 9, NodeSeq(3));
+    assert_next(&mut s, &filters_child3, 3, 8, NodeSeq(5));
     Ok(())
 }
 #[test]
@@ -153,17 +159,17 @@ fn set_filter_updates_only_subtree() -> Result<(), Error> {
     s.add_terminal_node(".1", "second_leaf".to_string())?;
     let filters1 = vec!["", "first_parent", "first_leaf"];
     let filters2_old = vec!["", "old_filter_value", "second_leaf"];
-    assert_next(&mut s, &filters1, 0, 7);
-    assert_next(&mut s, &filters2_old, 0, 7);
-    assert_next(&mut s, &filters1, 1, 7);
-    assert_next(&mut s, &filters2_old, 1, 7);
+    assert_next(&mut s, &filters1, 0, 7, NodeSeq(2));
+    assert_next(&mut s, &filters2_old, 0, 7, NodeSeq(4));
+    assert_next(&mut s, &filters1, 1, 7, NodeSeq(2));
+    assert_next(&mut s, &filters2_old, 1, 7, NodeSeq(4));
     //
     s.item_source.set_rev(1);
     s.set_node_filter(".1", "NEW_filter_value".to_string())?;
     let filters2 = vec!["", "NEW_filter_value", "second_leaf"];
-    assert_next(&mut s, &filters1, 2, 7);
-    assert_next(&mut s, &filters2, 2, 1);
-    assert_next(&mut s, &filters1, 3, 7);
-    assert_next(&mut s, &filters2, 3, 1);
+    assert_next(&mut s, &filters1, 2, 7, NodeSeq(2));
+    assert_next(&mut s, &filters2, 2, 1, NodeSeq(4));
+    assert_next(&mut s, &filters1, 3, 7, NodeSeq(2));
+    assert_next(&mut s, &filters2, 3, 1, NodeSeq(4));
     Ok(())
 }

@@ -6,7 +6,7 @@ use crate::{
     id::{NodePathElem, Sequence, SequenceSource},
     order,
     weight_vec::{self, OrderVec},
-    Weight,
+    SequenceAndItem, Weight,
 };
 
 /// Element in the [`Tree`](`crate::Tree`)
@@ -14,12 +14,12 @@ use crate::{
 pub struct Node<T, F> {
     pub(crate) children: Children<T, F>,
     /// Items queue polled from child nodes/items
-    queue: VecDeque<T>,
+    queue: VecDeque<SequenceAndItem<T>>,
     /// Number of elements to automatically pre-fill into the queue
     queue_prefill_len: usize,
     /// Filter qualifier
     pub filter: F,
-    pub(crate) sequence: Sequence,
+    sequence: Sequence,
 }
 impl<T, F> Node<T, F> {
     /// Sets the [`OrderType`](`order::Type`)
@@ -36,16 +36,20 @@ impl<T, F> Node<T, F> {
             Children::Items(items) => items.get_order_type(),
         }
     }
-    /// Appends an item to the queue
+    /// Appends an item to the queue, marked as originating from this node
     pub fn push_item(&mut self, item: T) {
-        self.queue.push_back(item);
+        let seq = self.sequence();
+        self.push_seq_item(SequenceAndItem::new(seq, item));
+    }
+    fn push_seq_item(&mut self, seq_item: SequenceAndItem<T>) {
+        self.queue.push_back(seq_item);
     }
     /// Returns a the length of the queue
     pub fn queue_len(&self) -> usize {
         self.queue.len()
     }
     /// Returns an iterator over the queue
-    pub fn queue_iter(&self) -> impl Iterator<Item = &T> {
+    pub fn queue_iter(&self) -> impl Iterator<Item = &SequenceAndItem<T>> {
         self.queue.iter()
     }
 }
@@ -54,7 +58,7 @@ impl<T: Clone, F> Node<T, F> {
     ///
     /// # Errors
     /// Returns an error of the current length, if the specified index is out of bounds
-    pub fn try_queue_remove(&mut self, index: usize) -> Result<Option<T>, usize> {
+    pub fn try_queue_remove(&mut self, index: usize) -> Result<Option<SequenceAndItem<T>>, usize> {
         let queue_len = self.queue.len();
         if index < queue_len {
             let removed = self.queue.remove(index);
@@ -88,8 +92,8 @@ impl<T: Clone, F> Node<T, F> {
             let min_count = queue_prefill_len + if will_pop { 1 } else { 0 };
             while self.queue.len() < min_count {
                 if let Some(popped) = self.inner_pop_item(Some(IgnoreQueue)) {
-                    let popped = popped.into_owned();
-                    self.push_item(popped);
+                    let popped = popped.map(Cow::into_owned);
+                    self.push_seq_item(popped);
                 } else {
                     break;
                 }
@@ -97,12 +101,15 @@ impl<T: Clone, F> Node<T, F> {
         }
     }
     /// Pops an item from child node queues (if available) then references items
-    pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
+    pub fn pop_item(&mut self) -> Option<SequenceAndItem<Cow<'_, T>>> {
         // NOTE only pre-fill at the side of the actual `pop_front`
         // self.queue_prefill(true);
         self.inner_pop_item(None)
     }
-    fn inner_pop_item(&mut self, ignore_queue: Option<IgnoreQueue>) -> Option<Cow<'_, T>> {
+    fn inner_pop_item(
+        &mut self,
+        ignore_queue: Option<IgnoreQueue>,
+    ) -> Option<SequenceAndItem<Cow<'_, T>>> {
         // 1) search Node for path to:
         //    1.a) Node X has queued item (Owned)
         //    1.b) Node X has an item to (Borrowed)
@@ -149,7 +156,7 @@ impl<T: Clone, F> Node<T, F> {
         &mut self,
         reverse_path: &[NodePathElem],
         ignore_queue: Option<IgnoreQueue>,
-    ) -> Cow<'_, T> {
+    ) -> SequenceAndItem<Cow<'_, T>> {
         if let Some((child_index, remainder)) = reverse_path.split_last() {
             match &mut self.children {
                 Children::Chain(chain) => {
@@ -171,8 +178,9 @@ impl<T: Clone, F> Node<T, F> {
                     self.queue.pop_front()
                 })
                 .flatten();
+            let seq = self.sequence();
             match (queued, &mut self.children) {
-                (Some(queued), _) => Cow::Owned(queued),
+                (Some(queued), _) => queued.map(Cow::Owned),
                 (None, Children::Chain(_)) => {
                     unreachable!("attempt to pop at a chain node with no queue")
                 }
@@ -181,7 +189,7 @@ impl<T: Clone, F> Node<T, F> {
                         .next_item()
                         // Panic if the promised source of the item is `None` (logic error)
                         .expect("attempt to pop from items node with no value");
-                    Cow::Borrowed(item)
+                    SequenceAndItem::new(seq, Cow::Borrowed(item))
                 }
             }
         }
@@ -263,10 +271,14 @@ impl<T, F> Node<T, F> {
     pub fn child_nodes_len(&self) -> usize {
         self.children.len_nodes()
     }
+    /// Returns the id-number sequence
+    pub fn sequence_num(&self) -> Sequence {
+        self.sequence
+    }
 }
 impl<T, F> SequenceSource for Node<T, F> {
     fn sequence(&self) -> Sequence {
-        self.sequence
+        self.sequence_num()
     }
 }
 
@@ -430,6 +442,7 @@ pub(crate) mod meta {
         node::{Chain, Children},
         order,
         weight_vec::{OrderVec, Weights},
+        SequenceAndItem,
     };
 
     use super::Node;
@@ -494,7 +507,7 @@ pub(crate) mod meta {
             /// Items
             items: Vec<T>,
             /// Items manually queued, or prefilled from next available
-            queue: VecDeque<T>,
+            queue: VecDeque<SequenceAndItem<T>>,
             /// Minimum number of items to retain in queue (best-effort)
             #[serde(default, rename = "prefill", skip_serializing_if = "skip_if_zero")]
             queue_prefill_len: usize,
@@ -506,7 +519,7 @@ pub(crate) mod meta {
         /// Node containing nodes as children
         Chain {
             /// Items manually queued, or prefilled from next available
-            queue: VecDeque<T>,
+            queue: VecDeque<SequenceAndItem<T>>,
             /// Minimum number of items to retain in queue (best-effort)
             #[serde(default, rename = "prefill", skip_serializing_if = "skip_if_zero")]
             queue_prefill_len: usize,

@@ -90,9 +90,10 @@ fn tree_add_to_doc_tests() {
         .try_ref(&mut tree)
         .expect("child exists")
         .push_item("banana");
+    let item = |seq, item| SequenceAndItem::new(seq, Cow::Owned(item));
     //
     let mut root_ref = root.try_ref(&mut tree);
-    assert_eq!(root_ref.pop_item(), Some(Cow::Owned("banana")));
+    assert_eq!(root_ref.pop_item(), Some(item(2, "banana")));
     assert_eq!(root_ref.pop_item(), None);
     // unblock "child_blocked"
     child_blocked
@@ -105,8 +106,8 @@ fn tree_add_to_doc_tests() {
         .expect("child_unblocked exists")
         .push_item("cashews");
     let mut root_ref = root.try_ref(&mut tree);
-    assert_eq!(root_ref.pop_item(), Some(Cow::Owned("apple")));
-    assert_eq!(root_ref.pop_item(), Some(Cow::Owned("cashews")));
+    assert_eq!(root_ref.pop_item(), Some(item(1, "apple")));
+    assert_eq!(root_ref.pop_item(), Some(item(1, "cashews")));
     assert_eq!(root_ref.pop_item(), None);
 }
 /// Tree data structure, consisting of nodes with queues of items `T`, filter `F`
@@ -114,7 +115,7 @@ fn tree_add_to_doc_tests() {
 /// # Example
 /// ```
 /// use std::borrow::Cow;
-/// use q_filter_tree::{Tree, error::PopError};
+/// use q_filter_tree::{Tree, error::PopError, SequenceAndItem};
 /// let mut tree: Tree<_, _> = Tree::new();
 /// let root = tree.root_id();
 /// //
@@ -133,9 +134,10 @@ fn tree_add_to_doc_tests() {
 ///     .try_ref(&mut tree)
 ///     .expect("child exists")
 ///     .push_item("banana");
+/// let item = |seq, item| SequenceAndItem::new(seq, Cow::Owned(item));
 /// //
 /// let mut root_ref = root.try_ref(&mut tree);
-/// assert_eq!(root_ref.pop_item(), Some(Cow::Owned("banana")));
+/// assert_eq!(root_ref.pop_item(), Some(item(2, "banana")));
 /// assert_eq!(root_ref.pop_item(), None);
 /// // unblock "child_blocked"
 /// child_blocked
@@ -148,8 +150,8 @@ fn tree_add_to_doc_tests() {
 ///     .expect("child_unblocked exists")
 ///     .push_item("cashews");
 /// let mut root_ref = root.try_ref(&mut tree);
-/// assert_eq!(root_ref.pop_item(), Some(Cow::Borrowed(&"apple")));
-/// assert_eq!(root_ref.pop_item(), Some(Cow::Borrowed(&"cashews")));
+/// assert_eq!(root_ref.pop_item(), Some(item(1, &"apple")));
+/// assert_eq!(root_ref.pop_item(), Some(item(1, &"cashews")));
 /// assert_eq!(root_ref.pop_item(), None);
 /// ```
 ///
@@ -225,7 +227,7 @@ impl<T, F> Tree<T, F> {
 }
 impl<T: Clone, F> Tree<T, F> {
     /// Pops items from node queues, or if no queue is available, returns references from item-nodes
-    pub fn pop_item(&mut self) -> Option<Cow<'_, T>> {
+    pub fn pop_item(&mut self) -> Option<SequenceAndItem<Cow<'_, T>>> {
         self.root.pop_item()
     }
     /// Refreshes `prefill` on all nodes
@@ -274,9 +276,50 @@ impl<'a, T: Clone, F> AsMut<Tree<T, F>> for TreeGuard<'a, T, F> {
     }
 }
 
+/// Item and the source node's [`Sequence`](`id::Sequence`)
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, PartialEq, Eq)]
+pub struct SequenceAndItem<T>(id::Sequence, T);
+impl<T> SequenceAndItem<T> {
+    /// Constructs an instance using the specified `sequence`
+    pub fn new(sequence: id::Sequence, item: T) -> Self {
+        Self(sequence, item)
+    }
+    /// Returns a closure for constructing `SequenceAndItem` using the specified `sequence`
+    pub fn new_fn(sequence: id::Sequence) -> impl Fn(T) -> Self {
+        move |item| Self(sequence, item)
+    }
+    /// Maps the inner item using the specified function
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> SequenceAndItem<U> {
+        let Self(seq, item) = self;
+        let item = f(item);
+        SequenceAndItem(seq, item)
+    }
+    /// Returns the `node` sequence number originating this item
+    pub fn sequence_num(&self) -> id::Sequence {
+        self.0
+    }
+    /// Returns only the item
+    pub fn into_item(self) -> T {
+        self.1
+    }
+    /// Returns the constituent parts
+    pub fn into_parts(self) -> (id::Sequence, T) {
+        (self.0, self.1)
+    }
+}
+impl<T, U> AsRef<U> for SequenceAndItem<T>
+where
+    T: AsRef<U>,
+    U: ?Sized,
+{
+    fn as_ref(&self) -> &U {
+        self.1.as_ref()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{OrderType, Tree};
+    use crate::{OrderType, SequenceAndItem, Tree};
     use std::borrow::Cow;
     #[test]
     fn simplest_items() {
@@ -285,20 +328,21 @@ mod tests {
         let mut root_ref = root.try_ref(&mut tree);
         assert_eq!(root_ref.get_order_type(), OrderType::InOrder);
         root_ref.overwrite_child_items_uniform(vec!["hey", "this", "is"]);
+        let item = |s| SequenceAndItem::new(0, Cow::Owned(s));
         for _ in 0..200 {
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("hey")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("this")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("is")));
+            assert_eq!(tree.pop_item(), Some(item("hey")));
+            assert_eq!(tree.pop_item(), Some(item("this")));
+            assert_eq!(tree.pop_item(), Some(item("is")));
         }
         let mut root_ref = root.try_ref(&mut tree);
         root_ref.push_item("special");
         root_ref.push_item("item");
-        assert_eq!(tree.pop_item(), Some(Cow::Owned("special")));
-        assert_eq!(tree.pop_item(), Some(Cow::Owned("item")));
+        assert_eq!(tree.pop_item(), Some(item("special")));
+        assert_eq!(tree.pop_item(), Some(item("item")));
         for _ in 0..200 {
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("hey")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("this")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("is")));
+            assert_eq!(tree.pop_item(), Some(item("hey")));
+            assert_eq!(tree.pop_item(), Some(item("this")));
+            assert_eq!(tree.pop_item(), Some(item("is")));
         }
     }
     #[test]
@@ -323,7 +367,7 @@ mod tests {
         child_a_a_ref.overwrite_child_items_uniform(vec!["aa1", "aa2"]);
         // root > child_b > child_b_b, child_b_z
         let mut child_b_ref = child_b.try_ref(&mut tree).expect("child_b exists");
-        let mut child_b_ref_child_nodes = child_b_ref.child_nodes().expect("=child_b is chain");
+        let mut child_b_ref_child_nodes = child_b_ref.child_nodes().expect("child_b is chain");
         let child_b_b = child_b_ref_child_nodes.add_child_default();
         let child_b_z = child_b_ref_child_nodes.add_child_default();
         // root > child_b > child_b_b [ items ]
@@ -336,22 +380,23 @@ mod tests {
         let mut child_c_ref = child_c.try_ref(&mut tree).expect("child_c exists");
         child_c_ref.overwrite_child_items_uniform(vec!["cc1", "cc2"]);
         //
+        let item = |seq, item| SequenceAndItem::new(seq, Cow::Owned(item));
         for _ in 0..100 {
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa1")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("bb1")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc1")));
+            assert_eq!(tree.pop_item(), Some(item(4, "aa1")));
+            assert_eq!(tree.pop_item(), Some(item(5, "bb1")));
+            assert_eq!(tree.pop_item(), Some(item(3, "cc1")));
             //
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa2")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("bz1")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc2")));
+            assert_eq!(tree.pop_item(), Some(item(4, "aa2")));
+            assert_eq!(tree.pop_item(), Some(item(6, "bz1")));
+            assert_eq!(tree.pop_item(), Some(item(3, "cc2")));
             //
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa1")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("bb2")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc1")));
+            assert_eq!(tree.pop_item(), Some(item(4, "aa1")));
+            assert_eq!(tree.pop_item(), Some(item(5, "bb2")));
+            assert_eq!(tree.pop_item(), Some(item(3, "cc1")));
             //
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("aa2")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("bz2")));
-            assert_eq!(tree.pop_item(), Some(Cow::Owned("cc2")));
+            assert_eq!(tree.pop_item(), Some(item(4, "aa2")));
+            assert_eq!(tree.pop_item(), Some(item(6, "bz2")));
+            assert_eq!(tree.pop_item(), Some(item(3, "cc2")));
         }
     }
 }

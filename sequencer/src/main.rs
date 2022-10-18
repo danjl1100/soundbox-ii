@@ -275,8 +275,7 @@ impl Cli {
                 }
             },
             Command::Print => {
-                let sequencer = &self.sequencer;
-                println!("{sequencer}");
+                println!("{}", &self.sequencer);
             }
             Command::Add {
                 parent_path,
@@ -351,7 +350,8 @@ impl Cli {
                 for _ in 0..count {
                     let popped = self.sequencer.pop_next();
                     if let Some(item) = popped {
-                        println!("Item {item:?}");
+                        let (node_seq, item) = item.into_parts();
+                        println!("Item {item:?}, from node #{node_seq}");
                     } else {
                         println!("No items remaining");
                         break;

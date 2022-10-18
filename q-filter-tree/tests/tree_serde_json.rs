@@ -3,7 +3,7 @@ use std::borrow::Cow;
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use q_filter_tree::{
     id::{ty, NodeId, NodeIdTyped, NodePath, NodePathTyped},
-    NodeInfo, Tree,
+    NodeInfo, SequenceAndItem, Tree,
 };
 use serde_json::Result;
 
@@ -93,7 +93,7 @@ fn simple_deserialize() -> Result<()> {
           ".0.0#0": [
             [],
             {
-              "queue": ["Alfalfa", "Oats"],
+              "queue": [[0, "Alfalfa"], [0, "Oats"]],
               "filter": null,
               "order": "InOrder"
             }
@@ -113,11 +113,9 @@ fn simple_deserialize() -> Result<()> {
     let mut child_ref = child.try_ref(&mut t).expect("child exists");
     child_ref.set_weight(1);
     let mut root_ref = root.try_ref(&mut t);
-    assert_eq!(
-        root_ref.pop_item(),
-        Some(Cow::Owned(String::from("Alfalfa")))
-    );
-    assert_eq!(root_ref.pop_item(), Some(Cow::Owned(String::from("Oats"))));
+    let item = |s| SequenceAndItem::new(0, Cow::Owned(String::from(s)));
+    assert_eq!(root_ref.pop_item(), Some(item("Alfalfa")));
+    assert_eq!(root_ref.pop_item(), Some(item("Oats")));
     assert_eq!(root_ref.pop_item(), None);
     Ok(())
 }
@@ -224,15 +222,16 @@ fn complex_deserialize() -> Result<()> {
         let mut child4_ref = child4_path.try_ref(&mut t).expect("child4 exists");
         child4_ref.set_weight(1);
     }
+    let with_seq = SequenceAndItem::new_fn;
     for _ in 0..100 {
-        assert!(matches!(t.pop_item(), Some(Cow::Borrowed(&"ping"))));
-        assert!(matches!(t.pop_item(), Some(Cow::Borrowed(&"pong"))));
+        assert_eq!(t.pop_item(), Some(with_seq(7)(Cow::Borrowed(&"ping"))));
+        assert_eq!(t.pop_item(), Some(with_seq(7)(Cow::Borrowed(&"pong"))));
     }
 
     // remove ping/pong node
     assert_eq!(t.sum_node_count(), 8);
-    assert_eq!(t.pop_item(), Some(Cow::Owned("ping")));
-    assert_eq!(t.pop_item(), Some(Cow::Owned("pong")));
+    assert_eq!(t.pop_item(), Some(with_seq(7)(Cow::Owned("ping"))));
+    assert_eq!(t.pop_item(), Some(with_seq(7)(Cow::Owned("pong"))));
     {
         let child4_id = unwrap_child_id(serde_json::from_str("\".0.4#7\"")?);
         let (weight, node_info) = t

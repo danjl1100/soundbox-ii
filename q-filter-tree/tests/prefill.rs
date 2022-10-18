@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use q_filter_tree::Tree;
+use q_filter_tree::{SequenceAndItem, Tree};
 
 fn assert_queue<'a, T, I>(queue_iter: I, expected: Vec<T>)
 where
@@ -26,7 +26,10 @@ fn prefills_root() {
     //
     root_ref.set_queue_prefill_len(5);
     assert_eq!(root_ref.queue_len(), 5);
-    assert_queue(root_ref.queue_iter(), (0..5).collect());
+    assert_queue(
+        root_ref.queue_iter(),
+        (0..5).map(SequenceAndItem::new_fn(1)).collect(),
+    );
 }
 
 #[test]
@@ -49,7 +52,10 @@ fn prefills_chain_node() {
     //
     child1_ref.set_queue_prefill_len(7);
     assert_eq!(child1_ref.queue_len(), 7);
-    assert_queue(child1_ref.queue_iter(), (0..7).collect());
+    assert_queue(
+        child1_ref.queue_iter(),
+        (0..7).map(SequenceAndItem::new_fn(2)).collect(),
+    );
 }
 
 #[test]
@@ -66,5 +72,8 @@ fn prefills_item_node() {
     //
     child1_ref.set_queue_prefill_len(20);
     assert_eq!(child1_ref.queue_len(), 20);
-    assert_queue(child1_ref.queue_iter(), (50..70).collect());
+    assert_queue(
+        child1_ref.queue_iter(),
+        (50..70).map(SequenceAndItem::new_fn(1)).collect(),
+    );
 }

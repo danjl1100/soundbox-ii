@@ -149,9 +149,13 @@ async fn launch(args: args::Config) {
             Sequencer::new(item_source, root_filter)
         };
         let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);
-        let sequencer_task =
-            seq::sequencer_task(sequencer, sequencer_rx, cmd_playlist_tx, sequencer_state_tx);
-        (sequencer_task, sequencer_tx)
+        let sequencer_task = seq::Task {
+            sequencer,
+            sequencer_rx,
+            cmd_playlist_tx,
+            state_tx: sequencer_state_tx,
+        };
+        (sequencer_task.run(), sequencer_tx)
     };
 
     let cli_handle = if is_interactive {

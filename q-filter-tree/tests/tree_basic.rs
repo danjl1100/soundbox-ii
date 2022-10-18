@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use std::{borrow::Cow, collections::VecDeque, iter::FromIterator};
 
-use q_filter_tree::{error::RemoveError, NodeInfo, OrderType, Tree};
+use q_filter_tree::{error::RemoveError, NodeInfo, OrderType, SequenceAndItem, Tree};
 #[test]
 fn creates_single() {
     let mut t = Tree::new();
@@ -15,7 +15,10 @@ fn creates_single() {
         root_ref.push_item(i);
     }
     for i in 0..N {
-        assert_eq!(root_ref.pop_item(), Some(Cow::Owned(i)));
+        assert_eq!(
+            root_ref.pop_item(),
+            Some(SequenceAndItem::new(0, Cow::Owned(i)))
+        );
     }
     assert_eq!(root_ref.pop_item(), None);
     // filter
@@ -49,9 +52,12 @@ fn two_nodes() {
     for i in 0..N {
         assert_eq!(
             child.try_ref(&mut t).expect("child exists").pop_item(),
-            Some(Cow::Owned(i))
+            Some(SequenceAndItem::new(1, Cow::Owned(i)))
         );
-        assert_eq!(root.try_ref(&mut t).pop_item(), Some(Cow::Owned(i + 500)));
+        assert_eq!(
+            root.try_ref(&mut t).pop_item(),
+            Some(SequenceAndItem::new(0, Cow::Owned(i + 500)))
+        );
     }
     assert_eq!(
         child.try_ref(&mut t).expect("child exists").pop_item(),
@@ -63,6 +69,7 @@ fn two_nodes() {
 fn node_pop_chain() {
     let mut t: Tree<_, Option<()>> = Tree::new();
     let root = t.root_id();
+    let with_seq = SequenceAndItem::new_fn;
     //
     let mut root_ref = root.try_ref(&mut t);
     let mut root_ref = root_ref.child_nodes().expect("root is chain");
@@ -78,8 +85,8 @@ fn node_pop_chain() {
         child2_ref.push_item(i);
     }
     // verify child2 pop
-    assert_eq!(child2_ref.pop_item(), Some(Cow::Owned(0)));
-    assert_eq!(child2_ref.pop_item(), Some(Cow::Owned(1)));
+    assert_eq!(child2_ref.pop_item(), Some(with_seq(2)(Cow::Owned(0))));
+    assert_eq!(child2_ref.pop_item(), Some(with_seq(2)(Cow::Owned(1))));
     // verify child1 not popping
     let mut child1_ref = child1.try_ref(&mut t).expect("child1 exists");
     assert_eq!(child1_ref.pop_item(), None);
@@ -88,13 +95,14 @@ fn node_pop_chain() {
     child2_ref.set_weight(1);
     // verify child1 chain from child2
     let mut child1_ref = child1.try_ref(&mut t).expect("child2 exists");
-    assert_eq!(child1_ref.pop_item(), Some(Cow::Owned(2)));
-    assert_eq!(child1_ref.pop_item(), Some(Cow::Owned(3)));
+    assert_eq!(child1_ref.pop_item(), Some(with_seq(2)(Cow::Owned(2))));
+    assert_eq!(child1_ref.pop_item(), Some(with_seq(2)(Cow::Owned(3))));
     assert_eq!(child1_ref.pop_item(), None);
 }
 #[test]
 fn node_removal() {
     let mut t: Tree<_, Option<()>> = Tree::new();
+    let with_seq = SequenceAndItem::new_fn;
     // verify count
     assert_eq!(t.sum_node_count(), 1);
     //
@@ -130,35 +138,17 @@ fn node_removal() {
     base.try_ref(&mut t).expect("base exists").set_weight(1);
     child4.try_ref(&mut t).expect("child4 exists").set_weight(1);
     let mut root_ref = root.try_ref(&mut t);
-    assert_eq!(root_ref.pop_item(), Some(Cow::Owned(0)));
-    assert_eq!(root_ref.pop_item(), Some(Cow::Owned(1)));
-    // this is enforced by the compiler, now!
-    // // fails - remove root
-    // assert_eq!(
-    //     t.remove_node(&root),
-    //     Err(RemoveError::Root(root.clone().into()))
-    // );
+    assert_eq!(root_ref.pop_item(), Some(with_seq(5)(Cow::Owned(0))));
+    assert_eq!(root_ref.pop_item(), Some(with_seq(5)(Cow::Owned(1))));
     // fails - remove base
     assert_eq!(
         t.remove_node(&base),
-        Ok(Err(RemoveError::NonEmpty(
-            base.clone(),
-            // vec![
-            //     child1.clone().into(),
-            //     child2.clone().into(),
-            //     child3.clone().into(),
-            //     child4.clone().into(),
-            //     child5.clone().into(),
-            // ]
-        )))
+        Ok(Err(RemoveError::NonEmpty(base.clone())))
     );
     // fails - remove child4
     assert_eq!(
         t.remove_node(&child4),
-        Ok(Err(RemoveError::NonEmpty(
-            child4.clone(),
-            // vec![child4_child.clone().into()]
-        )))
+        Ok(Err(RemoveError::NonEmpty(child4.clone())))
     );
     // success - remove child4_child, then child4
     assert_eq!(
@@ -180,7 +170,7 @@ fn node_removal() {
             NodeInfo::Chain {
                 filter: None,
                 order: OrderType::InOrder,
-                queue: VecDeque::from_iter(2..10),
+                queue: VecDeque::from_iter((2..10).map(SequenceAndItem::new_fn(5))),
                 queue_prefill_len: 0,
             }
         )))
