@@ -1,11 +1,11 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
-    seq::{self, SequencerCommand},
+    seq::{self, SequencerAction, SequencerCommand, SequencerResult},
     Shutdown,
 };
-use std::num::NonZeroUsize;
-use vlc_http::{self, PlaybackStatus, PlaylistInfo, ResultReceiver};
+use tokio::sync::oneshot;
+use vlc_http::{self, PlaybackStatus, PlaylistInfo, ResultReceiver as VlcResultReceiver};
 
 pub const COMMAND_NAME: &str = "soundbox-ii";
 pub const PROMPT_STR: &str = "soundbox-ii>";
@@ -38,13 +38,13 @@ pub enum Subcommand {
         /// Item to delete
         item_id: String,
     },
-    //TODO remove from InteractiveArgs and have a rule polling a legit Sequencer, tracking track completions to trigger
-    PlaylistSet {
-        /// Maximum number of history (past-played) items to retain
-        max_history_count: NonZeroUsize,
-        /// Path to the file(s) to queue next, starting with the current/past item
-        urls: Vec<String>,
-    },
+    // removed to allow Sequencer to control the playlist
+    // PlaylistSet {
+    //     /// Maximum number of history (past-played) items to retain
+    //     max_history_count: NonZeroUsize,
+    //     /// Path to the file(s) to queue next, starting with the current/past item
+    //     urls: Vec<String>,
+    // },
     /// Sequencer node subcommands
     Node {
         #[clap(subcommand)]
@@ -142,39 +142,41 @@ impl From<Repeat> for vlc_http::RepeatMode {
 impl Subcommand {
     pub(super) fn try_build(self) -> Result<Result<ActionAndReceiver, Option<Shutdown>>, String> {
         use vlc_http::Command as Vlc;
+        let from_vlc = ActionAndReceiver::from_vlc;
+        let from_seq = ActionAndReceiver::from_seq;
         Ok(Ok(match self {
-            Self::Play => Vlc::PlaybackResume.into(),
-            Self::Pause => Vlc::PlaybackPause.into(),
-            Self::Stop => Vlc::PlaybackStop.into(),
+            Self::Play => from_vlc(Vlc::PlaybackResume),
+            Self::Pause => from_vlc(Vlc::PlaybackPause),
+            Self::Stop => from_vlc(Vlc::PlaybackStop),
             Self::Add { url } => {
                 let url = parse_url(&url)?;
-                Vlc::PlaylistAdd { url }.into()
+                from_vlc(Vlc::PlaylistAdd { url })
             }
-            Self::Delete { item_id } => Vlc::PlaylistDelete { item_id }.into(),
-            Self::PlaylistSet {
-                urls,
-                max_history_count,
-            } => {
-                let urls = urls.iter().map(parse_url).collect::<Result<Vec<_>, _>>()?;
-                Vlc::PlaylistSet {
-                    urls,
-                    max_history_count,
-                }
-                .into()
-            }
-            Self::Node { command } => command.into(),
-            Self::Start { item_id } => Vlc::PlaylistPlay { item_id }.into(),
-            Self::Next => Vlc::SeekNext.into(),
-            Self::Prev => Vlc::SeekPrevious.into(),
-            Self::Seek { seconds } => Vlc::SeekTo { seconds }.into(),
-            Self::SeekRel { seconds_delta } => Vlc::SeekRelative { seconds_delta }.into(),
-            Self::Vol { percent } => Vlc::Volume { percent }.into(),
-            Self::VolRel { percent_delta } => Vlc::VolumeRelative { percent_delta }.into(),
+            Self::Delete { item_id } => from_vlc(Vlc::PlaylistDelete { item_id }),
+            // Self::PlaylistSet {
+            //     urls,
+            //     max_history_count,
+            // } => {
+            //     let urls = urls.iter().map(parse_url).collect::<Result<Vec<_>, _>>()?;
+            //     Vlc::PlaylistSet {
+            //         urls,
+            //         max_history_count,
+            //     }
+            //     .into()
+            // }
+            Self::Node { command } => from_seq(command),
+            Self::Start { item_id } => from_vlc(Vlc::PlaylistPlay { item_id }),
+            Self::Next => from_vlc(Vlc::SeekNext),
+            Self::Prev => from_vlc(Vlc::SeekPrevious),
+            Self::Seek { seconds } => from_vlc(Vlc::SeekTo { seconds }),
+            Self::SeekRel { seconds_delta } => from_vlc(Vlc::SeekRelative { seconds_delta }),
+            Self::Vol { percent } => from_vlc(Vlc::Volume { percent }),
+            Self::VolRel { percent_delta } => from_vlc(Vlc::VolumeRelative { percent_delta }),
             Self::PlaybackMode { repeat, random } => {
                 let repeat = repeat.into();
-                Vlc::PlaybackMode { repeat, random }.into()
+                from_vlc(Vlc::PlaybackMode { repeat, random })
             }
-            Self::Speed { speed } => Vlc::PlaybackSpeed { speed }.into(),
+            Self::Speed { speed } => from_vlc(Vlc::PlaybackSpeed { speed }),
             Self::Status => ActionAndReceiver::query_playback_status(),
             Self::Playlist => ActionAndReceiver::query_playlist_info(),
             Self::Quit => {
@@ -197,21 +199,19 @@ impl Subcommand {
     }
 }
 
-/// Unifying type for all actions, with optional/respective [`ResultReceiver`]
-pub enum ActionAndReceiver {
-    VlcCommand(vlc_http::Action, ResultReceiver<()>),
-    SequencerCommand(SequencerCommand),
-    VlcQueryPlayback(vlc_http::Action, ResultReceiver<PlaybackStatus>),
-    VlcQueryPlaylist(vlc_http::Action, ResultReceiver<PlaylistInfo>),
+/// Unifying type for all actions, with [`VlcResultReceiver`] or [`SequencerResult`] receiver
+pub(crate) enum ActionAndReceiver {
+    VlcCommand(vlc_http::Action, VlcResultReceiver<()>),
+    SequencerCommand(SequencerAction, oneshot::Receiver<SequencerResult>),
+    VlcQueryPlayback(vlc_http::Action, VlcResultReceiver<PlaybackStatus>),
+    VlcQueryPlaylist(vlc_http::Action, VlcResultReceiver<PlaylistInfo>),
 }
-impl From<vlc_http::Command> for ActionAndReceiver {
-    fn from(command: vlc_http::Command) -> Self {
+impl ActionAndReceiver {
+    fn from_vlc(command: vlc_http::Command) -> Self {
         use vlc_http::IntoAction;
         let (action, result_rx) = command.to_action_rx();
         Self::VlcCommand(action, result_rx)
     }
-}
-impl ActionAndReceiver {
     fn query_playback_status() -> Self {
         let (action, result_rx) = vlc_http::Action::query_playback_status();
         Self::VlcQueryPlayback(action, result_rx)
@@ -220,15 +220,25 @@ impl ActionAndReceiver {
         let (action, result_rx) = vlc_http::Action::query_playlist_info();
         Self::VlcQueryPlaylist(action, result_rx)
     }
-}
-impl From<SequencerCommand> for ActionAndReceiver {
-    fn from(cmd: SequencerCommand) -> Self {
-        Self::SequencerCommand(cmd)
+    fn from_seq(cmd: impl Into<SequencerCommand>) -> Self {
+        let (action, rx) = SequencerAction::new(cmd.into());
+        Self::SequencerCommand(action, rx)
     }
-}
-impl From<seq::Cmd> for ActionAndReceiver {
-    fn from(cmd: seq::Cmd) -> Self {
-        Self::SequencerCommand(cmd.into())
+    pub(crate) fn exec(self, prompt: &mut super::Prompt) -> Result<(), String> {
+        match self {
+            ActionAndReceiver::VlcCommand(action, result_rx) => {
+                prompt.sender_vlc().send_and_print_result(action, result_rx)
+            }
+            ActionAndReceiver::SequencerCommand(action, result_rx) => {
+                prompt.sender_seq().send_and_print_result(action, result_rx)
+            }
+            ActionAndReceiver::VlcQueryPlayback(action, result_rx) => {
+                prompt.sender_vlc().send_and_print_result(action, result_rx)
+            }
+            ActionAndReceiver::VlcQueryPlaylist(action, result_rx) => {
+                prompt.sender_vlc().send_and_print_result(action, result_rx)
+            }
+        }
     }
 }
 

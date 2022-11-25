@@ -8,7 +8,7 @@
 use std::{str::FromStr, time::Duration};
 
 fn main() -> Result<(), String> {
-    let args: Vec<_> = std::env::args()
+    let mut args: Vec<_> = std::env::args()
         // remove executable name (passed as 0th arg)
         .skip(1)
         .collect();
@@ -17,6 +17,16 @@ fn main() -> Result<(), String> {
         if first_arg == "--version" && args.len() == 1 {
             println!("beets version FAKE");
             return Ok(());
+        }
+    }
+
+    match (args.get(0), args.get(1)) {
+        (Some(first), Some(second)) if first == "ls" && second == "-p" => {
+            args.remove(0);
+            args.remove(0);
+        }
+        first_two_args => {
+            return Err(format!("fake beet did not recognize the command {first_two_args:?}.  Perhaps you meant to use \"ls\" \"-p\"?"))
         }
     }
 

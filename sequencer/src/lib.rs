@@ -435,6 +435,19 @@ shared::wrapper_enum! {
         InvalidItemIndex(NodePathTyped, usize),
     }
 }
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Message(err) => write!(f, "{err}"),
+            Self::Serde(err) => write!(f, "serde error: {err}"),
+            Self::InvalidNodePath(err) => write!(f, "{err}"),
+            Self::RemoveError(err) => write!(f, "remove error: {err}"),
+            Self::InvalidItemIndex(path, index) => {
+                write!(f, "invalid item index {index} for path {path}")
+            }
+        }
+    }
+}
 
 /// [`ItemSource`] used for debugging
 #[derive(Clone, Default)]

@@ -131,7 +131,7 @@ async fn launch(args: args::Config) {
     let authorization = args.vlc_http_config.0;
     let (controller, channels) = vlc_http::Controller::new(authorization);
     let vlc_http::controller::ExternalChannels {
-        action_tx,
+        action_tx: vlc_tx,
         playback_status_rx,
         playlist_info_rx,
         cmd_playlist_tx,
@@ -159,12 +159,12 @@ async fn launch(args: args::Config) {
     };
 
     let cli_handle = if is_interactive {
-        let action_tx = action_tx.clone();
+        let vlc_tx = vlc_tx.clone();
         let playback_status_rx = playback_status_rx.clone();
         let shutdown_rx = shutdown_rx.clone();
         Some(launch_cli(
             cli::Config {
-                action_tx,
+                vlc_tx,
                 sequencer_tx,
                 sequencer_state_rx,
                 playback_status_rx,
@@ -189,11 +189,11 @@ async fn launch(args: args::Config) {
     let warp_graceful_handle = args.server_config.map(|server_config| {
         const TASK_NAME: &str = "warp";
         let api = {
-            let action_tx = action_tx.clone();
+            let vlc_tx = vlc_tx.clone();
             let playback_status_rx = playback_status_rx.clone();
             web::filter(
                 web::Config {
-                    action_tx,
+                    vlc_tx,
                     playback_status_rx,
                     // playlist_info_rx,
                     reload_rx,

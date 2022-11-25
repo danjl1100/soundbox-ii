@@ -8,7 +8,7 @@
 //! Visits child nodes **in order**.  Weights `[2, 1, 3]` will yield `AABCCC AABCCC ...`
 //! ```
 //! use std::borrow::Cow;
-//! use q_filter_tree::{Tree, error::PopError, OrderType, SequenceAndItem};
+//! use q_filter_tree::{Tree, OrderType, SequenceAndItem};
 //! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
@@ -45,7 +45,7 @@
 //! Cycles through child nodes sequentially, picking one item until reaching each child's `Weight`.  Weights `[2, 1, 3]` will yield `ABCACC ABCACC...`
 //! ```
 //! use std::borrow::Cow;
-//! use q_filter_tree::{Tree, error::PopError, OrderType, SequenceAndItem};
+//! use q_filter_tree::{Tree, OrderType, SequenceAndItem};
 //! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);
@@ -82,7 +82,7 @@
 //! Shuffles the available nodes, visiting each node proportional to the child's `Weight`.  Weights
 //! `[2, 1, 0, 4]` will yield, in some **shuffled** order, two 0's, one 1, no 2's, and four 3's.
 //! ```
-//! use q_filter_tree::{Tree, error::PopError, OrderType};
+//! use q_filter_tree::{Tree, OrderType};
 //! let mut t: Tree<_, Option<()>> = Tree::default();
 //! let root = t.root_id();
 //! let mut root_ref = root.try_ref(&mut t);

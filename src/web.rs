@@ -10,10 +10,10 @@ mod filter {
         config: super::web_socket::Config,
         assets_dir: PathBuf,
     ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
-        let action_tx = config.action_tx.clone();
+        let vlc_tx = config.vlc_tx.clone();
 
         root_redirect()
-            .or(api_v1::root(action_tx))
+            .or(api_v1::root(vlc_tx))
             .or(static_files(assets_dir))
             .or(super::web_socket::filter(config))
     }
@@ -44,32 +44,30 @@ mod filter {
         use super::with_sender;
         use warp::{Filter, Reply};
 
-        type ActionTx = tokio::sync::mpsc::Sender<vlc_http::Action>;
+        type VlcTx = tokio::sync::mpsc::Sender<vlc_http::Action>;
         type Response = hyper::Response<hyper::Body>;
 
         pub fn root(
-            action_tx: ActionTx,
+            vlc_tx: VlcTx,
         ) -> impl Filter<Extract = impl Reply, Error = warp::Rejection> + Clone {
             warp::path("v1") //
                 .and(warp::get()) //
-                .and(album_art(action_tx))
+                .and(album_art(vlc_tx))
         }
 
         fn album_art(
-            action_tx: ActionTx,
+            vlc_tx: VlcTx,
         ) -> impl Filter<Extract = (Response,), Error = warp::Rejection> + Clone {
             warp::path("art") //
-                .and(with_sender(action_tx)) //
-                .and_then(|action_tx| async move {
-                    let response = query_album_art(action_tx)
+                .and(with_sender(vlc_tx)) //
+                .and_then(|vlc_tx| async move {
+                    let response = query_album_art(vlc_tx)
                         .await
                         .map_or_else(build_response, |r| r);
                     Ok::<_, std::convert::Infallible>(response)
                 })
         }
-        async fn query_album_art(
-            action_tx: ActionTx,
-        ) -> Result<Response, (String, hyper::StatusCode)> {
+        async fn query_album_art(vlc_tx: VlcTx) -> Result<Response, (String, hyper::StatusCode)> {
             fn internal_err<E: std::fmt::Display>(err: E) -> (String, hyper::StatusCode) {
                 let text = format!(r#"internal error with vlc_http art module: "{}""#, err);
                 (text, hyper::StatusCode::INTERNAL_SERVER_ERROR)
@@ -84,7 +82,7 @@ mod filter {
             }
             // send Action
             let (action, result_rx) = vlc_http::Action::query_art();
-            action_tx.send(action).await.map_err(internal_err)?;
+            vlc_tx.send(action).await.map_err(internal_err)?;
             // poll result
             let result = result_rx.await.map_err(internal_err)?;
             // parse result
@@ -113,7 +111,7 @@ mod web_socket {
 
     #[derive(Clone)]
     pub(crate) struct Config {
-        pub action_tx: mpsc::Sender<Action>,
+        pub vlc_tx: mpsc::Sender<Action>,
         pub playback_status_rx: watch::Receiver<Option<PlaybackStatus>>,
         // pub playlist_info_rx: watch::Receiver<Option<PlaylistInfo>>, //TODO use this field, or remove it!
         pub reload_rx: watch::Receiver<WebSourceChanged>,
@@ -218,7 +216,7 @@ mod web_socket {
             T: IntoAction<Output = ()>,
         {
             let (action, result_rx) = action.to_action_rx();
-            let send_result = self.config.action_tx.send(action).await;
+            let send_result = self.config.vlc_tx.send(action).await;
             match send_result {
                 Ok(()) => {
                     let recv_result = result_rx.await;

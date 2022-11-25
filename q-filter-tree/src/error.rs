@@ -2,11 +2,17 @@
 //! Various error types associated with [`Tree`](`crate::Tree`) methods
 
 #![allow(clippy::module_name_repetitions)]
-use crate::id::{NodePathElem, NodePathTyped, Sequence};
+use crate::id::{ty, NodeId, NodePathElem, NodePathRefTyped, NodePathTyped, Sequence};
 
 /// Error for an invalid [`NodePathTyped`]
 #[derive(Debug, PartialEq, Eq)]
 pub struct InvalidNodePath(NodePathTyped);
+impl std::fmt::Display for InvalidNodePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(path) = self;
+        write!(f, "invalid node path {path}")
+    }
+}
 impl<T> From<T> for InvalidNodePath
 where
     T: Into<NodePathTyped>,
@@ -21,14 +27,15 @@ impl From<&[NodePathElem]> for InvalidNodePath {
     }
 }
 
-/// Error from item-pop operations
-#[derive(Debug, PartialEq, Eq)]
-pub enum PopError<T> {
-    /// Terminal node has an empty queue (needs push)
-    Empty(T),
-    /// Child nodes are not allowed (all weights = 0)
-    Blocked(T),
-}
+// TODO remove if unused
+// /// Error from item-pop operations
+// #[derive(Debug, PartialEq, Eq)]
+// pub enum PopError<T> {
+//     /// Terminal node has an empty queue (needs push)
+//     Empty(T),
+//     /// Child nodes are not allowed (all weights = 0)
+//     Blocked(T),
+// }
 // impl<T> PopError<T> {
 //     pub(crate) fn map_inner<U, F: Fn(T) -> U>(self, f: F) -> PopError<U> {
 //         match self {
@@ -58,6 +65,20 @@ impl<T> RemoveError<T> {
                 RemoveError::SequenceMismatch(id_fn(id), sequence)
             }
             Self::NonEmpty(id) => RemoveError::NonEmpty(id_fn(id)),
+        }
+    }
+}
+impl std::fmt::Display for RemoveError<NodeId<ty::Child>> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemoveError::SequenceMismatch(id, given) => {
+                let expected = id.sequence();
+                write!(f, "sequence mismatch (expected {expected}, given {given})")
+            }
+            RemoveError::NonEmpty(id) => {
+                let id_ref = NodePathRefTyped::from(id);
+                write!(f, "node {id_ref} not empty")
+            }
         }
     }
 }

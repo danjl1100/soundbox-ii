@@ -115,7 +115,7 @@ fn tree_add_to_doc_tests() {
 /// # Example
 /// ```
 /// use std::borrow::Cow;
-/// use q_filter_tree::{Tree, error::PopError, SequenceAndItem};
+/// use q_filter_tree::{Tree, SequenceAndItem};
 /// let mut tree: Tree<_, _> = Tree::new();
 /// let root = tree.root_id();
 /// //

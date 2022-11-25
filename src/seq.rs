@@ -4,15 +4,32 @@
 
 use crate::cli;
 use shared::Shutdown;
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 pub(crate) type Sequencer = sequencer::Sequencer<source::Source, SequencerFilter>;
 pub(crate) type SequencerFilter = Option<source::TypedArg>;
 pub(crate) type SequencerCommand = sequencer::command::Command<SequencerFilter>;
+pub(crate) type SequencerResult =
+    Result<sequencer::command::TypedOutput<SequencerFilter>, sequencer::Error>;
+
+pub(crate) struct SequencerAction(SequencerCommand, oneshot::Sender<SequencerResult>);
+impl SequencerAction {
+    pub fn new(cmd: SequencerCommand) -> (Self, oneshot::Receiver<SequencerResult>) {
+        let (tx, rx) = oneshot::channel();
+        (Self(cmd, tx), rx)
+    }
+    fn exec(self, sequencer: &mut Sequencer) {
+        let Self(command, result_rx) = self;
+        let result = sequencer.run(command);
+        if let Err(unsent_result) = result_rx.send(result) {
+            drop(dbg!(unsent_result));
+        }
+    }
+}
 
 pub(crate) struct Task {
     pub sequencer: Sequencer,
-    pub sequencer_rx: tokio::sync::mpsc::Receiver<SequencerCommand>,
+    pub sequencer_rx: tokio::sync::mpsc::Receiver<SequencerAction>,
     pub cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
     pub state_tx: watch::Sender<String>,
 }
@@ -41,8 +58,8 @@ impl Task {
                 }
             }
             tokio::select! {
-                Some(command) = sequencer_rx.recv() => {
-                    Self::exec_command(command, &mut sequencer);
+                Some(action) = sequencer_rx.recv() => {
+                    action.exec(&mut sequencer);
                 }
                 Ok(()) = remove_rx.changed() => {
                     if let Some(removed) = &*remove_rx.borrow() {
@@ -70,13 +87,6 @@ impl Task {
             }
         }
         Err(Shutdown)
-    }
-    fn exec_command(command: SequencerCommand, sequencer: &mut Sequencer) {
-        let result = sequencer.run(command);
-        if let Err(sequencer_err) = result {
-            // TODO include a oneshot receiver in the command, to signal success/failure message?
-            dbg!(sequencer_err);
-        }
     }
     fn exec_remove(removed: &url::Url, sequencer: &mut Sequencer) {
         println!("remove_rx changed! removed {removed}");
@@ -277,5 +287,13 @@ pub mod source {
                 folder_listing,
             }
         }
+    }
+}
+
+// transparent, showing only command
+impl std::fmt::Display for SequencerAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(command, _) = self;
+        write!(f, "{command:?}")
     }
 }

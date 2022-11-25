@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use super::{ItemSource, PathError};
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     io::{BufRead, BufReader},
     ops::Not,
     path::PathBuf,
@@ -47,7 +47,7 @@ impl Beet {
         let command = PathBuf::from(command);
         // TODO add a timeout, or print-out a message in case of infinite-hanging process provided
         let canary_result = Command::new(&command)
-            .args(&["--version"])
+            .args(BEET_ARGS_VERSION)
             .stdout(Stdio::null())
             .status();
         let err = match canary_result {
@@ -63,12 +63,22 @@ impl Beet {
         Err(PathError::new(&command, err))
     }
 }
+const BEET_ARGS_VERSION: &[&str] = &["--version"];
+const BEET_ARGS_LOOKUP: &[&str] = &["ls", "-p"];
 impl<T: ArgSource> ItemSource<T> for Beet {
     type Item = String;
     type Error = std::io::Error;
 
     fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error> {
-        let arg_elems: Vec<_> = args.iter().flat_map(ArgSource::get_beet_args).collect();
+        let arg_elems: Vec<_> = BEET_ARGS_LOOKUP
+            .iter()
+            .map(OsString::from)
+            .chain(
+                args.iter()
+                    .flat_map(ArgSource::get_beet_args)
+                    .map(OsString::from),
+            )
+            .collect();
         let mut child = Command::new(&self.command)
             .args(arg_elems)
             .stdout(Stdio::piped())

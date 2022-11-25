@@ -5,6 +5,7 @@ use q_filter_tree::{OrderType, Weight};
 
 use crate::{sources::ItemSource, Error, NodeIdStr, Sequencer};
 
+pub use out::Typed as TypedOutput;
 command_enum! {
     /// Operations to perform on a [`Sequencer`]
     pub enum Command<F>
@@ -81,7 +82,7 @@ command_enum! {
         },
     }
     mod out {
-        /// Typed outputs
+        /// Typed output from a [`Command`](`super::Command`)
         pub enum Typed<F> {
             /// Id for a node
             NodeIdStr(crate::NodeIdStr),
