@@ -88,8 +88,12 @@ where
     }
 }
 impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
-    /// Adds an empty node from the (optional) specified info, with optional weight
-    pub(crate) fn add_child_from(
+    /// Adds a node from the specified info, with default weight
+    pub fn add_child_default_from(&mut self, info: NodeInfoIntrinsic<T, F>) -> NodeId<ty::Child> {
+        self.add_child_from(Self::DEFAULT_WEIGHT, info)
+    }
+    /// Adds a node from the specified info, with specified weight
+    pub fn add_child_from(
         &mut self,
         weight: Weight,
         info: NodeInfoIntrinsic<T, F>,

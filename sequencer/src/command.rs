@@ -80,6 +80,13 @@ command_enum! {
             /// Index of the queue item to remove
             index: usize,
         },
+        /// Moves a (non-root) node from one chain node to another
+        MoveNode -> NodeIdStr {
+            /// Id of the node to move (root is forbidden)
+            src_id: String,
+            /// Id of the existing destination node
+            dest_parent_id: String,
+        },
     }
     mod out {
         /// Typed output from a [`Command`](`super::Command`)
@@ -170,6 +177,12 @@ command_runnable! {
         fn run(self, seq) -> Result<(), Error> {
             let Self { path, index } = self;
             seq.queue_remove_item(path.as_deref(), index)
+        }
+    }
+    impl<F> Runnable<F> for MoveNode {
+        fn run(self, seq) -> Result<NodeIdStr, Error> {
+            let Self { src_id, dest_parent_id } = self;
+            seq.move_node(&src_id, &dest_parent_id)
         }
     }
 }

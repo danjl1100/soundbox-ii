@@ -71,6 +71,7 @@ impl<T: ItemSource<F>, F> Sequencer<T, F> {
             item_source,
         }
     }
+    /// Returns the [`TreeGuard`], to ensure [`Tree::refresh_prefill`] is called on drop
     fn tree_guard(&mut self) -> TreeGuard<'_, T, F> {
         self.raw_tree.guard()
     }
@@ -287,6 +288,65 @@ where
                     "failed to remove from queue index {index}, max length {queue_len}"
                 ))
             })
+    }
+    fn move_node(&mut self, src_id_str: &str, dest_id_str: &str) -> Result<NodeIdStr, Error> {
+        let src_id = match parse_id(src_id_str)? {
+            NodeIdTyped::Root(..) => Err(Error::Message("cannot move root node".to_string())),
+            NodeIdTyped::Child(child) => Ok(child),
+        }?;
+        let dest_id = parse_id(dest_id_str)?;
+        let mut tree_guard = self.tree_guard();
+
+        // verify destination node is non-terminal
+        dest_id
+            .try_ref(&mut tree_guard)?
+            .child_nodes()
+            .map(|_| ())
+            .ok_or_else(|| format!("Node {dest_id} does not have child_nodes"))?;
+        // detect path changing (later sibling of the src) and adjust accordingly
+        let dest_id_reresolved = resolved_post_remove_id(&src_id, dest_id)
+            .ok_or_else(|| "cannot move node to itself".to_string())?;
+
+        // remove from source location
+        let (_removed_weight, removed_info) = tree_guard.as_mut().remove_node(&src_id)??;
+
+        // insert at destination location
+        let mut dest_ref = dest_id_reresolved.try_ref(&mut tree_guard)?;
+        let mut child_nodes = dest_ref
+            .child_nodes()
+            .expect("pre-validated Node now suddently does not have child_nodes");
+        let new_node_id = child_nodes.add_child_default_from(removed_info);
+
+        Ok(serialize_id(new_node_id)?)
+    }
+}
+/// Returns the input `NodeId`, modified to reflect removal of the specified `NodeId`
+/// Note: Returns `None` if the two provided `NodeId`s have identical paths
+fn resolved_post_remove_id(
+    removed_id: &NodeId<ty::Child>,
+    input: NodeIdTyped,
+) -> Option<NodeIdTyped> {
+    match input {
+        NodeIdTyped::Root(root) => Some(root.into()),
+        NodeIdTyped::Child(input) => {
+            let (removed_end, removed_parent) = removed_id.elems_split_last();
+            let (input_end, input_parent) = input.elems_split_last();
+            if input_parent == removed_parent {
+                match input_end.cmp(&removed_end) {
+                    std::cmp::Ordering::Less => Some(input.into()),
+                    std::cmp::Ordering::Equal => None,
+                    std::cmp::Ordering::Greater => {
+                        let result_end = input_end - 1;
+                        let result_id = (input_parent.iter().copied().collect::<NodePathTyped>())
+                            .append(result_end)
+                            .with_sequence_of_id(&input);
+                        Some(result_id.into())
+                    }
+                }
+            } else {
+                Some(input.into())
+            }
+        }
     }
 }
 /// [`Mismatch`] with associated label string

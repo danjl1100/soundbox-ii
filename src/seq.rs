@@ -186,6 +186,13 @@ mod cmd {
             /// Path of the target node (default is root)
             path: Option<String>,
         },
+        /// Moves a (non-root) node from one chain node to another
+        Move {
+            /// Id of the node to move (root is forbidden)
+            src_id: String,
+            /// Id of the existing destination node
+            dest_parent_id: String,
+        },
     }
     impl From<Cmd> for SequencerCommand {
         #[rustfmt::skip] // too many extra line breaks if rustfmt is run
@@ -226,6 +233,9 @@ mod cmd {
                 }
                 Cmd::QueueRemove { path, index } => {
                     sequencer::command::QueueRemove { path, index }.into()
+                }
+                Cmd::Move { src_id, dest_parent_id } => {
+                    sequencer::command::MoveNode { src_id, dest_parent_id }.into()
                 }
             }
         }

@@ -3,7 +3,7 @@ default_job = "script"
 
 [jobs.script]
 command = ["cargo", "run", "--color", "always", "--",
-  "--quiet", "--script", "src/test_script.txt",
+  "--quiet", "--script", "src/test_script_move.txt",
   "--beet-cmd", "../fake-beet/target/debug/fake-beet",
   "--source-type", "folder-listing",
 ]

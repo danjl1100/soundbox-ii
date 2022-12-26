@@ -1,0 +1,5 @@
+add .
+add .
+move .1#2 .0#1
+# move .0#1 .1#2
+print

@@ -129,6 +129,13 @@ pub(crate) enum Command {
         /// Path of the target node (default is root)
         path: Option<String>,
     },
+    /// Moves a (non-root) node from one chain node to another
+    Move {
+        /// Id of the node to move (root is forbidden)
+        src_id: String,
+        /// Id of the existing destination node
+        dest_parent_id: String,
+    },
 }
 /// Types of License snippets available to show
 #[derive(clap::Subcommand, Debug)]
@@ -263,6 +270,8 @@ impl Cli {
             }
         }
     }
+    // TODO move `exec_command` to sequencer::cli module, and re-use this logic in soundbox-ii main
+    #[allow(clippy::too_many_lines)]
     fn exec_command(&mut self, command: Command) -> Result<(), Error> {
         match command {
             Command::Quit => {}
@@ -363,6 +372,15 @@ impl Cli {
             }
             Command::QueueRemove { index, path } => {
                 self.run(command::QueueRemove { path, index })?;
+            }
+            Command::Move {
+                src_id,
+                dest_parent_id,
+            } => {
+                self.run(command::MoveNode {
+                    src_id,
+                    dest_parent_id,
+                })?;
             }
         }
         Ok(())

@@ -151,7 +151,8 @@ impl NodePathTyped {
             Self::Child(path) => path.with_sequence(source).into(),
         }
     }
-    pub(crate) fn append(self, next: NodePathElem) -> NodePath<Child> {
+    /// Appends the specified element to the path
+    pub fn append(self, next: NodePathElem) -> NodePath<Child> {
         match self {
             Self::Root(root) => root.append(next),
             Self::Child(child) => child.append(next),
@@ -213,6 +214,7 @@ pub struct NodeId<T: Type> {
 
 /// Path to a node in the [`Tree`](`crate::Tree`)
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use]
 pub struct NodePath<T: Type>(T);
 
 impl NodePath<Root> {
@@ -236,14 +238,28 @@ impl<T: Type> NodePath<T> {
         self.0.into_elems()
     }
 }
+impl NodePath<ty::Child> {
+    /// Returns a slice of the [`NodePathElem`]s, with `split_last` already applied
+    #[must_use]
+    pub fn elems_split_last(&self) -> (NodePathElem, &[NodePathElem]) {
+        let (last, elems) = self
+            .elems()
+            .split_last()
+            .expect("nonempty path in NodePath<Child>");
+        (*last, elems)
+    }
+}
 
 impl<T: Type> NodePath<T> {
     /// Appends a path element
-    #[must_use]
     pub(crate) fn append(self, next: NodePathElem) -> NodePath<Child> {
         let mut parts = self.into_elems();
         parts.push(next);
         NodePath::new(parts).expect("appended part makes Vec nonempty")
+    }
+    /// Creates a `NodeId` with the specified `Sequence`
+    pub fn with_sequence_of_id(self, source: &NodeId<T>) -> NodeId<T> {
+        self.with_sequence(source)
     }
     pub(crate) fn with_sequence<S: SequenceSource>(self, source: &S) -> NodeId<T> {
         let sequence = source.sequence();
