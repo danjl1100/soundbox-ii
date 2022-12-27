@@ -18,7 +18,7 @@
 use arg_split::ArgSplit;
 use clap::{ArgEnum, Parser};
 use sequencer::{
-    cli::{Cli, NodeCommand, OutputParams},
+    cli::{NodeCommand, OutputParams},
     Error,
 };
 use std::{
@@ -68,9 +68,8 @@ pub enum ShowCopyingLicenseType {
     Copying,
 }
 
-// TODO rename to Cli once `Cli` is moved to `sequencer::cli::Cli`
-struct MainCli {
-    cli: Cli<source::Source, source::FilterArgParser, source::TypedArg>,
+struct Cli {
+    sequencer_cli: sequencer::cli::Cli<source::Source, source::FilterArgParser, source::TypedArg>,
     /// Terminates on the first error encountered (implied for `--script` mode)
     fatal: bool,
 }
@@ -142,7 +141,7 @@ mod source {
         }
     }
 }
-impl MainCli {
+impl Cli {
     fn exec_lines<V>(&mut self, input: V) -> Result<(), MainError>
     where
         V: BufRead,
@@ -151,7 +150,7 @@ impl MainCli {
             let line = line?;
             match self.exec_line(&line) {
                 Ok(Some(shared::Shutdown)) => {
-                    self.cli.output(format_args!("exited cleanly"));
+                    self.sequencer_cli.output(format_args!("exited cleanly"));
                     return Ok(());
                 }
                 Err(()) if self.fatal => {
@@ -161,7 +160,7 @@ impl MainCli {
                 Ok(None) | Err(()) => {}
             }
         }
-        self.cli.output(format_args!("<<EOF>>"));
+        self.sequencer_cli.output(format_args!("<<EOF>>"));
         Ok(())
     }
     const COMMENT: &'static str = "#";
@@ -178,7 +177,7 @@ impl MainCli {
                             Ok(None)
                         }
                         Command::Node(node_command) => {
-                            self.cli.exec_command(node_command).map(|()| None)
+                            self.sequencer_cli.exec_command(node_command).map(|()| None)
                         }
                     };
                     result.map_err(|e| match e {
@@ -274,19 +273,18 @@ fn main() -> Result<(), MainError> {
         default_type: source_type,
     };
     let fatal = args.fatal | args.script.is_some();
-    let mut main_cli = MainCli {
-        cli: Cli::new(source, filter_arg_parser, params),
+    let mut cli = Cli {
+        sequencer_cli: sequencer::cli::Cli::new(source, filter_arg_parser, params),
         fatal,
     };
     if let Some(script) = args.script {
         let script_file = File::open(&script)
             .map_err(|err| format!("unable to open script {script:?}: {err}"))?;
         let script_file = BufReader::new(script_file);
-        main_cli
-            .exec_lines(script_file)
+        cli.exec_lines(script_file)
             .map_err(|e| format!("script {script:?} {e}").into())
     } else {
-        Ok(main_cli.exec_lines(stdin().lock())?)
+        Ok(cli.exec_lines(stdin().lock())?)
     }
 }
 #[cfg(test)]
