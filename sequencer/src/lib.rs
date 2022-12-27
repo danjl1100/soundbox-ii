@@ -34,7 +34,6 @@ use q_filter_tree::{
     serde::{NodeDescriptor, NodeIdParseError},
     OrderType, RemoveError, Weight,
 };
-
 use std::borrow::Cow;
 
 #[macro_use]
@@ -49,6 +48,8 @@ use sources::{multi_select::Mismatch, ItemSource};
 pub mod sources;
 
 pub mod command;
+
+pub mod cli;
 
 // conversions, for ergonomic use with `ItemSource`
 type Item<T, F> = <T as ItemSource<F>>::Item;

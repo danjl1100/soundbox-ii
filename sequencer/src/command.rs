@@ -1,9 +1,8 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Command types for running a [`Sequencer`]
 
-use q_filter_tree::{OrderType, Weight};
-
 use crate::{sources::ItemSource, Error, NodeIdStr, Sequencer};
+use q_filter_tree::{OrderType, Weight};
 
 pub use out::Typed as TypedOutput;
 command_enum! {

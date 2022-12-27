@@ -15,17 +15,15 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use arg_split::ArgSplit;
 use clap::{ArgEnum, Parser};
-use q_filter_tree::{OrderType, Weight};
+use sequencer::{
+    cli::{Cli, NodeCommand, OutputParams},
+    Error,
+};
 use std::{
     fs::File,
     io::{stdin, BufRead, BufReader},
-};
-
-use arg_split::ArgSplit;
-use sequencer::{
-    command::{self, Runnable},
-    Error, Sequencer,
 };
 
 const COMMAND_NAME: &str = "sequencer";
@@ -56,89 +54,11 @@ pub(crate) enum Command {
         #[clap(subcommand)]
         license: ShowCopyingLicenseType,
     },
-    /// Print the current sequencer-nodes state
-    Print,
-    /// Add a new node for items or fanning-out to child nodes
-    Add {
-        /// Path of the parent for the new node (use "." for the root node)
-        parent_path: String,
-        /// Filename source, for terminal nodes only (optional)
-        items_filter: Vec<String>,
-        /// Type of the source (defaults to main-args option)
-        #[clap(long, arg_enum)]
-        source_type: Option<source::Type>,
-    },
-    /// Set the filter for the specified node
-    SetFilter {
-        /// Path of the node to modify
-        path: String,
-        /// New filter value
-        items_filter: Vec<String>,
-        /// Type of the source (defaults to main-args option)
-        #[clap(long, arg_enum)]
-        source_type: Option<source::Type>,
-    },
-    /// Set the weight for the specified node or item
-    SetWeight {
-        /// Path of the node to modify
-        path: String,
-        /// Index of the item to modify (for terminal nodes only)
-        #[clap(long)]
-        item_index: Option<usize>,
-        /// New weight value
-        weight: Weight,
-    },
-    /// Set the order type for the specified node
-    SetOrderType {
-        /// Path of the node to modify
-        path: String,
-        /// Method of ordering
-        #[clap(subcommand)]
-        order_type: OrderType,
-    },
-    /// Update items for a node
-    Update {
-        /// Path of the target node to update (optional, default is all nodes)
-        path: Option<String>,
-    },
-    /// Remove a node
-    Remove {
-        /// Id of the target node to delete
-        id: String,
-        //TODO is this appropriate?
-        // recursive: bool,
-    },
-    /// Print the next item(s)
-    #[clap(alias("n"))]
-    Next {
-        /// Number of items to print
-        count: Option<usize>,
-    },
-    /// Set the minimum number of staged (determined) items at the root node
-    #[clap(alias("prefill"))]
-    SetPrefill {
-        /// Minimum number of items to stage
-        min_count: usize,
-        /// Path of the target node (default is root)
-        path: Option<String>,
-    },
-    /// Removes an item from the queue of the specified node
-    QueueRemove {
-        /// Index of the queue item to remove
-        index: usize,
-        /// Path of the target node (default is root)
-        path: Option<String>,
-    },
-    /// Moves a (non-root) node from one chain node to another
-    Move {
-        /// Id of the node to move (root is forbidden)
-        src_id: String,
-        /// Id of the existing destination node
-        dest_parent_id: String,
-    },
+    #[clap(flatten)]
+    Node(NodeCommand<source::Type>),
 }
 /// Types of License snippets available to show
-#[derive(clap::Subcommand, Debug)]
+#[derive(clap::Subcommand, Clone, Copy, Debug)]
 pub enum ShowCopyingLicenseType {
     /// Show warranty details
     #[clap(alias("w"))]
@@ -148,24 +68,13 @@ pub enum ShowCopyingLicenseType {
     Copying,
 }
 
-struct Cli {
-    sequencer: Sequencer<source::Source, Option<source::TypedArg>>,
-    source_type: source::Type,
-    params: Parameters,
-}
-struct Parameters {
-    /// Slience non-error output that is not explicitly requested
-    quiet: bool,
+// TODO rename to Cli once `Cli` is moved to `sequencer::cli::Cli`
+struct MainCli {
+    cli: Cli<source::Source, source::FilterArgParser, source::TypedArg>,
     /// Terminates on the first error encountered (implied for `--script` mode)
     fatal: bool,
 }
-impl Parameters {
-    fn output(&self, fmt_args: std::fmt::Arguments) {
-        if !self.quiet {
-            println!("{fmt_args}");
-        }
-    }
-}
+
 mod source {
     use clap::ValueEnum;
     use serde::Serialize;
@@ -207,60 +116,75 @@ mod source {
             })
         }
     }
-}
-
-impl Cli {
-    const COMMENT: &'static str = "#";
-    fn new(source: source::Source, source_type: source::Type, params: Parameters) -> Self {
-        let sequencer: Sequencer<source::Source, Option<source::TypedArg>> =
-            Sequencer::new(source, None);
-        Self {
-            sequencer,
-            source_type,
-            params,
+    pub(super) struct FilterArgParser {
+        pub default_type: Type,
+    }
+    impl sequencer::cli::FilterArgParser for FilterArgParser {
+        type Type = Type;
+        type Filter = TypedArg;
+        fn parse_filter_args(
+            &self,
+            args: Vec<String>,
+            source_type: Option<Type>,
+        ) -> Option<TypedArg> {
+            if args.is_empty() {
+                None
+            } else {
+                let joined = args.join(" ");
+                let filter = match source_type.unwrap_or(self.default_type) {
+                    Type::Debug => TypedArg::Debug(joined),
+                    Type::FileLines => TypedArg::FileLines(joined),
+                    Type::FolderListing => TypedArg::FolderListing(joined),
+                    Type::Beet => TypedArg::Beet(args),
+                };
+                Some(filter)
+            }
         }
     }
-    fn exec_lines<T>(&mut self, input: T) -> Result<(), MainError>
+}
+impl MainCli {
+    fn exec_lines<V>(&mut self, input: V) -> Result<(), MainError>
     where
-        T: BufRead,
+        V: BufRead,
     {
         for (line_number, line) in input.lines().enumerate() {
             let line = line?;
             match self.exec_line(&line) {
                 Ok(Some(shared::Shutdown)) => {
-                    self.output(format_args!("exited cleanly"));
+                    self.cli.output(format_args!("exited cleanly"));
                     return Ok(());
                 }
-                Err(()) if self.params.fatal => {
+                Err(()) if self.fatal => {
                     let line_number = line_number + 1; // human-readable one-based counting
                     Err(format!("failed on line {line_number}: {line:?}"))?;
                 }
                 Ok(None) | Err(()) => {}
             }
         }
-        self.output(format_args!("<<EOF>>"));
+        self.cli.output(format_args!("<<EOF>>"));
         Ok(())
     }
+    const COMMENT: &'static str = "#";
     fn exec_line(&mut self, line: &str) -> Result<Option<shared::Shutdown>, ()> {
         if line.trim_start().starts_with(Self::COMMENT) {
             Ok(None)
         } else {
             match Args::try_from(line) {
-                Ok(Args {
-                    command: Some(Command::Quit),
-                }) => Ok(Some(shared::Shutdown)),
                 Ok(Args { command: Some(cmd) }) => {
-                    let result = self.exec_command(cmd);
-                    match result {
-                        Err(e) => {
-                            match e {
-                                Error::Message(message) => eprintln!("Error: {message}"),
-                                e => eprintln!("Error: {e:?}"),
-                            }
-                            Err(())
+                    let result = match cmd {
+                        Command::Quit => Ok(Some(shared::Shutdown)),
+                        Command::Show { license } => {
+                            Self::show_license(license);
+                            Ok(None)
                         }
-                        Ok(()) => Ok(None),
-                    }
+                        Command::Node(node_command) => {
+                            self.cli.exec_command(node_command).map(|()| None)
+                        }
+                    };
+                    result.map_err(|e| match e {
+                        Error::Message(message) => eprintln!("Error: {message}"),
+                        e => eprintln!("Error: {e:?}"),
+                    })
                 }
                 Ok(Args { command: None }) => Ok(None),
                 Err(clap_err) => {
@@ -270,156 +194,15 @@ impl Cli {
             }
         }
     }
-    // TODO move `exec_command` to sequencer::cli module, and re-use this logic in soundbox-ii main
-    #[allow(clippy::too_many_lines)]
-    fn exec_command(&mut self, command: Command) -> Result<(), Error> {
-        match command {
-            Command::Quit => {}
-            Command::Show { license } => match license {
-                ShowCopyingLicenseType::Warranty => {
-                    eprintln!("{}", shared::license::WARRANTY);
-                }
-                ShowCopyingLicenseType::Copying => {
-                    eprintln!("{}", shared::license::REDISTRIBUTION);
-                }
-            },
-            Command::Print => {
-                println!("{}", &self.sequencer);
+    fn show_license(license: ShowCopyingLicenseType) {
+        match license {
+            ShowCopyingLicenseType::Warranty => {
+                eprintln!("{}", shared::license::WARRANTY);
             }
-            Command::Add {
-                parent_path,
-                items_filter,
-                source_type: requested_type,
-            } => {
-                let source_type = self.calculate_existing_type(&parent_path, requested_type)?;
-                let node_path =
-                    if let Some(filter) = self.parse_filter_args(items_filter, source_type) {
-                        self.run(command::AddTerminalNode {
-                            parent_path,
-                            filter: Some(filter),
-                        })
-                    } else {
-                        self.run(command::AddNode {
-                            parent_path,
-                            filter: None,
-                        })
-                    }?;
-                self.output(format_args!("added node {node_path}"));
-            }
-            Command::SetFilter {
-                path,
-                items_filter,
-                source_type: requested_type,
-            } => {
-                let source_type = self.calculate_existing_type(&path, requested_type)?;
-                let filter = self.parse_filter_args(items_filter, source_type);
-                let filter_print = filter.clone();
-                let old = self.run(command::SetNodeFilter { path, filter });
-                self.output(format_args!(
-                    "changed filter from {old:?} -> {filter_print:?}"
-                ));
-            }
-            Command::SetWeight {
-                path,
-                item_index,
-                weight,
-            } => {
-                let old_weight = if let Some(item_index) = item_index {
-                    self.run(command::SetNodeItemWeight {
-                        path,
-                        item_index,
-                        weight,
-                    })
-                } else {
-                    self.run(command::SetNodeWeight { path, weight })
-                }?;
-                self.output(format_args!("changed weight from {old_weight} -> {weight}"));
-            }
-            Command::SetOrderType { path, order_type } => {
-                let old = self.run(command::SetNodeOrderType { path, order_type })?;
-                self.output(format_args!(
-                    "changed order type from {old:?} -> {order_type:?}"
-                ));
-            }
-            Command::Update { path } => {
-                let path = path.unwrap_or_else(|| ".".to_string());
-                let path_print = path.clone();
-                self.run(command::UpdateNodes { path })?;
-                self.output(format_args!("updated nodes under path {path_print}"));
-            }
-            Command::Remove { id } => {
-                let id_print = id.clone();
-                self.run(command::RemoveNode { id })?;
-                // let removed = self.sequencer.remove_node(&id)?;
-                // let (weight, info) = removed;
-                self.output(format_args!("removed node {id_print}"));
-            }
-            Command::Next { count } => {
-                let count = count.unwrap_or(1);
-                for _ in 0..count {
-                    let popped = self.sequencer.pop_next();
-                    if let Some(item) = popped {
-                        let (node_seq, item) = item.into_parts();
-                        println!("Item {item:?}, from node #{node_seq}");
-                    } else {
-                        println!("No items remaining");
-                        break;
-                    }
-                }
-            }
-            Command::SetPrefill { path, min_count } => {
-                self.run(command::SetNodePrefill { path, min_count })?;
-            }
-            Command::QueueRemove { index, path } => {
-                self.run(command::QueueRemove { path, index })?;
-            }
-            Command::Move {
-                src_id,
-                dest_parent_id,
-            } => {
-                self.run(command::MoveNode {
-                    src_id,
-                    dest_parent_id,
-                })?;
+            ShowCopyingLicenseType::Copying => {
+                eprintln!("{}", shared::license::REDISTRIBUTION);
             }
         }
-        Ok(())
-    }
-    fn run<T>(&mut self, command: T) -> Result<T::Output, Error>
-    where
-        T: Runnable<Option<source::TypedArg>>,
-    {
-        self.sequencer.run(command)
-    }
-    fn parse_filter_args(
-        &self,
-        items_filter: Vec<String>,
-        source_type: Option<source::Type>,
-    ) -> Option<source::TypedArg> {
-        if items_filter.is_empty() {
-            None
-        } else {
-            let joined = items_filter.join(" ");
-            let filter = match source_type.unwrap_or(self.source_type) {
-                source::Type::Debug => source::TypedArg::Debug(joined),
-                source::Type::FileLines => source::TypedArg::FileLines(joined),
-                source::Type::FolderListing => source::TypedArg::FolderListing(joined),
-                source::Type::Beet => source::TypedArg::Beet(items_filter),
-            };
-            Some(filter)
-        }
-    }
-    fn calculate_existing_type(
-        &self,
-        path: &str,
-        requested_type: Option<source::Type>,
-    ) -> Result<Option<source::Type>, Error> {
-        self.sequencer
-            .calculate_required_type(path, requested_type)?
-            .map_err(|mismatch_label| format!("{mismatch_label}").into())
-    }
-    fn output(&self, fmt_args: std::fmt::Arguments) {
-        self.params.output(fmt_args);
     }
 }
 
@@ -447,6 +230,11 @@ enum ItemSourceType {
     FileLines,
     FolderListing,
     Beet,
+}
+impl From<&MainArgs> for OutputParams {
+    fn from(args: &MainArgs) -> Self {
+        Self { quiet: args.quiet }
+    }
 }
 shared::wrapper_enum! {
     enum MainError {
@@ -479,23 +267,26 @@ fn main() -> Result<(), MainError> {
 
     let source_type = args.source_type.unwrap_or(source::Type::FileLines);
     let root_path = ".".into();
+    let params = OutputParams::from(&args);
     let beet_cmd = args.beet_cmd; // .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "missing beet_cmd"))?;
     let source = source::Source::new(root_path, beet_cmd)?;
-    let params = {
-        let MainArgs { quiet, fatal, .. } = args;
-        let fatal = fatal | args.script.is_some();
-        Parameters { quiet, fatal }
+    let filter_arg_parser = source::FilterArgParser {
+        default_type: source_type,
     };
-    let mut sequencer = Cli::new(source, source_type, params);
+    let fatal = args.fatal | args.script.is_some();
+    let mut main_cli = MainCli {
+        cli: Cli::new(source, filter_arg_parser, params),
+        fatal,
+    };
     if let Some(script) = args.script {
         let script_file = File::open(&script)
             .map_err(|err| format!("unable to open script {script:?}: {err}"))?;
         let script_file = BufReader::new(script_file);
-        sequencer
+        main_cli
             .exec_lines(script_file)
             .map_err(|e| format!("script {script:?} {e}").into())
     } else {
-        Ok(sequencer.exec_lines(stdin().lock())?)
+        Ok(main_cli.exec_lines(stdin().lock())?)
     }
 }
 #[cfg(test)]
