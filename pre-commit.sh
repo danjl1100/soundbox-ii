@@ -38,6 +38,12 @@ true \
   && true # trailing commas for the win
 RESULT=$?
 
+echo ""
+echo "NOTICE: These commands will verify the NixOS module builds successfully"
+echo "   nix flake show"
+echo "   nix build .#hydraJobs.nixosModule.x86_64-linux"
+echo ""
+
 # Restore changes
 # again, source: https://stackoverflow.com/a/20480591/5742216
 git reset --hard -q && git stash apply --index -q && git stash drop -q
