@@ -383,7 +383,7 @@
               description = "vlc instance for soundbox-ii";
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${pkg_cvlc}/bin/cvlc";
+                ExecStart = "${pkg_cvlc}";
                 WorkingDirectory = cfg.music_dir;
                 User = cfg.user;
                 Group = cfg.group;
