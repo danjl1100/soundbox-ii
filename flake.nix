@@ -159,7 +159,12 @@
         };
 
         # define packages (for re-use in combined target)
-        bin = project.workspaceMembers.${rootModuleName}.build;
+        bin = pkgs.symlinkJoin { # NOTE: artificial redirection, seemed to help with `nix flake show` speediness
+          name = rootModuleName;
+          paths = [
+            project.workspaceMembers.${rootModuleName}.build
+          ];
+        };
         frontend = trunkBuild {
           pname = "${name}_frontend";
           version = "0.1.0";
@@ -245,20 +250,61 @@
           RUST_SRC_PATH = "${pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-src}/lib/rustlib/src/rust/library";
         };
       });
+      test_nixosConfiguration = system: let
+        service_activation = { ... }: {
+          # initialize the soundbox-ii service
+          services.soundbox-ii = {
+            enable = true;
+            vlc_password = "notsecure";
+            user = "soundbox-ii";
+            group = "soundbox-ii";
+            music_dir = "/nonexistent";
+            bind_address = "127.0.0.1";
+            bind_port = 1234;
+          };
+        };
+        required_nixos = { ... }: {
+          fileSystems."/" =
+            { device = "none";
+              fsType = "tmpfs";
+              options = [ "size=2G" "mode=755" ];
+            };
+          boot.loader.systemd-boot.enable = true;
+        };
+      in nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            self.nixosModules.default
+            service_activation
+            required_nixos
+          ];
+        };
       # packages = flake-utils.lib.eachDefaultSystem makeForSystem;
       packages = flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] makeForSystem;
     in packages // {
       hydraJobs = flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (system: {
-        soundbox-ii = packages.packages.${system}.soundbox-ii;
-        soundbox-ii_bin = packages.packages.${system}.soundbox-ii_bin;
-        soundbox-ii_frontend = packages.packages.${system}.soundbox-ii_frontend;
-        soundbox-ii_vlc = packages.packages.${system}.soundbox-ii_vlc;
-        soundbox-ii_cvlc = packages.packages.${system}.soundbox-ii_cvlc;
+        soundbox-ii = self.packages.${system}.soundbox-ii;
+        soundbox-ii_bin = self.packages.${system}.soundbox-ii_bin;
+        soundbox-ii_frontend = self.packages.${system}.soundbox-ii_frontend;
+        # soundbox-ii_vlc = self.packages.${system}.soundbox-ii_vlc;
+        # soundbox-ii_cvlc = self.packages.${system}.soundbox-ii_cvlc;
+        nixosModule = let
+          pkgs = import nixpkgs {
+            inherit system;
+          };
+          nixos_toplevel = (test_nixosConfiguration system).config.system.build.toplevel;
+        in pkgs.symlinkJoin { # NOTE: artificial redirection, seemed to help with `nix flake show` speediness
+          name = "nixosConfiguration test-${system}";
+          paths = [ nixos_toplevel ];
+        };
       });
-      nixosModule = { config, lib, pkgs, ... }:
+      # nixosConfigurations.test-x86_64-linux = test_nixosConfiguration "x86_64-linux";
+      # nixosConfigurations.test-aarch-darwin = test_nixosConfiguration "aarch-darwin";
+      # nixosConfigurations.default = self.nixosConfigurations.test-x86_64-linux;
+      nixosModules.default = { config, lib, pkgs, ... }:
         let
           pkg = self.packages.${pkgs.system}.soundbox-ii;
-          pkg_cvlc = self.packages.${pkgs.system}.soundbox-ii_cvlc;
+          pkg_cvlc = self.apps.${pkgs.system}.cvlc.program;
           cfg = config.services.soundbox-ii;
           environment = rec {
             VLC_HOST = "127.0.0.1";
@@ -314,7 +360,9 @@
               '';
             };
           };
-          config = lib.mkIf cfg.enable {
+          config = lib.mkIf cfg.enable (let
+            vlc_service = "soundbox-ii_vlc";
+          in {
             systemd.services.soundbox-ii = {
               description = "soundbox-ii server";
               serviceConfig = {
@@ -325,18 +373,18 @@
                 User = cfg.user;
                 Group = cfg.group;
               };
-              requires = [ "soundbox-ii_vlc.service" ];
-              after = [ "soundbox-ii_vlc.service" ];
+              requires = [ "${vlc_service}.service" ];
+              after = [ "${vlc_service}.service" ];
               wantedBy = [ "multiuser.target" ];
               environment = environment // {
                 BIND_ADDRESS = "${cfg.bind_address}:${toString cfg.bind_port}";
               };
             };
-            systemd.services.soundbox-ii_vlc = {
+            systemd.services.${vlc_service} = {
               description = "vlc instance for soundbox-ii";
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${pkg_cvlc}/bin/cvlc";
+                ExecStart = "${pkg_cvlc}";
                 WorkingDirectory = cfg.music_dir;
                 User = cfg.user;
                 Group = cfg.group;
@@ -345,7 +393,7 @@
             };
             networking.firewall.allowedTCPPorts = [ cfg.bind_port ];
             networking.firewall.allowedUDPPorts = [ cfg.bind_port ];
-          };
+          });
         };
     };
 }
