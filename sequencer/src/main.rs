@@ -54,6 +54,12 @@ pub(crate) enum Command {
         #[clap(subcommand)]
         license: ShowCopyingLicenseType,
     },
+    /// Print the next item(s)
+    #[clap(alias("n"))]
+    Next {
+        /// Number of items to print
+        count: Option<usize>,
+    },
     #[clap(flatten)]
     Node(NodeCommand<source::Type>),
 }
@@ -176,6 +182,11 @@ impl Cli {
                             Self::show_license(license);
                             Ok(None)
                         }
+                        Command::Next { count } => {
+                            let count = count.unwrap_or(1);
+                            self.print_next(count);
+                            Ok(None)
+                        }
                         Command::Node(node_command) => {
                             self.sequencer_cli.exec_command(node_command).map(|()| None)
                         }
@@ -192,6 +203,22 @@ impl Cli {
                 }
             }
         }
+    }
+    fn print_next(&mut self, count: usize) {
+        let mut count_actual = 0;
+        for _ in 0..count {
+            let popped = self.sequencer_cli.sequencer.pop_next();
+            if let Some(item) = popped {
+                let (node_seq, item) = item.into_parts();
+                println!("Item {item:?}, from node #{node_seq}");
+            } else {
+                println!("No items remaining");
+                break;
+            }
+            count_actual += 1;
+        }
+        self.sequencer_cli
+            .output(format_args!("printed {count_actual} items"));
     }
     fn show_license(license: ShowCopyingLicenseType) {
         match license {

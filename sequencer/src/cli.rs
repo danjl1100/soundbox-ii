@@ -141,22 +141,6 @@ where
                 // let (weight, info) = removed;
                 self.output_summary(format_args!("removed node {id_print}"))
             }
-            NodeCommand::Next { count } => {
-                let count = count.unwrap_or(1);
-                let mut count_actual = 0;
-                for _ in 0..count {
-                    let popped = self.sequencer.pop_next();
-                    if let Some(item) = popped {
-                        let (node_seq, item) = item.into_parts();
-                        println!("Item {item:?}, from node #{node_seq}");
-                    } else {
-                        println!("No items remaining");
-                        break;
-                    }
-                    count_actual += 1;
-                }
-                self.output_summary(format_args!("printed {count_actual} items"))
-            }
             NodeCommand::SetPrefill { path, min_count } => {
                 let path_str = path_clone_description(&path);
                 self.run(command::SetNodePrefill { path, min_count })?;
@@ -211,7 +195,7 @@ fn path_clone_description(path_opt: &Option<String>) -> String {
     path_opt.clone().unwrap_or_else(|| "root".to_string())
 }
 
-/// Cli command for the `sequencer`
+/// Cli command for the `sequencer`, for the given source-type `clap::ValueEnum`
 #[derive(Parser, Debug)]
 pub enum NodeCommand<T>
 where
@@ -224,7 +208,7 @@ where
     Add {
         /// Path of the parent for the new node (use "." for the root node)
         parent_path: String,
-        /// Filename source, for terminal nodes only (optional)
+        /// Filter value(s) for terminal nodes only (optional, default is non-terminal node)
         items_filter: Vec<String>,
         /// Type of the source (defaults to main-args option)
         #[clap(long, arg_enum)]
@@ -236,7 +220,7 @@ where
         path: String,
         /// New filter value
         items_filter: Vec<String>,
-        /// Type of the source (defaults to main-args option)
+        /// Type of the source (defaults to application-specific option)
         #[clap(long, arg_enum)]
         source_type: Option<T>,
     },
@@ -258,7 +242,7 @@ where
         #[clap(subcommand)]
         order_type: OrderType,
     },
-    /// Update items for a node
+    /// Update the items for all terminal nodes reachable from the specified parent node
     Update {
         /// Path of the target node to update (optional, default is all nodes)
         path: Option<String>,
@@ -269,12 +253,6 @@ where
         id: String,
         //TODO is this appropriate?
         // recursive: bool,
-    },
-    /// Print the next item(s)
-    #[clap(alias("n"))]
-    Next {
-        /// Number of items to print
-        count: Option<usize>,
     },
     /// Set the minimum number of staged (determined) items at the root node
     #[clap(alias("prefill"))]
