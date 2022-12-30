@@ -1,8 +1,11 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Action, PlaybackStatus, PlaylistInfo, Rules};
-use shared::time_from_secs as time;
 use shared::time_now;
+
+pub fn time(secs: i64) -> shared::Time {
+    shared::time_from_secs_opt(secs).expect("valid seconds input in test")
+}
 
 #[tokio::test]
 async fn rules_initialize_status() {

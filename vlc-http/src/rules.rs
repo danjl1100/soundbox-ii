@@ -86,5 +86,7 @@ impl Rules {
 mod tests {
     pub(super) use super::need::tests::{immediate, some_millis};
     pub(super) use crate::vlc_responses::{PlaybackInfo, PlaylistItem};
-    pub(super) use shared::time_from_secs as time;
+    pub(super) fn time(secs: i64) -> shared::Time {
+        shared::time_from_secs_opt(secs).expect("valid seconds input in test")
+    }
 }

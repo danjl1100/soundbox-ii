@@ -372,7 +372,7 @@ impl<'a> std::fmt::Debug for UrlsFmt<'a> {
 mod for_tests {
     use super::{playback, playlist};
     fn fake_received_time() -> shared::Time {
-        shared::time_from_secs(0)
+        shared::time_from_secs_opt(0).expect("0 is valid time")
     }
     impl Default for playback::Status {
         fn default() -> Self {
