@@ -4,9 +4,9 @@
 pub(crate) fn fmt_duration_seconds(seconds: u64) -> String {
     let (hour, min, sec) = seconds_to_hms(seconds);
     if hour == 0 {
-        format!("{}:{:02}", min, sec)
+        format!("{min}:{sec:02}")
     } else {
-        format!("{}:{:02}:{:02}", hour, min, sec)
+        format!("{hour}:{min:02}:{sec:02}")
     }
 }
 
@@ -14,12 +14,12 @@ pub(crate) fn fmt_duration_seconds_long(seconds: u64) -> String {
     let (hour, min, sec) = seconds_to_hms(seconds);
     if hour == 0 {
         if min == 0 {
-            format!("{} seconds", sec)
+            format!("{sec} seconds")
         } else {
-            format!("{} minutes {} seconds", min, sec)
+            format!("{min} minutes {sec} seconds")
         }
     } else {
-        format!("{} hours {} minutes {} seconds", hour, min, sec)
+        format!("{hour} hours {min} minutes {sec} seconds")
     }
 }
 

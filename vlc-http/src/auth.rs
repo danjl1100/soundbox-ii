@@ -21,11 +21,12 @@ pub struct EnvError(&'static str, std::env::VarError);
 impl std::fmt::Display for EnvError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use std::env::VarError;
-        let reason = match self.1 {
+        let Self(variable, reason) = self;
+        let reason = match reason {
             VarError::NotPresent => "missing",
             VarError::NotUnicode(_) => "non-unicode",
         };
-        write!(f, "{} environment variable \"{}\"", reason, self.0)
+        write!(f, "{reason} environment variable \"{variable}\"")
     }
 }
 
@@ -213,20 +214,10 @@ where
     E: std::fmt::Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fn write_val<T, E>(
-            f: &mut std::fmt::Formatter,
-            label: &str,
-            val: &Result<T, E>,
-        ) -> std::fmt::Result
-        where
-            T: std::fmt::Display,
-            E: std::fmt::Display,
-        {
-            match val {
-                Ok(val) => writeln!(f, "\t{}\t\"{}\"", label, val),
-                Err(err) => writeln!(f, "\t{}\tError: {}", label, err),
-            }
-        }
+        let write_val = |f: &mut std::fmt::Formatter, label, val: &Result<_, _>| match val {
+            Ok(val) => writeln!(f, "\t{label}\t\"{val}\""),
+            Err(err) => writeln!(f, "\t{label}\tError: {err}"),
+        };
         writeln!(f, "Credentials {{")?;
         write_val(f, "host    ", &self.host)?;
         write_val(f, "port    ", &self.port)?;
@@ -242,9 +233,9 @@ impl TryFrom<Credentials> for Authorization {
             host,
             port,
         } = config;
-        let user_pass = format!(":{}", password);
+        let user_pass = format!(":{password}");
         let auth = format!("Basic {}", base64::encode(user_pass));
-        let host_port: String = format!("{host}:{port}", host = host, port = port);
+        let host_port: String = format!("{host}:{port}");
         Authority::from_str(&host_port)
             .map_err(|uri_err| (host_port, uri_err))
             .map(|authority| Authorization { auth, authority })

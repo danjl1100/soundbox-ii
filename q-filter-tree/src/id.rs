@@ -397,16 +397,16 @@ impl<T: Type> std::fmt::Debug for NodeId<T> {
 impl std::fmt::Debug for NodeIdTyped {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Root(id) => write!(f, "RootId({:?})", id),
-            Self::Child(id) => write!(f, "ChildId({:?})", id),
+            Self::Root(id) => write!(f, "RootId({id:?})"),
+            Self::Child(id) => write!(f, "ChildId({id:?})"),
         }
     }
 }
 impl std::fmt::Debug for NodePathTyped {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Root(path) => write!(f, "RootPath({:?})", path),
-            Self::Child(path) => write!(f, "ChildPath({:?})", path),
+            Self::Root(path) => write!(f, "RootPath({path:?})"),
+            Self::Child(path) => write!(f, "ChildPath({path:?})"),
         }
     }
 }

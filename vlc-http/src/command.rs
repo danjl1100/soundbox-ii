@@ -189,13 +189,13 @@ pub(crate) fn decode_volume_to_percent(based_256: u32) -> u16 {
     }
 }
 fn fmt_seconds_delta(seconds_delta: i32) -> String {
-    format!("{:+}", seconds_delta)
+    format!("{seconds_delta:+}")
 }
 fn fmt_volume_delta(volume_delta: i16) -> String {
     let sign_char = if volume_delta < 0 { '-' } else { '+' };
     let magnitude: u16 = volume_delta.unsigned_abs();
     let magnitude = encode_volume_val(magnitude);
-    format!("{}{}", sign_char, magnitude)
+    format!("{sign_char}{magnitude}")
 }
 fn decode_url(url: &url::Url) -> String {
     urlencoding::decode(url.as_ref())
@@ -453,7 +453,7 @@ mod tests {
                 LowCommand::Volume { percent: *percent },
                 StatusIntent(Some(CmdArgs {
                     command: "volume",
-                    args: vec![("val", format!("{}", val))],
+                    args: vec![("val", format!("{val}"))],
                 })),
             );
             let percent_signed = i16::try_from(*percent).expect("test values within range");
@@ -462,7 +462,7 @@ mod tests {
                     LowCommand::VolumeRelative { percent_delta },
                     StatusIntent(Some(CmdArgs {
                         command: "volume",
-                        args: vec![("val", format!("{}{}", sign, val))],
+                        args: vec![("val", format!("{sign}{val}"))],
                     })),
                 );
             };

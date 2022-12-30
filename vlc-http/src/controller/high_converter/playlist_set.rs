@@ -150,7 +150,7 @@ impl<'a> std::fmt::Debug for ResultFmt<'a> {
                 .debug_struct("PlaylistAdd")
                 .field("url", &url.to_string())
                 .finish(),
-            inner => write!(f, "{:?}", inner),
+            inner => write!(f, "{inner:?}"),
         }
     }
 }

@@ -169,7 +169,7 @@ mod context {
                 let result = self.0.request(request).await;
                 match &result {
                     Ok(response) => println!("    <- {:?}", response.status()),
-                    Err(error) => println!("  !! {:?}", error),
+                    Err(error) => println!("  !! {error:?}"),
                 }
                 Ok(result?)
             })

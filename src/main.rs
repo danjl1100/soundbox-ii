@@ -95,7 +95,7 @@ fn launch_cli(
             .run_until(move || shutdown_rx.poll_shutdown(TASK_NAME))
             .expect("cli free from IO errors");
         let _ = cli_shutdown_tx.send(Some(Shutdown));
-        println!("{} ended", TASK_NAME);
+        println!("{TASK_NAME} ended");
     })
 }
 
@@ -201,7 +201,7 @@ async fn launch(args: args::Config) {
             });
         tokio::task::spawn(async {
             server.await;
-            println!("ended: {}", TASK_NAME);
+            println!("ended: {TASK_NAME}");
         })
     });
 

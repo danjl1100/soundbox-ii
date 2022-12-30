@@ -294,6 +294,9 @@ impl<T, F> std::fmt::Debug for Node<T, F> {
 struct IgnoreQueue;
 
 #[derive(Clone)]
+// see note in crate::order about boxing some Order variants
+// (random state takes up a decent number of bytes)
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Children<T, F> {
     Chain(Chain<T, F>),
     Items(OrderVec<T>),

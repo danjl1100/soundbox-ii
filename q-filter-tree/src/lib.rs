@@ -20,6 +20,7 @@
 #![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
+#![allow(clippy::bool_to_int_with_if)] // except this confusing pattern
 // no unsafe
 #![forbid(unsafe_code)]
 // no unwrap

@@ -36,11 +36,11 @@ impl Rules {
     pub fn new() -> Self {
         Self {
             rules: vec![
-                Box::new(FillPlayback::default()),
-                Box::new(FillPlaylist::default()),
+                Box::<FillPlayback>::default(),
+                Box::<FillPlaylist>::default(),
                 Box::new(FetchAfterRule::from_spec(FetchAfterSeek)),
                 Box::new(FetchAfterRule::from_spec(FetchAfterVolume)),
-                Box::new(FetchAfterTrackEnd::default()),
+                Box::<FetchAfterTrackEnd>::default(),
             ],
         }
     }

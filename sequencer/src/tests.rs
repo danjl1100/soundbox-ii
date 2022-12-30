@@ -48,7 +48,7 @@ fn remove_node() -> Result<(), Error> {
     let mut s = Sequencer::new(DebugItemSource, String::default());
     assert_eq!(s.tree_ref().sum_node_count(), 1, "beginning length");
     // add
-    s.add_node(".", "".to_string())?;
+    s.add_node(".", String::new())?;
     assert_eq!(s.tree_ref().sum_node_count(), 2, "length after add");
     // remove
     let expect_removed = q_filter_tree::NodeInfo::Chain {

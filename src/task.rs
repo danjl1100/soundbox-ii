@@ -17,7 +17,7 @@ impl ShutdownReceiver {
     pub fn poll_shutdown(&self, task_name: &'static str) -> Option<Shutdown> {
         let value = *self.0.borrow();
         if let Some(Shutdown) = value {
-            println!("{} received shutdown", task_name);
+            println!("{task_name} received shutdown");
         }
         value
     }
@@ -34,7 +34,7 @@ impl ShutdownReceiver {
         } else {
             let shutdown = *rx.borrow();
             if shutdown.is_some() {
-                println!("received shutdown: {}", task_name);
+                println!("received shutdown: {task_name}");
             }
             shutdown
         }
@@ -73,7 +73,7 @@ impl AsyncTasks {
                 Err(Shutdown) = task => {}
                 else => {}
             };
-            println!("ended: {}", task_name);
+            println!("ended: {task_name}");
         });
         self.handles.push(handle);
     }

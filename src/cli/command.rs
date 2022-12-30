@@ -149,7 +149,7 @@ impl Subcommand {
             Self::Pause => from_vlc(Vlc::PlaybackPause),
             Self::Stop => from_vlc(Vlc::PlaybackStop),
             Self::Add { url } => {
-                let url = parse_url(&url)?;
+                let url = parse_url(url)?;
                 from_vlc(Vlc::PlaylistAdd { url })
             }
             Self::Delete { item_id } => from_vlc(Vlc::PlaylistDelete { item_id }),

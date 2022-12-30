@@ -120,9 +120,10 @@ pub fn parse_or_exit() -> Config {
     match Config::try_from(raw_args) {
         Ok(config) => config,
         Err(message) => {
-            eprintln!("{}", RawArgs::command().render_usage());
+            let usage = RawArgs::command().render_usage();
+            eprintln!("{usage}");
             eprintln!();
-            eprintln!("ERROR: {}", message);
+            eprintln!("ERROR: {message}");
             std::process::exit(1)
         }
     }

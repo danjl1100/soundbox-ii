@@ -61,6 +61,7 @@ impl self::render_adapter::Renderer for Main {
     type Route = Route;
     type Props = Props;
 
+    #[allow(clippy::let_unit_value)] // quirk in html! macro
     fn render_view(
         route: &Self::Route,
         ctx: &Context<self::render_adapter::CustomSwitch<Self>>,

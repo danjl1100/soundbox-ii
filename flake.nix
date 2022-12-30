@@ -70,7 +70,7 @@
       name = "soundbox-ii";
       rootModuleName = "soundbox-ii";
       rustChannel = "stable";
-      rustVersion = "1.62.0";
+      rustVersion = "1.66.0";
       makeForSystem = (system: let
         # Imports
         pkgs = import nixpkgs {

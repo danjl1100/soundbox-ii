@@ -129,7 +129,7 @@ impl Task {
             let (node_seq, popped) = popped.into_parts();
             println!("\tpopped {popped:?} from node #{node_seq}");
         } else {
-            println!("\tpopped {popped:?}", popped = None::<()>);
+            println!("\tpopped None");
         }
     }
 }

@@ -1,4 +1,6 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+#![allow(opaque_hidden_inferred_bound)] // warp crate-private module cannot be referenced in the
+                                        // `impl Reply` bounds
 pub(crate) use filter::root as filter;
 mod filter {
     use http::uri::Uri;
@@ -69,7 +71,7 @@ mod filter {
         }
         async fn query_album_art(vlc_tx: VlcTx) -> Result<Response, (String, hyper::StatusCode)> {
             fn internal_err<E: std::fmt::Display>(err: E) -> (String, hyper::StatusCode) {
-                let text = format!(r#"internal error with vlc_http art module: "{}""#, err);
+                let text = format!("internal error with vlc_http art module: \"{err}\"");
                 (text, hyper::StatusCode::INTERNAL_SERVER_ERROR)
             }
             #[allow(clippy::needless_pass_by_value)] // helpful, to clarify Result<_, String> signature
@@ -148,7 +150,7 @@ mod web_socket {
                         let message = match body {
                             Ok(msg) => msg,
                             Err(e) => {
-                                eprintln!("Error reading message on websocket: {}", e);
+                                eprintln!("Error reading message on websocket: {e}");
                                 break;
                             }
                         };

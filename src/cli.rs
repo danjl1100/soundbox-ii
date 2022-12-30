@@ -74,10 +74,10 @@ impl Prompt {
                 }
                 Ok(None) => {}
                 Err(Error::Clap(clap_err)) => {
-                    eprintln!("{}", clap_err);
+                    eprintln!("{clap_err}");
                 }
                 Err(Error::Message(e)) => {
-                    eprintln!("ERROR: {}", e);
+                    eprintln!("ERROR: {e}");
                 }
             }
         }

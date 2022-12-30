@@ -281,8 +281,9 @@ fn main() -> Result<(), MainError> {
     let args = MainArgs::parse();
 
     if !args.quiet {
-        eprint!("{}", COMMAND_NAME);
-        eprintln!("{}", shared::license::WELCOME);
+        use shared::license::WELCOME;
+        eprint!("{COMMAND_NAME}");
+        eprintln!("{WELCOME}");
     }
 
     let source_type = args.source_type.unwrap_or(source::Type::FileLines);

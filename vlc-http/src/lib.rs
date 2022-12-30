@@ -18,6 +18,7 @@
 
 // teach me
 #![deny(clippy::pedantic)]
+#![allow(clippy::bool_to_int_with_if)] // except this confusing pattern
 // no unsafe
 #![forbid(unsafe_code)]
 // no unwrap
@@ -161,7 +162,7 @@ mod action {
                     .debug_struct("PlaylistAdd")
                     .field("url", &url.to_string())
                     .finish(),
-                inner => write!(f, "{:?}", inner),
+                inner => write!(f, "{inner:?}"),
             }
         }
     }

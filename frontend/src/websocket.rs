@@ -126,12 +126,13 @@ where
             //TODO move outside the loop, per guidelines
             let mut read = read.next().fuse();
             select! {
-                read_result = read => match read_result {
-                    Some(message) => match self.handle_message(message) {
-                        Ok(()) => {}
-                        Err(error) => self.handle_error(error),
-                    }
-                    None => {
+                read_result = read => {
+                    if let Some(message) = read_result {
+                        match self.handle_message(message) {
+                            Ok(()) => {}
+                            Err(error) => self.handle_error(error),
+                        }
+                    } else {
                         log!("websocket read loop: server hung up :/");
                         break;
                     }

@@ -137,8 +137,8 @@ mod tests {
     fn dummy_playlist_item() -> PlaylistItem {
         PlaylistItem {
             duration_secs: None,
-            id: "".to_string(),
-            name: "".to_string(),
+            id: String::new(),
+            name: String::new(),
             url: url::Url::parse("file:///").expect("valid url"),
         }
     }

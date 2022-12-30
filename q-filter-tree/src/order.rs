@@ -161,7 +161,7 @@ pub struct State {
     order: Order,
 }
 #[allow(clippy::enum_variant_names)] // TODO: consider renaming `InOrder` to not contain `Order`
-#[allow(clippy::large_enum_variant)] // TODO: consider boxing `Shuffle`
+#[allow(clippy::large_enum_variant)] // TODO: consider boxing `Shuffle` and `Random`
 #[derive(Clone)]
 enum Order {
     InOrder(InOrder),
@@ -258,7 +258,7 @@ impl Eq for State {}
 impl std::fmt::Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let ty = Type::from(self);
-        write!(f, "State::{:?}", ty)
+        write!(f, "State::{ty:?}")
     }
 }
 
@@ -288,7 +288,7 @@ mod tests {
         let weights = weight_vec.weights();
         let peeked = s.peek(weights);
         let popped = s.next(weights);
-        println!("{:?} = {:?} ??", peeked, expected);
+        println!("{peeked:?} = {expected:?} ??");
         assert_eq!(peeked, expected);
         assert_eq!(popped, expected);
     }
