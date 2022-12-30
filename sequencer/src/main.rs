@@ -16,7 +16,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 use arg_split::ArgSplit;
-use clap::{ArgEnum, Parser};
+use clap::{Parser, ValueEnum};
 use sequencer::cli::{NodeCommand, OutputParams};
 use std::{
     fs::File,
@@ -232,7 +232,7 @@ struct MainArgs {
     #[clap(long)]
     beet_cmd: String,
     /// Initial default source type used for setting filters
-    #[clap(long, arg_enum)]
+    #[clap(long, value_enum)]
     source_type: Option<source::Type>,
     /// Slience non-error output that is not explicitly requested
     #[clap(short, long, action)]
@@ -244,7 +244,7 @@ struct MainArgs {
     #[clap(long, action)]
     fatal: bool,
 }
-#[derive(Clone, ArgEnum)]
+#[derive(Clone, ValueEnum)]
 enum ItemSourceType {
     Debug,
     FileLines,

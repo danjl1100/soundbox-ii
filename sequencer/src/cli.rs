@@ -19,7 +19,13 @@ pub struct Cli<T: ItemSource<Option<F>>, U: FilterArgParser<Filter = F>, F> {
 /// Converter from `String` arguments into a client-specified filter type
 pub trait FilterArgParser {
     /// Type marker for the filter (if any)
-    type Type: for<'a> From<&'a Self::Filter> + std::fmt::Debug + Eq;
+    type Type: for<'a> From<&'a Self::Filter>
+        + std::fmt::Debug
+        + Eq
+        + clap::ValueEnum
+        + Send
+        + Sync
+        + 'static;
     /// Filter type constructed from the arguments
     type Filter;
     /// Converts the specified arguments to a filter
@@ -47,7 +53,6 @@ impl<T: ItemSource<Option<F>>, U, F> Cli<T, U, F>
 where
     T::Item: std::fmt::Debug,
     U: FilterArgParser<Filter = F>,
-    U::Type: clap::ValueEnum,
     F: serde::Serialize + Clone + std::fmt::Debug,
 {
     /// Constructs a Cli for the specified source, filter arg parser, and output parameters
@@ -63,7 +68,6 @@ where
     ///
     /// # Errors
     /// Returns the `sequencer` Error, if any
-    // TODO re-use this logic in soundbox-ii main
     #[allow(clippy::too_many_lines)] // this is OK, breaking match cases into functions
                                      // would harm readability
     pub fn exec_command(&mut self, command: NodeCommand<U::Type>) -> Result<(), Error> {
@@ -199,7 +203,7 @@ fn path_clone_description(path_opt: &Option<String>) -> String {
 #[derive(Parser, Debug)]
 pub enum NodeCommand<T>
 where
-    T: clap::ValueEnum,
+    T: clap::ValueEnum + Send + Sync + 'static,
 {
     /// Print the current sequencer-nodes state
     Print,
@@ -211,7 +215,7 @@ where
         /// Filter value(s) for terminal nodes only (optional, default is non-terminal node)
         items_filter: Vec<String>,
         /// Type of the source (defaults to main-args option)
-        #[clap(long, arg_enum)]
+        #[clap(long, value_enum)]
         source_type: Option<T>,
     },
     /// Set the filter for the specified node
@@ -221,7 +225,7 @@ where
         /// New filter value
         items_filter: Vec<String>,
         /// Type of the source (defaults to application-specific option)
-        #[clap(long, arg_enum)]
+        #[clap(long, value_enum)]
         source_type: Option<T>,
     },
     /// Set the weight for the specified node or item
@@ -279,7 +283,7 @@ where
 }
 impl<T> std::fmt::Display for NodeCommand<T>
 where
-    T: clap::ValueEnum + std::fmt::Debug,
+    T: clap::ValueEnum + Send + Sync + 'static + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")

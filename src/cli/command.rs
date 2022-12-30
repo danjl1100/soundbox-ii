@@ -109,8 +109,6 @@ pub enum Subcommand {
         #[clap(subcommand)]
         ty: ShowCopyingLicenseType,
     },
-    /// Print help information
-    Help,
 }
 #[derive(clap::Subcommand, Debug)]
 pub enum ShowCopyingLicenseType {
@@ -194,7 +192,6 @@ impl Subcommand {
                 }
                 return Ok(Err(None));
             }
-            Self::Help => unreachable!("built-in help displayed by clap"),
         }))
     }
 }
