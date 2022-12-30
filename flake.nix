@@ -270,6 +270,7 @@
               options = [ "size=2G" "mode=755" ];
             };
           boot.loader.systemd-boot.enable = true;
+          system.stateVersion = "22.11";
         };
       in nixpkgs.lib.nixosSystem {
           inherit system;
