@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
-    seq::{self, SequencerAction, SequencerCommand, SequencerResult},
+    seq::{self, NodeCommand, SequencerAction, SequencerCommand, SequencerResult},
     Shutdown,
 };
 use tokio::sync::oneshot;
@@ -48,7 +48,7 @@ pub enum Subcommand {
     /// Sequencer node subcommands
     Node {
         #[clap(subcommand)]
-        command: seq::Cmd,
+        command: seq::NodeCommand,
     },
     /// Start command
     Start {
@@ -143,7 +143,7 @@ impl Subcommand {
     pub(super) fn try_build(self) -> Result<Result<ActionAndReceiver, Option<Shutdown>>, String> {
         use vlc_http::Command as Vlc;
         let from_vlc = ActionAndReceiver::from_vlc;
-        let from_seq = ActionAndReceiver::from_seq;
+        let from_seq_cli = ActionAndReceiver::from_seq_cli;
         Ok(Ok(match self {
             Self::Play => from_vlc(Vlc::PlaybackResume),
             Self::Pause => from_vlc(Vlc::PlaybackPause),
@@ -164,7 +164,7 @@ impl Subcommand {
             //     }
             //     .into()
             // }
-            Self::Node { command } => from_seq(command),
+            Self::Node { command } => from_seq_cli(command),
             Self::Start { item_id } => from_vlc(Vlc::PlaylistPlay { item_id }),
             Self::Next => from_vlc(Vlc::SeekNext),
             Self::Prev => from_vlc(Vlc::SeekPrevious),
@@ -203,6 +203,7 @@ impl Subcommand {
 pub(crate) enum ActionAndReceiver {
     VlcCommand(vlc_http::Action, VlcResultReceiver<()>),
     SequencerCommand(SequencerAction, oneshot::Receiver<SequencerResult>),
+    SequencerCliInput(seq::NodeCommand),
     VlcQueryPlayback(vlc_http::Action, VlcResultReceiver<PlaybackStatus>),
     VlcQueryPlaylist(vlc_http::Action, VlcResultReceiver<PlaylistInfo>),
 }
@@ -220,9 +221,13 @@ impl ActionAndReceiver {
         let (action, result_rx) = vlc_http::Action::query_playlist_info();
         Self::VlcQueryPlaylist(action, result_rx)
     }
+    #[allow(unused)] // TODO use from web
     fn from_seq(cmd: impl Into<SequencerCommand>) -> Self {
         let (action, rx) = SequencerAction::new(cmd.into());
         Self::SequencerCommand(action, rx)
+    }
+    fn from_seq_cli(cmd: impl Into<NodeCommand>) -> Self {
+        Self::SequencerCliInput(cmd.into())
     }
     pub(crate) fn exec(self, prompt: &mut super::Prompt) -> Result<(), String> {
         match self {
@@ -232,6 +237,7 @@ impl ActionAndReceiver {
             ActionAndReceiver::SequencerCommand(action, result_rx) => {
                 prompt.sender_seq().send_and_print_result(action, result_rx)
             }
+            ActionAndReceiver::SequencerCliInput(cmd) => prompt.sender_seq_cli().send(cmd),
             ActionAndReceiver::VlcQueryPlayback(action, result_rx) => {
                 prompt.sender_vlc().send_and_print_result(action, result_rx)
             }

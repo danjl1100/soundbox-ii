@@ -2,15 +2,19 @@
 //! Handles [`sequencer`]-related items, named `seq` to avoid namespace ambiguity
 // e.g. (create::sequencer vs ::sequencer)
 
-use crate::cli;
+use crate::{
+    args::SequencerConfig,
+    cli::{self, SequencerState},
+};
 use shared::Shutdown;
-use tokio::sync::{oneshot, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 pub(crate) type Sequencer = sequencer::Sequencer<source::Source, SequencerFilter>;
 pub(crate) type SequencerFilter = Option<source::TypedArg>;
 pub(crate) type SequencerCommand = sequencer::command::Command<SequencerFilter>;
 pub(crate) type SequencerResult =
     Result<sequencer::command::TypedOutput<SequencerFilter>, sequencer::Error>;
+pub(crate) type NodeCommand = sequencer::cli::NodeCommand<source::Type>;
 
 pub(crate) struct SequencerAction(SequencerCommand, oneshot::Sender<SequencerResult>);
 impl SequencerAction {
@@ -27,29 +31,51 @@ impl SequencerAction {
     }
 }
 
-pub(crate) struct Task {
-    pub sequencer: Sequencer,
-    pub sequencer_rx: tokio::sync::mpsc::Receiver<SequencerAction>,
+pub(crate) struct Channels {
     pub cmd_playlist_tx: vlc_http::cmd_playlist_items::Sender,
-    pub state_tx: watch::Sender<String>,
+    pub sequencer_state_tx: watch::Sender<cli::SequencerState>,
+    pub sequencer_rx: mpsc::Receiver<SequencerAction>,
+    pub sequencer_cli_rx: mpsc::Receiver<NodeCommand>,
+}
+
+pub(crate) struct Task {
+    cli: sequencer::cli::Cli<source::Source, source::FilterArgParser, source::TypedArg>,
+    channels: Channels,
 }
 impl Task {
+    pub(crate) fn new(config: SequencerConfig, channels: Channels) -> Self {
+        let cli = {
+            let SequencerConfig {
+                root_folder,
+                beet_cmd,
+            } = config;
+            let item_source = source::Source::new(root_folder, beet_cmd);
+            let filter_arg_parser = source::FilterArgParser {
+                default_ty: source::Type::Beet, // TODO configurable? or no?
+            };
+            let params = sequencer::cli::OutputParams { quiet: false };
+            sequencer::cli::Cli::new(item_source, filter_arg_parser, params)
+        };
+        Self { cli, channels }
+    }
     pub(crate) async fn run(self) -> Result<shared::Never, Shutdown> {
-        let Self {
-            mut sequencer,
+        let Self { mut cli, channels } = self;
+        let Channels {
             mut sequencer_rx,
+            mut sequencer_cli_rx,
             cmd_playlist_tx,
-            state_tx,
-        } = self;
+            sequencer_state_tx,
+        } = channels;
         let vlc_http::cmd_playlist_items::Sender {
             urls_tx,
             mut remove_rx,
         } = cmd_playlist_tx;
         loop {
             // publish state
-            match serde_json::to_string_pretty(&sequencer.tree_serializable()) {
+            match serde_json::to_string_pretty(&cli.sequencer.tree_serializable()) {
                 Ok(tree_str) => {
-                    if let Err(send_err) = state_tx.send(tree_str) {
+                    let new_state = SequencerState(tree_str);
+                    if let Err(send_err) = sequencer_state_tx.send(new_state) {
                         dbg!(send_err);
                     }
                 }
@@ -59,11 +85,18 @@ impl Task {
             }
             tokio::select! {
                 Some(action) = sequencer_rx.recv() => {
-                    action.exec(&mut sequencer);
+                    action.exec(&mut cli.sequencer);
+                }
+                Some(command) = sequencer_cli_rx.recv() => {
+                    let result = cli.exec_command(command);
+                    match result {
+                        Ok(()) => {}
+                        Err(err) => eprintln!("Error: {err}"),
+                    }
                 }
                 Ok(()) = remove_rx.changed() => {
                     if let Some(removed) = &*remove_rx.borrow() {
-                        Self::exec_remove(removed, &mut sequencer);
+                        Self::exec_remove(removed, &mut cli.sequencer);
                     }
                 }
                 else => {
@@ -71,7 +104,8 @@ impl Task {
                 }
             }
             // update cmd_playlist items
-            let new_urls = sequencer
+            let new_urls = cli
+                .sequencer
                 .get_root_queue_items()
                 .map(cli::parse_url)
                 .collect();
@@ -96,167 +130,6 @@ impl Task {
             println!("\tpopped {popped:?} from node #{node_seq}");
         } else {
             println!("\tpopped {popped:?}", popped = None::<()>);
-        }
-    }
-}
-
-pub use cmd::Cmd;
-mod cmd {
-    use super::{source, SequencerCommand};
-    use q_filter_tree::{OrderType, Weight};
-
-    #[derive(clap::Subcommand, Debug)]
-    pub enum Cmd {
-        //------ [Sequencer] ------
-        /// Add a new node
-        Add {
-            /// Target parent path for the new node
-            parent_path: String,
-            /// Filter for the new node
-            filter: Vec<String>,
-            /// Type of the source for interpreting `filter`
-            #[clap(long, arg_enum)]
-            source_type: Option<source::Type>,
-        },
-        /// Add a new terminal node
-        AddTerminal {
-            /// Target parent path for the new terminal node
-            parent_path: String,
-            /// Filter for the new terminal node
-            filter: Vec<String>,
-            /// Type of the source for interpreting `filter`
-            #[clap(long, arg_enum)]
-            source_type: Option<source::Type>,
-        },
-        /// Set filter for an existing node
-        SetFilter {
-            /// Target node path
-            path: String,
-            /// New filter value
-            filter: Vec<String>,
-            /// Type of the source for interpreting `filter`
-            #[clap(long, arg_enum)]
-            source_type: Option<source::Type>,
-        },
-        /// Set weight of an item in a terminal node
-        SetItemWeight {
-            /// Target node path
-            path: String,
-            /// Index of the item to set
-            item_index: usize,
-            /// New weight value
-            weight: Weight,
-        },
-        /// Set weight of a node
-        SetWeight {
-            /// Target node path
-            path: String,
-            /// New weight value
-            weight: Weight,
-        },
-        /// Set ordering type of a node
-        SetOrderType {
-            /// Target node path
-            path: String,
-            /// New order type value
-            #[clap(subcommand)]
-            order_type: OrderType,
-        },
-        /// Update the items for all terminal nodes reachable from the specified parent
-        Update {
-            /// Target node path
-            path: String,
-        },
-        /// Removes the specified node
-        Remove {
-            /// Target node id
-            id: String,
-        },
-        /// Sets the minimum count of items to keep staged in the specified node's queue
-        SetPrefill {
-            /// Minimum number of items to stage
-            min_count: usize,
-            /// Target node path (default is root)
-            path: Option<String>,
-        },
-        /// Removes an item from the queue of the specified node
-        QueueRemove {
-            /// Index of the queue item to remove
-            index: usize,
-            /// Path of the target node (default is root)
-            path: Option<String>,
-        },
-        /// Moves a (non-root) node from one chain node to another
-        Move {
-            /// Id of the node to move (root is forbidden)
-            src_id: String,
-            /// Id of the existing destination node
-            dest_parent_id: String,
-        },
-    }
-    impl From<Cmd> for SequencerCommand {
-        #[rustfmt::skip] // too many extra line breaks if rustfmt is run
-        fn from(cmd: Cmd) -> Self {
-            // too cumbersome to grab into the main Config to find a default type,
-            // so just define it here as a constant.  Cli usage ergonomics is lower priority.
-            const DEFAULT_TY: source::Type = source::Type::Beet;
-            match cmd {
-                Cmd::Add { parent_path, filter, source_type } => {
-                    let filter = parse_filter_args(DEFAULT_TY, filter, source_type);
-                    sequencer::command::AddNode { parent_path, filter }.into()
-                }
-                Cmd::AddTerminal { parent_path, filter, source_type } => {
-                    let filter = parse_filter_args(DEFAULT_TY, filter, source_type);
-                    sequencer::command::AddTerminalNode { parent_path, filter }.into()
-                }
-                Cmd::SetFilter { path, filter, source_type } => {
-                    let filter = parse_filter_args(DEFAULT_TY, filter, source_type);
-                    sequencer::command::SetNodeFilter { path, filter }.into()
-                }
-                Cmd::SetItemWeight { path, item_index, weight } => {
-                    sequencer::command::SetNodeItemWeight { path, item_index, weight }.into()
-                }
-                Cmd::SetWeight { path, weight } => {
-                    sequencer::command::SetNodeWeight { path, weight }.into()
-                }
-                Cmd::SetOrderType { path, order_type } => {
-                    sequencer::command::SetNodeOrderType { path, order_type }.into()
-                }
-                Cmd::Update { path } => {
-                    sequencer::command::UpdateNodes { path }.into()
-                }
-                Cmd::Remove { id } => {
-                    sequencer::command::RemoveNode { id }.into()
-                }
-                Cmd::SetPrefill { path, min_count } => {
-                    sequencer::command::SetNodePrefill { path, min_count }.into()
-                }
-                Cmd::QueueRemove { path, index } => {
-                    sequencer::command::QueueRemove { path, index }.into()
-                }
-                Cmd::Move { src_id, dest_parent_id } => {
-                    sequencer::command::MoveNode { src_id, dest_parent_id }.into()
-                }
-            }
-        }
-    }
-
-    fn parse_filter_args(
-        default_ty: source::Type,
-        items_filter: Vec<String>,
-        source_type: Option<source::Type>,
-    ) -> Option<source::TypedArg> {
-        if items_filter.is_empty() {
-            None
-        } else {
-            let joined = items_filter.join(" ");
-            let filter = match source_type.unwrap_or(default_ty) {
-                // source::Type::Debug => source::TypedArg::Debug(joined),
-                source::Type::FileLines => source::TypedArg::FileLines(joined),
-                source::Type::FolderListing => source::TypedArg::FolderListing(joined),
-                source::Type::Beet => source::TypedArg::Beet(items_filter),
-            };
-            Some(filter)
         }
     }
 }
@@ -295,6 +168,33 @@ pub mod source {
                 beet,
                 file_lines,
                 folder_listing,
+            }
+        }
+    }
+
+    pub(super) struct FilterArgParser {
+        pub default_ty: Type,
+    }
+    impl sequencer::cli::FilterArgParser for FilterArgParser {
+        type Type = Type;
+        type Filter = TypedArg;
+
+        fn parse_filter_args(
+            &self,
+            items_filter: Vec<String>,
+            source_type: Option<Type>,
+        ) -> Option<TypedArg> {
+            if items_filter.is_empty() {
+                None
+            } else {
+                let joined = items_filter.join(" ");
+                let filter = match source_type.unwrap_or(self.default_ty) {
+                    // Type::Debug => source::TypedArg::Debug(joined),
+                    Type::FileLines => TypedArg::FileLines(joined),
+                    Type::FolderListing => TypedArg::FolderListing(joined),
+                    Type::Beet => TypedArg::Beet(items_filter),
+                };
+                Some(filter)
             }
         }
     }

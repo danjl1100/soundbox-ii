@@ -28,8 +28,6 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use crate::args::SequencerConfig;
-use sequencer::Sequencer;
 use shared::Shutdown;
 use tokio::sync::watch;
 
@@ -136,27 +134,20 @@ async fn launch(args: args::Config) {
         playlist_info_rx,
         cmd_playlist_tx,
     } = channels;
-    let (sequencer_state_tx, sequencer_state_rx) = watch::channel(String::new());
 
-    let (sequencer_task, sequencer_tx) = {
-        let sequencer: seq::Sequencer = {
-            let SequencerConfig {
-                root_folder,
-                beet_cmd,
-            } = args.sequencer_config;
-            let item_source = seq::source::Source::new(root_folder, beet_cmd);
-            let root_filter = None;
-            Sequencer::new(item_source, root_filter)
-        };
-        let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);
-        let sequencer_task = seq::Task {
-            sequencer,
-            sequencer_rx,
+    let (sequencer_state_tx, sequencer_state_rx) = watch::channel(cli::SequencerState::default());
+    let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);
+    let (sequencer_cli_tx, sequencer_cli_rx) = tokio::sync::mpsc::channel(1);
+    let sequencer_task = seq::Task::new(
+        args.sequencer_config,
+        seq::Channels {
             cmd_playlist_tx,
-            state_tx: sequencer_state_tx,
-        };
-        (sequencer_task.run(), sequencer_tx)
-    };
+            sequencer_state_tx,
+            sequencer_rx,
+            sequencer_cli_rx,
+        },
+    )
+    .run();
 
     let cli_handle = if is_interactive {
         let vlc_tx = vlc_tx.clone();
@@ -166,6 +157,7 @@ async fn launch(args: args::Config) {
             cli::Config {
                 vlc_tx,
                 sequencer_tx,
+                sequencer_cli_tx,
                 sequencer_state_rx,
                 playback_status_rx,
                 playlist_info_rx,

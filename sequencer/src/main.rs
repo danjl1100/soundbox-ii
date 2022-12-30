@@ -17,10 +17,7 @@
 
 use arg_split::ArgSplit;
 use clap::{ArgEnum, Parser};
-use sequencer::{
-    cli::{NodeCommand, OutputParams},
-    Error,
-};
+use sequencer::cli::{NodeCommand, OutputParams};
 use std::{
     fs::File,
     io::{stdin, BufRead, BufReader},
@@ -191,10 +188,7 @@ impl Cli {
                             self.sequencer_cli.exec_command(node_command).map(|()| None)
                         }
                     };
-                    result.map_err(|e| match e {
-                        Error::Message(message) => eprintln!("Error: {message}"),
-                        e => eprintln!("Error: {e:?}"),
-                    })
+                    result.map_err(|err| eprintln!("Error: {err}"))
                 }
                 Ok(Args { command: None }) => Ok(None),
                 Err(clap_err) => {
