@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Wrapper for [`super::breadcrumb`] types, without the breadcrumb
 
 use super::{breadcrumb, IterMutBreadcrumb};

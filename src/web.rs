@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 #![allow(opaque_hidden_inferred_bound)] // warp crate-private module cannot be referenced in the
                                         // `impl Reply` bounds
 pub(crate) use filter::root as filter;

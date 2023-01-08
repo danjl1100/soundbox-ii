@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Various error types associated with [`Tree`](`crate::Tree`) methods
 
 #![allow(clippy::module_name_repetitions)]

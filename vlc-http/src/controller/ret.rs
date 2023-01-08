@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2022  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Helper zero-sized types to facilitate optionally returning a value
 //! This allows cloning only when needed, as the clone only occurs when [`Some`] value is requested.
 
