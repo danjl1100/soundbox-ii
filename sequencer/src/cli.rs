@@ -201,6 +201,7 @@ fn path_clone_description(path_opt: &Option<String>) -> String {
 
 /// Cli command for the `sequencer`, for the given source-type `clap::ValueEnum`
 #[derive(Parser, Debug)]
+#[clap(about = "Modify and query sequencer nodes (controls source and order of items)")]
 pub enum NodeCommand<T>
 where
     T: clap::ValueEnum + Send + Sync + 'static,

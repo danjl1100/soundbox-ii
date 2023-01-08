@@ -9,9 +9,12 @@ const SINGLE_QUOTE: char = '\'';
 
 /// Parses a char sequence into arguments. Accepts quoted arguments and respects simple escaping.
 ///
+/// Note: Due to escape sequences, this type must re-allocate an owned `String` for each token.
+/// (e.g. the output tokens might not exist literally as a slice of the input)
+///
 /// # Example
 /// ```
-/// use arg_split::ArgSplit;
+/// use arg_util::ArgSplit;
 ///
 /// let split = ArgSplit::split(r#"these are some "quoted arguments""#);
 /// assert_eq!(split, vec![
@@ -24,6 +27,8 @@ const SINGLE_QUOTE: char = '\'';
 /// ```
 #[derive(Default)]
 pub struct ArgSplit {
+    // TODO consider storing `Cow<'a, str>`, so that verbatim tokens may be used as desired
+    // (note: current usage may use ArgSplit<'static>, with all as Cow::Owned)
     /// Completed tokens
     tokens: Vec<String>,
     /// Pending token
@@ -35,6 +40,7 @@ pub struct ArgSplit {
 }
 impl ArgSplit {
     /// Splits the specified string into arguments
+    #[must_use]
     pub fn split(input: &str) -> Vec<String> {
         input.chars().collect::<Self>().finish()
     }

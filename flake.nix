@@ -51,7 +51,7 @@
         bin = rust-filter {
           root = ./.;
           include-bin-crates = [ false ];
-          include-lib-crates = ["q-filter-tree" "vlc-http" "frontend" "sequencer" "shared" "arg_split"];
+          include-lib-crates = ["q-filter-tree" "vlc-http" "frontend" "sequencer" "shared" "arg_util"];
           include = src-license;
         };
         frontend = rust-filter {
@@ -227,7 +227,7 @@
         devShell = pkgs.mkShell {
           # NOTE: do not include dependencies for `vlc` (broken on darwin systems)
           # inputsFrom = builtins.attrValues self.packages.${system};
-          inputsFrom = [ self.defaultPackage.${system} frontend ];
+          # inputsFrom = [ self.defaultPackage.${system} frontend ];
           buildInputs = nativeBuildInputs ++ buildInputs ++ ([
             # development-only tools go here
             pkgs.nixpkgs-fmt

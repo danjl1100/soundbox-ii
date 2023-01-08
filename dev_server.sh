@@ -12,7 +12,7 @@ shift
 if [ $# -gt 0 ]; then
   ARGS=$*
 else
-  ARGS="--serve --watch-assets --interactive"
+  ARGS="--serve --WATCH_ASSETS --interactive"
 fi
 
 case $APP in

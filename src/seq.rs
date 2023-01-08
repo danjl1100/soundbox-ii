@@ -3,8 +3,8 @@
 // e.g. (create::sequencer vs ::sequencer)
 
 use crate::{
-    args::SequencerConfig,
     cli::{self, SequencerState},
+    config,
 };
 use shared::Shutdown;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -43,9 +43,9 @@ pub(crate) struct Task {
     channels: Channels,
 }
 impl Task {
-    pub(crate) fn new(config: SequencerConfig, channels: Channels) -> Self {
+    pub(crate) fn new(config: config::Sequencer, channels: Channels) -> Self {
         let cli = {
-            let SequencerConfig {
+            let config::Sequencer {
                 root_folder,
                 beet_cmd,
             } = config;

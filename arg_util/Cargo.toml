@@ -1,5 +1,5 @@
 [package]
-name = "arg_split"
+name = "arg_util"
 version = "0.1.0"
 edition = "2021"
 

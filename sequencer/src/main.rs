@@ -15,7 +15,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use arg_split::ArgSplit;
+use arg_util::ArgSplit;
 use clap::{Parser, ValueEnum};
 use sequencer::cli::{NodeCommand, OutputParams};
 use std::{
@@ -57,7 +57,8 @@ pub(crate) enum Command {
         /// Number of items to print
         count: Option<usize>,
     },
-    #[clap(flatten)]
+    // #[clap(flatten)]
+    #[clap(subcommand)]
     Node(NodeCommand<source::Type>),
 }
 /// Types of License snippets available to show

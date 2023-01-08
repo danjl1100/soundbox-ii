@@ -16,8 +16,6 @@
 //
 //! [`Tree`] structure, where each node has a queue of items and a filter.
 
-// TODO: only while building
-#![allow(dead_code)]
 // teach me
 #![deny(clippy::pedantic)]
 #![allow(clippy::bool_to_int_with_if)] // except this confusing pattern

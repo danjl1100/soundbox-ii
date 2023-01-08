@@ -35,7 +35,7 @@ mod cli;
 
 mod web;
 
-mod args;
+mod config;
 
 mod seq;
 
@@ -44,18 +44,41 @@ mod task;
 
 #[tokio::main]
 async fn main() {
-    let args = args::parse_or_exit();
+    let config = parse_config_or_exit();
 
     eprint!("{}", cli::COMMAND_NAME);
     eprintln!("{}", shared::license::WELCOME);
-    launch(args).await;
+    launch(config).await;
 }
 
-fn print_startup_info(args: &args::Config) {
+fn parse_config_or_exit() -> config::Config {
+    let result = config::parse_input();
+    result.unwrap_or_else(|err| {
+        match err {
+            config::Error::Usage(usage_err) => {
+                let message = match usage_err {
+                    config::UsageError::Clap(message) => format!("[cli argument] {message}"),
+                    config::UsageError::Env { key, message } => format!("[env {key:?}] {message}"),
+                };
+                let usage = config::render_usage();
+                eprintln!("{usage}");
+                eprintln!();
+                eprintln!("ERROR: {message}");
+            }
+            config::Error::ConfigFile(file_err) => eprintln!("ERROR: {file_err}"),
+            config::Error::VlcHttp(vlc_http_err) => eprintln!("ERROR: {vlc_http_err}"),
+            config::Error::Web(web_err) => eprintln!("ERROR: {web_err}"),
+            config::Error::Sequencer(seq_err) => eprintln!("ERROR: {seq_err}"),
+        }
+        std::process::exit(1)
+    })
+}
+
+fn print_startup_info(config: &config::Config) {
     println!(
         "  - Interactive mode {}",
-        if args.is_interactive() {
-            if args.server_config.is_some() {
+        if config.is_interactive() {
+            if config.web_config.is_some() {
                 "enabled"
             } else {
                 "enabled (default when not serving)"
@@ -64,19 +87,25 @@ fn print_startup_info(args: &args::Config) {
             "disabled (pass --interactive to enable)"
         }
     );
+    let config::Config {
+        vlc_http_config,
+        web_config,
+        sequencer_config: _,
+        cli_config,
+    } = config;
     println!(
         "  - VLC-HTTP will connect to: {}",
-        args.vlc_http_config.0.authority_str()
+        vlc_http_config.0.authority_str()
     );
-    if let Some(server_config) = args.server_config.as_ref() {
+    if let Some(web_config) = web_config.as_ref() {
         println!(
             "  - Serving static assets from {:?}",
-            server_config.static_assets
+            web_config.static_assets
         );
-        if server_config.watch_assets {
+        if web_config.watch_assets {
             println!("    - Watching for changes, will notify clients");
         }
-        println!("  - Listening on: {}", server_config.bind_address);
+        println!("  - Listening on: {}", web_config.bind_address);
     }
     println!();
     // ^^^ listen URL is last (for easy skimming)
@@ -101,12 +130,12 @@ fn launch_cli(
 
 struct WebSourceChanged;
 fn launch_hotwatch(
-    server_config: &args::ServerConfig,
+    web_config: &config::WebServer,
     reload_tx: watch::Sender<WebSourceChanged>,
 ) -> hotwatch::Hotwatch {
     let mut hotwatch = hotwatch::Hotwatch::new().expect("hotwatch failed to initialize");
     hotwatch
-        .watch(server_config.static_assets.clone(), move |event| {
+        .watch(web_config.static_assets.clone(), move |event| {
             use hotwatch::Event;
             match event {
                 Event::NoticeWrite(_) | Event::NoticeRemove(_) => {
@@ -119,14 +148,21 @@ fn launch_hotwatch(
     hotwatch
 }
 
-async fn launch(args: args::Config) {
+async fn launch(config: config::Config) {
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
     let (reload_tx, reload_rx) = watch::channel(WebSourceChanged);
 
-    print_startup_info(&args);
-    let is_interactive = args.is_interactive();
+    print_startup_info(&config);
+    let is_interactive = config.is_interactive();
 
-    let authorization = args.vlc_http_config.0;
+    let config::Config {
+        vlc_http_config,
+        web_config,
+        sequencer_config,
+        cli_config,
+    } = config;
+
+    let authorization = vlc_http_config.0;
     let (controller, channels) = vlc_http::Controller::new(authorization);
     let vlc_http::controller::ExternalChannels {
         action_tx: vlc_tx,
@@ -139,7 +175,7 @@ async fn launch(args: args::Config) {
     let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);
     let (sequencer_cli_tx, sequencer_cli_rx) = tokio::sync::mpsc::channel(1);
     let sequencer_task = seq::Task::new(
-        args.sequencer_config,
+        sequencer_config,
         seq::Channels {
             cmd_playlist_tx,
             sequencer_state_tx,
@@ -169,16 +205,16 @@ async fn launch(args: args::Config) {
         None
     };
 
-    let hotwatch_handle = args.server_config.as_ref().and_then(|server_config| {
-        if server_config.watch_assets {
-            Some(launch_hotwatch(server_config, reload_tx))
+    let hotwatch_handle = web_config.as_ref().and_then(|web_config| {
+        if web_config.watch_assets {
+            Some(launch_hotwatch(web_config, reload_tx))
         } else {
             None
         }
     });
 
     // spawn server
-    let warp_graceful_handle = args.server_config.map(|server_config| {
+    let warp_graceful_handle = web_config.map(|web_config| {
         const TASK_NAME: &str = "warp";
         let api = {
             let vlc_tx = vlc_tx.clone();
@@ -190,12 +226,12 @@ async fn launch(args: args::Config) {
                     // playlist_info_rx,
                     reload_rx,
                 },
-                server_config.static_assets,
+                web_config.static_assets,
             )
         };
         let shutdown_rx = shutdown_rx.clone();
         let (_addr, server) =
-            warp::serve(api).bind_with_graceful_shutdown(server_config.bind_address, async move {
+            warp::serve(api).bind_with_graceful_shutdown(web_config.bind_address, async move {
                 shutdown_rx.wait_for_shutdown(TASK_NAME).await;
                 println!("waiting for warp HTTP clients to disconnect..."); // TODO: add mechanism to ask WebSocket ClientHandlers to disconnect
             });

@@ -383,13 +383,7 @@ where
             let new_type = filter.as_ref().map(V::from);
             // detect and **REPORT** bad state
             if let Ok(existing_opt) = &mut existing_path_type {
-                //TODO simplify in the future using Option::unzip
-                // [tracking issue for Option::unzip](https://github.com/rust-lang/rust/issues/87800)
-                let (existing_path, existing_type) = if let Some((path, ty)) = existing_opt.take() {
-                    (Some(path), Some(ty))
-                } else {
-                    (None, None)
-                };
+                let (existing_path, existing_type) = existing_opt.take().unzip();
                 existing_path_type = Mismatch::combine_verify(new_type, existing_type)
                     .map(|matched| matched.map(|ty| (path.clone(), ty)))
                     .map_err(|mismatch| {

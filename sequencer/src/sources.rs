@@ -3,7 +3,6 @@
 
 use std::{
     ffi::OsStr,
-    io,
     path::{Path, PathBuf},
 };
 
@@ -39,14 +38,16 @@ impl RootFolder {
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    pub fn new(root: PathBuf) -> Result<Self, io::Error> {
+    pub fn new(root: PathBuf) -> Result<Self, std::io::Error> {
         Self::check_to_inner(root).map(Self)
     }
     /// Verifies the [`PathBuf`] is a valid existing directory
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    pub fn check_to_inner(root: PathBuf) -> Result<PathBuf, io::Error> {
+    //TODO return a PathError, that's what its for!
+    pub fn check_to_inner(root: PathBuf) -> Result<PathBuf, std::io::Error> {
+        use std::io;
         if !root.exists() {
             // TODO change to ErrorKind::NotFound, when stabilized
             return Err(io::Error::new(io::ErrorKind::Other, "not found"));
@@ -79,22 +80,18 @@ impl AsRef<PathBuf> for RootFolder {
 /// [`std::io::Error`] with an associated path context
 pub struct PathError {
     /// Textual representation of the path (if the path is valid UTF-8)
-    path: Option<String>,
+    path: String,
     error: std::io::Error,
 }
 impl std::fmt::Display for PathError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { path, error } = self;
-        if let Some(path) = path {
-            write!(f, "path {path:?}: {error}")
-        } else {
-            write!(f, "path <unknown>: {error}")
-        }
+        write!(f, "path {path:?}: {error}")
     }
 }
 impl PathError {
     fn new(path: &Path, error: std::io::Error) -> Self {
-        let path = path.to_str().map(ToOwned::to_owned);
+        let path = path.to_string_lossy().into_owned();
         PathError { path, error }
     }
     fn with_path_fn(path: PathBuf) -> impl Fn(std::io::Error) -> Self {
