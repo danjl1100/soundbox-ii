@@ -100,7 +100,7 @@ impl Prompt {
     fn run_line(&mut self, line: &str) -> Result<Option<Shutdown>, Error> {
         use clap::Parser;
         // split args - allow quoted strings with whitespace, and allow escape characters (`\"`) etc
-        let line_parts = ArgSplit::split(line);
+        let line_parts = ArgSplit::split_into_owned(line);
         let parsed = command::InteractiveArgs::try_parse_from(line_parts)?;
 
         // execute command

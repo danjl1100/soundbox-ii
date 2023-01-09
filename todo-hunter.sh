@@ -5,4 +5,4 @@
 NEEDLE="TO"
 NEEDLE="${NEEDLE}DO"
 
-find . -type f -not -path './.git/*' -not -path '*/target/*' -not -path './dist/*' | xargs grep -i "${NEEDLE}" --color
+find . -type f -not -path './.git/*' -not -path '*/target/*' -not -path './dist/*' | xargs grep -ni "${NEEDLE}" --color

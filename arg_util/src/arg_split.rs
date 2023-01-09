@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! See [`ArgSplit`] for details.
 
-use std::iter::FromIterator;
+use std::borrow::Cow;
 
 const BACKSLASH: char = '\\';
 const DOUBLE_QUOTE: char = '"';
@@ -26,72 +26,117 @@ const SINGLE_QUOTE: char = '\'';
 ///
 /// ```
 #[derive(Default)]
-pub struct ArgSplit {
-    // TODO consider storing `Cow<'a, str>`, so that verbatim tokens may be used as desired
-    // (note: current usage may use ArgSplit<'static>, with all as Cow::Owned)
+pub struct ArgSplit<'a> {
+    input: &'a str,
     /// Completed tokens
-    tokens: Vec<String>,
+    tokens: Vec<Cow<'a, str>>,
     /// Pending token
-    next_token: String,
+    next_token: NextToken,
     /// Whether escape sequence is active
     escape_flag: Option<()>,
     /// Type of active quote
     quote_flag: Option<char>,
 }
-impl ArgSplit {
+enum NextToken {
+    Owned(String),
+    Borrowed(usize),
+}
+impl Default for NextToken {
+    fn default() -> Self {
+        Self::Borrowed(0)
+    }
+}
+impl NextToken {
+    fn convert_to_cow(self, input: &str, index: usize) -> Option<Cow<'_, str>> {
+        match self {
+            Self::Owned(owned) if !owned.is_empty() => Some(Cow::Owned(owned)),
+            Self::Borrowed(start) if start != index => {
+                let token = &input[start..index];
+                Some(Cow::Borrowed(token))
+            }
+            _ => None,
+        }
+    }
+    fn push_if_owned(&mut self, c: char) {
+        match self {
+            Self::Owned(next_token) => next_token.push(c),
+            Self::Borrowed(_start) => {}
+        }
+    }
+}
+impl<'a> ArgSplit<'a> {
+    /// Splits the specified string into owned arguments
+    pub fn split_into_owned(input: &'a str) -> Vec<String> {
+        Self::split(input)
+            .into_iter()
+            .map(std::borrow::Cow::into_owned)
+            .collect()
+    }
     /// Splits the specified string into arguments
     #[must_use]
-    pub fn split(input: &str) -> Vec<String> {
-        input.chars().collect::<Self>().finish()
+    pub fn split(input: &'a str) -> Vec<Cow<'a, str>> {
+        let mut state = Self {
+            input,
+            ..Self::default()
+        };
+        for char_index in input.char_indices() {
+            state.push(char_index);
+        }
+        state.finish()
     }
     /// Process the next `char`
-    fn push(&mut self, c: char) {
-        match c {
+    fn push(&mut self, char_index: (usize, char)) {
+        let (index, c) = char_index;
+        let need_owned = match c {
             _ if self.escape_flag.is_some() => {
                 // accept any character escaped as itself (relaxed escape logic)
                 self.escape_flag.take();
-                self.next_token.push(c);
+                self.next_token.push_if_owned(c);
+                false
             }
             BACKSLASH if self.escape_flag.is_none() => {
                 // START escape
                 self.escape_flag = Some(());
+                true
             }
             DOUBLE_QUOTE | SINGLE_QUOTE if self.quote_flag.is_none() => {
                 // OPEN quote
                 self.quote_flag = Some(c);
+                true
             }
             c if Some(c) == self.quote_flag => {
                 // CLOSE quote
                 self.quote_flag.take();
+                true
             }
             c if c.is_ascii_whitespace() && self.quote_flag.is_none() => {
-                self.end_token();
+                self.end_token(index);
+                false
             }
             _ => {
-                self.next_token.push(c);
+                self.next_token.push_if_owned(c);
+                false
+            }
+        };
+        if need_owned {
+            if let NextToken::Borrowed(start) = &self.next_token {
+                let from_start = self.input[*start..index].to_string();
+                self.next_token = NextToken::Owned(from_start);
             }
         }
     }
     /// Finalize `next_token`, and add the value to `tokens`
-    fn end_token(&mut self) {
-        if !self.next_token.is_empty() {
-            let token = std::mem::take(&mut self.next_token);
+    fn end_token(&mut self, index: usize) {
+        let next_token = NextToken::Owned(String::new());
+        let token = std::mem::replace(&mut self.next_token, next_token);
+        if let Some(token) = token.convert_to_cow(self.input, index) {
             self.tokens.push(token);
         }
     }
     /// Finish the split and return the final `tokens`
-    fn finish(mut self) -> Vec<String> {
-        self.end_token();
+    fn finish(mut self) -> Vec<Cow<'a, str>> {
+        self.end_token(self.input.len());
         self.tokens
-    }
-}
-impl FromIterator<char> for ArgSplit {
-    fn from_iter<T: IntoIterator<Item = char>>(iter: T) -> Self {
-        let mut state = Self::default();
-        for c in iter {
-            state.push(c);
-        }
-        state
     }
 }
 

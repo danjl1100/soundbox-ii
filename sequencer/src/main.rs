@@ -34,7 +34,7 @@ struct Args {
 impl TryFrom<&str> for Args {
     type Error = clap::Error;
     fn try_from(line: &str) -> Result<Self, clap::Error> {
-        let line_parts = ArgSplit::split(line);
+        let line_parts = ArgSplit::split_into_owned(line);
         Self::try_parse_from(line_parts)
     }
 }
