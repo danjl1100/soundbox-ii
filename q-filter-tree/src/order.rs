@@ -125,6 +125,55 @@ use crate::weight_vec::{Weight, Weights};
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
+#[cfg(test)]
+#[macro_export]
+macro_rules! assert_chain {
+    (
+        // start from Weights (implicit construction)
+        let $weights:ident = $weights_expr:expr;
+        let $start:ident = $start_expr:expr;
+        [
+            start => $start_expected:expr;
+            $( let $next:ident => $expected:expr; )+
+        ]
+        $(
+            $(weights = $loop_weights:expr;)?
+            start = $loop_start:ident;
+            [
+                start => $loop_start_expected:expr;
+                $( let $loop_next:ident => $loop_expected:expr; )+
+            ]
+        )*
+        $(=> $result:expr)?
+    ) => {
+        {
+            let $weights = Weights::from($weights_expr);
+            let $start = $start_expr;
+            $crate::assert_chain!(@peek $start => $start_expected, start);
+            $crate::assert_chain!(@inner $start $weights [ $( let $next => $expected; )+]);
+
+            $(
+                $(let weights = Weights::from($loop_weights);)?
+                $crate::assert_chain!(@peek $loop_start => $loop_start_expected, start);
+                $crate::assert_chain!(@inner $loop_start weights [ $( let $loop_next => $loop_expected; )+ ]);
+            )*
+            $($result)?
+        }
+    };
+    (@inner $start:ident $weights:ident [ $( let $next:ident => $expected:expr ;)+ ]) => {
+        let mut prev = &$start;
+        $(
+            let $next = prev.next_for(&$weights);
+            $crate::assert_chain!(@peek $next => $expected);
+            prev = &$next;
+        )+
+        let _ = prev; // allow(unused) equivalent
+    };
+    (@peek $current:ident => $expected:expr $(, $label:ident)?) => {
+        assert_eq!($current.peek_unchecked(), $expected, stringify!(for $( $label = )? $current));
+    };
+}
+
 pub use in_order::InOrder;
 mod in_order;
 
@@ -158,7 +207,7 @@ pub enum Type {
 /// State for tracking Ordering progression
 #[derive(Clone)]
 pub struct State {
-    order: Order,
+    order: Result<Order, Type>,
 }
 #[allow(clippy::enum_variant_names)] // TODO: consider renaming `InOrder` to not contain `Order`
 #[allow(clippy::large_enum_variant)] // TODO: consider boxing `Shuffle` and `Random`
@@ -169,71 +218,85 @@ enum Order {
     Shuffle(Shuffle),
     Random(Random),
 }
+impl Order {
+    fn new(ty: Type, weights: &Weights) -> Self {
+        match ty {
+            Type::InOrder => Self::InOrder(InOrder::from(weights)),
+            Type::RoundRobin => Self::RoundRobin(RoundRobin::from(weights)),
+            Type::Shuffle => Self::Shuffle(Shuffle::from(weights)),
+            Type::Random => Self::Random(Random::from(weights)),
+        }
+    }
+}
 impl From<Type> for State {
     fn from(ty: Type) -> Self {
-        let order = match ty {
-            Type::InOrder => Order::InOrder(InOrder::default()),
-            Type::RoundRobin => Order::RoundRobin(RoundRobin::default()),
-            Type::Shuffle => Order::Shuffle(Shuffle::default()),
-            Type::Random => Order::Random(Random::default()),
-        };
-        Self { order }
+        Self { order: Err(ty) }
     }
 }
 impl From<Shuffle> for State {
     fn from(shuffle: Shuffle) -> Self {
-        let order = Order::Shuffle(shuffle);
+        let order = Ok(Order::Shuffle(shuffle));
         Self { order }
     }
 }
 impl From<&State> for Type {
     fn from(state: &State) -> Self {
-        match state.order {
-            Order::InOrder(_) => Self::InOrder,
-            Order::RoundRobin(_) => Self::RoundRobin,
-            Order::Shuffle(_) => Self::Shuffle,
-            Order::Random(_) => Self::Random,
+        match &state.order {
+            Ok(state) => match state {
+                Order::InOrder(_) => Self::InOrder,
+                Order::RoundRobin(_) => Self::RoundRobin,
+                Order::Shuffle(_) => Self::Shuffle,
+                Order::Random(_) => Self::Random,
+            },
+            Err(ty) => *ty,
         }
     }
 }
-impl std::ops::Deref for State {
-    type Target = dyn Orderer;
-    fn deref(&self) -> &(dyn Orderer + 'static) {
-        match &self.order {
-            Order::InOrder(inner) => inner,
-            Order::RoundRobin(inner) => inner,
-            Order::Shuffle(inner) => inner,
-            Order::Random(inner) => inner,
+impl std::ops::Deref for Order {
+    type Target = dyn OrdererImpl;
+    fn deref(&self) -> &(dyn OrdererImpl + 'static) {
+        match &self {
+            Self::InOrder(inner) => inner,
+            Self::RoundRobin(inner) => inner,
+            Self::Shuffle(inner) => inner,
+            Self::Random(inner) => inner,
         }
     }
 }
-impl std::ops::DerefMut for State {
-    fn deref_mut(&mut self) -> &mut (dyn Orderer + 'static) {
-        match &mut self.order {
-            Order::InOrder(inner) => inner,
-            Order::RoundRobin(inner) => inner,
-            Order::Shuffle(inner) => inner,
-            Order::Random(inner) => inner,
+impl std::ops::DerefMut for Order {
+    fn deref_mut(&mut self) -> &mut (dyn OrdererImpl + 'static) {
+        match self {
+            Self::InOrder(inner) => inner,
+            Self::RoundRobin(inner) => inner,
+            Self::Shuffle(inner) => inner,
+            Self::Random(inner) => inner,
         }
     }
 }
 impl State {
     /// Returns the next element in the ordering
     pub fn next(&mut self, weights: &Weights) -> Option<usize> {
-        let prev_value = self.peek(weights);
-        self.advance(weights);
-        prev_value
+        let inner = self.inner_mut_advance_or_instantiate(weights);
+        inner.peek_unchecked()
     }
     /// Reads what will be returned by call to [`next()`](`Self::next()`)
     pub fn peek(&mut self, weights: &Weights) -> Option<usize> {
-        let valid_range = 0..weights.len();
-        match self.peek_unchecked() {
-            Some(index) if valid_range.contains(&index) => Some(index),
-            Some(_) | None => {
-                self.advance(weights);
-                self.peek_unchecked()
+        // TODO deleteme, harder to read than triple-nested "IF"s
+        // if let Some(valid_peeked) = self.inner().and_then(|inner| {
+        //     inner
+        //         .peek_unchecked()
+        //         .filter(|&index| inner.validate(index, weights))
+        // }) {
+        //     return Some(valid_peeked);
+        // }
+        if let Some(inner) = self.inner() {
+            if let Some(peeked) = inner.peek_unchecked() {
+                if inner.validate(peeked, weights) {
+                    return Some(peeked);
+                }
             }
         }
+        self.next(weights)
     }
     /// Clears the state, leaving only the [`Type`]
     pub fn clear(&mut self) {
@@ -247,6 +310,37 @@ impl State {
             *self = Self::from(new_ty);
         }
         old_ty
+    }
+    fn inner(&self) -> Option<&(dyn OrdererImpl + 'static)> {
+        Some(match self.order.as_ref().ok()? {
+            Order::InOrder(inner) => inner,
+            Order::RoundRobin(inner) => inner,
+            Order::Shuffle(inner) => inner,
+            Order::Random(inner) => inner,
+        })
+    }
+    fn inner_mut(&mut self) -> Option<&mut (dyn OrdererImpl + 'static)> {
+        Some(match self.order.as_mut().ok()? {
+            Order::InOrder(inner) => inner,
+            Order::RoundRobin(inner) => inner,
+            Order::Shuffle(inner) => inner,
+            Order::Random(inner) => inner,
+        })
+    }
+    fn inner_mut_advance_or_instantiate(
+        &mut self,
+        weights: &Weights,
+    ) -> &(dyn OrdererImpl + 'static) {
+        match &mut self.order {
+            Err(ty) => {
+                self.order = Ok(Order::new(*ty, weights));
+            }
+            Ok(order) => order.advance(weights),
+        }
+        match &self.order {
+            Ok(order) => &**order,
+            Err(_) => unreachable!("unconditionally set to Ok"),
+        }
     }
 }
 impl PartialEq for State {
@@ -263,21 +357,45 @@ impl std::fmt::Debug for State {
 }
 
 /// Supplier of ordering
-pub trait Orderer {
+trait OrdererImpl: Orderer {
     /// Reads the current value in the ordering
     fn peek_unchecked(&self) -> Option<usize>;
+    /// Validates the specified value for the given weights
+    /// Returns `true` if the value is allowed, or `false` if `advance` needs to act
+    fn validate(&self, index: usize, weights: &Weights) -> bool;
     /// Advances the next element in the ordering
     fn advance(&mut self, weights: &Weights);
+}
+/// Externally-facing orderer functions
+pub trait Orderer {
     /// Notify that the specified index was removed
     fn notify_removed(&mut self, range: Range<usize>, weights: &Weights);
     /// Notify that the specified weight was changed (or `None`, meaning all indices may have changed)
     fn notify_changed(&mut self, index: Option<usize>, weights: &Weights);
 }
+impl Orderer for State {
+    fn notify_removed(&mut self, range: Range<usize>, weights: &Weights) {
+        if let Some(inner) = self.inner_mut() {
+            inner.notify_removed(range, weights);
+        }
+    }
+
+    fn notify_changed(&mut self, index: Option<usize>, weights: &Weights) {
+        if let Some(inner) = self.inner_mut() {
+            inner.notify_changed(index, weights);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::{State, Type, Weight};
-    pub(super) use crate::weight_vec::WeightVec;
+    pub(super) use crate::weight_vec::{WeightVec, Weights};
+
+    pub(super) trait CloneToNext {
+        fn next_for(&self, weights: &crate::weight_vec::Weights) -> Self;
+    }
+
     pub(super) fn assert_peek_next<T>(
         s: &mut State,
         weight_vec: &WeightVec<T>,
@@ -286,11 +404,12 @@ mod tests {
         T: std::fmt::Debug,
     {
         let weights = weight_vec.weights();
-        let peeked = s.peek(weights);
         let popped = s.next(weights);
-        println!("{peeked:?} = {expected:?} ??");
-        assert_eq!(peeked, expected);
+        let peeked = s.peek(weights);
+        println!("popd {popped:?} = {expected:?} ??");
+        println!("peek {peeked:?} = {expected:?} ??");
         assert_eq!(popped, expected);
+        assert_eq!(peeked, expected);
     }
     pub(super) fn to_weight_vec(weights: &[Weight]) -> WeightVec<()> {
         weights.iter().copied().map(|w| (w, ())).collect()

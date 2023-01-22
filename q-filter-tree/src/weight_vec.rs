@@ -5,7 +5,10 @@
 use serde::{Deserialize, Serialize};
 use std::iter::FromIterator;
 
-use crate::{order, OrderType};
+use crate::{
+    order::{self, Orderer},
+    OrderType,
+};
 
 /// Numeric type for weighting items in [`WeightVec`], used by to fuel
 /// [`OrderType`](`super::OrderType`) algorithms.
@@ -149,6 +152,21 @@ impl<'a> IntoIterator for &'a Weights {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+impl FromIterator<Weight> for Weights {
+    fn from_iter<T: IntoIterator<Item = Weight>>(iter: T) -> Self {
+        iter.into_iter().fold(Self::Equal(0), |acc, x| {
+            let mut weights = match acc {
+                Self::Equal(count) if x == Self::EQUAL_WEIGHT => {
+                    return Self::Equal(count + 1);
+                }
+                Self::Equal(count) => vec![Self::EQUAL_WEIGHT; count],
+                Self::Some(weights) => weights,
+            };
+            weights.push(x);
+            Self::Some(weights)
+        })
     }
 }
 impl From<Vec<Weight>> for Weights {

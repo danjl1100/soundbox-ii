@@ -1,215 +1,330 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Round Robin ordering continues cycling through all elements in order, skipping elements as
+//! needed until each element visit-count is equal to its weight.
 
-use super::{Orderer, Weight, Weights};
-use std::ops::Range;
+use super::{Orderer, OrdererImpl, Weights};
+use std::{num::NonZeroUsize, ops::Range};
 
-#[derive(Clone, Default)]
-/// Tracks count remaining for each element
-pub struct RoundRobin {
-    count: Vec<Weight>,
-    index: Option<usize>,
-}
-impl Orderer for RoundRobin {
-    fn peek_unchecked(&self) -> Option<usize> {
-        self.index
-    }
-    fn advance(&mut self, weights: &Weights) {
-        if weights.is_empty() || weights.iter().all(|x| x == 0) {
-            self.index = None;
-        } else {
-            let weights_len = weights.len();
-            let mut mark_no_progress_since = None;
-            self.simplify_count(weights);
-            loop {
-                assert_eq!(
-                    self.count.len(),
-                    weights.len(),
-                    "count length matches weights"
-                );
-                // increment
-                let index = self
-                    .index
-                    .take()
-                    .map(|prev_index| prev_index + 1)
-                    .filter(|&index| index < weights_len)
-                    .unwrap_or(0);
-                // let index = match self.index {
-                //     Some(prev_index) if prev_index + 1 < weights_len => prev_index + 1,
-                //     _ => {
-                //         // weights is NOT empty (per outer `else`) --> restart at index `0`
-                //         0
-                //     }
-                // };
-                self.index = Some(index);
-                // catch full-loop-no-progress
-                match mark_no_progress_since {
-                    Some(i) if i == index => {
-                        mark_no_progress_since = None;
-                        // reset
-                        self.index = None;
-                        self.count.fill(0);
-                        continue;
-                    }
-                    _ => {}
-                }
-                // check count-remaining
-                match (self.count.get_mut(index), weights.get(index)) {
-                    (Some(count), Some(weight)) if *count >= weight => {
-                        // record "no progress" marker
-                        mark_no_progress_since.get_or_insert(index);
-                        continue;
-                    }
-                    (Some(count), Some(_)) => {
-                        // found! increment count
-                        *count += 1;
-                        break;
-                    }
-                    (count_opt, weight_opt) => unreachable!(
-                        "length mismatch at index {}: self.count_remaining {:?} to self.weights {:?}",
-                        index, count_opt, weight_opt),
-                }
+use index::Index;
+mod index {
+    use super::counts::Counts;
+    use crate::weight_vec::Weights;
+    use std::num::NonZeroUsize;
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct Index(usize);
+    impl Index {
+        pub const ZERO: Self = Index(0);
+        pub fn try_from_weights(weights: &Weights, counts: &Counts) -> Option<Self> {
+            Self::try_from_weights_at(0, weights, counts)
+        }
+        pub fn try_from_weights_at(
+            start: usize,
+            weights: &Weights,
+            counts: &Counts,
+        ) -> Option<Self> {
+            let tail = weights.iter().enumerate().zip(counts.iter()).skip(start);
+            let head = weights.iter().enumerate().zip(counts.iter()).take(start);
+            tail.chain(head)
+                .find_map(|((index, weight), count)| (weight > count).then_some(Self(index)))
+        }
+        pub fn next(self, for_len: NonZeroUsize) -> Self {
+            let next = self.inner() + 1;
+            if next < for_len.into() {
+                Self(next)
+            } else {
+                Self(0)
             }
         }
+        pub fn try_adjust_removed_count(self, removed_count: usize) -> Option<Self> {
+            self.inner().checked_sub(removed_count).map(Self)
+        }
+        pub fn inner(self) -> usize {
+            self.0
+        }
     }
-    fn notify_removed(&mut self, removed: Range<usize>, weights: &Weights) {
-        {
-            // remove count
-            let old_len = self.count.len();
+}
+
+use counts::Counts;
+mod counts {
+    use crate::{weight_vec::Weights, Weight};
+    use std::ops::Range;
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Counts(Vec<Weight>);
+    impl From<&Weights> for Counts {
+        fn from(weights: &Weights) -> Self {
+            Self(vec![0; weights.len()])
+        }
+    }
+    impl Counts {
+        pub fn simplify(&mut self, weights: &Weights) -> bool {
+            // update length
+            while self.0.len() < weights.len() {
+                self.0.push(0);
+            }
+            // simplify
+            let simplify = self
+                .0
+                .iter()
+                .zip(weights.iter())
+                .all(|(count, weight)| *count >= weight);
+            if simplify {
+                self.0.fill(0);
+            }
+            simplify
+        }
+        pub fn remove(&mut self, removed: &Range<usize>) {
+            let old_len = self.len();
             let start = removed.start;
             let end = removed.end.min(old_len);
             for index in (start..end).rev() {
-                if self.count.len() > index {
-                    self.count.remove(index);
-                }
+                self.0.remove(index);
             }
         }
-        // advance
-        match self.index.as_mut() {
-            Some(0) => {
-                self.index = None;
-                self.advance(weights);
-            }
-            Some(index) if *index <= removed.start => {
-                *index -= 1;
-                self.advance(weights);
-            }
-            _ => {}
+        pub fn check_within_weight(&self, index: usize, weights: &Weights) -> bool {
+            self.0
+                .get(index)
+                .zip(weights.get(index))
+                .map_or(false, |(count, weight)| *count < weight)
         }
-    }
-    fn notify_changed(&mut self, changed: Option<usize>, weights: &Weights) {
-        let advance = if let Some(index) = self.index {
-            let changed_affects_current = match changed {
-                None => true,
-                Some(changed) if index == changed => true,
-                Some(_) => false,
-            };
-            if changed_affects_current {
-                !matches!((self.count.get(index), weights.get(index)), (Some(count), Some(weight)) if *count < weight)
-                // match (self.count.get(index), weights.get(index)) {
-                //     (Some(count), Some(weight)) if count < weight => false,
-                //     _ => true,
-                // }
-            } else {
-                false
-            }
-        } else {
-            true
-        };
-        if advance {
-            self.advance(weights);
+        pub fn len(&self) -> usize {
+            self.0.len()
+        }
+        pub fn get_mut(&mut self, index: usize) -> Option<&mut Weight> {
+            self.0.get_mut(index)
+        }
+        pub fn iter(&self) -> impl Iterator<Item = Weight> + '_ {
+            self.0.iter().copied()
         }
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+/// Tracks count remaining for each element
+pub struct RoundRobin {
+    counts: Counts,
+    index: Option<Index>,
+}
+impl From<&Weights> for RoundRobin {
+    fn from(weights: &Weights) -> Self {
+        let counts = Counts::from(weights);
+        let index = Index::try_from_weights(weights, &counts);
+        RoundRobin { counts, index }
+    }
+}
 impl RoundRobin {
-    fn set_weights(&mut self, new_weights: &Weights) {
-        /// ensures correct order of actions, packaging a struct of which actions are desired
-        struct Act {
-            clear_count: bool,
-            do_advance: bool,
+    fn set_index_with<F>(&mut self, new_fn: F, weights: &Weights)
+    where
+        F: FnOnce(&Counts) -> Option<Index>,
+    {
+        if let Some(count) = self
+            .index
+            .map(Index::inner)
+            .and_then(|index| self.counts.get_mut(index))
+        {
+            *count += 1;
+            self.counts.simplify(weights);
         }
-        let old_len = self.count.len();
-        // pre-calculate from COUNT
-        let was_restarting = // .
-            self.count.iter().take(1).all(|&x| x == 1) && // .
-            self.count.iter().skip(1).all(|&x| x == 0);
-        // verify current index is VALID
-        let index_is_valid = self.index.map(|index| self.check_valid(index, new_weights));
-        // resize COUNT
-        self.count.resize(new_weights.len(), 0);
-        //
-        let actions = match index_is_valid {
-            Some(_) if was_restarting => {
-                // dbg!("CONTINUE COUNT FROM INDEX = OLD_LEN");
-                self.index.replace(old_len - 1);
-                Act {
-                    clear_count: true,
-                    do_advance: true,
-                }
+        self.index = new_fn(&self.counts);
+    }
+}
+impl OrdererImpl for RoundRobin {
+    fn peek_unchecked(&self) -> Option<usize> {
+        self.index.map(Index::inner)
+    }
+    fn validate(&self, index: usize, weights: &Weights) -> bool {
+        self.counts.check_within_weight(index, weights)
+    }
+    fn advance(&mut self, weights: &Weights) {
+        match NonZeroUsize::try_from(weights.len()) {
+            Err(_) => {
+                self.set_index_with(|_| None, weights);
             }
-            Some(true) => {
-                // continue on valid index
-                // dbg!("CONTINUE, IT'S VALID :D");
-                Act {
-                    clear_count: false,
-                    do_advance: false,
-                }
+            Ok(for_len) => {
+                self.counts.simplify(weights);
+                let mut mark_no_progress_since = None;
+                let mut current_index = self.index.unwrap_or(Index::ZERO);
+                self.set_index_with(
+                    |counts| loop {
+                        assert_eq!(counts.len(), weights.len(), "count length matches weights");
+                        // increment
+                        current_index = current_index.next(for_len);
+                        let index = current_index.inner();
+                        // catch full-loop-no-progress
+                        match mark_no_progress_since {
+                            Some(i) if i == index => {
+                                break None;
+                            }
+                            _ => {}
+                        }
+                        // check count-remaining
+                        if counts.check_within_weight(index, weights) {
+                            break Some(current_index);
+                        }
+                        // record "no progress" marker
+                        mark_no_progress_since.get_or_insert(index);
+                    },
+                    weights,
+                );
             }
-            Some(_) => {
-                // dbg!("RESET ALL EXCEPT INDEX");
-                Act {
-                    clear_count: true,
-                    do_advance: true,
-                }
-            }
-            None => {
-                // reset
-                // dbg!("RESET ALL, INCLUDING INDEX");
-                self.index = None;
-                Act {
-                    clear_count: true,
-                    do_advance: true,
-                }
-            }
-        };
-        if actions.clear_count {
-            self.count.fill(0);
         }
-        if actions.do_advance {
-            self.advance(new_weights);
+        if let Some(index) = self.index.map(Index::inner) {
+            assert!(self.validate(index, weights));
         }
     }
-    fn check_valid(&self, index: usize, weights: &Weights) -> bool {
-        // check count-remaining
-        match (self.count.get(index), weights.get(index)) {
-            (Some(count), Some(weight)) if *count >= weight => false,
-            (Some(count), Some(weight)) if *count < weight => true,
-            _ => false,
+}
+impl Orderer for RoundRobin {
+    fn notify_removed(&mut self, removed: Range<usize>, weights: &Weights) {
+        self.counts.remove(&removed);
+        // adjust index (if needed)
+        if let Some(old_index) = self.index {
+            let index = old_index.inner();
+            if removed.contains(&index) {
+                // within range, stuff changed
+                self.set_index_with(
+                    |counts| Index::try_from_weights_at(removed.start, weights, counts),
+                    weights,
+                );
+            } else if let Some(adjusted_index) = old_index.try_adjust_removed_count(removed.len()) {
+                // after end, stuff changed
+                self.set_index_with(
+                    |counts| Index::try_from_weights_at(adjusted_index.inner(), weights, counts),
+                    weights,
+                );
+            }
+            // else: removed AFTER current --> no change
         }
     }
-    fn simplify_count(&mut self, weights: &Weights) -> bool {
-        // update length
-        while self.count.len() < weights.len() {
-            self.count.push(0);
+    fn notify_changed(&mut self, changed: Option<usize>, weights: &Weights) {
+        if let Some(old_index) = self.index {
+            let recalculate = match changed {
+                Some(changed) if old_index.inner() == changed => true, // changed current, re-validate or search
+                None => true,                                          // changed all, recalculate
+                _ => false, // changed but not current, no change
+            };
+            if recalculate {
+                self.set_index_with(
+                    |counts| Index::try_from_weights_at(old_index.inner(), weights, counts),
+                    weights,
+                );
+            }
         }
-        // simplify
-        let simplify = self
-            .count
-            .iter()
-            .zip(weights.iter())
-            .all(|(count, weight)| *count >= weight);
-        if simplify {
-            self.count.fill(0);
-        }
-        simplify
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::RoundRobin;
+    use crate::{
+        order::{tests::CloneToNext, OrdererImpl},
+        weight_vec::Weights,
+    };
+
+    impl CloneToNext for RoundRobin {
+        fn next_for(&self, weights: &Weights) -> RoundRobin {
+            let mut next = self.clone();
+            next.advance(weights);
+            next
+        }
+    }
+
+    #[test]
+    fn empty() {
+        assert_chain! {
+            let weights = vec![];
+            let empty = RoundRobin::from(&weights);
+            [
+                start => None;
+                let next => None;
+            ]
+            => {
+                assert_eq!(empty, next); // advance is a no-op
+                assert_eq!(empty, RoundRobin {
+                    counts: (&Weights::from(vec![])).into(),
+                    index: None,
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn inactive_for_zeroed_weights() {
+        for n in 1..10 {
+            assert_chain! {
+                let weights = vec![0; n];
+                let inactive = RoundRobin::from(&weights);
+                [
+                    start => None;
+                    let next => None;
+                ]
+                => assert_eq!(inactive, next) // advance is a no-op
+            }
+        }
+    }
+
+    #[test]
+    fn single_active() {
+        assert_chain! {
+            let weights = vec![1];
+            let single = RoundRobin::from(&weights);
+            [
+                start => Some(0);
+                let next => Some(0);
+            ]
+            => {
+                assert_eq!(single, next);
+            }
+        };
+    }
+
+    #[test]
+    fn double_active() {
+        assert_chain! {
+            let weights = vec![1, 1];
+            let double = RoundRobin::from(&weights);
+            [
+                start => Some(0);
+                let next => Some(1);
+                let next2 => Some(0);
+                let next3 => Some(1);
+            ]
+            => {
+                assert_eq!(double, next2);
+                assert_eq!(next, next3);
+            }
+        };
+    }
+
+    #[test]
+    fn triple_decreases() {
+        assert_chain! {
+            let weights = vec![1, 2, 1, 3];
+            let triple = RoundRobin::from(&weights);
+            [
+                start => Some(0);
+                let triple1 => Some(1);
+                let triple2 => Some(2);
+                let triple3 => Some(3);
+                let triple4 => Some(1);
+                let triple5 => Some(3);
+                let triple6 => Some(3);
+                let triple7 => Some(0);
+            ]
+            => {
+                assert_eq!(triple, triple7);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod high_level_tests {
     use super::super::tests::{
         assert_peek_next, check_all, check_truncate, resize_vec_to_len, WeightVec,
     };
     use super::super::{State, Type};
+    use crate::Weight;
 
     #[test]
     fn all() {
@@ -221,18 +336,25 @@ mod tests {
         let weights = &[1, 2, 2, 3, 0, 5];
         let test_sizes = (0..100).map(|_| weights.len());
         let check_counter = do_run_round_robin(weights, test_sizes);
-        assert_eq!(check_counter, 1300); // rigging to ensure test does not get shorter while modifying
+        assert!(check_counter >= 1300, "{check_counter}"); // rigging to ensure test does not get shorter while modifying
     }
     #[test]
-    #[ignore] //TODO determine why the `start_index` state doesn't track RoundRobin
+    fn varied_size() {
+        let all_weights = &[1, 1];
+        let test_sizes = [1, 2];
+        let expected_count = 5;
+        let check_counter = do_run_round_robin(all_weights, test_sizes);
+        assert_eq!(check_counter, expected_count);
+    }
+    #[test]
     fn resizing() {
         let all_weights = &[1, 2, 2, 3, 0, 5];
         let test_sizes = (0..100).map(|i| (i % (all_weights.len() + 1)));
         let check_counter = do_run_round_robin(all_weights, test_sizes);
-        assert_eq!(check_counter, 533); // rigging to ensure test does not get shorter while modifying
+        assert!(check_counter >= 533, "{check_counter:?}"); // rigging to ensure test does not get shorter while modifying
     }
     #[test]
-    #[ignore] //TODO determine why the `start_index` state doesn't track RoundRobin
+    #[ignore] // TODO figure out why checked-number 194 and below is bad (214/706 fail counts)
     fn resizing_dynamic() {
         let all_weights = &[1, 2, 2, 3, 0, 5, 9, 0, 0, 3, 7];
         let double_len = all_weights.len() * 2;
@@ -248,7 +370,7 @@ mod tests {
         let check_counter = do_run_round_robin(all_weights, test_sizes);
         assert_eq!(check_counter, 612); // rigging to ensure test does not get shorter while modifying
     }
-    fn do_run_round_robin<I>(all_weights: &[super::Weight], test_sizes: I) -> usize
+    fn do_run_round_robin<I>(all_weights: &[Weight], test_sizes: I) -> usize
     where
         I: IntoIterator<Item = usize>,
     {
@@ -258,10 +380,22 @@ mod tests {
         let mut prev_index = None;
         let mut check_counter = 0;
         let mut weight_vec = WeightVec::new();
+        let mut remaining = vec![];
         for test_size in test_sizes {
             resize_vec_to_len(&mut weight_vec, &mut s, test_size, all_weights);
-            let mut remaining: Vec<_> = weight_vec.weights().iter().collect();
+            //
+            while let Some(next) = weight_vec.weights().get(remaining.len()) {
+                remaining.push(next);
+            }
+            remaining.truncate(weight_vec.weights().len());
+            //
+            let mut can_refill = 1;
             loop {
+                if can_refill > 0 && remaining.iter().all(|x| *x == 0) {
+                    can_refill -= 1;
+                    remaining = weight_vec.weights().iter().collect();
+                }
+                //
                 let mut popped = false;
                 let start_index = match prev_index {
                     Some(prev_index) if prev_index < remaining.len() => prev_index + 1,

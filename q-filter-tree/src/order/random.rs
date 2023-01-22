@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{Orderer, Weights};
+use super::{Orderer, OrdererImpl, Weights};
 use rand_chacha::ChaCha8Rng;
 use std::ops::Range;
 
@@ -11,27 +11,34 @@ pub struct Random {
     rng: ChaCha8Rng,
 }
 impl Random {
-    fn new(rng: ChaCha8Rng) -> Self {
-        Self { current: None, rng }
+    fn new(rng: ChaCha8Rng, weights: &Weights) -> Self {
+        let mut new = Self { current: None, rng };
+        new.advance(weights);
+        new
     }
-    #[cfg(test)]
-    fn from_seed(seed: u64) -> Self {
-        use rand::SeedableRng;
-        let rng = ChaCha8Rng::seed_from_u64(seed);
-        Self::new(rng)
-    }
+    // TODO is this needed? then provide `weights`!
+    // #[cfg(test)]
+    // fn from_seed(seed: u64) -> Self {
+    //     use rand::SeedableRng;
+    //     let rng = ChaCha8Rng::seed_from_u64(seed);
+    //     Self::new(rng)
+    // }
 }
-impl Default for Random {
-    fn default() -> Self {
+impl From<&Weights> for Random {
+    fn from(weights: &Weights) -> Self {
         use rand::SeedableRng;
         let rng =
             ChaCha8Rng::from_rng(rand::thread_rng()).expect("thread_rng try_fill_bytes succeeds");
-        Self::new(rng)
+        Self::new(rng, weights)
     }
 }
-impl Orderer for Random {
+impl OrdererImpl for Random {
     fn peek_unchecked(&self) -> Option<usize> {
         self.current
+    }
+
+    fn validate(&self, index: usize, weights: &Weights) -> bool {
+        index < weights.len()
     }
 
     fn advance(&mut self, weights: &Weights) {
@@ -42,7 +49,8 @@ impl Orderer for Random {
             .ok()
             .map(|dist| dist.sample(&mut self.rng));
     }
-
+}
+impl Orderer for Random {
     fn notify_removed(&mut self, removed: Range<usize>, weights: &Weights) {
         match self.current {
             Some(current) if removed.contains(&current) || current >= weights.len() => {
@@ -77,5 +85,11 @@ mod tests {
     }
 
     //TODO add more tests ...?
-    // verify that "weight masks" will likely-never show invalid values
+
+    #[test]
+    #[ignore] // TODO
+    fn need_more_tests() {
+        // verify that "weight masks" will likely-never show invalid values
+        unimplemented!("verify that \"weight masks\" will likely-never show invalid values")
+    }
 }
