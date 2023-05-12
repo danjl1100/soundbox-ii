@@ -118,10 +118,12 @@
 //! assert_eq!(popped.iter().filter(|&val| val == &"C").count(), 3);
 //! assert!(popped.iter().filter(|&val| val == &"NEVER").next().is_none());
 //! ```
+//!
+//! [`Weight`]: `crate::weight_vec::Weight`
 
 #![allow(clippy::module_name_repetitions)]
 
-use crate::weight_vec::{Weight, Weights};
+use crate::weight_vec::Weights;
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
@@ -191,14 +193,15 @@ mod random;
 #[derive(Default, Debug, Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::Subcommand))]
 pub enum Type {
-    /// Picks [`Weight`] items from one node before moving to the next node
+    /// Picks [`Weight`](`crate::weight_vec::Weight`) items from one node before moving to the next node
     #[default]
     InOrder,
-    /// Picks items from each node in turn, up to maximum of [`Weight`] items per cycle.
+    /// Picks items from each node in turn, up to maximum of
+    /// [`Weight`](`crate::weight_vec::Weight`) items per cycle.
     RoundRobin,
     /// Shuffles the order of items given by [`Self::InOrder`] for each cycle.
     Shuffle,
-    /// Randomly selects items based on the relative [`Weight`]s.
+    /// Randomly selects items based on the relative [`Weight`](`crate::weight_vec::Weight`)s.
     Random,
 }
 
@@ -231,6 +234,12 @@ impl Order {
 impl From<Type> for State {
     fn from(ty: Type) -> Self {
         Self { order: Err(ty) }
+    }
+}
+impl From<Random> for State {
+    fn from(random: Random) -> Self {
+        let order = Ok(Order::Random(random));
+        Self { order }
     }
 }
 impl From<Shuffle> for State {
@@ -389,11 +398,11 @@ impl Orderer for State {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, Type, Weight};
-    pub(super) use crate::weight_vec::{WeightVec, Weights};
+    use super::{State, Type};
+    pub(super) use crate::weight_vec::{Weight, WeightVec, Weights};
 
     pub(super) trait CloneToNext {
-        fn next_for(&self, weights: &crate::weight_vec::Weights) -> Self;
+        fn next_for(&self, weights: &Weights) -> Self;
     }
 
     pub(super) fn assert_peek_next<T>(

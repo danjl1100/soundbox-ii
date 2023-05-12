@@ -28,10 +28,14 @@ pub enum Weights {
 }
 impl Default for Weights {
     fn default() -> Self {
-        Self::Equal(0)
+        Self::empty()
     }
 }
 impl Weights {
+    /// Creates an empty set of weights
+    pub const fn empty() -> Self {
+        Self::Equal(0)
+    }
     /// Returns the length
     #[must_use]
     pub fn len(&self) -> usize {
@@ -183,7 +187,7 @@ impl From<Vec<Weight>> for Weights {
 pub struct WeightVec<T>(Weights, Vec<T>);
 impl<T> WeightVec<T> {
     /// Creates a new empty collection
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self(Weights::Equal(0), vec![])
     }
     /// Returns the length
@@ -307,6 +311,7 @@ impl<T> FromIterator<(Weight, T)> for WeightVec<T> {
     }
 }
 
+// TODO consider splitting weight_vec module, possibly in 3: weights, weight_vec, ref_mut, and
 /// Mutable handle to a [`WeightVec`], optionally updating an order state on each action
 pub struct RefMut<'vec, 'order, T> {
     weights: &'vec mut Weights,
@@ -493,6 +498,12 @@ impl<'vec, 'order> RefMutWeight<'vec, 'order> {
         self.weights
             .get(self.index)
             .expect("valid index in created WeightVecMutElem")
+    }
+}
+impl<'vec, 'order, T> std::ops::Deref for RefMut<'vec, 'order, T> {
+    type Target = Weights;
+    fn deref(&self) -> &Self::Target {
+        self.weights
     }
 }
 

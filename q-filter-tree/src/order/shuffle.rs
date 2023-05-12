@@ -133,7 +133,7 @@ impl Orderer for Shuffle {
 
 #[cfg(test)]
 mod tests {
-    use crate::order::tests::resize_vec_to_len;
+    use crate::order::tests::{resize_vec_to_len, Weights};
     use crate::order::State;
 
     use super::super::tests::{assert_peek_next, check_all, WeightVec};
@@ -145,11 +145,11 @@ mod tests {
         check_all(Type::Shuffle);
     }
     #[test]
-    #[ignore] // TODO update the arcane "TRUTH" to match new advance/peek flow
     fn shuffles() {
         const SEED: u64 = 324_543_290;
         const SHUFFLE_10_TRUTH: &[&[usize; 10]; 5] = &[
             // depends on SEED, and RNG impl
+            // (NOTE: INDEPENDENT of the Shuffle usage/impl, as verified below)
             &[5, 9, 8, 4, 3, 0, 6, 1, 2, 7],
             &[7, 8, 9, 5, 6, 4, 2, 3, 0, 1],
             &[5, 7, 1, 2, 3, 8, 9, 6, 4, 0],
@@ -170,7 +170,7 @@ mod tests {
         let mut first = true;
         let mut weight_vec = WeightVec::new();
         for target_weights in &[[1, 2, 2, 5], [3, 1, 6, 0], [0, 0, 0, 10]] {
-            let mut s = State::from(Shuffle::from_seed(SEED, weight_vec.weights()));
+            let mut s = State::from(Shuffle::from_seed(SEED, &Weights::empty()));
             resize_vec_to_len(
                 &mut weight_vec,
                 &mut s,
