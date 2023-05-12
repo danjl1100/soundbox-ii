@@ -126,16 +126,18 @@
             lockFile = sources.bin-lock-file;
             inherit pkgs;
           });
+        trunkBuildDeps = [
+          pkgs.wasm-bindgen-cli
+          pkgs.trunk
+          pkgs.nodePackages.sass
+        ];
         trunkBuild = { pname, version }: pkgs.stdenvNoCC.mkDerivation {
           inherit pname version;
 
           src = sources.frontend;
 
-          buildInputs = [
+          buildInputs = trunkBuildDeps ++ [
             pkgs.rustc
-            pkgs.wasm-bindgen-cli
-            pkgs.trunk
-            pkgs.nodePackages.sass
             projectImportCargo.cargoHome
           ];
 
@@ -228,7 +230,7 @@
           # NOTE: do not include dependencies for `vlc` (broken on darwin systems)
           # inputsFrom = builtins.attrValues self.packages.${system};
           # inputsFrom = [ self.defaultPackage.${system} frontend ];
-          buildInputs = nativeBuildInputs ++ buildInputs ++ ([
+          buildInputs = nativeBuildInputs ++ buildInputs ++ trunkBuildDeps ++ ([
             # development-only tools go here
             pkgs.nixpkgs-fmt
             pkgs.cargo-deny
