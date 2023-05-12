@@ -7,6 +7,20 @@
 (Work-in-progress) VLC music controller and track sequencer to navigate a massive music library (best paired with a curated [beets](https://github.com/beetbox/beets) music library).
 
 
+## Development
+
+### Fullstack Development
+On a headless host, full-stack development can be accomplished in 3 shells:
+
+1. Run VLC (headless):  `./dev_server.sh cvlc`
+1. Trunk watch the frontend sources:  `nix develop; ./frontend/watch.sh`
+1. Cargo watch the backend server: `nix develop; ./watch.sh`
+
+### Backend-only Development
+On a headless host, backend development can be accomplished in 2 shells:
+
+1. Run VLC (headless):  `./dev_server.sh cvlc`
+1. Cargo watch the backend sources: `nix develop; ./watch.sh`, or for interactive mode, run `nix develop; ./dev_server.sh`
 
 ## Roadmap - Scope and Features
 
@@ -46,7 +60,7 @@ Second gate is Rust taking control of playlist, spoon-feeding VLC one "on-deck" 
 
 - [ ] **Gate 3 - Rust source-filters and merges**
 Third gate is adding complex queries to the source selection, and additional sources (beets cli filters, e.g. added:2021.. grouping:5), with ratio-merging of different source selections.
-	- [ ] Bonus task: 
+	- [ ] Bonus task:
 
 3. Rust Queue management (stretch) - source-only filtering tree
 	- **source-filters** select a subset of the beets library (*to be split into separate source / filter blocks in next phase*)
@@ -76,8 +90,8 @@ Three modules facilitate connections to the back end services:
 	- glue for HTTP commands
 	- provides HTTP status/playlist
 2. Beets Command (beet-cli)
-	- forward advanced queries to beets command 
-	- (stretch) modify HasLyrics and Rating fields 
+	- forward advanced queries to beets command
+	- (stretch) modify HasLyrics and Rating fields
 3. Beets Info (beet-http)
 	- glue for beets HTTP endpoint `/item/[ID],[ID],...` to get detailed meta info
 
@@ -154,7 +168,7 @@ ___
 
 VLC HTTP - Method is always `GET`
 <!--                               Rust URL |   -->
-| Description | VLC URL | Rust fn | 
+| Description | VLC URL | Rust fn |
 |-------------|---------|---------|
 | Now - Album Art | /art | -> get_art() |
 | Now - Info/Status | /requests/status.json | -> get_now_status() |
@@ -216,7 +230,7 @@ ___
 
 See inspiration for HTTP forwarder in [Actix examples - http-proxy](https://github.com/actix/examples/tree/master/basics/http-proxy).
 
-| Description | Beets HTTP | Rust URL | 
+| Description | Beets HTTP | Rust URL |
 |-------------|------------|----------|
 | Items Meta Info | /item/`ID...` | /v1/beets-info/`ID...` |
 

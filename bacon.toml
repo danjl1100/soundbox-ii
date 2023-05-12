@@ -50,10 +50,11 @@ need_stdout = true
 
 [jobs.serve]
 command = ["cargo", "run", "--color", "always", "--",
-  "--serve", "--watch-assets",
-  "--VLC_HOST", "127.0.0.1",
-  "--VLC_PASSWORD", "notsecure_at_all",
-  "--VLC_PORT", "8891"
+  "--serve", "--WATCH_ASSETS",
+  # use .envrc, prior to running bacon
+  # "--VLC_HOST", "127.0.0.1",
+  # "--VLC_PASSWORD", "notsecure_at_all",
+  # "--VLC_PORT", "8891"
 ]
 need_stdout = true
 
