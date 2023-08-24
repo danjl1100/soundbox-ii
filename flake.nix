@@ -69,8 +69,8 @@
       # name must match Cargo.toml
       name = "soundbox-ii";
       rootModuleName = "soundbox-ii";
-      rustChannel = "stable";
-      rustVersion = "1.66.0";
+      rustChannel = "beta";
+      rustVersion = "latest";
       makeForSystem = (system: let
         # Imports
         pkgs = import nixpkgs {
