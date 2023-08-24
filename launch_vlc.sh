@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 if [ "${VLC_BIND_HOST}" = "" ]; then
   echo "VLC_BIND_HOST is not set";
   exit 1;
