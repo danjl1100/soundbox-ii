@@ -26,10 +26,7 @@ impl ShutdownReceiver {
         let rx = &mut self.0;
         let changed_result = rx.changed().await;
         if changed_result.is_err() {
-            eprintln!(
-                "error waiting for {} shutdown signal, shutting down...",
-                task_name
-            );
+            eprintln!("error waiting for {task_name} shutdown signal, shutting down...");
             Some(Shutdown)
         } else {
             let shutdown = *rx.borrow();

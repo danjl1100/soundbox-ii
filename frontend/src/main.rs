@@ -216,8 +216,8 @@ impl Component for App {
         let websocket = Self::new_websocket(ctx);
         let reconnect = {
             let backoff = Self::new_reconnect_backoff();
-            let connect = link.callback(|_| websocket::Msg::Connect);
-            let disconnect = link.callback(|_| websocket::Msg::Disconnect);
+            let connect = link.callback(|()| websocket::Msg::Connect);
+            let disconnect = link.callback(|()| websocket::Msg::Disconnect);
             reconnect::Logic::new(
                 backoff,
                 reconnect::Callbacks {
@@ -259,7 +259,7 @@ impl Component for App {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
-        let on_reconnect_now = link.callback(|_| websocket::Msg::Connect);
+        let on_reconnect_now = link.callback(|()| websocket::Msg::Connect);
         html! {
             <BrowserRouter>
                 <header>{ "soundbox-ii" }</header>

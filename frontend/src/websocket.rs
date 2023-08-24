@@ -137,7 +137,7 @@ where
                         break;
                     }
                 },
-                _ = shutdown => {
+                () = shutdown => {
                     log!("websocket read loop: shutdown accepted");
                     break;
                 }

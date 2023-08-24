@@ -150,6 +150,7 @@ macro_rules! assert_chain {
     ) => {
         {
             let $weights = Weights::from($weights_expr);
+            #[allow(clippy::redundant_locals)]
             let $start = $start_expr;
             $crate::assert_chain!(@peek $start => $start_expected, start);
             $crate::assert_chain!(@inner $start $weights [ $( let $next => $expected; )+]);

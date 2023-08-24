@@ -207,6 +207,7 @@ where
         self.merge_child_items(items.into_iter().map(|x| (1, x)));
     }
     /// Merges the child items with the specified items (attempting to maintain ordering state)
+    #[allow(clippy::missing_panics_doc)] // bounds guaranteed by loop (needed for lending iterator)
     pub fn merge_child_items<I>(&mut self, items: I)
     where
         I: IntoIterator<Item = (Weight, T)>,
@@ -228,7 +229,7 @@ where
                     break;
                 }
             }
-            child_items.extend(items.into_iter().skip(child_items.len()));
+            child_items.extend(items.skip(child_items.len()));
             // TODO add test for this functionality
         });
     }

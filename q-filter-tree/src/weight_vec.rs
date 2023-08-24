@@ -2,508 +2,533 @@
 //! Collection types for weighted items
 //!
 //! See [`OrderVec`] for details of usage.
-use serde::{Deserialize, Serialize};
+
+use crate::{order, OrderType};
 use std::iter::FromIterator;
 
-use crate::{
-    order::{self, Orderer},
-    OrderType,
-};
+pub use weights::{Weight, Weights};
+mod weights {
+    use serde::{Deserialize, Serialize};
 
-/// Numeric type for weighting items in [`WeightVec`], used by to fuel
-/// [`OrderType`](`super::OrderType`) algorithms.
-pub type Weight = u32;
+    /// Numeric type for weighting items in [`WeightVec`](`super::WeightVec`), used by to fuel
+    /// [`OrderType`](`super::OrderType`) algorithms.
+    pub type Weight = u32;
 
-/// Collection of weights
-#[must_use]
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum Weights {
-    /// Equal (unity) weights of the specified length
-    Equal(usize),
-    /// Weights
-    ///
-    /// NOTE: this may contain all unity weights, in the case of roundtrip to/from unity
-    Some(Vec<Weight>),
-}
-impl Default for Weights {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-impl Weights {
-    /// Creates an empty set of weights
-    pub const fn empty() -> Self {
-        Self::Equal(0)
-    }
-    /// Returns the length
+    /// Collection of weights
     #[must_use]
-    pub fn len(&self) -> usize {
-        match self {
-            Self::Equal(len) => *len,
-            Self::Some(weights) => weights.len(),
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum Weights {
+        /// Equal (unity) weights of the specified length
+        Equal(usize),
+        /// Weights
+        ///
+        /// NOTE: this may contain all unity weights, in the case of roundtrip to/from unity
+        Some(Vec<Weight>),
+    }
+    impl Default for Weights {
+        fn default() -> Self {
+            Self::empty()
         }
     }
-    /// Returns `true` if the weights are empty
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Equal(len) if *len == 0 => true,
-            Self::Some(weights) if weights.is_empty() => true,
-            Self::Equal(_) | Self::Some(_) => false,
+    impl Weights {
+        /// Creates an empty set of weights
+        pub const fn empty() -> Self {
+            Self::Equal(0)
         }
-    }
-    const EQUAL_WEIGHT: Weight = 1;
-    /// Returns the specified weight element
-    #[must_use]
-    pub fn get(&self, index: usize) -> Option<Weight> {
-        match self {
-            Self::Equal(len) => (index < *len).then_some(Self::EQUAL_WEIGHT),
-            Self::Some(weights) => weights.get(index).copied(),
+        /// Returns the length
+        #[must_use]
+        pub fn len(&self) -> usize {
+            match self {
+                Self::Equal(len) => *len,
+                Self::Some(weights) => weights.len(),
+            }
         }
-    }
-    /// Iterates over all weights
-    #[must_use]
-    pub fn iter(&self) -> Box<dyn Iterator<Item = Weight> + '_> {
-        match self {
-            Self::Equal(len) => Box::new(std::iter::repeat(Self::EQUAL_WEIGHT).take(*len)),
-            Self::Some(weights) => Box::new(weights.iter().copied()),
+        /// Returns `true` if the weights are empty
+        #[must_use]
+        pub fn is_empty(&self) -> bool {
+            match self {
+                Self::Equal(len) if *len == 0 => true,
+                Self::Some(weights) if weights.is_empty() => true,
+                Self::Equal(_) | Self::Some(_) => false,
+            }
         }
-    }
-    /// Returns a mutable reference to the specified weight
-    ///
-    /// NOTE: This transforms in-place on the first modification
-    fn get_mut(&mut self, index: usize) -> Option<&mut Weight> {
-        if index < self.len() {
+        const EQUAL_WEIGHT: Weight = 1;
+        /// Returns the specified weight element
+        #[must_use]
+        pub fn get(&self, index: usize) -> Option<Weight> {
+            match self {
+                Self::Equal(len) => (index < *len).then_some(Self::EQUAL_WEIGHT),
+                Self::Some(weights) => weights.get(index).copied(),
+            }
+        }
+        /// Iterates over all weights
+        #[must_use]
+        pub fn iter(&self) -> Box<dyn Iterator<Item = Weight> + '_> {
+            match self {
+                Self::Equal(len) => Box::new(std::iter::repeat(Self::EQUAL_WEIGHT).take(*len)),
+                Self::Some(weights) => Box::new(weights.iter().copied()),
+            }
+        }
+        /// Returns a mutable reference to the specified weight
+        ///
+        /// NOTE: This transforms in-place on the first modification
+        pub(super) fn get_mut(&mut self, index: usize) -> Option<&mut Weight> {
+            if index < self.len() {
+                match self {
+                    Self::Equal(len) => {
+                        *self = Self::Some(vec![Self::EQUAL_WEIGHT; *len]);
+                        match self {
+                            Self::Some(weights) => weights.get_mut(index),
+                            Self::Equal(_) => unreachable!(),
+                        }
+                    }
+                    Self::Some(weights) => weights.get_mut(index),
+                }
+            } else {
+                None
+            }
+        }
+        /// Appends the specified weight
+        ///
+        /// NOTE: This transitions in-place on the first non-unity value added (`value != 1`)
+        pub fn push(&mut self, value: Weight) {
+            match self {
+                Self::Equal(len) if value == Self::EQUAL_WEIGHT => {
+                    *len += 1;
+                }
+                Self::Equal(len) => {
+                    let mut weights = vec![Self::EQUAL_WEIGHT; *len + 1];
+                    weights[*len] = value;
+                    *self = Self::Some(weights);
+                }
+                Self::Some(weights) => weights.push(value),
+            }
+        }
+        /// Attempts to remove the last weight element
+        pub fn pop(&mut self) -> Option<Weight> {
+            match self {
+                Self::Equal(0) => None,
+                Self::Equal(len) => {
+                    *len -= 1;
+                    Some(Self::EQUAL_WEIGHT)
+                }
+                Self::Some(weights) => weights.pop(),
+            }
+        }
+        /// Attempts to remove the weight element at the specified index
+        ///
+        /// # Panics
+        /// Panics if the specified `index` is out of bounds
+        #[allow(clippy::panic)] // allowed in Vec::remove calls, so allow on extension enum
+        pub fn remove(&mut self, index: usize) -> Weight {
+            match self {
+                Self::Equal(len) if index < *len => {
+                    *len -= 1;
+                    Self::EQUAL_WEIGHT
+                }
+                Self::Equal(len) => {
+                    panic!("requested index {index} is out of bounds of length {len}")
+                }
+                Self::Some(weights) => weights.remove(index),
+            }
+        }
+        /// Truncates the weights to the specified maximum length
+        pub fn truncate(&mut self, new_len: usize) {
             match self {
                 Self::Equal(len) => {
-                    *self = Self::Some(vec![Self::EQUAL_WEIGHT; *len]);
-                    match self {
-                        Self::Some(weights) => weights.get_mut(index),
-                        Self::Equal(_) => unreachable!(),
+                    *len = new_len.min(*len);
+                }
+                Self::Some(weights) => weights.truncate(new_len),
+            }
+        }
+        /// Checks the weights, and simplifies to `Equal` if they are all unity
+        pub fn try_simplify(&mut self) {
+            match self {
+                Self::Some(weights) if weights.iter().all(|w| *w == Self::EQUAL_WEIGHT) => {
+                    *self = Self::Equal(weights.len());
+                }
+                Self::Equal(_) | Self::Some(_) => {}
+            }
+        }
+    }
+    impl<'a> IntoIterator for &'a Weights {
+        type Item = Weight;
+        type IntoIter = Box<dyn Iterator<Item = Weight> + 'a>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            self.iter()
+        }
+    }
+    impl FromIterator<Weight> for Weights {
+        fn from_iter<T: IntoIterator<Item = Weight>>(iter: T) -> Self {
+            iter.into_iter().fold(Self::Equal(0), |acc, x| {
+                let mut weights = match acc {
+                    Self::Equal(count) if x == Self::EQUAL_WEIGHT => {
+                        return Self::Equal(count + 1);
                     }
-                }
-                Self::Some(weights) => weights.get_mut(index),
-            }
-        } else {
-            None
+                    Self::Equal(count) => vec![Self::EQUAL_WEIGHT; count],
+                    Self::Some(weights) => weights,
+                };
+                weights.push(x);
+                Self::Some(weights)
+            })
         }
     }
-    /// Appends the specified weight
-    ///
-    /// NOTE: This transitions in-place on the first non-unity value added (`value != 1`)
-    pub fn push(&mut self, value: Weight) {
-        match self {
-            Self::Equal(len) if value == Self::EQUAL_WEIGHT => {
-                *len += 1;
-            }
-            Self::Equal(len) => {
-                let mut weights = vec![Self::EQUAL_WEIGHT; *len + 1];
-                weights[*len] = value;
-                *self = Self::Some(weights);
-            }
-            Self::Some(weights) => weights.push(value),
+    impl From<Vec<Weight>> for Weights {
+        fn from(weights: Vec<Weight>) -> Self {
+            let mut weights = Self::Some(weights);
+            weights.try_simplify();
+            weights
         }
-    }
-    /// Attempts to remove the last weight element
-    pub fn pop(&mut self) -> Option<Weight> {
-        match self {
-            Self::Equal(0) => None,
-            Self::Equal(len) => {
-                *len -= 1;
-                Some(Self::EQUAL_WEIGHT)
-            }
-            Self::Some(weights) => weights.pop(),
-        }
-    }
-    /// Attempts to remove the weight element at the specified index
-    ///
-    /// # Panics
-    /// Panics if the specified `index` is out of bounds
-    #[allow(clippy::panic)] // allowed in Vec::remove calls, so allow on extension enum
-    pub fn remove(&mut self, index: usize) -> Weight {
-        match self {
-            Self::Equal(len) if index < *len => {
-                *len -= 1;
-                Self::EQUAL_WEIGHT
-            }
-            Self::Equal(len) => panic!("requested index {index} is out of bounds of length {len}"),
-            Self::Some(weights) => weights.remove(index),
-        }
-    }
-    /// Truncates the weights to the specified maximum length
-    pub fn truncate(&mut self, new_len: usize) {
-        match self {
-            Self::Equal(len) => {
-                *len = new_len.min(*len);
-            }
-            Self::Some(weights) => weights.truncate(new_len),
-        }
-    }
-    /// Checks the weights, and simplifies to `Equal` if they are all unity
-    pub fn try_simplify(&mut self) {
-        match self {
-            Self::Some(weights) if weights.iter().all(|w| *w == Self::EQUAL_WEIGHT) => {
-                *self = Self::Equal(weights.len());
-            }
-            Self::Equal(_) | Self::Some(_) => {}
-        }
-    }
-}
-impl<'a> IntoIterator for &'a Weights {
-    type Item = Weight;
-    type IntoIter = Box<dyn Iterator<Item = Weight> + 'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-impl FromIterator<Weight> for Weights {
-    fn from_iter<T: IntoIterator<Item = Weight>>(iter: T) -> Self {
-        iter.into_iter().fold(Self::Equal(0), |acc, x| {
-            let mut weights = match acc {
-                Self::Equal(count) if x == Self::EQUAL_WEIGHT => {
-                    return Self::Equal(count + 1);
-                }
-                Self::Equal(count) => vec![Self::EQUAL_WEIGHT; count],
-                Self::Some(weights) => weights,
-            };
-            weights.push(x);
-            Self::Some(weights)
-        })
-    }
-}
-impl From<Vec<Weight>> for Weights {
-    fn from(weights: Vec<Weight>) -> Self {
-        let mut weights = Self::Some(weights);
-        weights.try_simplify();
-        weights
     }
 }
 
-/// Collection of weighted items
-#[must_use]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WeightVec<T>(Weights, Vec<T>);
-impl<T> WeightVec<T> {
-    /// Creates a new empty collection
-    pub const fn new() -> Self {
-        Self(Weights::Equal(0), vec![])
-    }
-    /// Returns the length
+pub use vec::WeightVec;
+mod vec {
+    use super::{Weight, Weights};
+    use crate::order;
+
+    /// Collection of weighted items
     #[must_use]
-    pub fn len(&self) -> usize {
-        let len = self.0.len();
-        debug_assert_eq!(len, self.1.len());
-        len
-    }
-    /// Returns `true` if the collection is empty
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        let is_empty = self.0.is_empty();
-        debug_assert_eq!(is_empty, self.1.is_empty());
-        is_empty
-    }
-    /// Returns the specified weight and element
-    #[must_use]
-    pub fn get(&self, index: usize) -> Option<(Weight, &T)> {
-        match (self.0.get(index), self.1.get(index)) {
-            (Some(weight), Some(node)) => Some((weight, node)),
-            _ => None,
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[allow(clippy::module_name_repetitions)]
+    pub struct WeightVec<T>(pub(super) Weights, pub(super) Vec<T>);
+    impl<T> WeightVec<T> {
+        /// Creates a new empty collection
+        pub const fn new() -> Self {
+            Self(Weights::Equal(0), vec![])
+        }
+        /// Returns the length
+        #[must_use]
+        pub fn len(&self) -> usize {
+            let len = self.0.len();
+            debug_assert_eq!(len, self.1.len());
+            len
+        }
+        /// Returns `true` if the collection is empty
+        #[must_use]
+        pub fn is_empty(&self) -> bool {
+            let is_empty = self.0.is_empty();
+            debug_assert_eq!(is_empty, self.1.is_empty());
+            is_empty
+        }
+        /// Returns the specified weight and element
+        #[must_use]
+        pub fn get(&self, index: usize) -> Option<(Weight, &T)> {
+            match (self.0.get(index), self.1.get(index)) {
+                (Some(weight), Some(node)) => Some((weight, node)),
+                _ => None,
+            }
+        }
+        /// Returns all weights
+        pub fn weights(&self) -> &Weights {
+            &self.0
+        }
+        /// Returns all elements
+        #[must_use]
+        pub fn elems(&self) -> &[T] {
+            &self.1
+        }
+        /// Returns the specified mutable element
+        #[must_use]
+        pub fn get_elem_mut(&mut self, index: usize) -> Option<&mut T> {
+            self.1.get_mut(index)
+        }
+        /// Iterates the weights and items
+        pub fn iter(&self) -> impl Iterator<Item = (Weight, &T)> {
+            self.weights().iter().zip(self.elems().iter())
+        }
+        // TODO remove if not needed
+        // pub fn iter_mut_elems_straight(&mut self) -> impl Iterator<Item = &mut T> {
+        //     self.1.iter_mut()
+        // }
+        /// Destructures into the weights and items
+        pub fn into_parts(self) -> (Weights, Vec<T>) {
+            (self.0, self.1)
+        }
+        /// Returns the next index for the specified order state
+        pub fn next_index_with_order(&self, order: &mut order::State) -> Option<usize> {
+            order.next(&self.0)
+        }
+        /// Returns the next item for the specified order state
+        ///
+        /// # Errors
+        /// Returns an error if the specified order state is outside the bounds of the vector
+        pub(super) fn next_with_order(
+            &self,
+            order: &mut order::State,
+        ) -> Result<Option<&T>, (usize, usize)> {
+            if let Some(index) = self.next_index_with_order(order) {
+                if let Some(item) = self.1.get(index) {
+                    Ok(Some(item))
+                } else {
+                    Err((index, self.len()))
+                }
+            } else {
+                Ok(None)
+            }
+        }
+        /// Returns the next item (mut reference) for the specified order state
+        ///
+        /// # Errors
+        /// Returns an error if the specified order state is outside the bounds of the vector
+        pub(super) fn next_with_order_mut(
+            &mut self,
+            order: &mut order::State,
+        ) -> Result<Option<&mut T>, (usize, usize)> {
+            if let Some(index) = self.next_index_with_order(order) {
+                let self_len = self.len();
+                if let Some(item) = self.1.get_mut(index) {
+                    Ok(Some(item))
+                } else {
+                    Err((index, self_len))
+                }
+            } else {
+                Ok(None)
+            }
         }
     }
-    /// Returns all weights
-    pub fn weights(&self) -> &Weights {
-        &self.0
+    impl<T> Default for WeightVec<T> {
+        fn default() -> Self {
+            Self::new()
+        }
     }
-    /// Returns all elements
-    #[must_use]
-    pub fn elems(&self) -> &[T] {
-        &self.1
+    impl<T> FromIterator<(Weight, T)> for WeightVec<T> {
+        fn from_iter<U: IntoIterator<Item = (Weight, T)>>(iter: U) -> Self {
+            let mut weight_vec = WeightVec::new();
+            {
+                let mut ref_mut = weight_vec.ref_mut_optional(None);
+                for item in iter {
+                    ref_mut.push(item);
+                }
+            }
+            weight_vec
+        }
     }
-    /// Returns the specified mutable element
-    #[must_use]
-    pub fn get_elem_mut(&mut self, index: usize) -> Option<&mut T> {
-        self.1.get_mut(index)
+}
+
+pub use ref_mut::{RefMut, RefMutElem, RefMutWeight};
+mod ref_mut {
+    use super::{Weight, WeightVec, Weights};
+    use crate::order::{self, Orderer};
+
+    impl<T> WeightVec<T> {
+        pub(crate) fn ref_mut<'order>(
+            &mut self,
+            order: &'order mut order::State,
+        ) -> RefMut<'_, 'order, T> {
+            self.ref_mut_optional(Some(order))
+        }
+        pub(super) fn ref_mut_optional<'order>(
+            &mut self,
+            order: Option<&'order mut order::State>,
+        ) -> RefMut<'_, 'order, T> {
+            RefMut {
+                weights: &mut self.0,
+                elems: &mut self.1,
+                order,
+            }
+        }
     }
-    /// Iterates the weights and items
-    pub fn iter(&self) -> impl Iterator<Item = (Weight, &T)> {
-        self.weights().iter().zip(self.elems().iter())
-    }
-    // TODO remove if not needed
-    // pub fn iter_mut_elems_straight(&mut self) -> impl Iterator<Item = &mut T> {
-    //     self.1.iter_mut()
-    // }
-    pub(super) fn ref_mut<'order>(
-        &mut self,
-        order: &'order mut order::State,
-    ) -> RefMut<'_, 'order, T> {
-        self.ref_mut_optional(Some(order))
-    }
-    fn ref_mut_optional<'order>(
-        &mut self,
+    // TODO consider splitting weight_vec module, possibly in 3: weights, weight_vec, ref_mut, and
+    /// Mutable handle to a [`WeightVec`], optionally updating an order state on each action
+    pub struct RefMut<'vec, 'order, T> {
+        weights: &'vec mut Weights,
+        elems: &'vec mut Vec<T>,
         order: Option<&'order mut order::State>,
-    ) -> RefMut<'_, 'order, T> {
-        RefMut {
-            weights: &mut self.0,
-            elems: &mut self.1,
-            order,
-        }
     }
-    /// Destructures into the weights and items
-    pub fn into_parts(self) -> (Weights, Vec<T>) {
-        (self.0, self.1)
-    }
-    /// Returns the next index for the specified order state
-    pub fn next_index_with_order(&self, order: &mut order::State) -> Option<usize> {
-        order.next(&self.0)
-    }
-    /// Returns the next item for the specified order state
-    ///
-    /// # Errors
-    /// Returns an error if the specified order state is outside the bounds of the vector
-    fn next_with_order(&self, order: &mut order::State) -> Result<Option<&T>, (usize, usize)> {
-        if let Some(index) = self.next_index_with_order(order) {
-            if let Some(item) = self.1.get(index) {
-                Ok(Some(item))
+    impl<'vec, 'order, T> RefMut<'vec, 'order, T> {
+        /// Sets the weight of the specified index
+        /// Returns the old weight
+        ///
+        /// # Errors
+        /// Returns an error if the index if out of bounds
+        pub fn set_weight(&mut self, index: usize, new_weight: Weight) -> Result<Weight, usize> {
+            if let Some(weight) = self.weights.get_mut(index) {
+                // changed
+                let old_weight = std::mem::replace(weight, new_weight);
+                if let Some(order) = &mut self.order {
+                    order.notify_changed(Some(index), self.weights);
+                }
+                Ok(old_weight)
             } else {
-                Err((index, self.len()))
-            }
-        } else {
-            Ok(None)
-        }
-    }
-    /// Returns the next item (mut reference) for the specified order state
-    ///
-    /// # Errors
-    /// Returns an error if the specified order state is outside the bounds of the vector
-    fn next_with_order_mut(
-        &mut self,
-        order: &mut order::State,
-    ) -> Result<Option<&mut T>, (usize, usize)> {
-        if let Some(index) = self.next_index_with_order(order) {
-            let self_len = self.len();
-            if let Some(item) = self.1.get_mut(index) {
-                Ok(Some(item))
-            } else {
-                Err((index, self_len))
-            }
-        } else {
-            Ok(None)
-        }
-    }
-}
-impl<T> Default for WeightVec<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl<T> FromIterator<(Weight, T)> for WeightVec<T> {
-    fn from_iter<U: IntoIterator<Item = (Weight, T)>>(iter: U) -> Self {
-        let mut weight_vec = WeightVec::new();
-        {
-            let mut ref_mut = weight_vec.ref_mut_optional(None);
-            for item in iter {
-                ref_mut.push(item);
+                Err(index)
             }
         }
-        weight_vec
-    }
-}
-
-// TODO consider splitting weight_vec module, possibly in 3: weights, weight_vec, ref_mut, and
-/// Mutable handle to a [`WeightVec`], optionally updating an order state on each action
-pub struct RefMut<'vec, 'order, T> {
-    weights: &'vec mut Weights,
-    elems: &'vec mut Vec<T>,
-    order: Option<&'order mut order::State>,
-}
-impl<'vec, 'order, T> RefMut<'vec, 'order, T> {
-    /// Sets the weight of the specified index
-    /// Returns the old weight
-    ///
-    /// # Errors
-    /// Returns an error if the index if out of bounds
-    pub fn set_weight(&mut self, index: usize, new_weight: Weight) -> Result<Weight, usize> {
-        if let Some(weight) = self.weights.get_mut(index) {
-            // changed
-            let old_weight = std::mem::replace(weight, new_weight);
-            if let Some(order) = &mut self.order {
-                order.notify_changed(Some(index), self.weights);
-            }
-            Ok(old_weight)
-        } else {
-            Err(index)
+        /// Returns a mutable reference to the specified element
+        pub fn get_elem_mut(&mut self, index: usize) -> Option<&mut T> {
+            // no update needed - weight not changed
+            self.elems.get_mut(index)
         }
-    }
-    /// Returns a mutable reference to the specified element
-    pub fn get_elem_mut(&mut self, index: usize) -> Option<&mut T> {
-        // no update needed - weight not changed
-        self.elems.get_mut(index)
-    }
-    /// Appends an element
-    pub fn push(&mut self, (weight, item): (Weight, T)) {
-        // no updated needed - not removed, nor changed
-        self.weights.push(weight);
-        self.elems.push(item);
-    }
-    /// Removes the last element
-    ///
-    /// # Panics
-    /// Panics if the internal state is inconsistent (library implementation logic error)
-    pub fn pop(&mut self) -> Option<(Weight, T)> {
-        assert_eq!(
-            self.weights.len(),
-            self.elems.len(),
-            "weights and items lists length equal before pop"
-        );
-        match (self.weights.pop(), self.elems.pop()) {
-            (Some(weight), Some(elem)) => Some((weight, elem)),
-            (None, None) => None,
-            _ => unreachable!("equal length weights/elems Vecs pop equivalently"),
+        /// Appends an element
+        pub fn push(&mut self, (weight, item): (Weight, T)) {
+            // no updated needed - not removed, nor changed
+            self.weights.push(weight);
+            self.elems.push(item);
         }
-    }
-    /// Removes the specified element
-    ///
-    /// # Errors
-    /// Returns an error if the specified index is out of bounds
-    ///
-    /// # Panics
-    /// Panics if the internal state is inconsistent (library implementation logic error)
-    pub fn remove(&mut self, index: usize) -> Result<(Weight, T), usize> {
-        assert_eq!(
-            self.weights.len(),
-            self.elems.len(),
-            "weights and items lists length equal before removal"
-        );
-        if index < self.weights.len() {
-            let removed = (self.weights.remove(index), self.elems.remove(index));
-            if let Some(order) = &mut self.order {
-                #[allow(clippy::range_plus_one)]
-                let singleton_range = index..(index + 1);
-                order.notify_removed(singleton_range, self.weights);
-            }
-            Ok(removed)
-        } else {
-            Err(index)
-        }
-    }
-    /// Shortens the collection to the specified length
-    ///
-    /// # Panics
-    /// Panics if the internal state is inconsistent (library implementation logic error)
-    pub fn truncate(&mut self, length: usize) {
-        assert_eq!(
-            self.weights.len(),
-            self.elems.len(),
-            "weights and items lists length equal before truncation"
-        );
-        let orig_len = self.weights.len();
-        if length < orig_len {
-            self.weights.truncate(length);
-            self.elems.truncate(length);
-            if let Some(order) = &mut self.order {
-                order.notify_removed(length..orig_len, self.weights);
-            }
-        }
-    }
-    /// Sets the weights to the specified values.
-    ///
-    /// *Overwrite* triggers a reset of the order state (if any).
-    ///
-    /// # Errors
-    /// Returns and error if the length of supplied weights do not match the existing length
-    ///
-    /// # Panics
-    /// Panics if the internal state is inconsistent (library implementation logic error)
-    pub fn overwrite_weights(&mut self, weights: Weights) -> Result<(), (Weights, usize)> {
-        let orig_len = self.weights.len();
-        if weights.len() == orig_len {
-            *self.weights = weights;
-            if let Some(order) = &mut self.order {
-                order.notify_changed(None, self.weights);
-            }
+        /// Removes the last element
+        ///
+        /// # Panics
+        /// Panics if the internal state is inconsistent (library implementation logic error)
+        pub fn pop(&mut self) -> Option<(Weight, T)> {
             assert_eq!(
                 self.weights.len(),
                 self.elems.len(),
-                "weights and items lists length equal after overwrite_child_weights"
+                "weights and items lists length equal before pop"
             );
-            Ok(())
-        } else {
-            Err((weights, orig_len))
+            match (self.weights.pop(), self.elems.pop()) {
+                (Some(weight), Some(elem)) => Some((weight, elem)),
+                (None, None) => None,
+                _ => unreachable!("equal length weights/elems Vecs pop equivalently"),
+            }
+        }
+        /// Removes the specified element
+        ///
+        /// # Errors
+        /// Returns an error if the specified index is out of bounds
+        ///
+        /// # Panics
+        /// Panics if the internal state is inconsistent (library implementation logic error)
+        pub fn remove(&mut self, index: usize) -> Result<(Weight, T), usize> {
+            assert_eq!(
+                self.weights.len(),
+                self.elems.len(),
+                "weights and items lists length equal before removal"
+            );
+            if index < self.weights.len() {
+                let removed = (self.weights.remove(index), self.elems.remove(index));
+                if let Some(order) = &mut self.order {
+                    #[allow(clippy::range_plus_one)]
+                    let singleton_range = index..(index + 1);
+                    order.notify_removed(singleton_range, self.weights);
+                }
+                Ok(removed)
+            } else {
+                Err(index)
+            }
+        }
+        /// Shortens the collection to the specified length
+        ///
+        /// # Panics
+        /// Panics if the internal state is inconsistent (library implementation logic error)
+        pub fn truncate(&mut self, length: usize) {
+            assert_eq!(
+                self.weights.len(),
+                self.elems.len(),
+                "weights and items lists length equal before truncation"
+            );
+            let orig_len = self.weights.len();
+            if length < orig_len {
+                self.weights.truncate(length);
+                self.elems.truncate(length);
+                if let Some(order) = &mut self.order {
+                    order.notify_removed(length..orig_len, self.weights);
+                }
+            }
+        }
+        /// Sets the weights to the specified values.
+        ///
+        /// *Overwrite* triggers a reset of the order state (if any).
+        ///
+        /// # Errors
+        /// Returns and error if the length of supplied weights do not match the existing length
+        ///
+        /// # Panics
+        /// Panics if the internal state is inconsistent (library implementation logic error)
+        pub fn overwrite_weights(&mut self, weights: Weights) -> Result<(), (Weights, usize)> {
+            let orig_len = self.weights.len();
+            if weights.len() == orig_len {
+                *self.weights = weights;
+                if let Some(order) = &mut self.order {
+                    order.notify_changed(None, self.weights);
+                }
+                assert_eq!(
+                    self.weights.len(),
+                    self.elems.len(),
+                    "weights and items lists length equal after overwrite_child_weights"
+                );
+                Ok(())
+            } else {
+                Err((weights, orig_len))
+            }
+        }
+        /// Creates a mutable handle to the element at the specified index
+        ///
+        /// # Errors
+        /// Returns an error if the specified index is out of bounds
+        ///
+        /// # Panics
+        /// Panics if the internal state is inconsistent (library implementation logic error)
+        pub fn into_elem_ref(
+            self,
+            index: usize,
+        ) -> Result<(RefMutWeight<'vec, 'order>, &'vec mut T), usize> {
+            assert_eq!(
+                self.weights.len(),
+                self.elems.len(),
+                "weights and items lists length prior to into_elem_ref"
+            );
+            let Self {
+                weights,
+                elems,
+                order,
+            } = self;
+            elems
+                .get_mut(index)
+                .map(move |elem| {
+                    (
+                        RefMutWeight {
+                            weights,
+                            order,
+                            index,
+                        },
+                        elem,
+                    )
+                })
+                .ok_or(index)
         }
     }
-    /// Creates a mutable handle to the element at the specified index
-    ///
-    /// # Errors
-    /// Returns an error if the specified index is out of bounds
-    ///
-    /// # Panics
-    /// Panics if the internal state is inconsistent (library implementation logic error)
-    pub fn into_elem_ref(
-        self,
-        index: usize,
-    ) -> Result<(RefMutWeight<'vec, 'order>, &'vec mut T), usize> {
-        assert_eq!(
-            self.weights.len(),
-            self.elems.len(),
-            "weights and items lists length prior to into_elem_ref"
-        );
-        let Self {
-            weights,
-            elems,
-            order,
-        } = self;
-        elems
-            .get_mut(index)
-            .map(move |elem| {
-                (
-                    RefMutWeight {
-                        weights,
-                        order,
-                        index,
-                    },
-                    elem,
-                )
-            })
-            .ok_or(index)
-    }
-}
 
-/// Mutable handle to a specific element
-pub type RefMutElem<'vec, 'order, T> = (RefMutWeight<'vec, 'order>, &'vec mut T);
-/// Mutable handle to a weight
-pub struct RefMutWeight<'vec, 'order> {
-    weights: &'vec mut Weights,
-    order: Option<&'order mut order::State>,
-    index: usize,
-}
-impl<'vec, 'order> RefMutWeight<'vec, 'order> {
-    /// Sets the weight to the specified value
-    /// Returns the old weight
-    pub fn set_weight(&mut self, weight: Weight) -> Weight {
-        let weight_mut = self
-            .weights
-            .get_mut(self.index)
-            .expect("valid index in created WeightVecMutElem");
-        let old_weight = std::mem::replace(weight_mut, weight);
-        if let Some(order) = &mut self.order {
-            order.notify_changed(Some(self.index), self.weights);
+    /// Mutable handle to a specific element
+    #[allow(clippy::module_name_repetitions)]
+    pub type RefMutElem<'vec, 'order, T> = (RefMutWeight<'vec, 'order>, &'vec mut T);
+    /// Mutable handle to a weight
+    #[allow(clippy::module_name_repetitions)]
+    pub struct RefMutWeight<'vec, 'order> {
+        weights: &'vec mut Weights,
+        order: Option<&'order mut order::State>,
+        index: usize,
+    }
+    impl<'vec, 'order> RefMutWeight<'vec, 'order> {
+        /// Sets the weight to the specified value
+        /// Returns the old weight
+        #[allow(clippy::missing_panics_doc)] // guaranteed by RefMutWeight creation
+        pub fn set_weight(&mut self, weight: Weight) -> Weight {
+            let weight_mut = self
+                .weights
+                .get_mut(self.index)
+                .expect("valid index in created RefMutWeight");
+            let old_weight = std::mem::replace(weight_mut, weight);
+            if let Some(order) = &mut self.order {
+                order.notify_changed(Some(self.index), self.weights);
+            }
+            old_weight
         }
-        old_weight
+        /// Returns the current weight value
+        #[must_use]
+        #[allow(clippy::missing_panics_doc)] // guaranteed by RefMutWeight creation
+        pub fn get_weight(&self) -> Weight {
+            self.weights
+                .get(self.index)
+                .expect("valid index in created RefMutWeight")
+        }
     }
-    /// Returns the current weight value
-    #[must_use]
-    pub fn get_weight(&self) -> Weight {
-        self.weights
-            .get(self.index)
-            .expect("valid index in created WeightVecMutElem")
-    }
-}
-impl<'vec, 'order, T> std::ops::Deref for RefMut<'vec, 'order, T> {
-    type Target = Weights;
-    fn deref(&self) -> &Self::Target {
-        self.weights
+    impl<'vec, 'order, T> std::ops::Deref for RefMut<'vec, 'order, T> {
+        type Target = Weights;
+        fn deref(&self) -> &Self::Target {
+            self.weights
+        }
     }
 }
 
@@ -575,12 +600,16 @@ impl<T> OrderVec<T> {
         ((&self.order).into(), self.vec.into_parts())
     }
     /// Returns the next element in the order
+    #[allow(clippy::missing_panics_doc)] // guaranteed by: well-behaved Order, and
+                                         // OrderVec sending correct modification notices to Order
     pub fn next_item(&mut self) -> Option<&T> {
         self.vec
             .next_with_order(&mut self.order)
             .expect("order-provided index out of bounds")
     }
     /// Returns a mutable reference to the next element in the order
+    #[allow(clippy::missing_panics_doc)] // guaranteed by: well-behaved Order, and
+                                         // OrderVec sending correct modification notices to Order
     pub fn next_item_mut(&mut self) -> Option<&mut T> {
         self.vec
             .next_with_order_mut(&mut self.order)

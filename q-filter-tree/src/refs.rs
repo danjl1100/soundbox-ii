@@ -246,8 +246,8 @@ impl NodeIdTyped {
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
-    pub fn try_ref<'path, 'tree, T, F>(
-        &'path self,
+    pub fn try_ref<'tree, T, F>(
+        &self,
         tree: &'tree mut impl AsMut<Tree<T, F>>,
     ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
         let tree = tree.as_mut();

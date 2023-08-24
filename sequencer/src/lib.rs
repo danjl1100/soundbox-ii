@@ -117,7 +117,7 @@ where
         let mut tree_guard = self.raw_tree.guard();
         let mut node_ref = new_node_id.try_ref(&mut tree_guard)?;
         node_ref.overwrite_child_items_uniform(std::iter::empty());
-        Self::inner_update_node(&mut self.item_source, &new_node_id, &mut tree_guard)?;
+        Self::inner_update_node(&self.item_source, &new_node_id, &mut tree_guard)?;
         Ok(serialize_id(new_node_id)?)
     }
     /// Sets the filter of the specified node
@@ -132,7 +132,7 @@ where
         let mut node_ref = node_path.try_ref(&mut tree_guard)?;
         let old_filter = std::mem::replace(&mut node_ref.filter, filter);
         // update node (recursively)
-        Self::inner_update_node(&mut self.item_source, &node_path, &mut tree_guard)?;
+        Self::inner_update_node(&self.item_source, &node_path, &mut tree_guard)?;
         Ok(old_filter)
     }
     /// Sets the weight of the specified item in the node
@@ -198,13 +198,13 @@ where
         let node_path = parse_path(node_path_str)?;
         // update node (recursively)
         let mut tree_guard = self.raw_tree.guard();
-        Self::inner_update_node(&mut self.item_source, &node_path, &mut tree_guard)?;
+        Self::inner_update_node(&self.item_source, &node_path, &mut tree_guard)?;
         // TODO deleteme, no reason to repeat back (sanitized?) version of input param
         // Ok(serialize_path(node_path)?)
         Ok(())
     }
     fn inner_update_node<'a, 'b>(
-        item_source: &mut T,
+        item_source: &T,
         path: impl Into<NodePathRefTyped<'a>>,
         tree_guard: &mut TreeGuard<'b, T, F>,
     ) -> Result<(), Error> {

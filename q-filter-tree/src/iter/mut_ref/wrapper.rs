@@ -43,9 +43,9 @@ where
 ///
 /// Returns an error if the specified `limit_path` is invalid for this [`Tree`]
 // NOTE: free-standing function, since impl block doesn't allow impl-bounds as trait bounds (right?)
-pub(super) fn new<'a, 'tree, T, F>(
+pub(super) fn new<'tree, T, F>(
     tree: &'tree mut Tree<T, F>,
-    subtree_limit_path: Option<NodePathRefTyped<'a>>,
+    subtree_limit_path: Option<NodePathRefTyped<'_>>,
 ) -> Result<Wrapper<'tree, T, F, impl Fn(&Node<T, F>) -> Never>, InvalidNodePath> {
     let no_fn = false.then_some(|_: &Node<T, F>| unreachable!());
     breadcrumb::Walker::new(tree, subtree_limit_path, no_fn).map(Wrapper)

@@ -96,6 +96,7 @@ mod mut_ref {
     impl<T, F> Tree<T, F> {
         /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and
         /// [`NodeRefMut`](`crate::refs::NodeRefMut`)s
+        #[allow(clippy::missing_panics_doc)] // guaranteed by existence of root within Tree
         pub fn enumerate_mut(&mut self) -> impl IterMut<T, F> + '_ {
             wrapper::new(self, None).expect("valid root path")
         }
@@ -115,6 +116,7 @@ mod mut_ref {
     impl<T, F: Clone> Tree<T, F> {
         /// Creates a depth-first iterator-helper over [`NodePathRefTyped`]s and
         /// [`NodeRefMut`](`crate::refs::NodeRefMut`)s
+        #[allow(clippy::missing_panics_doc)] // guaranteed by existence of root within Tree
         pub fn enumerate_mut_filters(&mut self) -> impl IterMutBreadcrumb<T, F, F> + '_ {
             breadcrumb::Walker::new(self, None, Some(node_filter_clone)).expect("valid root path")
         }

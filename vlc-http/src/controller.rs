@@ -68,6 +68,8 @@ pub struct Controller {
 impl Controller {
     const RATE_LIMIT_MS: u32 = 90;
     /// Creates a [`Controller`] with the associated control channels
+    #[allow(clippy::missing_panics_doc)] // NonZeroUsize constructor is not const (yet)
+                                         // https://github.com/rust-lang/rust/issues/67441
     pub fn new(authorization: Authorization) -> (Self, ExternalChannels) {
         // Channels
         let (action_tx, action_rx) = mpsc::channel(1);
@@ -278,7 +280,7 @@ impl Controller {
         }
     }
 }
-fn send_if_changed<T, F>(new_value: T, sender: &mut watch::Sender<Option<T>>, notify_fn: F)
+fn send_if_changed<T, F>(new_value: T, sender: &watch::Sender<Option<T>>, notify_fn: F)
 where
     T: PartialEq + Clone,
     F: FnOnce(&T),

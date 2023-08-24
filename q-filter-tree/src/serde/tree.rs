@@ -92,8 +92,7 @@ where
                         NodePathTyped::Child(parent) => {
                             weights_children.get_mut(parent).ok_or_else(|| {
                                 M::Error::custom(format!(
-                                        "parent path {:?} not found in weights_children (internal error?)",
-                                        parent_path,
+                                        "parent path {parent_path:?} not found in weights_children (internal error?)",
                                 ))
                             })?
                         }
@@ -101,29 +100,25 @@ where
                     let weight = match weight_opts.get_mut(path_elem) {
                         Some(weight_opt) => weight_opt.take().ok_or_else(|| {
                             M::Error::custom(format!(
-                                "duplicate use of weight for path {:?}, child index {}",
-                                parent_path, path_elem,
+                                "duplicate use of weight for path {parent_path:?}, child index {path_elem}",
                             ))
                         }),
                         None => Err(M::Error::custom(format!(
-                            "path element out of bounds at {:?}, child index {}",
-                            parent_path, path_elem
+                            "path element out of bounds at {parent_path:?}, child index {path_elem}",
                         ))),
                     }?;
 
                     let parent_child_count = parent_ref.child_nodes_len();
                     if parent_child_count != path_elem {
                         return Err(M::Error::custom(format!(
-                            "node declared out of order, parent has {} children, but desired destination {:?}",
-                            parent_child_count, node_path,
+                            "node declared out of order, parent has {parent_child_count} children, but desired destination {node_path:?}",
                         )));
                     }
                     if let Some(mut parent_ref) = parent_ref.child_nodes() {
                         parent_ref.add_child_from(weight, info_intrinsic);
                     } else {
                         return Err(M::Error::custom(format!(
-                            "parent of node {:?} is a not chain type",
-                            node_path
+                            "parent of node {node_path:?} is a not chain type",
                         )));
                     }
                 }

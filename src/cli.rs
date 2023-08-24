@@ -262,10 +262,7 @@ where
         let current = self.receiver.borrow();
         Self::update_changed(&mut self.prev_value, &current)
     }
-    fn update_changed<'a, 'b>(
-        prev_value: &'a mut Option<T>,
-        current_value: &'b T,
-    ) -> Option<&'a T> {
+    fn update_changed<'a>(prev_value: &'a mut Option<T>, current_value: &T) -> Option<&'a T> {
         // detect change in value
         match prev_value {
             Some(prev) if prev == current_value => None,

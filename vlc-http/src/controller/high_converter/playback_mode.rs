@@ -19,10 +19,10 @@ impl<'a> ConverterIterator<'a> for Converter {
         let change_repeat_one = status.is_repeat_one != repeat.is_repeat_one();
         let change_random = status.is_random != *random;
         match () {
-            _ if change_loop => Err(LowCommand::ToggleLoopAll),
-            _ if change_repeat_one => Err(LowCommand::ToggleRepeatOne),
-            _ if change_random => Err(LowCommand::ToggleRandom),
-            _ => Ok(()), // base case, matches desired state
+            () if change_loop => Err(LowCommand::ToggleLoopAll),
+            () if change_repeat_one => Err(LowCommand::ToggleRepeatOne),
+            () if change_random => Err(LowCommand::ToggleRandom),
+            () => Ok(()), // base case, matches desired state
         }
         .map_err(LowAction::from)
     }

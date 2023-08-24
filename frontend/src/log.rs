@@ -112,6 +112,6 @@ where
     C: Component,
     <C as Component>::Message: From<Msg>,
 {
-    link.callback_once(move |_| Msg::Error((scope, message)))
+    link.callback_once(move |()| Msg::Error((scope, message)))
         .emit(());
 }

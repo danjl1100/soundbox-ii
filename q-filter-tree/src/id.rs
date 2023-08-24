@@ -240,6 +240,7 @@ impl<T: Type> NodePath<T> {
 }
 impl NodePath<ty::Child> {
     /// Returns a slice of the [`NodePathElem`]s, with `split_last` already applied
+    #[allow(clippy::missing_panics_doc)] // guaranteed by type parameter
     #[must_use]
     pub fn elems_split_last(&self) -> (NodePathElem, &[NodePathElem]) {
         let (last, elems) = self
@@ -279,6 +280,7 @@ impl<T: Type> NodePath<T> {
 }
 impl NodePath<Child> {
     /// Returns the parent path sequence (if it exists) and the last path element
+    #[allow(clippy::missing_panics_doc)] // guaranteed by type parameter
     pub fn into_parent(self) -> (NodePathTyped, NodePathElem) {
         let mut parts = self.into_elems();
         let last_elem = parts.pop().expect("NodePath<Child> is not empty");

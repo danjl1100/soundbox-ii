@@ -76,10 +76,7 @@ mod filter {
             }
             #[allow(clippy::needless_pass_by_value)] // helpful, to clarify Result<_, String> signature
             fn vlc_error(err_message: String) -> (String, hyper::StatusCode) {
-                let text = format!(
-                    r#"VLC reported error: "{}" (missing album art?)"#,
-                    err_message
-                );
+                let text = format!(r#"VLC reported error: "{err_message}" (missing album art?)"#);
                 (text, hyper::StatusCode::NOT_FOUND)
             }
             // send Action
@@ -157,7 +154,7 @@ mod web_socket {
                         // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                         self.handle_message(message).await
                     }
-                    Ok(_) = self.config.playback_status_rx.changed() => {
+                    Ok(()) = self.config.playback_status_rx.changed() => {
                         let now = shared::time_now();
                         let playback = (*self.config.playback_status_rx.borrow())
                             .as_ref()
@@ -165,7 +162,7 @@ mod web_socket {
                             .map(ServerResponse::from);
                         playback
                     }
-                    _ = tokio::time::sleep(tokio::time::Duration::from_secs(30)) => {
+                    () = tokio::time::sleep(tokio::time::Duration::from_secs(30)) => {
                         Some(ServerResponse::Heartbeat)
                     }
                     else => {
@@ -180,9 +177,7 @@ mod web_socket {
         }
         async fn handle_message(&mut self, message: Message) -> Option<ServerResponse> {
             // Skip any non-Text messages...
-            let msg = if let Ok(s) = message.to_str() {
-                s
-            } else {
+            let Ok(msg) = message.to_str() else {
                 println!("ping-pong");
                 return None;
             };
@@ -201,7 +196,6 @@ mod web_socket {
             self.websocket
                 .send(Message::text(response_str))
                 .await
-                .map(|_| ())
                 .map_err(|_| ())
         }
         async fn process_request(&mut self, request: ClientRequest) -> ServerResponse {
