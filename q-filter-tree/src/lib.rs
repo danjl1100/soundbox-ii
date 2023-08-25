@@ -249,29 +249,58 @@ where
         Self::new()
     }
 }
-/// Mutable reference to a [`Tree`], to ensure [`Tree::refresh_prefill`] is called on [`Drop`]
-///
-/// See [`Tree::guard`] for construction.
-pub struct TreeGuard<'a, T: Clone, F>(&'a mut Tree<T, F>);
-impl<T: Clone, F> Tree<T, F> {
-    /// Mutable handle to the [`Tree`], usable in [`id::NodeIdTyped::try_ref`] via [`AsMut`]
-    pub fn guard(&mut self) -> TreeGuard<'_, T, F> {
-        TreeGuard(self)
+
+pub use guard::{GuardedTree, TreeGuard};
+mod guard {
+    use super::Tree;
+
+    /// Wrapper around [`Tree`] that requires mutable access to go through [`TreeGuard`],
+    /// to ensure [`Tree::refresh_prefill`] is called on [`Drop`]
+    pub struct GuardedTree<T: Clone, F>(Tree<T, F>);
+    impl<T: Clone, F> From<Tree<T, F>> for GuardedTree<T, F> {
+        fn from(tree: Tree<T, F>) -> Self {
+            Self(tree)
+        }
     }
-}
-impl<'a, T: Clone, F> Drop for TreeGuard<'a, T, F> {
-    fn drop(&mut self) {
-        self.0.refresh_prefill();
+    impl<T: Clone, F> std::ops::Deref for GuardedTree<T, F> {
+        type Target = Tree<T, F>;
+        fn deref(&self) -> &Tree<T, F> {
+            &self.0
+        }
     }
-}
-impl<T, F> AsMut<Tree<T, F>> for Tree<T, F> {
-    fn as_mut(&mut self) -> &mut Tree<T, F> {
-        self
+    impl<T: Clone, F: Default> Default for GuardedTree<T, F> {
+        fn default() -> Self {
+            Self(Tree::default())
+        }
     }
-}
-impl<'a, T: Clone, F> AsMut<Tree<T, F>> for TreeGuard<'a, T, F> {
-    fn as_mut(&mut self) -> &mut Tree<T, F> {
-        self.0
+
+    /// Mutable reference to a [`Tree`], to ensure [`Tree::refresh_prefill`] is called on [`Drop`]
+    ///
+    /// See [`GuardedTree::guard`] for construction.
+    #[allow(clippy::module_name_repetitions)]
+    pub struct TreeGuard<'a, T: Clone, F>(&'a mut Tree<T, F>);
+    impl<T: Clone, F> GuardedTree<T, F> {
+        /// Mutable handle to the [`Tree`], usable in
+        /// [`id::NodeIdTyped::try_ref`](`super::id::NodeIdTyped::try_ref`)
+        /// via [`AsMut`]
+        pub fn guard(&mut self) -> TreeGuard<'_, T, F> {
+            TreeGuard(&mut self.0)
+        }
+    }
+    impl<'a, T: Clone, F> Drop for TreeGuard<'a, T, F> {
+        fn drop(&mut self) {
+            self.0.refresh_prefill();
+        }
+    }
+    impl<T, F> AsMut<Tree<T, F>> for Tree<T, F> {
+        fn as_mut(&mut self) -> &mut Tree<T, F> {
+            self
+        }
+    }
+    impl<'a, T: Clone, F> AsMut<Tree<T, F>> for TreeGuard<'a, T, F> {
+        fn as_mut(&mut self) -> &mut Tree<T, F> {
+            self.0
+        }
     }
 }
 
