@@ -225,6 +225,15 @@
         apps.vlc = mkVlcApp { name = "vlc"; visual = true; };
         apps.cvlc = mkVlcApp { name = "cvlc"; visual = false; };
 
+        # `nix run .#rust_doc`
+        apps.rust-doc = let
+            name = "rust-doc";
+            open_command = if pkgs.stdenv.hostPlatform.isDarwin then "open" else "xdg-open";
+        in flake-utils.lib.mkApp {
+          inherit name;
+          drv = pkgs.writeShellScriptBin name "${open_command} ${pkgs.rustc}/share/doc/rust/html/std/index.html";
+        };
+
         # `nix develop`
         devShell = pkgs.mkShell {
           # NOTE: do not include dependencies for `vlc` (broken on darwin systems)
@@ -240,15 +249,17 @@
             pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-analysis
             pkgs.rust-bin.${rustChannel}.${rustVersion}.rls
           ]);
-          shellHook = ''
-            #!/usr/bin/env bash
-            FAKE_CARGO_HOME=$(pwd)/target/.fake-cargo-home
-            rm -rf "$FAKE_CARGO_HOME"
-            mkdir -p "$FAKE_CARGO_HOME"
-            cp -prd ${projectImportCargo.vendorDir}/vendor "$FAKE_CARGO_HOME"
-            chmod -R u+w $FAKE_CARGO_HOME
-            export CARGO_HOME=''${FAKE_CARGO_HOME}/vendor
-          '';
+          # TODO deleteme, just use system CARGO_HOME, it's isn't radioactive!
+          # `nix build` will verify it builds
+          # shellHook = ''
+          #   #!/usr/bin/env bash
+          #   FAKE_CARGO_HOME=$(pwd)/target/.fake-cargo-home
+          #   rm -rf "$FAKE_CARGO_HOME"
+          #   mkdir -p "$FAKE_CARGO_HOME"
+          #   cp -prd ${projectImportCargo.vendorDir}/vendor "$FAKE_CARGO_HOME"
+          #   chmod -R u+w $FAKE_CARGO_HOME
+          #   export CARGO_HOME=''${FAKE_CARGO_HOME}/vendor
+          # '';
           RUST_SRC_PATH = "${pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-src}/lib/rustlib/src/rust/library";
         };
       });
