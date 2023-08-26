@@ -19,7 +19,7 @@ where
     {
         let mut path = super::parse_path(path_str)?;
         loop {
-            let (_, node) = path.try_ref_shared(&self.tree)?;
+            let (_, node) = path.try_ref_shared(&self.inner.tree)?;
             act_fn(&path, &node.filter);
             if let NodePathTyped::Child(child_path) = path {
                 let (child_path, _) = child_path.into_parent();

@@ -46,10 +46,10 @@ fn create_item_node() -> Result<(), Error> {
 #[test]
 fn remove_node() -> Result<(), Error> {
     let mut s = Sequencer::new(DebugItemSource, String::default());
-    assert_eq!(s.tree.sum_node_count(), 1, "beginning length");
+    assert_eq!(s.inner.tree.sum_node_count(), 1, "beginning length");
     // add
     s.add_node(".", String::new())?;
-    assert_eq!(s.tree.sum_node_count(), 2, "length after add");
+    assert_eq!(s.inner.tree.sum_node_count(), 2, "length after add");
     // remove
     let expect_removed = q_filter_tree::NodeInfo::Chain {
         queue: VecDeque::new(),
@@ -58,7 +58,7 @@ fn remove_node() -> Result<(), Error> {
         order: OrderType::default(),
     };
     assert_eq!(s.remove_node(".0#1")?, (1, expect_removed));
-    assert_eq!(s.tree.sum_node_count(), 1, "length after removal");
+    assert_eq!(s.inner.tree.sum_node_count(), 1, "length after removal");
     Ok(())
 }
 
