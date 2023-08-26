@@ -77,14 +77,15 @@
           inherit system;
           overlays = [
             rust-overlay.overlays.default (self: super: let
-              rust-bundle = self.rust-bin.${rustChannel}.${rustVersion}.default.override {
+              rustToolchain = self.rust-bin.${rustChannel}.${rustVersion}.default.override {
                 # include wasm32 for frontend compilation via trunk
                 targets = [ "wasm32-unknown-unknown" ];
               };
             in {
               # unpack rust-overlay's bundles to inform crate2nix
-              rustc = rust-bundle;
-              cargo = rust-bundle;
+              rustc = rustToolchain;
+              cargo = rustToolchain;
+              inherit rustToolchain;
             })
           ];
         };
@@ -235,19 +236,23 @@
         };
 
         # `nix develop`
-        devShell = pkgs.mkShell {
+        devShell = let
+          rustToolchainForDevshell = pkgs.rustToolchain.override { extensions = [ "rust-analyzer" "rust-src" ]; };
+        in pkgs.mkShell {
           # NOTE: do not include dependencies for `vlc` (broken on darwin systems)
           # inputsFrom = builtins.attrValues self.packages.${system};
           # inputsFrom = [ self.defaultPackage.${system} frontend ];
           buildInputs = nativeBuildInputs ++ buildInputs ++ trunkBuildDeps ++ ([
             # development-only tools go here
+            rustToolchainForDevshell
             pkgs.nixpkgs-fmt
             pkgs.cargo-deny
             pkgs.cargo-edit
             # pkgs.cargo-watch
             pkgs.bacon
-            pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-analysis
-            pkgs.rust-bin.${rustChannel}.${rustVersion}.rls
+            ## TODO deleteme, these are deprecated
+            # pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-analysis
+            # pkgs.rust-bin.${rustChannel}.${rustVersion}.rls
           ]);
           # TODO deleteme, just use system CARGO_HOME, it's isn't radioactive!
           # `nix build` will verify it builds
@@ -260,7 +265,7 @@
           #   chmod -R u+w $FAKE_CARGO_HOME
           #   export CARGO_HOME=''${FAKE_CARGO_HOME}/vendor
           # '';
-          RUST_SRC_PATH = "${pkgs.rust-bin.${rustChannel}.${rustVersion}.rust-src}/lib/rustlib/src/rust/library";
+          RUST_SRC_PATH = "${rustToolchainForDevshell}/lib/rustlib/src/rust/library";
         };
       });
       test_nixosConfiguration = system: let
