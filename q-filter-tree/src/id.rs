@@ -253,7 +253,8 @@ impl NodePath<ty::Child> {
 
 impl<T: Type> NodePath<T> {
     /// Appends a path element
-    pub(crate) fn append(self, next: NodePathElem) -> NodePath<Child> {
+    #[allow(clippy::missing_panics_doc)] // guaranteed by Vec::push logic
+    pub fn append(self, next: NodePathElem) -> NodePath<Child> {
         let mut parts = self.into_elems();
         parts.push(next);
         NodePath::new(parts).expect("appended part makes Vec nonempty")

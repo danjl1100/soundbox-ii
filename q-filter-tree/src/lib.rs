@@ -256,7 +256,7 @@ mod guard {
 
     /// Wrapper around [`Tree`] that requires mutable access to go through [`TreeGuard`],
     /// to ensure [`Tree::refresh_prefill`] is called on [`Drop`]
-    pub struct GuardedTree<T: Clone, F>(Tree<T, F>);
+    pub struct GuardedTree<T, F>(Tree<T, F>);
     impl<T: Clone, F> From<Tree<T, F>> for GuardedTree<T, F> {
         fn from(tree: Tree<T, F>) -> Self {
             Self(tree)

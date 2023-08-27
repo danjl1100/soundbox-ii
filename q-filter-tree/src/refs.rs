@@ -162,6 +162,8 @@ impl NodePath<ty::Root> {
             sequence_counter,
         }
     }
+    // NOTE: `try_ref_shared()` is omitted for `NodePath<ty::Root>`,
+    //       instead use `Tree::root_node_shared`
 }
 impl NodePath<ty::Child> {
     /// Returns `NodeRefMutWeighted` within the specified `Tree`
@@ -209,7 +211,38 @@ impl NodePath<ty::Child> {
 }
 impl NodePathTyped {
     /// Returns `NodeRefMut` within the specified `Tree`
+    /// # Errors
+    /// Returns an error if the specified `NodeId` does not point to a valid node
     ///
+    pub fn try_ref<'tree, T, F>(
+        &self,
+        tree: &'tree mut impl AsMut<Tree<T, F>>,
+    ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
+        let tree = tree.as_mut();
+        match self {
+            Self::Root(path) => Ok(path.try_ref(tree)),
+            Self::Child(path) => path.try_ref(tree).map(NodeRefMutWeighted::into_inner),
+        }
+    }
+    /// Returns `Node` within the specified `Tree`
+    ///
+    /// # Errors
+    /// Returns an error if the specified `NodeId` does not point to a valid node
+    ///
+    pub fn try_ref_shared<'tree, T, F>(
+        &self,
+        tree: &'tree Tree<T, F>,
+    ) -> Result<(Option<Weight>, &'tree Node<T, F>), InvalidNodePath> {
+        match self {
+            Self::Root(_) => Ok((None, &tree.root)),
+            Self::Child(path) => path
+                .try_ref_shared(tree)
+                .map(|(weight, node)| (Some(weight), node)),
+        }
+    }
+}
+impl NodePathRefTyped<'_> {
+    /// Returns `NodeRefMut` within the specified `Tree`
     /// # Errors
     /// Returns an error if the specified `NodeId` does not point to a valid node
     ///

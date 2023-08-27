@@ -51,6 +51,9 @@ pub mod command;
 
 pub mod cli;
 
+#[cfg(feature = "kdl")]
+pub mod persistence;
+
 // conversions, for ergonomic use with `ItemSource`
 type Item<T, F> = <T as ItemSource<F>>::Item;
 type SeqItem<T, F> = q_filter_tree::SequenceAndItem<Item<T, F>>;
@@ -58,13 +61,14 @@ type SeqItem<T, F> = q_filter_tree::SequenceAndItem<Item<T, F>>;
 // type TreeGuard<'a, T, F> = q_filter_tree::TreeGuard<'a, Item<T, F>, F>;
 type NodeInfo<T, F> = q_filter_tree::NodeInfo<Item<T, F>, F>;
 
-/// Sequencer for tracks (using [`q_filter_tree`] back-end) from a user-specified source
+/// Sequencer for tracks from a user-specified source
 #[derive(Default)]
 pub struct Sequencer<T: ItemSource<F>, F> {
     inner: SequencerTree<Item<T, F>, F>,
     item_source: T,
 }
-struct SequencerTree<T: Clone, F> {
+/// Tree of filters for selecting tracks, using [`q_filter_tree`] back-end
+pub struct SequencerTree<T, F> {
     tree: q_filter_tree::GuardedTree<T, F>,
 }
 struct SequencerTreeGuard<'a, T: Clone, F> {
@@ -105,10 +109,9 @@ where
 {
     fn inner_add_node(
         &mut self,
-        parent_path_str: &str,
+        parent_path: NodePathRefTyped<'_>,
         filter: F,
     ) -> Result<NodeId<ty::Child>, Error> {
-        let parent_path = parse_path(parent_path_str)?;
         let tree_guard = &mut self.guard;
         let mut parent_ref = parent_path.try_ref(tree_guard)?;
         let mut child_nodes = parent_ref
@@ -122,8 +125,12 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    fn add_node(&mut self, parent_path_str: &str, filter: F) -> Result<NodeId<ty::Child>, Error> {
-        let new_node_id = self.inner_add_node(parent_path_str, filter)?;
+    fn add_node(
+        &mut self,
+        parent_path: NodePathRefTyped<'_>,
+        filter: F,
+    ) -> Result<NodeId<ty::Child>, Error> {
+        let new_node_id = self.inner_add_node(parent_path, filter)?;
         Ok(new_node_id)
     }
     /// Adds a terminal `Node` to the specified path.
@@ -133,10 +140,10 @@ where
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn add_terminal_node(
         &mut self,
-        parent_path_str: &str,
+        parent_path: NodePathRefTyped<'_>,
         filter: F,
     ) -> Result<NodeId<ty::Child>, Error> {
-        let new_node_id = self.inner_add_node(parent_path_str, filter)?;
+        let new_node_id = self.inner_add_node(parent_path, filter)?;
         let tree_guard = &mut self.guard;
         let mut node_ref = new_node_id.try_ref(tree_guard)?;
         node_ref.overwrite_child_items_uniform(std::iter::empty());
@@ -312,7 +319,9 @@ where
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn add_node(&mut self, parent_path_str: &str, filter: F) -> Result<NodeIdStr, Error> {
-        let new_node_id = self.inner.guard().add_node(parent_path_str, filter)?;
+        let parent_path = parse_path(parent_path_str)?;
+        let parent_path = (&parent_path).into();
+        let new_node_id = self.inner.guard().add_node(parent_path, filter)?;
         Ok(serialize_id(NodeIdTyped::from(new_node_id))?)
     }
     /// Adds a terminal `Node` to the specified path.
@@ -321,8 +330,10 @@ where
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn add_terminal_node(&mut self, parent_path_str: &str, filter: F) -> Result<NodeIdStr, Error> {
+        let parent_path = parse_path(parent_path_str)?;
+        let parent_path = (&parent_path).into();
         let mut tree_guard = self.inner.guard();
-        let new_node_id = tree_guard.add_terminal_node(parent_path_str, filter)?;
+        let new_node_id = tree_guard.add_terminal_node(parent_path, filter)?;
         Self::inner_update_node(&self.item_source, &new_node_id, &mut tree_guard)?;
         Ok(serialize_id(new_node_id)?)
     }
