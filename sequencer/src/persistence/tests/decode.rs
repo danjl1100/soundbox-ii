@@ -45,30 +45,6 @@ impl KdlEntryVistor for NoOpFilterVisitor {
         Ok(())
     }
 }
-// impl FromKdlEntries for NoOpFilter {
-//     type Error = String;
-//     fn try_from(
-//         entries: &[kdl::KdlEntry],
-//     ) -> Result<Self, (Self::Error, Option<miette::SourceSpan>)> {
-//         if let Some((fail_str, span)) = entries.iter().find_map(|entry| {
-//             if let Some(name) = entry.name() {
-//                 if name.value() == "weight" {
-//                     return Some(("weight not allowed", *entry.span()));
-//                 }
-//             }
-//             match (entry.name(), entry.value()) {
-//                 (Some(name), kdl::KdlValue::String(fail_str)) if name.value() == "fail" => {
-//                     Some((fail_str, *entry.span()))
-//                 }
-//                 _ => None,
-//             }
-//         }) {
-//             Err((fail_str.to_owned(), Some(span)))
-//         } else {
-//             Ok(NoOpFilter)
-//         }
-//     }
-// }
 type ConfigAndTree<F> = (SequencerConfig<(), F>, SequencerTree<(), F>);
 fn from_str_no_op_filter(s: &str) -> Result<ConfigAndTree<NoOpFilter>, ParseError<NoOpFilter>> {
     SequencerConfig::parse_from_str(s)
@@ -86,14 +62,34 @@ fn empty() {
 
 #[test]
 fn simple() {
-    let simple = "root {
-        leaf {}
-    }";
+    let inputs = [
+        (
+            "root {
+                leaf {}
+            }",
+            2,
+        ),
+        ("root { chain {}; }", 2),
+        ("root { chain { leaf; }; }", 3),
+        ("root { chain { chain; }; }", 3),
+    ];
+    for (input, expected_count) in inputs {
+        let (config, seq_tree) = from_str_no_op_filter(input).expect("valid seq KDL");
+        assert_eq!(config.previous_doc.to_string(), input);
+
+        let tree = seq_tree.tree;
+        assert_eq!(tree.sum_node_count(), expected_count);
+    }
+}
+
+#[test]
+fn attribute_types_valid() {
+    let simple = r#"root str="12345" bool=true i64=-3409432493"#;
     let (config, seq_tree) = from_str_no_op_filter(simple).expect("valid seq KDL");
     assert_eq!(config.previous_doc.to_string(), simple);
 
     let tree = seq_tree.tree;
-    assert_eq!(tree.sum_node_count(), 2);
+    assert_eq!(tree.sum_node_count(), 1);
 }
 
 #[test]
@@ -101,7 +97,7 @@ fn weights() {
     let weights = "root {
         leaf weight=2     /* leaf 1 */
         leaf weight=3     /* leaf 2 */
-        node weight=1 {   /* node 3 */
+        chain weight=1 {  /* chain 3 */
             leaf weight=0 /* leaf 4 */
         }
     }";
@@ -114,15 +110,15 @@ fn weights() {
     let path_root = tree.root_id().into_inner();
     let path_leaf1 = path_root.append(0);
     let path_leaf2 = path_root.append(1);
-    let path_node3 = path_root.append(2);
-    let path_leaf4 = path_node3.clone().append(0);
+    let path_chain3 = path_root.append(2);
+    let path_leaf4 = path_chain3.clone().append(0);
 
     let (leaf1_weight, _) = path_leaf1.try_ref_shared(&tree).expect("leaf1 exists");
     assert_eq!(leaf1_weight, 2);
     let (leaf2_weight, _) = path_leaf2.try_ref_shared(&tree).expect("leaf2 exists");
     assert_eq!(leaf2_weight, 3);
-    let (node3_weight, _) = path_node3.try_ref_shared(&tree).expect("node3 exists");
-    assert_eq!(node3_weight, 1);
+    let (chain3_weight, _) = path_chain3.try_ref_shared(&tree).expect("chain3 exists");
+    assert_eq!(chain3_weight, 1);
     let (leaf4_weight, _) = path_leaf4.try_ref_shared(&tree).expect("leaf4 exists");
     assert_eq!(leaf4_weight, 0);
 }
@@ -140,8 +136,8 @@ fn error_root_missing() {
 }
 #[test]
 fn error_root_tag_invalid() {
-    let no_input = "not-root";
-    let Err(err) = from_str_no_op_filter(no_input) else {
+    let input = "not-root";
+    let Err(err) = from_str_no_op_filter(input) else {
         panic!("expected error")
     };
     let ParseError::Node(node_err) = err else {
@@ -149,7 +145,7 @@ fn error_root_tag_invalid() {
     };
     assert_eq!(
         node_err.kind,
-        NodeErrorKind::RootTagNameInvalid {
+        NodeErrorKind::TagNameInvalid {
             found: "not-root".to_string(),
             expected: &["root"],
         }
@@ -157,16 +153,27 @@ fn error_root_tag_invalid() {
 }
 #[test]
 fn error_root_duplicate() {
-    let no_input = r#"root {
+    let input = r#"root {
     }
     another {}"#;
-    let Err(err) = from_str_no_op_filter(no_input) else {
+    let Err(err) = from_str_no_op_filter(input) else {
         panic!("expected error")
     };
     let ParseError::Node(node_err) = err else {
         panic!("expected ParseError, got {err:?}")
     };
     assert_eq!(node_err.kind, NodeErrorKind::RootDuplicate);
+}
+#[test]
+fn error_root_weight() {
+    let input = r#"root weight=1 {}"#;
+    let Err(err) = from_str_no_op_filter(input) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    assert_eq!(node_err.kind, NodeErrorKind::RootWeight);
 }
 #[test]
 fn error_attribute_invalid() {
@@ -180,5 +187,128 @@ fn error_attribute_invalid() {
     assert_eq!(
         node_err.kind,
         NodeErrorKind::AttributesInvalid("fail1".to_string())
+    );
+}
+#[test]
+fn error_attribute_invalid_type() {
+    let tests = [
+        "root 0b01010110",
+        "root 0xFACEB01D",
+        "root 0o247210",
+        "root 2.34",
+        "root null",
+    ];
+    for attr_invalid in tests {
+        let Err(err) = from_str_no_op_filter(attr_invalid) else {
+            panic!("expected error")
+        };
+        let ParseError::Node(node_err) = err else {
+            panic!("expected ParseError, got {err:?}")
+        };
+        assert_eq!(node_err.kind, NodeErrorKind::AttributeInvalidType);
+    }
+}
+#[test]
+fn error_attribute_invalid_passthru() {
+    let tests = [
+        (r#"root fail="this-fail""#, "this-fail"),
+        (r#"root fail="this-fail" fail="not this""#, "this-fail"),
+        (r#"root dk=true dk=true dk=true fail="goose""#, "goose"),
+        (r#"root "a" "b" "c" 1 2 3 fail="x""#, "x"),
+    ];
+    for (attr_invalid, fail_arg) in tests {
+        let Err(err) = from_str_no_op_filter(attr_invalid) else {
+            panic!("expected error")
+        };
+        let ParseError::Node(node_err) = err else {
+            panic!("expected ParseError, got {err:?}")
+        };
+        assert_eq!(
+            node_err.kind,
+            NodeErrorKind::AttributesInvalid(fail_arg.to_string())
+        );
+    }
+}
+#[test]
+fn error_weight_invalid() {
+    #[rustfmt::skip]
+    let tests = [
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=0b01010110; }"),
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=0xFACEB01D; }"),
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=0o247210; }"),
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=2.34; }"),
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=null; }"),
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=\"string\"; }"),
+        (NodeErrorKind::WeightInvalidType, "root { chain weight=true; }"),
+        (NodeErrorKind::WeightInvalidValue, "root { chain weight=4294967296; }"),
+    ];
+    for (expected_kind, weight_invalid) in tests {
+        let Err(err) = from_str_no_op_filter(weight_invalid) else {
+            panic!("expected error")
+        };
+        let ParseError::Node(node_err) = err else {
+            panic!("expected ParseError, got {err:?}")
+        };
+        assert_eq!(node_err.kind, expected_kind);
+    }
+}
+#[test]
+fn error_weight_duplicate() {
+    let weight_duplicate = "root { chain weight=1 weight=5; }";
+    let Err(err) = from_str_no_op_filter(weight_duplicate) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    let NodeErrorKind::WeightDuplicate { first, second } = node_err.kind else {
+        panic!("expected WeightDuplicate, got {node_err:?}");
+    };
+    assert_eq!(first.0, 1);
+    assert_eq!(second.0, 5);
+}
+#[test]
+fn error_leaf_not_empty() {
+    let input = "root { leaf { leaf; }; }";
+    let Err(err) = from_str_no_op_filter(input) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    assert_eq!(node_err.kind, NodeErrorKind::LeafNotEmpty);
+}
+#[test]
+fn error_leaf_tag_invalid() {
+    let input = "root { not-chain-or-leaf; }";
+    let Err(err) = from_str_no_op_filter(input) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    assert_eq!(
+        node_err.kind,
+        NodeErrorKind::TagNameInvalid {
+            found: "not-chain-or-leaf".to_string(),
+            expected: &["chain", "leaf"],
+        }
+    );
+}
+#[test]
+fn error_chain_tag_invalid() {
+    let input = "root { not-chain { leaf; }; }";
+    let Err(err) = from_str_no_op_filter(input) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    assert_eq!(
+        node_err.kind,
+        NodeErrorKind::TagNameInvalid {
+            found: "not-chain".to_string(),
+            expected: &["chain"],
+        }
     );
 }

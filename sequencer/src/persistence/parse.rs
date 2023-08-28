@@ -14,6 +14,7 @@ const NAME_CHAIN: &str = "chain";
 const NAME_LEAF: &str = "leaf";
 
 const EXPECTED_NAME_ROOT: &[&str] = &[NAME_ROOT];
+const EXPECTED_NAMES_CHAIN: &[&str] = &[NAME_CHAIN];
 const EXPECTED_NAMES_CHAIN_LEAF: &[&str] = &[NAME_CHAIN, NAME_LEAF];
 
 const ATTRIBUTE_WEIGHT: &str = "weight";
@@ -40,11 +41,10 @@ where
 
     let (root_weight, root_filter) = entries_to_weight_and_filter(root)?;
     if let Some((_, span)) = root_weight {
-        // TODO test for this error
-        // return Err(NodeError {
-        //     span,
-        //     kind: NodeErrorKind::RootWeight,
-        // });
+        return Err(NodeError {
+            span,
+            kind: NodeErrorKind::RootWeight,
+        });
     }
 
     let mut seq_tree = SequencerTree::new(root_filter);
@@ -81,19 +81,38 @@ where
 
             let children = node_children(node);
 
-            let new_node_id = if children.is_empty() {
-                // terminal node
-                // TODO verify KdlNode name is NAME_LEAF
-                self.seq_tree_guard
-                    .add_terminal_node(parent_path, filter)
-                    .expect(EXPECT_VALID_PARENT_PATH)
-            } else {
-                // chain node
-                // TODO verify KdlNode name is NAME_CHAIN
-                self.seq_tree_guard
-                    .add_node(parent_path, filter)
-                    .expect(EXPECT_VALID_PARENT_PATH)
-            };
+            let new_node_id = match node.name().value() {
+                n if n == NAME_CHAIN => {
+                    // chain = chain node (may or may not be empty)
+                    Ok(self
+                        .seq_tree_guard
+                        .add_node(parent_path, filter)
+                        .expect(EXPECT_VALID_PARENT_PATH))
+                }
+                n if n == NAME_LEAF => {
+                    // leaf = empty terminal node
+                    children
+                        .is_empty()
+                        .then(|| {
+                            self.seq_tree_guard
+                                .add_terminal_node(parent_path, filter)
+                                .expect(EXPECT_VALID_PARENT_PATH)
+                        })
+                        .ok_or(NodeError {
+                            span: *node.span(),
+                            kind: NodeErrorKind::LeafNotEmpty,
+                        })
+                }
+                _ => {
+                    // invalid name
+                    let expected_names = if children.is_empty() {
+                        EXPECTED_NAMES_CHAIN_LEAF
+                    } else {
+                        EXPECTED_NAMES_CHAIN
+                    };
+                    Err(NodeError::tag_name_expected(node, expected_names))
+                }
+            }?;
             let mut new_node = new_node_id
                 .try_ref(&mut self.seq_tree_guard.guard)
                 .expect("created node path exists");
@@ -146,8 +165,6 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
         };
 
         let error_attribute_type = || {
-            return Ok(());
-            // TODO test for this error
             Err(NodeError {
                 span: *entry.span(),
                 kind: NodeErrorKind::AttributeInvalidType,
@@ -157,24 +174,18 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
         match entry.name() {
             Some(name) if name.value() == ATTRIBUTE_WEIGHT => {
                 let kdl::KdlValue::Base10(new_weight) = entry.value() else {
-                    continue;
-                    // TODO test for this error
                     return Err(NodeError {
                         span: *entry.span(),
                         kind: NodeErrorKind::WeightInvalidType,
                     });
                 };
                 let Ok(new_weight) = Weight::try_from(*new_weight) else {
-                    continue;
-                    // TODO test for this error
                     return Err(NodeError {
                         span: *entry.span(),
                         kind: NodeErrorKind::WeightInvalidValue,
                     });
                 };
                 if let Some(first) = weight {
-                    continue;
-                    // TODO test for this error
                     Err(NodeError {
                         span: *entry.span(),
                         kind: NodeErrorKind::WeightDuplicate {
@@ -201,7 +212,8 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
                         .map_err(error_attribute_invalid),
                     kdl::KdlValue::Base2(_)
                     | kdl::KdlValue::Base8(_)
-                    | kdl::KdlValue::Base10Float(_)
+                    | kdl::KdlValue::Base10Float(_) // NOTE: Explicitly disallowing floats.
+                                                    // (can't think of a valid usecase for filters)
                     | kdl::KdlValue::Base16(_)
                     | kdl::KdlValue::Null => error_attribute_type(),
                 }
@@ -218,14 +230,14 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
                     .map_err(error_attribute_invalid),
                 kdl::KdlValue::Base2(_)
                 | kdl::KdlValue::Base8(_)
-                | kdl::KdlValue::Base10Float(_)
+                | kdl::KdlValue::Base10Float(_) // NOTE: Explicitly disallowing floats.
+                                                // (can't think of a valid usecase for filters)
                 | kdl::KdlValue::Base16(_)
                 | kdl::KdlValue::Null => error_attribute_type(),
             },
         }?;
     }
 
-    // TODO test for this error, too
     let filter = F::try_finish(visitor).map_err(|err| NodeError {
         span: *node.span(),
         kind: NodeErrorKind::AttributesInvalid(err),
@@ -239,10 +251,11 @@ fn node_children(node: &KdlNode) -> &[KdlNode] {
 
 impl<E> NodeError<E> {
     fn tag_name_expected(node: &KdlNode, expected: &'static [&'static str]) -> Self {
-        let found = node.name().to_string();
+        let node_name = node.name();
+        let found = node_name.to_string();
         Self {
-            span: *node.span(),
-            kind: NodeErrorKind::RootTagNameInvalid { found, expected },
+            span: *node_name.span(),
+            kind: NodeErrorKind::TagNameInvalid { found, expected },
         }
     }
 }

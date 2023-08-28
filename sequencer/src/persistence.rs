@@ -124,9 +124,9 @@ pub struct NodeError<E> {
 pub enum NodeErrorKind<E> {
     /// Root node was not defined
     RootMissing,
-    /// Invalid tag name on the root node
+    /// Invalid tag name on a node
     #[allow(missing_docs)]
-    RootTagNameInvalid {
+    TagNameInvalid {
         found: String,
         expected: &'static [&'static str],
     },
@@ -149,6 +149,8 @@ pub enum NodeErrorKind<E> {
         /// Duplicate value
         second: (Weight, miette::SourceSpan),
     },
+    /// Leaf node found with child nodes
+    LeafNotEmpty,
 }
 
 fn update_for_nodes<T, F>(doc: &mut KdlDocument, sequencer: &SequencerTree<T, F>)
