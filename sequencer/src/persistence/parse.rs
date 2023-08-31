@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Parses the user-editable configuration of a [`SequencerTree`]
 
-use super::{FromKdlEntries, KdlEntryVistor, NodeError, NodeErrorKind};
+use super::{FromKdlEntries, KdlEntryVisitor, NodeError, NodeErrorKind, SingleRootKdlDocument};
 use crate::{SequencerTree, SequencerTreeGuard};
 use kdl::{KdlDocument, KdlNode};
 use q_filter_tree::{
@@ -9,13 +9,9 @@ use q_filter_tree::{
     Weight,
 };
 
-const NAME_ROOT: &str = "root";
-const NAME_CHAIN: &str = "chain";
-const NAME_LEAF: &str = "leaf";
-
-const EXPECTED_NAME_ROOT: &[&str] = &[NAME_ROOT];
-const EXPECTED_NAMES_CHAIN: &[&str] = &[NAME_CHAIN];
-const EXPECTED_NAMES_CHAIN_LEAF: &[&str] = &[NAME_CHAIN, NAME_LEAF];
+const EXPECTED_NAME_ROOT: &[&str] = &[super::NAME_ROOT];
+const EXPECTED_NAMES_CHAIN: &[&str] = &[super::NAME_CHAIN];
+const EXPECTED_NAMES_CHAIN_LEAF: &[&str] = &[super::NAME_CHAIN, super::NAME_LEAF];
 
 const ATTRIBUTE_WEIGHT: &str = "weight";
 const DEFAULT_WEIGHT: Weight = 1;
@@ -27,15 +23,19 @@ where
     seq_tree_guard: SequencerTreeGuard<'a, T, F>,
 }
 pub(super) fn parse_nodes<T, F>(
-    doc: &KdlDocument,
-) -> Result<SequencerTree<T, F>, NodeError<F::Error>>
+    doc: KdlDocument,
+) -> Result<(SingleRootKdlDocument, SequencerTree<T, F>), NodeError<F::Error>>
 where
     T: Clone,
     F: FromKdlEntries,
 {
-    let root = get_single_root(doc)?;
+    let doc = SingleRootKdlDocument::try_from(doc).map_err(|(err, doc)| NodeError {
+        span: *doc.span(),
+        kind: NodeErrorKind::RootCount(err),
+    })?;
+    let root = doc.single_root();
 
-    if root.name().value() != NAME_ROOT {
+    if root.name().value() != super::NAME_ROOT {
         return Err(NodeError::tag_name_expected(&root, EXPECTED_NAME_ROOT));
     }
 
@@ -52,7 +52,7 @@ where
     let seq_tree_guard = seq_tree.guard();
     Parser { seq_tree_guard }.parse(root, root_path)?;
 
-    Ok(seq_tree)
+    Ok((doc, seq_tree))
 }
 impl<T, F> Parser<'_, T, F>
 where
@@ -82,14 +82,14 @@ where
             let children = node_children(node);
 
             let new_node_id = match node.name().value() {
-                n if n == NAME_CHAIN => {
+                n if n == super::NAME_CHAIN => {
                     // chain = chain node (may or may not be empty)
                     Ok(self
                         .seq_tree_guard
                         .add_node(parent_path, filter)
                         .expect(EXPECT_VALID_PARENT_PATH))
                 }
-                n if n == NAME_LEAF => {
+                n if n == super::NAME_LEAF => {
                     // leaf = empty terminal node
                     children
                         .is_empty()
@@ -128,27 +128,6 @@ where
         }
         Ok(())
     }
-}
-
-fn get_single_root<E>(doc: &KdlDocument) -> Result<&KdlNode, NodeError<E>> {
-    let mut nodes_iter = doc.nodes().iter();
-
-    let Some(root) = nodes_iter.next() else {
-        return Err(NodeError {
-            span: *doc.span(),
-            kind: NodeErrorKind::RootMissing,
-        });
-    };
-
-    if let Some(extra) = nodes_iter.next() {
-        return Err(NodeError {
-            span: *extra.span(),
-            kind: NodeErrorKind::RootDuplicate,
-        });
-    }
-    debug_assert!(nodes_iter.next().is_none());
-
-    Ok(root)
 }
 
 type WeightAndSpan = (Weight, miette::SourceSpan);
@@ -202,13 +181,13 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
                 let key = name.value();
                 match entry.value() {
                     kdl::KdlValue::RawString(value) | kdl::KdlValue::String(value) => visitor
-                        .visit_entry_str(key, value)
+                        .visit_property_str(key, value)
                         .map_err(error_attribute_invalid),
                     kdl::KdlValue::Base10(value) => visitor
-                        .visit_entry_i64(key, *value)
+                        .visit_property_i64(key, *value)
                         .map_err(error_attribute_invalid),
                     kdl::KdlValue::Bool(value) => visitor
-                        .visit_entry_bool(key, *value)
+                        .visit_property_bool(key, *value)
                         .map_err(error_attribute_invalid),
                     kdl::KdlValue::Base2(_)
                     | kdl::KdlValue::Base8(_)
@@ -220,13 +199,13 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
             }
             None => match entry.value() {
                 kdl::KdlValue::RawString(value) | kdl::KdlValue::String(value) => visitor
-                    .visit_value_str(value)
+                    .visit_argument_str(value)
                     .map_err(error_attribute_invalid),
                 kdl::KdlValue::Base10(value) => visitor
-                    .visit_value_i64(*value)
+                    .visit_argument_i64(*value)
                     .map_err(error_attribute_invalid),
                 kdl::KdlValue::Bool(value) => visitor
-                    .visit_value_bool(*value)
+                    .visit_argument_bool(*value)
                     .map_err(error_attribute_invalid),
                 kdl::KdlValue::Base2(_)
                 | kdl::KdlValue::Base8(_)

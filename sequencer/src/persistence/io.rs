@@ -1,7 +1,8 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Contains the IO wrapper [`SequencerConfigFile`] around [`SequencerConfig`]
 
-use super::{FromKdlEntries, ParseError, Sequencer, SequencerConfig, SequencerTree};
+use super::{FromKdlEntries, IntoKdlEntries, ParseError, SequencerConfig, SequencerTree};
+use shared::Never;
 
 /// Wrapper around [`SequencerConfig`] with a file open for subsequent writing
 pub struct SequencerConfigFile<T, F> {
@@ -12,7 +13,7 @@ pub struct SequencerConfigFile<T, F> {
 impl<T, F> SequencerConfigFile<T, F>
 where
     T: Clone,
-    F: FromKdlEntries,
+    F: FromKdlEntries + IntoKdlEntries,
 {
     /// Reads the config from a KDL file
     ///
@@ -54,18 +55,21 @@ where
             .map_err(ReadErrorKind::Parse)
     }
 
-    /// Updates the internal KDL document to match the specified [`Sequencer`] and writes the
+    /// Updates the internal KDL document to match the specified [`SequencerTree`] and writes the
     /// KDL text to the file
     ///
     /// # Errors
     /// Returns an error if IO fails
-    pub fn update_to_file(&mut self, sequencer: &Sequencer<T, F>) -> Result<(), WriteError<F>>
-    where
-        T: crate::ItemSource<F>,
-    {
+    pub fn update_to_file(&mut self, sequencer: &SequencerTree<T, F>) -> Result<(), WriteError<F>> {
         use std::io::Write;
 
-        let contents = self.inner.update_to_string(sequencer);
+        let contents = self
+            .inner
+            .update_to_string(sequencer)
+            .map_err(|err| WriteError {
+                path: self.path.clone(),
+                kind: WriteErrorKind::Serialize(err),
+            })?;
         self.file
             .write_all(contents.as_bytes())
             .map_err(WriteErrorKind::IO)
@@ -95,9 +99,9 @@ pub enum ReadErrorKind<F: FromKdlEntries> {
 /// Error saving [`SequencerConfig`] to a file
 #[allow(missing_docs)]
 #[non_exhaustive]
-pub struct WriteError<F: FromKdlEntries> {
+pub struct WriteError<F: IntoKdlEntries> {
     pub path: std::path::PathBuf,
-    pub kind: WriteErrorKind<F>,
+    pub kind: WriteErrorKind<F::Error<Never>>,
 }
 
 /// Error kind for saving [`SequencerConfig`] to a file

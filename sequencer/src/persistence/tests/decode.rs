@@ -1,6 +1,9 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::{
-    persistence::{FromKdlEntries, KdlEntryVistor, NodeErrorKind, ParseError, SequencerConfig},
+    persistence::{
+        FromKdlEntries, KdlEntryVisitor, NodeErrorKind, ParseError, SequencerConfig,
+        SingleRootError,
+    },
     SequencerTree,
 };
 
@@ -24,37 +27,49 @@ impl NoOpFilterVisitor {
         }
     }
 }
-impl KdlEntryVistor for NoOpFilterVisitor {
+impl KdlEntryVisitor for NoOpFilterVisitor {
     type Error = String;
-    fn visit_entry_str(&mut self, key: &str, value: &str) -> Result<(), Self::Error> {
+    fn visit_property_str(&mut self, key: &str, value: &str) -> Result<(), Self::Error> {
         Self::check_fail_condition(key, value.into())
     }
-    fn visit_entry_i64(&mut self, key: &str, value: i64) -> Result<(), Self::Error> {
+    fn visit_property_i64(&mut self, key: &str, value: i64) -> Result<(), Self::Error> {
         Self::check_fail_condition(key, format!("{value}").into())
     }
-    fn visit_entry_bool(&mut self, key: &str, value: bool) -> Result<(), Self::Error> {
+    fn visit_property_bool(&mut self, key: &str, value: bool) -> Result<(), Self::Error> {
         Self::check_fail_condition(key, format!("{value}").into())
     }
-    fn visit_value_str(&mut self, _value: &str) -> Result<(), Self::Error> {
+    fn visit_argument_str(&mut self, _value: &str) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn visit_value_i64(&mut self, _value: i64) -> Result<(), Self::Error> {
+    fn visit_argument_i64(&mut self, _value: i64) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn visit_value_bool(&mut self, _value: bool) -> Result<(), Self::Error> {
+    fn visit_argument_bool(&mut self, _value: bool) -> Result<(), Self::Error> {
         Ok(())
     }
 }
-type ConfigAndTree<F> = (SequencerConfig<(), F>, SequencerTree<(), F>);
-fn from_str_no_op_filter(s: &str) -> Result<ConfigAndTree<NoOpFilter>, ParseError<NoOpFilter>> {
-    SequencerConfig::parse_from_str(s)
+fn from_str_no_op_filter(
+    input_str: &str,
+) -> Result<SequencerTree<(), NoOpFilter>, ParseError<NoOpFilter>> {
+    let (config, seq_tree) = SequencerConfig::parse_from_str(input_str)?;
+
+    assert_eq!(
+        config
+            .previous_doc
+            .as_ref()
+            .expect("doc exists")
+            .to_string(),
+        input_str
+    );
+
+    // NOTE: caller should be the one to call `expect`, for better backtrace
+    Ok(seq_tree)
 }
 
 #[test]
 fn empty() {
     let empty = "root {}";
-    let (config, seq_tree) = from_str_no_op_filter(empty).expect("valid seq KDL");
-    assert_eq!(config.previous_doc.to_string(), empty);
+    let seq_tree = from_str_no_op_filter(empty).expect("valid seq KDL");
 
     let tree = seq_tree.tree;
     assert_eq!(tree.sum_node_count(), 1);
@@ -74,8 +89,7 @@ fn simple() {
         ("root { chain { chain; }; }", 3),
     ];
     for (input, expected_count) in inputs {
-        let (config, seq_tree) = from_str_no_op_filter(input).expect("valid seq KDL");
-        assert_eq!(config.previous_doc.to_string(), input);
+        let seq_tree = from_str_no_op_filter(input).expect("valid seq KDL");
 
         let tree = seq_tree.tree;
         assert_eq!(tree.sum_node_count(), expected_count);
@@ -85,8 +99,7 @@ fn simple() {
 #[test]
 fn attribute_types_valid() {
     let simple = r#"root str="12345" bool=true i64=-3409432493"#;
-    let (config, seq_tree) = from_str_no_op_filter(simple).expect("valid seq KDL");
-    assert_eq!(config.previous_doc.to_string(), simple);
+    let seq_tree = from_str_no_op_filter(simple).expect("valid seq KDL");
 
     let tree = seq_tree.tree;
     assert_eq!(tree.sum_node_count(), 1);
@@ -101,8 +114,7 @@ fn weights() {
             leaf weight=0 /* leaf 4 */
         }
     }";
-    let (config, seq_tree) = from_str_no_op_filter(weights).expect("valid seq KDL");
-    assert_eq!(config.previous_doc.to_string(), weights);
+    let seq_tree = from_str_no_op_filter(weights).expect("valid seq KDL");
 
     let tree = seq_tree.tree;
     assert_eq!(tree.sum_node_count(), 5);
@@ -132,7 +144,10 @@ fn error_root_missing() {
     let ParseError::Node(node_err) = err else {
         panic!("expected ParseError, got {err:?}")
     };
-    assert_eq!(node_err.kind, NodeErrorKind::RootMissing);
+    assert_eq!(
+        node_err.kind,
+        NodeErrorKind::RootCount(SingleRootError::NoNodes)
+    );
 }
 #[test]
 fn error_root_tag_invalid() {
@@ -162,7 +177,10 @@ fn error_root_duplicate() {
     let ParseError::Node(node_err) = err else {
         panic!("expected ParseError, got {err:?}")
     };
-    assert_eq!(node_err.kind, NodeErrorKind::RootDuplicate);
+    assert_eq!(
+        node_err.kind,
+        NodeErrorKind::RootCount(SingleRootError::ManyNodes(2))
+    );
 }
 #[test]
 fn error_root_weight() {
