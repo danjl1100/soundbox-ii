@@ -16,7 +16,7 @@ ARGS="--audio-replay-gain-mode track --http-host ${VLC_BIND_HOST} --http-port ${
 
 case "$1" in
   "macos")
-    echo "!!!NOTE!!! Need to click menu:  View > Add Interface > Web"
+    echo "!!!NOTE!!! Need to click menu:  VLC media player > Add Interface > Web"
     echo ""
     echo "Press enter to launch visual interface (macos app)"
     read a
