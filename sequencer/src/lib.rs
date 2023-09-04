@@ -51,7 +51,6 @@ pub mod command;
 
 pub mod cli;
 
-#[cfg(feature = "kdl")]
 pub mod persistence;
 
 // conversions, for ergonomic use with `ItemSource`
