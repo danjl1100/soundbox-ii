@@ -387,6 +387,17 @@ where
     }
 }
 
+impl NodePathRefTyped<'_> {
+    /// Clones the inner path, to construct [`NodePathTyped`]
+    /// (possibly expensive, so not appropriate for [`From`])
+    pub fn clone_owned(&self) -> NodePathTyped {
+        match *self {
+            NodePathRefTyped::Root(node_path) => NodePathTyped::Root(*node_path),
+            NodePathRefTyped::Child(node_path) => NodePathTyped::Child(node_path.clone()),
+        }
+    }
+}
+
 impl<T: Type> std::fmt::Debug for NodePath<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self.elems())

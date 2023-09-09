@@ -1,7 +1,9 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Parses the user-editable configuration of a [`SequencerTree`]
 
-use super::{FromKdlEntries, KdlEntryVisitor, NodeError, NodeErrorKind, SingleRootKdlDocument};
+use super::{
+    annotate, FromKdlEntries, KdlEntryVisitor, NodeError, NodeErrorKind, SingleRootKdlDocument,
+};
 use crate::{SequencerTree, SequencerTreeGuard};
 use kdl::{KdlDocument, KdlNode};
 use q_filter_tree::{
@@ -10,11 +12,10 @@ use q_filter_tree::{
 };
 
 const EXPECTED_NAME_ROOT: &[&str] = &[super::NAME_ROOT];
-const EXPECTED_NAMES_CHAIN: &[&str] = &[super::NAME_CHAIN];
-const EXPECTED_NAMES_CHAIN_LEAF: &[&str] = &[super::NAME_CHAIN, super::NAME_LEAF];
+const EXPECTED_NAME_CHAIN: &[&str] = &[super::NAME_CHAIN];
+const EXPECTED_NAME_LEAF: &[&str] = &[super::NAME_LEAF];
 
-const ATTRIBUTE_WEIGHT: &str = "weight";
-const DEFAULT_WEIGHT: Weight = 1;
+type DocAndTree<T, F> = (SingleRootKdlDocument, SequencerTree<T, F>);
 
 struct Parser<'a, T, F>
 where
@@ -22,9 +23,7 @@ where
 {
     seq_tree_guard: SequencerTreeGuard<'a, T, F>,
 }
-pub(super) fn parse_nodes<T, F>(
-    doc: KdlDocument,
-) -> Result<(SingleRootKdlDocument, SequencerTree<T, F>), NodeError<F::Error>>
+pub(super) fn parse_nodes<T, F>(doc: KdlDocument) -> Result<DocAndTree<T, F>, NodeError<F::Error>>
 where
     T: Clone,
     F: FromKdlEntries,
@@ -33,13 +32,13 @@ where
         span: *doc.span(),
         kind: NodeErrorKind::RootCount(err),
     })?;
-    let root = doc.single_root();
+    let doc_root = doc.single_root();
 
-    if root.name().value() != super::NAME_ROOT {
-        return Err(NodeError::tag_name_expected(&root, EXPECTED_NAME_ROOT));
+    if doc_root.name().value() != super::NAME_ROOT {
+        return Err(NodeError::tag_name_expected(doc_root, EXPECTED_NAME_ROOT));
     }
 
-    let (root_weight, root_filter) = entries_to_weight_and_filter(root)?;
+    let (root_weight, root_filter) = entries_to_weight_and_filter(doc_root)?;
     if let Some((_, span)) = root_weight {
         return Err(NodeError {
             span,
@@ -50,7 +49,12 @@ where
     let mut seq_tree = SequencerTree::new(root_filter);
     let root_path = seq_tree.tree.root_id().into_inner();
     let seq_tree_guard = seq_tree.guard();
-    Parser { seq_tree_guard }.parse(root, root_path)?;
+    Parser { seq_tree_guard }.parse(doc_root, root_path)?;
+
+    // mutate document, to annotate node ids
+    let mut doc = doc;
+    let root = seq_tree.tree.root_node_shared();
+    annotate_node_ids(doc.single_root_mut(), root).expect("parsed nodes match doc nodes");
 
     Ok((doc, seq_tree))
 }
@@ -61,56 +65,69 @@ where
 {
     fn parse(
         mut self,
-        root: &KdlNode,
+        doc_root: &KdlNode,
         root_path: NodePath<ty::Root>,
     ) -> Result<(), NodeError<F::Error>> {
         let root_path = (&root_path).into();
-        self.add_nodes(root_path, node_children(root))
+        let Some(doc_children) = doc_root.children() else {
+            return Err(NodeError {
+                span: *doc_root.span(),
+                kind: NodeErrorKind::TagMissingChildBlock,
+            });
+        };
+        self.add_nodes(root_path, doc_children.nodes())
     }
     /// Adds all of the specified children to the tree, underneath the specified path prefix
     fn add_nodes(
         &mut self,
         parent_path: NodePathRefTyped<'_>,
-        nodes: &[KdlNode],
+        doc_nodes: &[KdlNode],
     ) -> Result<(), NodeError<F::Error>> {
         const EXPECT_VALID_PARENT_PATH: &str = "valid parent_path upon construction";
 
-        for node in nodes {
-            let (weight_opt, filter) = entries_to_weight_and_filter(node)?;
-            let weight = weight_opt.map_or(DEFAULT_WEIGHT, |(weight, _span)| weight);
+        for doc_node in doc_nodes {
+            let (weight_opt, filter) = entries_to_weight_and_filter(doc_node)?;
+            let weight = weight_opt.map_or(super::DEFAULT_WEIGHT, |(weight, _span)| weight);
 
-            let children = node_children(node);
-
-            let new_node_id = match node.name().value() {
+            let new_node_id = match doc_node.name().value() {
                 n if n == super::NAME_CHAIN => {
                     // chain = chain node (may or may not be empty)
-                    Ok(self
-                        .seq_tree_guard
-                        .add_node(parent_path, filter)
-                        .expect(EXPECT_VALID_PARENT_PATH))
+                    // but MUST have a child block, even if empty
+                    if doc_node.children().is_some() {
+                        Ok(self
+                            .seq_tree_guard
+                            .add_node(parent_path, filter)
+                            .expect(EXPECT_VALID_PARENT_PATH))
+                    } else {
+                        Err(NodeError {
+                            span: *doc_node.span(),
+                            kind: NodeErrorKind::TagMissingChildBlock,
+                        })
+                    }
                 }
                 n if n == super::NAME_LEAF => {
                     // leaf = empty terminal node
-                    children
-                        .is_empty()
+                    doc_node
+                        .children()
+                        .is_none()
                         .then(|| {
                             self.seq_tree_guard
                                 .add_terminal_node(parent_path, filter)
                                 .expect(EXPECT_VALID_PARENT_PATH)
                         })
                         .ok_or(NodeError {
-                            span: *node.span(),
+                            span: *doc_node.span(),
                             kind: NodeErrorKind::LeafNotEmpty,
                         })
                 }
                 _ => {
                     // invalid name
-                    let expected_names = if children.is_empty() {
-                        EXPECTED_NAMES_CHAIN_LEAF
+                    let expected_names = if doc_node.children().is_some() {
+                        EXPECTED_NAME_CHAIN
                     } else {
-                        EXPECTED_NAMES_CHAIN
+                        EXPECTED_NAME_LEAF
                     };
-                    Err(NodeError::tag_name_expected(node, expected_names))
+                    Err(NodeError::tag_name_expected(doc_node, expected_names))
                 }
             }?;
             let mut new_node = new_node_id
@@ -121,9 +138,9 @@ where
             let new_node_path = new_node_id.into_inner();
             let new_node_path = (&new_node_path).into();
 
-            if !children.is_empty() {
+            if let Some(doc_children) = doc_node.children() {
                 // chain node
-                self.add_nodes(new_node_path, children)?;
+                self.add_nodes(new_node_path, doc_children.nodes())?;
             }
         }
         Ok(())
@@ -151,7 +168,7 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
         };
 
         match entry.name() {
-            Some(name) if name.value() == ATTRIBUTE_WEIGHT => {
+            Some(name) if name.value() == super::ATTRIBUTE_WEIGHT => {
                 let kdl::KdlValue::Base10(new_weight) = entry.value() else {
                     return Err(NodeError {
                         span: *entry.span(),
@@ -224,10 +241,6 @@ fn entries_to_weight_and_filter<F: FromKdlEntries>(
     Ok((weight, filter))
 }
 
-fn node_children(node: &KdlNode) -> &[KdlNode] {
-    node.children().map(KdlDocument::nodes).unwrap_or_default()
-}
-
 impl<E> NodeError<E> {
     fn tag_name_expected(node: &KdlNode, expected: &'static [&'static str]) -> Self {
         let node_name = node.name();
@@ -237,4 +250,48 @@ impl<E> NodeError<E> {
             kind: NodeErrorKind::TagNameInvalid { found, expected },
         }
     }
+}
+
+/// Recursively adds annotation comment to the [`KdlNode`]s with the sequence ID for each
+/// corresponding [`q_filter_tree::Node`]
+fn annotate_node_ids<T, F>(
+    doc_node: &mut KdlNode,
+    node: &q_filter_tree::Node<T, F>,
+) -> Result<(), String> {
+    let sequence = node.sequence_num();
+    annotate::add_seq_to_vanilla_node(doc_node, sequence);
+
+    match (doc_node.children_mut(), node.child_nodes()) {
+        (Some(doc_children), Some(node_children)) => {
+            let mut doc_children = doc_children.nodes_mut().iter_mut();
+            for (_weight, tree_child) in node_children {
+                let Some(doc_child) = doc_children.next() else {
+                    return Err(format!(
+                        "tree child with no matching doc_child: {tree_child:?}"
+                    ));
+                };
+                annotate_node_ids(doc_child, tree_child)?;
+            }
+            if let Some(extra) = doc_children.next() {
+                return Err(format!("extra doc child: {extra:?}"));
+            }
+        }
+        (None, None) => {
+            // nothing
+        }
+        (doc_children, node_children) => {
+            let node_children = match node_children {
+                None => "None".to_string(),
+                Some(node_children) => {
+                    let elems: Vec<_> = node_children.collect();
+                    format!("{elems:?}")
+                }
+            };
+            return Err(format!(
+                "doc_children {doc_children:?} mismatch to node_children {node_children:?}"
+            ));
+        }
+    }
+
+    Ok(())
 }

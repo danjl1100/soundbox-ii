@@ -55,10 +55,8 @@ fn from_str_no_op_filter(
 
     assert_eq!(
         config
-            .previous_doc
-            .as_ref()
-            .expect("doc exists")
-            .to_string(),
+            .calculate_nonannotated_doc()
+            .expect("config parsed from string"),
         input_str
     );
 
@@ -80,13 +78,13 @@ fn simple() {
     let inputs = [
         (
             "root {
-                leaf {}
+                leaf
             }",
             2,
         ),
         ("root { chain {}; }", 2),
         ("root { chain { leaf; }; }", 3),
-        ("root { chain { chain; }; }", 3),
+        ("root { chain { chain {}; }; }", 3),
     ];
     for (input, expected_count) in inputs {
         let seq_tree = from_str_no_op_filter(input).expect("valid seq KDL");
@@ -98,7 +96,7 @@ fn simple() {
 
 #[test]
 fn attribute_types_valid() {
-    let simple = r#"root str="12345" bool=true i64=-3409432493"#;
+    let simple = r#"root str="12345" bool=true i64=-3409432493 {}"#;
     let seq_tree = from_str_no_op_filter(simple).expect("valid seq KDL");
 
     let tree = seq_tree.tree;
@@ -298,7 +296,7 @@ fn error_leaf_not_empty() {
 }
 #[test]
 fn error_leaf_tag_invalid() {
-    let input = "root { not-chain-or-leaf; }";
+    let input = "root { not-leaf; }";
     let Err(err) = from_str_no_op_filter(input) else {
         panic!("expected error")
     };
@@ -308,8 +306,8 @@ fn error_leaf_tag_invalid() {
     assert_eq!(
         node_err.kind,
         NodeErrorKind::TagNameInvalid {
-            found: "not-chain-or-leaf".to_string(),
-            expected: &["chain", "leaf"],
+            found: "not-leaf".to_string(),
+            expected: &["leaf"],
         }
     );
 }
@@ -329,4 +327,27 @@ fn error_chain_tag_invalid() {
             expected: &["chain"],
         }
     );
+}
+
+#[test]
+fn error_root_no_child_block() {
+    let input = "root";
+    let Err(err) = from_str_no_op_filter(input) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    assert_eq!(node_err.kind, NodeErrorKind::TagMissingChildBlock);
+}
+#[test]
+fn error_chain_no_child_block() {
+    let input = "root { chain; }";
+    let Err(err) = from_str_no_op_filter(input) else {
+        panic!("expected error")
+    };
+    let ParseError::Node(node_err) = err else {
+        panic!("expected ParseError, got {err:?}")
+    };
+    assert_eq!(node_err.kind, NodeErrorKind::TagMissingChildBlock);
 }

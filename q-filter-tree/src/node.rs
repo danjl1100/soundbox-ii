@@ -267,6 +267,17 @@ impl<T, F> Node<T, F> {
             Children::Items(items) => modify_fn(items),
         }
     }
+    /// Allows read-only access to the chain nodes (if any), or `None` for an item node
+    ///
+    /// NOTE: Mutable handles to nodes are obtained at tree-level via
+    /// [`NodePathTyped::try_ref`](`crate::id::NodePathTyped::try_ref`)
+    pub fn child_nodes(&self) -> Option<impl Iterator<Item = (Weight, &Node<T, F>)>> {
+        match &self.children {
+            Children::Chain(chain) => Some(chain.nodes.iter()),
+            Children::Items(_) => None,
+        }
+    }
+
     /// Returns the number of child nodes
     #[must_use]
     pub fn child_nodes_len(&self) -> usize {

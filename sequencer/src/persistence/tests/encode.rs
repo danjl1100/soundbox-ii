@@ -14,30 +14,6 @@ struct FieldsFilter {
     anonymous_str: String,
 }
 
-// TODO deleteme, Deserialization is not needed for Serialization tests
-// impl FromKdlEntries for FieldsFilter {
-//     type Error = ();
-//     type Visitor = NoOpVisitor;
-//     fn try_finish(visitor: Self::Visitor) -> Result<Self, Self::Error> {
-//         // NOTE: ignores all values upon deserialization
-//         Ok(Self::default())
-//     }
-// }
-// #[derive(Default)]
-// struct NoOpVisitor;
-// #[rustfmt::skip]
-// impl KdlEntryVisitor for NoOpVisitor {
-//     type Error = ();
-
-//     fn visit_property_str(&mut self, _key: &str, _value: &str) -> Result<(), Self::Error> { Ok(()) }
-//     fn visit_property_i64(&mut self, _key: &str, _value: i64) -> Result<(), Self::Error> { Ok(()) }
-//     fn visit_property_bool(&mut self, _key: &str, _value: bool) -> Result<(), Self::Error> { Ok(()) }
-
-//     fn visit_argument_str(&mut self, _value: &str) -> Result<(), Self::Error> { Ok(()) }
-//     fn visit_argument_i64(&mut self, _value: i64) -> Result<(), Self::Error> { Ok(()) }
-//     fn visit_argument_bool(&mut self, _value: bool) -> Result<(), Self::Error> { Ok(()) }
-// }
-
 impl IntoKdlEntries for FieldsFilter {
     type Error<E> = E;
 
@@ -70,7 +46,7 @@ fn updates_root() {
         truthiness: false,
         anonymous_str: "hiya".to_string(),
     };
-    let mut seq_tree = SequencerTree::<(), FieldsFilter>::new(old_filter);
+    let mut seq_tree = SequencerTree::<(), _>::new(old_filter);
 
     {
         // mutate tree
@@ -95,5 +71,137 @@ fn updates_root() {
         r#"root "hiya" foo="root" bar=3 truthiness=false
 "#
         .to_string()
+    );
+}
+
+#[test]
+fn creates_raw_strings() {
+    let root_filter = FieldsFilter {
+        foo: "quote \" string".to_string(),
+        bar: 0,
+        truthiness: true,
+        anonymous_str: "another \" quoted".to_string(),
+    };
+    let seq_tree = SequencerTree::<(), _>::new(root_filter);
+
+    let mut sequencer_config = SequencerConfig::default();
+    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+
+    assert_eq!(
+        new_doc_str,
+        r##"root r#"another " quoted"# foo=r#"quote " string"# bar=0 truthiness=true
+"##
+    );
+}
+
+#[test]
+fn keeps_raw_strings_raw() {
+    let original_filter = FieldsFilter {
+        foo: "starts out \"quoted\"".to_string(),
+        bar: 0,
+        truthiness: false,
+        anonymous_str: "also \"starts\" quoted".to_string(),
+    };
+    let mut seq_tree = SequencerTree::<(), _>::new(original_filter);
+
+    let mut sequencer_config = SequencerConfig::default();
+    let old_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    assert_eq!(
+        old_doc_str,
+        r##"root r#"also "starts" quoted"# foo=r#"starts out "quoted""# bar=0 truthiness=false
+"##
+    );
+
+    {
+        let root_id = seq_tree.tree.root_id();
+        let mut tree_guard = seq_tree.guard();
+        let mut root = root_id.try_ref(&mut tree_guard.guard);
+
+        let new_filter = FieldsFilter {
+            foo: "no more quotes\nbut newlines".to_string(),
+            bar: 0,
+            truthiness: false,
+            anonymous_str: "here \"quotes\" and \t\t\ttabs".to_string(),
+        };
+
+        root.filter = new_filter;
+    }
+
+    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    assert_eq!(
+        new_doc_str,
+        // using non-raw Rust string, for clarity on the tabs (\t) and newlines (\n)
+        "root r#\"here \"quotes\" and \t\t\ttabs\"# foo=r\"no more quotes\nbut newlines\" bar=0 truthiness=false
+"
+    );
+}
+
+#[test]
+fn add_remove_child() {
+    let root_filter = FieldsFilter::default();
+    let mut seq_tree = SequencerTree::<(), _>::new(root_filter);
+
+    let root_id = seq_tree.tree.root_id();
+    let child1_id;
+
+    // add child with weight
+    {
+        let mut tree_guard = seq_tree.guard();
+
+        child1_id = tree_guard
+            .add_node((&root_id).into(), FieldsFilter::default())
+            .expect("root exists");
+        tree_guard
+            .set_node_weight((&child1_id).into(), 2)
+            .expect("child1 exists");
+    }
+
+    let mut sequencer_config = SequencerConfig::default();
+    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    // TODO - change back to correct indentation in `expected`
+    let expected = "root \"\" foo=\"\" bar=0 truthiness=false {
+    chain weight=2 \"\" foo=\"\" bar=0 truthiness=false
+}
+";
+    let compromise_expected = "root \"\" foo=\"\" bar=0 truthiness=false {
+chain weight=2 \"\" foo=\"\" bar=0 truthiness=false
+}
+";
+    assert_eq!(new_doc_str, compromise_expected);
+
+    // alter weight
+    {
+        let mut tree_guard = seq_tree.guard();
+
+        let mut child1 = child1_id
+            .try_ref(&mut tree_guard.guard)
+            .expect("child1 exists");
+        child1.set_weight(0);
+    }
+    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    // TODO - change back to correct indentation in `expected`
+    let expected = "root \"\" foo=\"\" bar=0 truthiness=false {
+    chain weight=0 \"\" foo=\"\" bar=0 truthiness=false
+}
+";
+    let compromise_expected = "root \"\" foo=\"\" bar=0 truthiness=false {
+chain weight=0 \"\" foo=\"\" bar=0 truthiness=false
+}
+";
+    assert_eq!(new_doc_str, compromise_expected);
+
+    // remove node
+    {
+        let mut tree_guard = seq_tree.guard();
+
+        let _info = tree_guard.remove_node(&child1_id).expect("child1 removal");
+    }
+    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    // TODO - change back to correct indentation in `expected`
+    assert_eq!(
+        new_doc_str,
+        "root \"\" foo=\"\" bar=0 truthiness=false {
+}
+"
     );
 }

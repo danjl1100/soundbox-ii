@@ -153,17 +153,11 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    fn set_node_filter(
-        &mut self,
-        node_path_str: &str,
-        filter: F,
-    ) -> Result<(NodePathTyped, F), Error> {
-        let node_path = parse_path(node_path_str)?;
-        // set the filter
+    fn set_node_filter(&mut self, node_path: NodePathRefTyped<'_>, filter: F) -> Result<F, Error> {
         let tree_guard = &mut self.guard;
         let mut node_ref = node_path.try_ref(tree_guard)?;
         let old_filter = std::mem::replace(&mut node_ref.filter, filter);
-        Ok((node_path, old_filter))
+        Ok(old_filter)
     }
     /// Sets the weight of the specified item in the node
     /// Returns the previous weight value.
@@ -172,11 +166,10 @@ where
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn set_node_item_weight(
         &mut self,
-        node_path_str: &str,
+        node_path: NodePathRefTyped<'_>,
         item_index: usize,
         weight: Weight,
     ) -> Result<Weight, Error> {
-        let node_path = parse_path(node_path_str)?;
         let tree_guard = &mut self.guard;
         let mut node_ref = node_path.try_ref(tree_guard)?;
         let child_items = node_ref.child_items().ok_or_else(|| {
@@ -187,7 +180,10 @@ where
         let mut child_items = child_items.ref_mut();
         match child_items.set_weight(item_index, weight) {
             Ok(old_weight) => Ok(old_weight),
-            Err(invalid_index) => Err(Error::InvalidItemIndex(node_path, invalid_index)),
+            Err(invalid_index) => Err(Error::InvalidItemIndex(
+                node_path.clone_owned(),
+                invalid_index,
+            )),
         }
     }
     /// Sets the weight of the specified node
@@ -195,11 +191,14 @@ where
     ///
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
-    fn set_node_weight(&mut self, node_path_str: &str, weight: Weight) -> Result<Weight, Error> {
-        let node_path = parse_path(node_path_str)?;
+    fn set_node_weight(
+        &mut self,
+        node_path: NodePathRefTyped<'_>,
+        weight: Weight,
+    ) -> Result<Weight, Error> {
         let node_path = match node_path {
-            NodePathTyped::Root(path) => Err(InvalidNodePath::from(path)),
-            NodePathTyped::Child(path) => Ok(path),
+            NodePathRefTyped::Root(path) => Err(InvalidNodePath::from(*path)),
+            NodePathRefTyped::Child(path) => Ok(path),
         }?;
         let tree_guard = &mut self.guard;
         let mut node_ref = node_path.try_ref(tree_guard)?;
@@ -212,10 +211,9 @@ where
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn set_node_order_type(
         &mut self,
-        node_path_str: &str,
+        node_path: NodePathRefTyped<'_>,
         order_type: OrderType,
     ) -> Result<OrderType, Error> {
-        let node_path = parse_path(node_path_str)?;
         let tree_guard = &mut self.guard;
         let mut node_ref = node_path.try_ref(tree_guard)?;
         Ok(node_ref.set_order_type(order_type))
@@ -226,14 +224,10 @@ where
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn remove_node(
         &mut self,
-        node_id_str: &str,
+        node_id: &NodeId<ty::Child>,
     ) -> Result<(q_filter_tree::Weight, q_filter_tree::NodeInfo<T, F>), Error> {
-        let node_id = match parse_id(node_id_str)? {
-            NodeIdTyped::Root(..) => Err(Error::Message("cannot remove root node".to_string())),
-            NodeIdTyped::Child(child) => Ok(child),
-        }?;
         let tree = self.guard.as_mut();
-        Ok(tree.remove_node(&node_id)??)
+        Ok(tree.remove_node(node_id)??)
     }
     /// Returns the next [`Item`](`ItemSource::Item`)
     fn pop_next(&mut self) -> Option<q_filter_tree::SequenceAndItem<T>> {
@@ -241,20 +235,11 @@ where
         tree.pop_item()
             .map(|seq_item| seq_item.map(Cow::into_owned))
     }
-    fn parse_path_or_root(&mut self, path: Option<&str>) -> Result<NodePathTyped, Error> {
-        let tree_guard = &mut self.guard;
-        let node_path = path
-            .map(parse_path)
-            .transpose()?
-            .unwrap_or_else(|| tree_guard.as_mut().root_id().into());
-        Ok(node_path)
-    }
     fn set_node_prefill_count(
         &mut self,
-        path: Option<&str>,
+        node_path: NodePathRefTyped<'_>,
         min_count: usize,
     ) -> Result<(), Error> {
-        let node_path = self.parse_path_or_root(path)?;
         let tree_guard = &mut self.guard;
         let mut node_ref = node_path.try_ref(tree_guard)?;
         node_ref.set_queue_prefill_len(min_count);
@@ -264,8 +249,11 @@ where
     // fn queue_add_item(&mut self, path: Option<&str>, item: T, index: Option<usize>) -> Result<(), Error> {
     //     todo!()
     // }
-    fn queue_remove_item(&mut self, path: Option<&str>, index: usize) -> Result<(), Error> {
-        let node_path = self.parse_path_or_root(path)?;
+    fn queue_remove_item(
+        &mut self,
+        node_path: NodePathRefTyped<'_>,
+        index: usize,
+    ) -> Result<(), Error> {
         let tree_guard = &mut self.guard;
         let mut node_ref = node_path.try_ref(tree_guard)?;
         node_ref
@@ -277,12 +265,11 @@ where
                 ))
             })
     }
-    fn move_node(&mut self, src_id_str: &str, dest_id_str: &str) -> Result<NodeIdStr, Error> {
-        let src_id = match parse_id(src_id_str)? {
-            NodeIdTyped::Root(..) => Err(Error::Message("cannot move root node".to_string())),
-            NodeIdTyped::Child(child) => Ok(child),
-        }?;
-        let dest_id = parse_id(dest_id_str)?;
+    fn move_node(
+        &mut self,
+        src_id: &NodeId<ty::Child>,
+        dest_id: NodeIdTyped,
+    ) -> Result<NodeId<ty::Child>, Error> {
         let tree_guard = &mut self.guard;
 
         // verify destination node is non-terminal
@@ -292,11 +279,11 @@ where
             .map(|_| ())
             .ok_or_else(|| format!("Node {dest_id} does not have child_nodes"))?;
         // detect path changing (later sibling of the src) and adjust accordingly
-        let dest_id_reresolved = resolved_post_remove_id(&src_id, dest_id)
+        let dest_id_reresolved = resolved_post_remove_id(src_id, dest_id)
             .ok_or_else(|| "cannot move node to itself".to_string())?;
 
         // remove from source location
-        let (_removed_weight, removed_info) = tree_guard.as_mut().remove_node(&src_id)??;
+        let (_removed_weight, removed_info) = tree_guard.as_mut().remove_node(src_id)??;
 
         // insert at destination location
         let mut dest_ref = dest_id_reresolved.try_ref(tree_guard)?;
@@ -305,7 +292,7 @@ where
             .expect("pre-validated Node now suddently does not have child_nodes");
         let new_node_id = child_nodes.add_child_default_from(removed_info);
 
-        Ok(serialize_id(new_node_id)?)
+        Ok(new_node_id)
     }
 }
 impl<T: ItemSource<F>, F> Sequencer<T, F>
@@ -343,7 +330,8 @@ where
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn set_node_filter(&mut self, node_path_str: &str, filter: F) -> Result<F, Error> {
         let mut tree_guard = self.inner.guard();
-        let (node_path, old_filter) = tree_guard.set_node_filter(node_path_str, filter)?;
+        let node_path = parse_path(node_path_str)?;
+        let old_filter = tree_guard.set_node_filter((&node_path).into(), filter)?;
         Self::inner_update_node(&self.item_source, &node_path, &mut tree_guard)?;
         Ok(old_filter)
     }
@@ -358,9 +346,10 @@ where
         item_index: usize,
         weight: Weight,
     ) -> Result<Weight, Error> {
+        let node_path = parse_path(node_path_str)?;
         self.inner
             .guard()
-            .set_node_item_weight(node_path_str, item_index, weight)
+            .set_node_item_weight((&node_path).into(), item_index, weight)
     }
     /// Sets the weight of the specified node
     /// Returns the previous weight value.
@@ -368,7 +357,10 @@ where
     /// # Errors
     /// Returns an [`Error`] when inputs do not match the inner tree state
     fn set_node_weight(&mut self, node_path_str: &str, weight: Weight) -> Result<Weight, Error> {
-        self.inner.guard().set_node_weight(node_path_str, weight)
+        let node_path = parse_path(node_path_str)?;
+        self.inner
+            .guard()
+            .set_node_weight((&node_path).into(), weight)
     }
     /// Sets the order type of the specified node
     /// Returns the previous order type.
@@ -380,9 +372,10 @@ where
         node_path_str: &str,
         order_type: OrderType,
     ) -> Result<OrderType, Error> {
+        let node_path = parse_path(node_path_str)?;
         self.inner
             .guard()
-            .set_node_order_type(node_path_str, order_type)
+            .set_node_order_type((&node_path).into(), order_type)
     }
     /// Updates the items for the specified node (and any children)
     ///
@@ -428,7 +421,11 @@ where
         &mut self,
         node_id_str: &str,
     ) -> Result<(q_filter_tree::Weight, NodeInfo<T, F>), Error> {
-        self.inner.guard().remove_node(node_id_str)
+        let node_id = match parse_id(node_id_str)? {
+            NodeIdTyped::Root(..) => Err(Error::Message("cannot remove root node".to_string())),
+            NodeIdTyped::Child(child) => Ok(child),
+        }?;
+        self.inner.guard().remove_node(&node_id)
     }
     /// Returns the next [`Item`](`ItemSource::Item`)
     pub fn pop_next(&mut self) -> Option<SeqItem<T, F>> {
@@ -439,13 +436,32 @@ where
         path: Option<&str>,
         min_count: usize,
     ) -> Result<(), Error> {
-        self.inner.guard().set_node_prefill_count(path, min_count)
+        let node_path = self.parse_path_or_root(path)?;
+        self.inner
+            .guard()
+            .set_node_prefill_count((&node_path).into(), min_count)
     }
-    fn queue_remove_item(&mut self, path: Option<&str>, index: usize) -> Result<(), Error> {
-        self.inner.guard().queue_remove_item(path, index)
+    fn queue_remove_item(&mut self, node_path: Option<&str>, index: usize) -> Result<(), Error> {
+        let node_path = self.parse_path_or_root(node_path)?;
+        self.inner
+            .guard()
+            .queue_remove_item((&node_path).into(), index)
     }
     fn move_node(&mut self, src_id_str: &str, dest_id_str: &str) -> Result<NodeIdStr, Error> {
-        self.inner.guard().move_node(src_id_str, dest_id_str)
+        let src_id = match parse_id(src_id_str)? {
+            NodeIdTyped::Root(..) => Err(Error::Message("cannot move root node".to_string())),
+            NodeIdTyped::Child(child) => Ok(child),
+        }?;
+        let dest_id = parse_id(dest_id_str)?;
+        let new_node_id = self.inner.guard().move_node(&src_id, dest_id)?;
+        Ok(serialize_id(new_node_id)?)
+    }
+    fn parse_path_or_root(&self, path: Option<&str>) -> Result<NodePathTyped, Error> {
+        let node_path = path
+            .map(parse_path)
+            .transpose()?
+            .unwrap_or_else(|| self.inner.tree.root_id().into());
+        Ok(node_path)
     }
     /// Returns an [`Iterator`] for the queue of the root node
     pub fn get_root_queue_items(&self) -> impl Iterator<Item = &SeqItem<T, F>> {
@@ -455,6 +471,10 @@ where
 }
 /// Returns the input `NodeId`, modified to reflect removal of the specified `NodeId`
 /// Note: Returns `None` if the two provided `NodeId`s have identical paths
+///
+/// Note: Assumes (via `q_filter_tree` rules) that the removed node has no child nodes
+///
+/// This detects path changes for moving a node to a path underneath a later-sibling
 fn resolved_post_remove_id(
     removed_id: &NodeId<ty::Child>,
     input: NodeIdTyped,

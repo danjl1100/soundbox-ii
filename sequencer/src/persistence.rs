@@ -9,6 +9,7 @@ use kdl::KdlError;
 use q_filter_tree::Weight;
 use shared::Never;
 
+mod annotate;
 mod parse;
 mod update;
 
@@ -17,6 +18,9 @@ pub mod io;
 const NAME_ROOT: &str = "root";
 const NAME_CHAIN: &str = "chain";
 const NAME_LEAF: &str = "leaf";
+
+const ATTRIBUTE_WEIGHT: &str = "weight";
+const DEFAULT_WEIGHT: Weight = 1;
 
 // /// Fallible creation from a slice of [`KdlEntry`]s
 // trait FromKdlEntries: Sized + Clone {
@@ -77,7 +81,7 @@ pub trait KdlEntryVisitor {
 /// This struct is used for saving the runtime state, in order to keep user-provided comments in
 /// the original KDL input text.
 pub struct SequencerConfig<T, F> {
-    previous_doc: Option<SingleRootKdlDocument>,
+    previous_annotated_doc: Option<SingleRootKdlDocument>,
     _marker: std::marker::PhantomData<(T, F)>,
 }
 impl<T, F> Default for SequencerConfig<T, F>
@@ -87,7 +91,7 @@ where
 {
     fn default() -> Self {
         Self {
-            previous_doc: None,
+            previous_annotated_doc: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -107,7 +111,7 @@ where
             .map(|(doc, sequencer_tree)| {
                 (
                     SequencerConfig {
-                        previous_doc: Some(doc),
+                        previous_annotated_doc: Some(doc),
                         _marker: std::marker::PhantomData,
                     },
                     sequencer_tree,
@@ -126,16 +130,32 @@ where
     ///
     /// # Errors
     /// Returns an error if the filter serialization fails
+    #[allow(clippy::missing_panics_doc)]
     pub fn update_to_string(
         &mut self,
         sequencer_tree: &SequencerTree<T, F>,
     ) -> Result<String, F::Error<Never>> {
-        let (new_doc, result) = update::update_for_nodes(self.previous_doc.take(), sequencer_tree);
-        let new_doc_str = new_doc.to_string();
+        let result;
+        self.previous_annotated_doc = {
+            let (new_doc, result_inner) =
+                update::update_for_nodes(self.previous_annotated_doc.take(), sequencer_tree);
+            result = result_inner;
 
-        self.previous_doc.replace(new_doc);
+            Some(new_doc)
+        };
 
-        result.map(|()| new_doc_str)
+        result.map(|()| {
+            self.calculate_nonannotated_doc()
+                .expect("previous_annotated_doc set to Some")
+        })
+    }
+}
+impl<T, F> SequencerConfig<T, F> {
+    /// Creates a non-annotated version of the internal [`KdlDocument`], from the last parse/update
+    pub(crate) fn calculate_nonannotated_doc(&self) -> Option<String> {
+        let mut doc = self.previous_annotated_doc.as_ref()?.clone();
+        annotate::strip_leading_seq(doc.single_root_mut());
+        Some(doc.to_string())
     }
 }
 
@@ -168,6 +188,8 @@ pub enum NodeErrorKind<E> {
         found: String,
         expected: &'static [&'static str],
     },
+    /// Tag requires a child block (even if empty `{}`)
+    TagMissingChildBlock,
     /// Weight specified on root (this is not allowed)
     RootWeight,
     /// Node attributes failed to create valid filter
@@ -208,6 +230,7 @@ mod tests {
 mod single_root {
     use kdl::{KdlDocument, KdlNode};
 
+    #[derive(Debug, Clone)]
     pub struct SingleRootKdlDocument(KdlDocument);
     impl SingleRootKdlDocument {
         /// Returns a reference to the (known to be unique) root node
@@ -218,11 +241,12 @@ mod single_root {
         pub fn single_root_mut(&mut self) -> &mut KdlNode {
             self.0.nodes_mut().get_mut(0).expect("single root")
         }
-        /// Extract the document to perform top-level operations
-        pub fn into_inner(self) -> KdlDocument {
-            let Self(inner) = self;
-            inner
-        }
+        // TODO remove if unused
+        // /// Extract the document to perform top-level operations
+        // pub fn into_inner(self) -> KdlDocument {
+        //     let Self(inner) = self;
+        //     inner
+        // }
     }
     impl TryFrom<KdlDocument> for SingleRootKdlDocument {
         type Error = (Error, KdlDocument);
