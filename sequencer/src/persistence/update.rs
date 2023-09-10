@@ -1,133 +1,161 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Updates the user-editable configuration of a [`SequencerTree`]
 
-use super::{annotate, IntoKdlEntries, SingleRootKdlDocument};
+use super::{single_root::KdlNodesBySequence, IntoKdlEntries, SingleRootKdlDocument};
 use crate::SequencerTree;
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use q_filter_tree::Weight;
 use shared::Never;
-use std::num::ParseIntError;
 
+/// Updates the document for the current [`SequencerTree`] state, returning the [`KdlDocument`] string representation
 pub(super) fn update_for_nodes<T, F>(
-    doc: Option<SingleRootKdlDocument>,
-    sequencer_tree: &SequencerTree<T, F>,
-) -> (SingleRootKdlDocument, Result<(), F::Error<Never>>)
+    flat_doc: Option<KdlNodesBySequence>,
+    src_sequencer_tree: &SequencerTree<T, F>,
+) -> (KdlNodesBySequence, Result<String, F::Error<Never>>)
 where
     T: Clone,
     F: IntoKdlEntries,
 {
-    let mut doc = doc.unwrap_or_default();
-    let doc_root = doc.single_root_mut();
+    let flat_doc = flat_doc.unwrap_or_default();
 
-    let (_, tree_root) = sequencer_tree.tree.enumerate().next().expect("root exists");
+    match Updater::new(flat_doc).update(src_sequencer_tree) {
+        Ok(compiled_doc) => {
+            // result we wanted - the STRING
+            let string = compiled_doc.to_string();
 
-    let update_result = update_node(doc_root, None, tree_root);
+            // deconstruct back into flattened document
+            let (doc_empty, doc_root) = compiled_doc.into_parts_remove_root();
+            let mut flat_doc = KdlNodesBySequence::new(doc_empty);
 
-    (doc, update_result)
+            return_nodes_to_flat(
+                &mut flat_doc,
+                doc_root,
+                src_sequencer_tree.tree.root_node_shared(),
+            );
+            (flat_doc, Ok(string))
+        }
+        Err((flat_doc, err)) => (flat_doc, Err(err)),
+    }
 }
 
-fn update_node<T, F>(
-    doc_node: &mut KdlNode,
-    weight: Option<Weight>,
+fn return_nodes_to_flat<T, F>(
+    dest_flat_doc: &mut KdlNodesBySequence,
+    mut src_doc_node: KdlNode,
     tree_node: &q_filter_tree::Node<T, F>,
-) -> Result<(), F::Error<Never>>
-where
-    F: IntoKdlEntries,
-{
-    update_filter(doc_node, &tree_node.filter)?;
-
-    if let Some(weight) = weight {
-        update_weight(doc_node, weight);
-    }
-
-    annotate::update_seq(doc_node, tree_node.sequence_num());
-
-    let existing_doc_id_indices = doc_node
-        .children()
-        .map_or(Ok(vec![]), |child_doc| {
-            child_doc
-                .nodes()
-                .iter()
-                .enumerate()
-                .filter_map(|(index, doc_node)| {
-                    let seq = annotate::get_seq(doc_node)?;
-                    let entry = seq.map(|seq| (index, seq));
-                    Some(entry)
-                })
-                .collect::<Result<Vec<_>, ParseIntError>>()
-        })
-        .expect("internal sequence annotation invalid");
-    let mut need_match_doc_indices = doc_node
-        .children()
-        .map_or(vec![], |c| c.nodes().iter().map(|_| Some(())).collect());
-
-    if let Some(tree_child_nodes) = tree_node.child_nodes() {
-        let child_doc = doc_node.children_mut();
-        for (weight, tree_child) in tree_child_nodes {
-            let doc_nodes = {
-                let child_doc = if let Some(child_doc) = child_doc.as_mut() {
-                    child_doc
-                } else {
-                    *child_doc = Some(KdlDocument::new());
-                    child_doc.as_mut().expect("set to Some")
-                };
-                child_doc.nodes_mut()
-            };
-            //
-            let needle_seq = tree_child.sequence_num();
-            let existing_doc_index = existing_doc_id_indices
-                .iter()
-                .find_map(|(index, seq)| (*seq == needle_seq).then_some(*index));
-
-            let existing_doc_child = existing_doc_index.and_then(|index| {
-                need_match_doc_indices[index]
-                    .take()
-                    .expect("no sequence/doc_node repeats");
-                doc_nodes.get_mut(index)
-            });
-            if let Some(existing_doc_child) = existing_doc_child {
-                update_node(existing_doc_child, Some(weight), tree_child)?;
-            } else {
-                let name = if tree_child.child_nodes().is_some() {
-                    super::NAME_CHAIN
-                } else {
-                    super::NAME_LEAF
-                };
-                let mut new_node = KdlNode::new(name);
-                update_node(&mut new_node, Some(weight), tree_child)?;
-                doc_nodes.push(new_node);
-            }
+) {
+    if let Some((doc_children, tree_children)) = src_doc_node
+        .children_mut()
+        .as_mut()
+        .zip(tree_node.child_nodes())
+    {
+        let mut doc_children = std::mem::take(doc_children);
+        for (doc_child, (_weight, tree_child)) in
+            doc_children.nodes_mut().drain(..).zip(tree_children)
+        {
+            return_nodes_to_flat(dest_flat_doc, doc_child, tree_child)
         }
     }
 
-    // TODO test for REMOVING child nodes to match tree_node
-    for unmatched_index in need_match_doc_indices
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, need_match)| need_match.map(|()| index))
-        .rev()
-    {
-        doc_node
-            .children_mut()
-            .as_mut()
-            .expect("children exists if need_match_doc_indices has any")
-            .nodes_mut()
-            .remove(unmatched_index);
+    let seq = tree_node.sequence_num();
+    let existing = dest_flat_doc.insert(src_doc_node, seq);
+    if let Some(existing) = existing {
+        panic!("duplicate nodes for seq {seq}: {existing:?}")
     }
-
-    Ok(())
 }
 
-fn update_filter<F>(doc_node: &mut KdlNode, filter: &F) -> Result<(), F::Error<Never>>
+struct Updater {
+    src_flat_doc: KdlNodesBySequence,
+}
+
+impl Updater {
+    fn new(src_flat_doc: KdlNodesBySequence) -> Self {
+        Self { src_flat_doc }
+    }
+    fn update<T, F>(
+        mut self,
+        src_sequencer_tree: &SequencerTree<T, F>,
+    ) -> Result<SingleRootKdlDocument, (KdlNodesBySequence, F::Error<Never>)>
+    where
+        T: Clone,
+        F: IntoKdlEntries,
+    {
+        let tree_root = src_sequencer_tree.tree.root_node_shared();
+        let root_seq = src_sequencer_tree.tree.root_id().sequence();
+
+        let mut doc_root = self
+            .src_flat_doc
+            .try_remove(root_seq)
+            .unwrap_or_else(|| KdlNode::new(super::NAME_ROOT));
+
+        let update_result = self.update_node(&mut doc_root, None, tree_root);
+        if let Err(err) = update_result {
+            return_nodes_to_flat(&mut self.src_flat_doc, doc_root, tree_root);
+            Err((self.src_flat_doc, err))
+        } else {
+            // add root node to the empty document
+            let doc_empty = self.src_flat_doc.end_delete_remaining();
+            let doc = doc_empty.with_root(doc_root);
+
+            Ok(doc)
+        }
+    }
+    fn update_node<T, F>(
+        &mut self,
+        dest_doc_node: &mut KdlNode,
+        weight: Option<Weight>,
+        src_tree_node: &q_filter_tree::Node<T, F>,
+    ) -> Result<(), F::Error<Never>>
+    where
+        F: IntoKdlEntries,
+    {
+        update_filter(dest_doc_node, &src_tree_node.filter)?;
+
+        if let Some(weight) = weight {
+            update_weight(dest_doc_node, weight);
+        }
+
+        if let Some(tree_child_nodes) = src_tree_node.child_nodes() {
+            let child_doc = dest_doc_node.children_mut();
+            for (weight, tree_child) in tree_child_nodes {
+                let doc_nodes = {
+                    let child_doc = if let Some(child_doc) = child_doc.as_mut() {
+                        child_doc
+                    } else {
+                        *child_doc = Some(KdlDocument::new());
+                        child_doc.as_mut().expect("set to Some")
+                    };
+                    child_doc.nodes_mut()
+                };
+                //
+                let needle_seq = tree_child.sequence_num();
+                let existing_doc_child = self.src_flat_doc.try_remove(needle_seq);
+                let mut doc_child = existing_doc_child.unwrap_or_else(|| {
+                    let name = if tree_child.child_nodes().is_some() {
+                        super::NAME_CHAIN
+                    } else {
+                        super::NAME_LEAF
+                    };
+                    KdlNode::new(name)
+                });
+                self.update_node(&mut doc_child, Some(weight), tree_child)?;
+                doc_nodes.push(doc_child);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn update_filter<F>(dest_doc_node: &mut KdlNode, filter: &F) -> Result<(), F::Error<Never>>
 where
     F: IntoKdlEntries,
 {
-    visitor::with_attribute_update_visitor(doc_node, |visitor| {
+    visitor::with_attribute_update_visitor(dest_doc_node, |visitor| {
         filter.try_into_kdl(visitor).map(|_| ())
     })
 }
-fn update_weight(doc_node: &mut KdlNode, weight: Weight) {
-    let entries = doc_node.entries_mut();
+fn update_weight(dest_doc_node: &mut KdlNode, weight: Weight) {
+    let entries = dest_doc_node.entries_mut();
     // remove "weight" property if it exists
     let existing_weight_index = entries.iter().enumerate().find_map(|(index, entry)| {
         match entry.name() {

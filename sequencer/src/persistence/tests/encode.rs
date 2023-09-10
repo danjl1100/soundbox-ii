@@ -14,6 +14,8 @@ struct FieldsFilter {
     anonymous_str: String,
 }
 
+const TEST_SKIP_ALL_PROPS: &str = "skip_all_props";
+
 impl IntoKdlEntries for FieldsFilter {
     type Error<E> = E;
 
@@ -30,9 +32,11 @@ impl IntoKdlEntries for FieldsFilter {
 
         visitor.visit_argument_str(anonymous_str)?;
 
-        visitor.visit_property_str("foo", foo)?;
-        visitor.visit_property_i64("bar", bar.into())?;
-        visitor.visit_property_bool("truthiness", truthiness)?;
+        if anonymous_str != TEST_SKIP_ALL_PROPS {
+            visitor.visit_property_str("foo", foo)?;
+            visitor.visit_property_i64("bar", bar.into())?;
+            visitor.visit_property_bool("truthiness", truthiness)?;
+        }
 
         Ok(visitor)
     }
@@ -69,6 +73,41 @@ fn updates_root() {
     assert_eq!(
         new_doc_str,
         r#"root "hiya" foo="root" bar=3 truthiness=false
+"#
+        .to_string()
+    );
+}
+#[test]
+fn test_remove_attribute() {
+    let old_filter = FieldsFilter {
+        foo: "value".to_string(),
+        bar: 0,
+        truthiness: false,
+        anonymous_str: "has_props".to_string(),
+    };
+    let mut seq_tree = SequencerTree::<(), _>::new(old_filter);
+
+    {
+        // mutate tree
+        let root_id = seq_tree.tree.root_id();
+        let mut tree_guard = seq_tree.guard();
+        let mut root = root_id.try_ref(&mut tree_guard.guard);
+
+        let new_filter = FieldsFilter {
+            foo: "empty".to_string(),
+            bar: 0,
+            truthiness: false,
+            anonymous_str: TEST_SKIP_ALL_PROPS.to_string(),
+        };
+
+        root.filter = new_filter;
+    }
+
+    let mut sequencer_config = SequencerConfig::default();
+    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    assert_eq!(
+        new_doc_str,
+        r#"root "skip_all_props"
 "#
         .to_string()
     );
@@ -158,16 +197,11 @@ fn add_remove_child() {
 
     let mut sequencer_config = SequencerConfig::default();
     let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
-    // TODO - change back to correct indentation in `expected`
     let expected = "root \"\" foo=\"\" bar=0 truthiness=false {
     chain weight=2 \"\" foo=\"\" bar=0 truthiness=false
 }
 ";
-    let compromise_expected = "root \"\" foo=\"\" bar=0 truthiness=false {
-chain weight=2 \"\" foo=\"\" bar=0 truthiness=false
-}
-";
-    assert_eq!(new_doc_str, compromise_expected);
+    assert_eq!(new_doc_str, expected);
 
     // alter weight
     {
@@ -179,16 +213,11 @@ chain weight=2 \"\" foo=\"\" bar=0 truthiness=false
         child1.set_weight(0);
     }
     let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
-    // TODO - change back to correct indentation in `expected`
     let expected = "root \"\" foo=\"\" bar=0 truthiness=false {
     chain weight=0 \"\" foo=\"\" bar=0 truthiness=false
 }
 ";
-    let compromise_expected = "root \"\" foo=\"\" bar=0 truthiness=false {
-chain weight=0 \"\" foo=\"\" bar=0 truthiness=false
-}
-";
-    assert_eq!(new_doc_str, compromise_expected);
+    assert_eq!(new_doc_str, expected);
 
     // remove node
     {

@@ -192,6 +192,13 @@ impl<T, F> Tree<T, F> {
     pub fn root_node_shared(&self) -> &Node<T, F> {
         &self.root
     }
+    // TODO deleteme if unused
+    // /// Returns the root [`Node`]
+    // ///
+    // /// NOTE: See also [`Tree::root_id`] followed by [`NodeId::try_ref`]
+    // pub fn root_node_mut(&mut self) -> &mut Node<T, F> {
+    //     &mut self.root
+    // }
     /// Removes an empty node
     ///
     /// **Note:** Explicit [`NodeId`] is required to preserve idempotency.

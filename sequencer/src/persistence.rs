@@ -2,14 +2,13 @@
 //! Provides helpers for persisting the user-editable configuration for the filter/source nodes
 
 pub use self::single_root::Error as SingleRootError;
-use self::single_root::SingleRootKdlDocument;
+use self::single_root::{KdlNodesBySequence, SingleRootKdlDocument};
 use crate::SequencerTree;
 pub use io::SequencerConfigFile;
 use kdl::KdlError;
 use q_filter_tree::Weight;
 use shared::Never;
 
-mod annotate;
 mod parse;
 mod update;
 
@@ -81,7 +80,8 @@ pub trait KdlEntryVisitor {
 /// This struct is used for saving the runtime state, in order to keep user-provided comments in
 /// the original KDL input text.
 pub struct SequencerConfig<T, F> {
-    previous_annotated_doc: Option<SingleRootKdlDocument>,
+    /// previous parsed/updated document, indexed by sequence
+    previous_doc_nodes_flat: Option<KdlNodesBySequence>,
     _marker: std::marker::PhantomData<(T, F)>,
 }
 impl<T, F> Default for SequencerConfig<T, F>
@@ -91,7 +91,7 @@ where
 {
     fn default() -> Self {
         Self {
-            previous_annotated_doc: None,
+            previous_doc_nodes_flat: None,
             _marker: std::marker::PhantomData,
         }
     }
@@ -108,10 +108,10 @@ where
     pub fn parse_from_str(s: &str) -> Result<(Self, SequencerTree<T, F>), ParseError<F>> {
         let doc = s.parse().map_err(ParseError::KDL)?;
         parse::parse_nodes(doc)
-            .map(|(doc, sequencer_tree)| {
+            .map(|(doc_flat, sequencer_tree)| {
                 (
                     SequencerConfig {
-                        previous_annotated_doc: Some(doc),
+                        previous_doc_nodes_flat: Some(doc_flat),
                         _marker: std::marker::PhantomData,
                     },
                     sequencer_tree,
@@ -136,26 +136,36 @@ where
         sequencer_tree: &SequencerTree<T, F>,
     ) -> Result<String, F::Error<Never>> {
         let result;
-        self.previous_annotated_doc = {
-            let (new_doc, result_inner) =
-                update::update_for_nodes(self.previous_annotated_doc.take(), sequencer_tree);
+        self.previous_doc_nodes_flat = {
+            let (new_doc_flat, result_inner) =
+                update::update_for_nodes(self.previous_doc_nodes_flat.take(), sequencer_tree);
             result = result_inner;
 
-            Some(new_doc)
+            Some(new_doc_flat)
         };
 
-        result.map(|()| {
-            self.calculate_nonannotated_doc()
-                .expect("previous_annotated_doc set to Some")
-        })
+        result
     }
 }
-impl<T, F> SequencerConfig<T, F> {
-    /// Creates a non-annotated version of the internal [`KdlDocument`], from the last parse/update
-    pub(crate) fn calculate_nonannotated_doc(&self) -> Option<String> {
-        let mut doc = self.previous_annotated_doc.as_ref()?.clone();
-        annotate::strip_leading_seq(doc.single_root_mut());
-        Some(doc.to_string())
+// TODO deleteme, no longer a "cheap" operation, since it requires reinflating the flat_doc
+// impl<T, F> SequencerConfig<T, F> {
+//     /// Creates a non-annotated version of the internal [`KdlDocument`], from the last parse/update
+//     pub(crate) fn calculate_nonannotated_doc(
+//         &self,
+//         seq_tree: &SequencerTree<T, F>,
+//     ) -> Option<String> {
+//         // TODO migrate to using `KdlNodesBySequence`
+//         let mut doc = self.previous_annotated_doc.as_ref()?.clone();
+//         annotate::strip_leading_seq(doc.single_root_mut());
+//         Some(doc.to_string())
+//     }
+// }
+impl<T, F> Clone for SequencerConfig<T, F> {
+    fn clone(&self) -> Self {
+        Self {
+            previous_doc_nodes_flat: self.previous_doc_nodes_flat.clone(),
+            _marker: self._marker,
+        }
     }
 }
 
@@ -229,24 +239,28 @@ mod tests {
 #[allow(clippy::module_name_repetitions)]
 mod single_root {
     use kdl::{KdlDocument, KdlNode};
+    use std::collections::HashMap;
 
     #[derive(Debug, Clone)]
     pub struct SingleRootKdlDocument(KdlDocument);
     impl SingleRootKdlDocument {
-        /// Returns a reference to the (known to be unique) root node
-        pub fn single_root(&self) -> &KdlNode {
-            self.0.nodes().get(0).expect("single root")
-        }
-        /// Returns a mutable reference to the (known to be unique) root node
-        pub fn single_root_mut(&mut self) -> &mut KdlNode {
-            self.0.nodes_mut().get_mut(0).expect("single root")
-        }
-        // TODO remove if unused
-        // /// Extract the document to perform top-level operations
-        // pub fn into_inner(self) -> KdlDocument {
-        //     let Self(inner) = self;
-        //     inner
+        // TODO delete unused
+        // /// Returns a reference to the (known to be unique) root node
+        // pub fn single_root(&self) -> &KdlNode {
+        //     self.0.nodes().get(0).expect("single root")
         // }
+        // /// Returns a mutable reference to the (known to be unique) root node
+        // pub fn single_root_mut(&mut self) -> &mut KdlNode {
+        //     self.0.nodes_mut().get_mut(0).expect("single root")
+        // }
+        /// Extract the document to perform top-level operations
+        pub fn into_parts_remove_root(self) -> (EmptyKdlDocument, KdlNode) {
+            let Self(mut inner) = self;
+            let root = inner.nodes_mut().remove(0);
+            let empty_doc = EmptyKdlDocument::try_from(inner)
+                .expect("SingleRootKdlDocument with root removed is EmptyKdlDocument");
+            (empty_doc, root)
+        }
     }
     impl TryFrom<KdlDocument> for SingleRootKdlDocument {
         type Error = (Error, KdlDocument);
@@ -268,6 +282,79 @@ mod single_root {
     impl ToString for SingleRootKdlDocument {
         fn to_string(&self) -> String {
             self.0.to_string()
+        }
+    }
+
+    /// Deconstructed [`KdlDocument`], with all nodes collected and indexed by the tree sequence
+    #[derive(Clone, Debug, Default)]
+    pub struct KdlNodesBySequence {
+        seq_nodes: HashMap<u64, KdlNode>,
+        // root_seq: Option<u64>,
+        doc_empty: EmptyKdlDocument,
+    }
+    impl KdlNodesBySequence {
+        /// Creates the collection with the specified document (only if it is empty)
+        pub fn new(doc_empty: EmptyKdlDocument) -> Self {
+            Self {
+                seq_nodes: HashMap::new(),
+                doc_empty,
+            }
+        }
+        // TODO delete, no need to distinguish the root (just a specific sequence-referenced node)
+        // pub fn insert_root(&mut self, root: KdlNode, seq: u64) -> (Option<u64>, Option<KdlNode>) {
+        //     let prev_seq = self.root_seq.replace(seq);
+        //     let prev_node = self.insert(root, seq);
+        //     (prev_seq, prev_node)
+        // }
+        pub fn insert(&mut self, node: KdlNode, seq: u64) -> Option<KdlNode> {
+            self.seq_nodes.insert(seq, node)
+        }
+        pub fn try_remove(&mut self, seq: u64) -> Option<KdlNode> {
+            self.seq_nodes.remove(&seq)
+        }
+        pub fn end_delete_remaining(self) -> EmptyKdlDocument {
+            let Self {
+                seq_nodes: _,
+                doc_empty,
+            } = self;
+            doc_empty
+        }
+        // TODO deleteme, after all usage the remaining nodes shall be deleted
+        // pub fn try_end(self) -> Result<KdlDocument, Self> {
+        //     let Self {
+        //         seq_nodes,
+        //         doc_empty,
+        //     } = self;
+        //     if seq_nodes.is_empty() {
+        //         Ok(doc_empty)
+        //     } else {
+        //         Err(Self {
+        //             seq_nodes,
+        //             doc_empty,
+        //         })
+        //     }
+        // }
+    }
+
+    /// [`KdlDocument`] known to have no child nodes
+    #[derive(Clone, Debug, Default)]
+    pub struct EmptyKdlDocument(KdlDocument);
+    impl TryFrom<KdlDocument> for EmptyKdlDocument {
+        type Error = KdlDocument;
+        fn try_from(doc: KdlDocument) -> Result<Self, Self::Error> {
+            if doc.nodes().is_empty() {
+                Ok(Self(doc))
+            } else {
+                Err(doc)
+            }
+        }
+    }
+    impl EmptyKdlDocument {
+        pub fn with_root(self, root: KdlNode) -> SingleRootKdlDocument {
+            let Self(mut doc) = self;
+            doc.nodes_mut().push(root);
+            SingleRootKdlDocument::try_from(doc)
+                .expect("EmptyKdlDocument plus single root is SingleRootKdlDocument")
         }
     }
 

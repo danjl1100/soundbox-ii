@@ -12,15 +12,21 @@ pub(crate) const ROOT: NodeId<Root> = NodeId {
 pub type NodePathElem = usize;
 
 pub use sequence::Sequence;
-pub(crate) use sequence::{Keeper, SequenceSource};
+pub use sequence::{Keeper, SequenceSource};
 mod sequence {
     use super::{ty, NodeId};
 
     /// Type of [`NodeId.sequence()`](`super::NodeId.sequence()`) for keeping unique identifiers for nodes
     pub type Sequence = u64;
 
-    pub(crate) trait SequenceSource {
+    /// Source of an immutable identity / sequence number
+    #[allow(clippy::module_name_repetitions)]
+    pub trait SequenceSource {
+        /// Returns the item's sequence identifier
+        ///
+        /// NOTE: This is only valid for the current runtime instantiation (not for serialization)
         fn sequence(&self) -> Sequence;
+        /// Returns a wrapper denoting this sequence came from an actual object (not raw user input)
         fn sequence_keeper(&self) -> Keeper {
             Keeper(self.sequence())
         }

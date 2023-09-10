@@ -1,8 +1,8 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::{
     persistence::{
-        FromKdlEntries, KdlEntryVisitor, NodeErrorKind, ParseError, SequencerConfig,
-        SingleRootError,
+        FromKdlEntries, IntoKdlEntries, KdlEntryVisitor, NodeErrorKind, ParseError,
+        SequencerConfig, SingleRootError,
     },
     SequencerTree,
 };
@@ -27,6 +27,15 @@ impl NoOpFilterVisitor {
         }
     }
 }
+// Required for "back to string" checks
+impl IntoKdlEntries for NoOpFilter {
+    type Error<E> = ();
+
+    fn try_into_kdl<V: KdlEntryVisitor>(&self, visitor: V) -> Result<V, Self::Error<V::Error>> {
+        Ok(visitor)
+    }
+}
+
 impl KdlEntryVisitor for NoOpFilterVisitor {
     type Error = String;
     fn visit_property_str(&mut self, key: &str, value: &str) -> Result<(), Self::Error> {
@@ -55,7 +64,8 @@ fn from_str_no_op_filter(
 
     assert_eq!(
         config
-            .calculate_nonannotated_doc()
+            .clone()
+            .update_to_string(&seq_tree)
             .expect("config parsed from string"),
         input_str
     );
@@ -86,6 +96,16 @@ fn simple() {
         ("root { chain { leaf; }; }", 3),
         ("root { chain { chain {}; }; }", 3),
     ];
+    for (input, expected_count) in inputs {
+        let seq_tree = from_str_no_op_filter(input).expect("valid seq KDL");
+
+        let tree = seq_tree.tree;
+        assert_eq!(tree.sum_node_count(), expected_count);
+    }
+}
+#[test]
+fn simple_comment() {
+    let inputs = [("/*1*/ root /*2*/ { /*3*/ leaf /*4*/; /*5*/ } /*6*/", 2)];
     for (input, expected_count) in inputs {
         let seq_tree = from_str_no_op_filter(input).expect("valid seq KDL");
 
