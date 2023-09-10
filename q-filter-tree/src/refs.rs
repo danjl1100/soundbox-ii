@@ -284,9 +284,9 @@ impl NodeIdTyped {
         tree: &'tree mut impl AsMut<Tree<T, F>>,
     ) -> Result<NodeRefMut<'tree, '_, T, F>, InvalidNodePath> {
         let tree = tree.as_mut();
-        match self {
-            Self::Root(id) => Ok(id.try_ref(tree)),
-            Self::Child(id) => id.try_ref(tree).map(NodeRefMutWeighted::into_inner),
+        match NodePathRefTyped::from(self) {
+            NodePathRefTyped::Root(path) => Ok(path.try_ref(tree)),
+            NodePathRefTyped::Child(path) => path.try_ref(tree).map(NodeRefMutWeighted::into_inner),
         }
     }
 }

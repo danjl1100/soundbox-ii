@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use q_filter_tree::{
-    id::{ty, NodeId, NodeIdTyped, NodePath, NodePathTyped},
+    id::{ty, NodeId, NodeIdTyped, NodePath, NodePathTyped, SequenceSource},
     NodeInfo, SequenceAndItem, Tree,
 };
 use serde_json::Result;
@@ -128,11 +128,12 @@ fn unwrap_child_path(typed: NodePathTyped) -> NodePath<ty::Child> {
         }
     }
 }
-fn unwrap_child_id(typed: NodeIdTyped) -> NodeId<ty::Child> {
-    match typed {
-        NodeIdTyped::Child(id) => id,
-        NodeIdTyped::Root(_) => {
-            panic!("incorrect type on parsed NodeIdTyped: {:#?}", typed)
+fn unwrap_child_id(node_id: NodeIdTyped) -> NodeId<ty::Child> {
+    let sequence = node_id.sequence_keeper();
+    match NodePathTyped::from(node_id) {
+        NodePathTyped::Child(path) => path.with_sequence(&sequence),
+        NodePathTyped::Root(path) => {
+            panic!("incorrect type on parsed NodeIdTyped: {path:#?}")
         }
     }
 }

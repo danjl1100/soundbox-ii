@@ -19,9 +19,19 @@ mod sequence {
     /// Type of [`NodeId.sequence()`](`super::NodeId.sequence()`) for keeping unique identifiers for nodes
     pub type Sequence = u64;
 
+    mod private {
+        pub trait Sealed {}
+        impl Sealed for super::Keeper {}
+        impl Sealed for super::super::NodeIdTyped {}
+        impl Sealed for super::super::NodeIdRefTyped<'_> {}
+        impl<T: super::ty::Type> Sealed for super::NodeId<T> {}
+        impl<T, F> Sealed for crate::Node<T, F> {}
+        impl<T, F> Sealed for crate::refs::NodeRefMut<'_, '_, T, F> {}
+    }
+
     /// Source of an immutable identity / sequence number
     #[allow(clippy::module_name_repetitions)]
-    pub trait SequenceSource {
+    pub trait SequenceSource: private::Sealed {
         /// Returns the item's sequence identifier
         ///
         /// NOTE: This is only valid for the current runtime instantiation (not for serialization)
@@ -80,6 +90,8 @@ pub mod ty {
         impl Sealed for super::Root {}
     }
     impl Child {
+        /// Constructor ensures the inner `Vec` is non-empty
+        const NONEMPTY: &str = "nonempty by construction";
         /// Constructs a new [`Child`], if the supplied elements Vec is nonempty
         #[must_use]
         pub fn new(elems: Vec<NodePathElem>) -> Option<Self> {
@@ -88,6 +100,22 @@ pub mod ty {
             } else {
                 Some(Self(elems))
             }
+        }
+        /// Returns a slice of the [`NodePathElem`]s, with `split_last` already applied
+        #[allow(clippy::missing_panics_doc)] // guaranteed by type
+        #[must_use]
+        pub fn elems_split_last(&self) -> (NodePathElem, &[NodePathElem]) {
+            let (last, elems) = self.elems().split_last().expect(Self::NONEMPTY);
+            (*last, elems)
+        }
+
+        /// Splits into the remaining elements and the last element
+        #[allow(clippy::missing_panics_doc)] // guaranteed by type
+        #[must_use]
+        pub fn into_split_last(self) -> (Vec<NodePathElem>, NodePathElem) {
+            let Self(mut parts) = self;
+            let last_elem = parts.pop().expect(Self::NONEMPTY);
+            (parts, last_elem)
         }
     }
     impl Type for Child {
@@ -108,16 +136,27 @@ pub mod ty {
     }
 }
 
-shared::wrapper_enum! {
-    /// Typed [`NodeId`]
-    #[must_use]
-    #[derive(Clone, PartialEq, Eq)]
-    pub enum NodeIdTyped {
-        /// Root id
-        Root(NodeId<Root>),
-        /// Child id
-        Child(NodeId<Child>),
+/// Typed [`NodeId`]
+#[must_use]
+#[derive(Clone, PartialEq, Eq)]
+pub struct NodeIdTyped {
+    path: NodePathTyped,
+    sequence: Sequence,
+}
+impl<T: Type> From<NodeId<T>> for NodeIdTyped
+where
+    NodePathTyped: From<NodePath<T>>,
+{
+    fn from(node_id: NodeId<T>) -> Self {
+        let NodeId { path, sequence } = node_id;
+        Self {
+            path: path.into(),
+            sequence,
+        }
     }
+}
+
+shared::wrapper_enum! {
     /// Typed [`NodePath`]
     #[must_use]
     #[derive(Clone, PartialEq, Eq, Hash)]
@@ -137,21 +176,22 @@ shared::wrapper_enum! {
         /// Child path
         Child(&'a NodePath<Child>),
     }
-//  this seems like a PAIN to implement... for no real gain / use.
-//  Just carry a (NodePathRefTyped, Sequence) !
-//
-//     /// Typed reference to a [`NodeId`]
-//     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-//     pub enum NodeIdRefTyped<'a> {
-//         /// Root id
-//         Root(ref NodeId<Root>),
-//         /// Child id
-//         Child(ref NodeId<Child>),
-//     }
+}
+/// Typed reference to a [`NodeId`]
+#[derive(Clone, Copy)]
+pub struct NodeIdRefTyped<'a> {
+    path: NodePathRefTyped<'a>,
+    sequence: Sequence,
+}
+impl SequenceSource for NodeIdRefTyped<'_> {
+    fn sequence(&self) -> Sequence {
+        self.sequence
+    }
 }
 
 impl NodePathTyped {
-    pub(crate) fn with_sequence<S: SequenceSource>(self, source: &S) -> NodeIdTyped {
+    /// Creates a `NodeIdTyped` with the specified `Sequence`
+    pub fn with_sequence<S: SequenceSource>(self, source: &S) -> NodeIdTyped {
         match self {
             Self::Root(path) => path.with_sequence(source).into(),
             Self::Child(path) => path.with_sequence(source).into(),
@@ -203,10 +243,7 @@ impl<'a> PartialEq<NodePathTyped> for NodePathRefTyped<'a> {
 }
 impl SequenceSource for NodeIdTyped {
     fn sequence(&self) -> Sequence {
-        match self {
-            Self::Root(node_id) => node_id.sequence(),
-            Self::Child(node_id) => node_id.sequence(),
-        }
+        self.sequence
     }
 }
 
@@ -232,6 +269,10 @@ impl NodePath<Child> {
     pub(super) fn new(elems: Vec<NodePathElem>) -> Option<Self> {
         Some(Self(Child::new(elems)?))
     }
+    pub(super) fn new_push(mut elems: Vec<NodePathElem>, push_elem: NodePathElem) -> Self {
+        elems.push(push_elem);
+        Self::new(elems).expect("Vec nonempty after push")
+    }
 }
 impl<T: Type> NodePath<T> {
     /// Returns a slice of the [`NodePathElem`]s
@@ -246,30 +287,20 @@ impl<T: Type> NodePath<T> {
 }
 impl NodePath<ty::Child> {
     /// Returns a slice of the [`NodePathElem`]s, with `split_last` already applied
-    #[allow(clippy::missing_panics_doc)] // guaranteed by type parameter
     #[must_use]
     pub fn elems_split_last(&self) -> (NodePathElem, &[NodePathElem]) {
-        let (last, elems) = self
-            .elems()
-            .split_last()
-            .expect("nonempty path in NodePath<Child>");
-        (*last, elems)
+        self.0.elems_split_last()
     }
 }
 
 impl<T: Type> NodePath<T> {
     /// Appends a path element
-    #[allow(clippy::missing_panics_doc)] // guaranteed by Vec::push logic
     pub fn append(self, next: NodePathElem) -> NodePath<Child> {
-        let mut parts = self.into_elems();
-        parts.push(next);
-        NodePath::new(parts).expect("appended part makes Vec nonempty")
+        let parts = self.into_elems();
+        NodePath::new_push(parts, next)
     }
     /// Creates a `NodeId` with the specified `Sequence`
-    pub fn with_sequence_of_id(self, source: &NodeId<T>) -> NodeId<T> {
-        self.with_sequence(source)
-    }
-    pub(crate) fn with_sequence<S: SequenceSource>(self, source: &S) -> NodeId<T> {
+    pub fn with_sequence<S: SequenceSource>(self, source: &S) -> NodeId<T> {
         let sequence = source.sequence();
         self.with_sequence_unchecked(sequence)
     }
@@ -287,11 +318,9 @@ impl<T: Type> NodePath<T> {
 }
 impl NodePath<Child> {
     /// Returns the parent path sequence (if it exists) and the last path element
-    #[allow(clippy::missing_panics_doc)] // guaranteed by type parameter
     pub fn into_parent(self) -> (NodePathTyped, NodePathElem) {
-        let mut parts = self.into_elems();
-        let last_elem = parts.pop().expect("NodePath<Child> is not empty");
-        (NodePathTyped::from(parts), last_elem)
+        let (parts, last_elem) = self.0.into_split_last();
+        (parts.into(), last_elem)
     }
 }
 impl<T: Type> NodeId<T> {
@@ -334,10 +363,7 @@ impl<'a, T: Type> From<&'a NodeId<T>> for &'a [NodePathElem] {
 }
 impl From<NodeIdTyped> for NodePathTyped {
     fn from(node_id: NodeIdTyped) -> Self {
-        match node_id {
-            NodeIdTyped::Root(node_id) => NodePath::from(node_id).into(),
-            NodeIdTyped::Child(node_id) => NodePath::from(node_id).into(),
-        }
+        node_id.path
     }
 }
 impl<'a> From<&'a NodeId<ty::Root>> for NodePathRefTyped<'a> {
@@ -352,10 +378,7 @@ impl<'a> From<&'a NodeId<ty::Child>> for NodePathRefTyped<'a> {
 }
 impl<'a> From<&'a NodeIdTyped> for NodePathRefTyped<'a> {
     fn from(node_id: &'a NodeIdTyped) -> Self {
-        match node_id {
-            NodeIdTyped::Root(node_id) => node_id.into(),
-            NodeIdTyped::Child(node_id) => node_id.into(),
-        }
+        (&node_id.path).into()
     }
 }
 impl<'a> From<&'a NodePathTyped> for NodePathRefTyped<'a> {
@@ -392,6 +415,32 @@ where
         NodePath::from(node_id).into()
     }
 }
+impl<'a> From<&'a NodeIdTyped> for NodeIdRefTyped<'a> {
+    fn from(node_id: &'a NodeIdTyped) -> Self {
+        let NodeIdTyped { ref path, sequence } = *node_id;
+        Self {
+            path: path.into(),
+            sequence,
+        }
+    }
+}
+impl<'a> From<NodeIdRefTyped<'a>> for NodePathRefTyped<'a> {
+    fn from(node_id: NodeIdRefTyped<'a>) -> Self {
+        node_id.path
+    }
+}
+impl<'a, T: Type> From<&'a NodeId<T>> for NodeIdRefTyped<'a>
+where
+    NodePathRefTyped<'a>: From<&'a NodeId<T>>,
+{
+    fn from(node_id: &'a NodeId<T>) -> Self {
+        let sequence = node_id.sequence();
+        NodeIdRefTyped {
+            path: node_id.into(),
+            sequence,
+        }
+    }
+}
 
 impl NodePathRefTyped<'_> {
     /// Clones the inner path, to construct [`NodePathTyped`]
@@ -411,15 +460,17 @@ impl<T: Type> std::fmt::Debug for NodePath<T> {
 }
 impl<T: Type> std::fmt::Debug for NodeId<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}#{:?}", self.path, self.sequence)
+        let Self { path, sequence } = self;
+        write!(f, "{path:?}#{sequence:?}")
     }
 }
 impl std::fmt::Debug for NodeIdTyped {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::Root(id) => write!(f, "RootId({id:?})"),
-            Self::Child(id) => write!(f, "ChildId({id:?})"),
-        }
+        let Self { path, sequence } = self;
+        f.debug_struct("NodeIdTyped")
+            .field("path", path)
+            .field("sequence", sequence)
+            .finish()
     }
 }
 impl std::fmt::Debug for NodePathTyped {

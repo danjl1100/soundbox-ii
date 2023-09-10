@@ -52,15 +52,16 @@ fn return_nodes_to_flat<T, F>(
         for (doc_child, (_weight, tree_child)) in
             doc_children.nodes_mut().drain(..).zip(tree_children)
         {
-            return_nodes_to_flat(dest_flat_doc, doc_child, tree_child)
+            return_nodes_to_flat(dest_flat_doc, doc_child, tree_child);
         }
     }
 
     let seq = tree_node.sequence_num();
     let existing = dest_flat_doc.insert(src_doc_node, seq);
-    if let Some(existing) = existing {
-        panic!("duplicate nodes for seq {seq}: {existing:?}")
-    }
+    assert!(
+        existing.is_none(),
+        "duplicate nodes for seq {seq}: {existing:?}"
+    );
 }
 
 struct Updater {

@@ -164,7 +164,7 @@ impl<T, F> Clone for SequencerConfig<T, F> {
     fn clone(&self) -> Self {
         Self {
             previous_doc_nodes_flat: self.previous_doc_nodes_flat.clone(),
-            _marker: self._marker,
+            _marker: std::marker::PhantomData,
         }
     }
 }

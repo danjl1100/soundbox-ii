@@ -8,7 +8,7 @@ use super::{
 use crate::{SequencerTree, SequencerTreeGuard};
 use kdl::{KdlDocument, KdlNode};
 use q_filter_tree::{
-    id::{ty, NodeId, NodeIdTyped, SequenceSource},
+    id::{ty, NodeId, NodeIdRefTyped, NodeIdTyped, SequenceSource},
     Weight,
 };
 
@@ -78,14 +78,14 @@ where
             });
         }
 
-        self.add_node(root_id.into(), src_doc_root)?;
+        self.add_node((&root_id).into(), src_doc_root)?;
 
         Ok(self.doc_nodes_flat)
     }
     /// Adds the specified document node to the tree, underneath the specified path prefix
     fn add_node(
         &mut self,
-        tree_id: NodeIdTyped,
+        tree_id: NodeIdRefTyped<'_>,
         mut src_doc_node: KdlNode,
     ) -> Result<(), NodeError<F::Error>> {
         const EXPECT_VALID_PARENT_PATH: &str = "valid parent_path upon construction";
@@ -93,8 +93,7 @@ where
         for src_doc_child in src_doc_node
             .children_mut()
             .as_mut()
-            .map(KdlDocument::nodes_mut)
-            .unwrap_or(&mut vec![])
+            .map_or(&mut vec![], KdlDocument::nodes_mut)
             .drain(..)
         {
             let (weight_opt, filter) = entries_to_weight_and_filter(&src_doc_child)?;
@@ -107,7 +106,7 @@ where
                     if src_doc_child.children().is_some() {
                         Ok(self
                             .seq_tree_guard
-                            .add_node((&tree_id).into(), filter)
+                            .add_node(tree_id.into(), filter)
                             .expect(EXPECT_VALID_PARENT_PATH))
                     } else {
                         Err(NodeError {
@@ -123,7 +122,7 @@ where
                         .is_none()
                         .then(|| {
                             self.seq_tree_guard
-                                .add_terminal_node((&tree_id).into(), filter)
+                                .add_terminal_node(tree_id.into(), filter)
                                 .expect(EXPECT_VALID_PARENT_PATH)
                         })
                         .ok_or(NodeError {
@@ -146,14 +145,15 @@ where
                 .expect("created node path exists");
             new_node.set_weight(weight);
 
-            self.add_node(new_node_id.into(), src_doc_child)?;
+            self.add_node((&NodeIdTyped::from(new_node_id)).into(), src_doc_child)?;
         }
 
         let seq = tree_id.sequence();
         let existing = self.doc_nodes_flat.insert(src_doc_node, seq);
-        if let Some(existing) = existing {
-            panic!("duplicate node for sequence {seq}: {existing}")
-        }
+        assert!(
+            existing.is_none(),
+            "duplicate node for sequence {seq}: {existing:?}"
+        );
 
         Ok(())
     }

@@ -30,7 +30,7 @@
 
 use q_filter_tree::{
     error::InvalidNodePath,
-    id::{ty, NodeId, NodeIdTyped, NodePathRefTyped, NodePathTyped},
+    id::{ty, NodeId, NodeIdTyped, NodePathRefTyped, NodePathTyped, SequenceSource},
     serde::{NodeDescriptor, NodeIdParseError},
     OrderType, RemoveError, Weight,
 };
@@ -421,10 +421,7 @@ where
         &mut self,
         node_id_str: &str,
     ) -> Result<(q_filter_tree::Weight, NodeInfo<T, F>), Error> {
-        let node_id = match parse_id(node_id_str)? {
-            NodeIdTyped::Root(..) => Err(Error::Message("cannot remove root node".to_string())),
-            NodeIdTyped::Child(child) => Ok(child),
-        }?;
+        let node_id = parse_id_child(node_id_str, "remove")?;
         self.inner.guard().remove_node(&node_id)
     }
     /// Returns the next [`Item`](`ItemSource::Item`)
@@ -448,10 +445,7 @@ where
             .queue_remove_item((&node_path).into(), index)
     }
     fn move_node(&mut self, src_id_str: &str, dest_id_str: &str) -> Result<NodeIdStr, Error> {
-        let src_id = match parse_id(src_id_str)? {
-            NodeIdTyped::Root(..) => Err(Error::Message("cannot move root node".to_string())),
-            NodeIdTyped::Child(child) => Ok(child),
-        }?;
+        let src_id = parse_id_child(src_id_str, "move")?;
         let dest_id = parse_id(dest_id_str)?;
         let new_node_id = self.inner.guard().move_node(&src_id, dest_id)?;
         Ok(serialize_id(new_node_id)?)
@@ -479,9 +473,10 @@ fn resolved_post_remove_id(
     removed_id: &NodeId<ty::Child>,
     input: NodeIdTyped,
 ) -> Option<NodeIdTyped> {
-    match input {
-        NodeIdTyped::Root(root) => Some(root.into()),
-        NodeIdTyped::Child(input) => {
+    let input_seq = input.sequence_keeper();
+    let resolved_path: Option<NodePathTyped> = match input.into() {
+        NodePathTyped::Root(root) => Some(root.into()),
+        NodePathTyped::Child(input) => {
             let (removed_end, removed_parent) = removed_id.elems_split_last();
             let (input_end, input_parent) = input.elems_split_last();
             if input_parent == removed_parent {
@@ -490,17 +485,17 @@ fn resolved_post_remove_id(
                     std::cmp::Ordering::Equal => None,
                     std::cmp::Ordering::Greater => {
                         let result_end = input_end - 1;
-                        let result_id = (input_parent.iter().copied().collect::<NodePathTyped>())
-                            .append(result_end)
-                            .with_sequence_of_id(&input);
-                        Some(result_id.into())
+                        let result_path = (input_parent.iter().copied().collect::<NodePathTyped>())
+                            .append(result_end);
+                        Some(result_path.into())
                     }
                 }
             } else {
                 Some(input.into())
             }
         }
-    }
+    };
+    resolved_path.map(|path| path.with_sequence(&input_seq))
 }
 /// [`Mismatch`] with associated label string
 pub struct MismatchLabel<T>(Mismatch<T>, String);
@@ -588,6 +583,15 @@ fn parse_id(input_str: &str) -> Result<NodeIdTyped, String> {
             format!("expected NodeId, got {node_path:?}. Try adding #id. (e.g. {input_str}#ID)")
         })
 }
+fn parse_id_child(input_str: &str, operation: &str) -> Result<NodeId<ty::Child>, String> {
+    let node_id = parse_id(input_str)?;
+    let sequence = node_id.sequence_keeper();
+    match node_id.into() {
+        NodePathTyped::Root(..) => Err(format!("cannot {operation} root node")),
+        NodePathTyped::Child(child) => Ok(child.with_sequence(&sequence)),
+    }
+}
+
 fn parse_descriptor(input_str: &str) -> Result<NodeDescriptor, String> {
     input_str
         .parse()
