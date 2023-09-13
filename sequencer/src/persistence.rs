@@ -14,6 +14,8 @@ mod update;
 
 pub mod io;
 
+mod kdl_serde_impl;
+
 const NAME_ROOT: &str = "root";
 const NAME_CHAIN: &str = "chain";
 const NAME_LEAF: &str = "leaf";
@@ -51,14 +53,20 @@ pub trait IntoKdlEntries: Sized + Clone {
     fn try_into_kdl<V: KdlEntryVisitor>(&self, visitor: V) -> Result<V, Self::Error<V::Error>>;
 }
 
-/// Marker for external types that are implemented as a serde compatible map ([`String`] key-value pairs only)
-pub trait StringMapSerializeDeserialize: serde::Serialize + serde::de::DeserializeOwned {}
+/// Marker for external types to be automatically implement [`FromKdlEntries`]/[`IntoKdlEntries`]
+/// via serde
+// TODO list specific limitations here (and TEST for these!)
+// TODO possibly add a built-in "test structure" function, to test ser/de
+pub trait StructSerializeDeserialize:
+    Clone + serde::Serialize + serde::de::DeserializeOwned
+{
+}
 
 /// Visitor capable of accepting [`kdl::KdlEntry`] types
 #[allow(clippy::missing_errors_doc)]
 pub trait KdlEntryVisitor {
     /// Error for serializing an entry
-    type Error;
+    type Error: std::fmt::Debug;
 
     /// Attempt to visit a key/value property of [`str`]
     fn visit_property_str(&mut self, key: &str, value: &str) -> Result<(), Self::Error>;
@@ -229,11 +237,7 @@ mod tests {
 
     mod encode;
 
-    #[test]
-    #[ignore]
-    fn round_trip() {
-        panic!("the discou")
-    }
+    mod round_trip;
 }
 
 #[allow(clippy::module_name_repetitions)]
