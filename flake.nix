@@ -351,6 +351,8 @@
               type = lib.types.str;
               description = ''
                 User to run the soundbox-ii and cvlc services
+
+                NOTE: The user must have a HOME folder to cache albumartwork. Otherwise, VLC will refuse to serve artwork.
               '';
             };
             group = lib.mkOption {
