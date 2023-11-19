@@ -1,8 +1,62 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{never::NeverSerialize, Error};
+//! Converts from a Rust type to KDL by acting as a `serde::Serializer`
+
+use super::never::NeverSerialize;
 use crate::persistence::KdlEntryVisitor;
 use serde::Serialize;
+
+type SuperError<E> = super::Error<E>;
+
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    UnimplementedType {
+        ty: &'static str,
+        name: &'static str,
+        pending_key: Option<&'static str>,
+    },
+    IntOutOfRange(u64),
+    PendingKey {
+        pending_key: &'static str,
+        next_key: Option<&'static str>,
+    },
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const UNIMPLEMENTED_FOR: &str = "serde-serialize to KDL is unimplemented for";
+        match self {
+            Self::UnimplementedType {
+                ty,
+                name,
+                pending_key,
+            } => {
+                write!(f, "{UNIMPLEMENTED_FOR} {ty} {name:?}")?;
+                if let Some(key) = pending_key {
+                    write!(f, " (key {key:?})")
+                } else {
+                    Ok(())
+                }
+            }
+            Self::IntOutOfRange(int) => write!(f, "integer out of range of i64: {int}"),
+            Self::PendingKey {
+                pending_key,
+                next_key: None,
+            } => write!(f, "finished, but pending key: {pending_key:?}"),
+            Self::PendingKey {
+                pending_key,
+                next_key: Some(next_key),
+            } => write!(
+                f,
+                "encountered key {next_key:?} while still pending key: {pending_key:?}"
+            ),
+        }
+    }
+}
+impl<E> From<Error> for SuperError<E> {
+    fn from(err: Error) -> Self {
+        SuperError::Serialize(err)
+    }
+}
 
 pub struct Serializer<V> {
     visitor: V,
@@ -18,16 +72,32 @@ where
             pending_key: None,
         }
     }
-    pub fn finish(self) -> Result<V, Error<V::Error>> {
+    pub fn finish(self) -> Result<V, SuperError<V::Error>> {
         let Self {
             visitor,
             pending_key,
         } = self;
         if let Some(pending_key) = pending_key {
-            Err(Error::Message(format!("pending key {pending_key:?}")))
+            Err(Error::PendingKey {
+                pending_key,
+                next_key: None,
+            }
+            .into())
         } else {
             Ok(visitor)
         }
+    }
+
+    fn unimplemented_type<E>(&self, name: &'static str) -> SuperError<E> {
+        self.unimplemented("type", name)
+    }
+
+    fn unimplemented<E>(&self, ty: &'static str, name: &'static str) -> SuperError<E> {
+        SuperError::Serialize(Error::UnimplementedType {
+            ty,
+            name,
+            pending_key: self.pending_key,
+        })
     }
 }
 impl<'a, V> serde::ser::Serializer for &'a mut Serializer<V>
@@ -35,7 +105,7 @@ where
     V: KdlEntryVisitor,
 {
     type Ok = ();
-    type Error = Error<V::Error>;
+    type Error = SuperError<V::Error>;
 
     // No additional state needed
     type SerializeSeq = NeverSerialize<V>;
@@ -52,7 +122,7 @@ where
         } else {
             self.visitor.visit_argument_bool(v)
         }
-        .map_err(Error::KdlEntryVisitor)
+        .map_err(SuperError::KdlEntryVisitor)
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
@@ -73,7 +143,7 @@ where
         } else {
             self.visitor.visit_argument_i64(v)
         }
-        .map_err(Error::KdlEntryVisitor)
+        .map_err(SuperError::KdlEntryVisitor)
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
@@ -92,20 +162,20 @@ where
         if let Ok(v) = i64::try_from(v) {
             self.serialize_i64(v)
         } else {
-            Err(Error::Message(format!("u64 exceeds i64 range: {v}")))
+            Err(Error::IntOutOfRange(v).into())
         }
     }
 
     fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message("unexpected float".to_string()))
+        Err(self.unimplemented_type("float"))
     }
 
     fn serialize_f64(self, _v: f64) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message("unexpected float".to_string()))
+        Err(self.unimplemented_type("float"))
     }
 
     fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message("unexpected char".to_string()))
+        Err(self.unimplemented_type("char"))
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -114,30 +184,30 @@ where
         } else {
             self.visitor.visit_argument_str(v)
         }
-        .map_err(Error::KdlEntryVisitor)
+        .map_err(SuperError::KdlEntryVisitor)
     }
 
     fn serialize_bytes(self, _v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message("unexpected bytes".to_string()))
+        Err(self.unimplemented_type("bytes"))
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message("unexpected none".to_string()))
+        Err(self.unimplemented_type("none"))
     }
 
     fn serialize_some<T: ?Sized>(self, _value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: Serialize,
     {
-        Err(Error::Message("unexpected some".to_string()))
+        Err(self.unimplemented_type("some"))
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message("unexpected unit".to_string()))
+        Err(self.unimplemented_type("unit"))
     }
 
     fn serialize_unit_struct(self, name: &'static str) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message(format!("unexpected unit struct {name:?}")))
+        Err(self.unimplemented("unit struct", name))
     }
 
     fn serialize_unit_variant(
@@ -146,7 +216,7 @@ where
         _variant_index: u32,
         _variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        Err(Error::Message(format!("unexpected unit variant {name:?}")))
+        Err(self.unimplemented("unit variant", name))
     }
 
     fn serialize_newtype_struct<T: ?Sized>(
@@ -157,9 +227,7 @@ where
     where
         T: Serialize,
     {
-        Err(Error::Message(format!(
-            "unexpected newtype struct {name:?}"
-        )))
+        Err(self.unimplemented("newtype struct", name))
     }
 
     fn serialize_newtype_variant<T: ?Sized>(
@@ -172,17 +240,15 @@ where
     where
         T: Serialize,
     {
-        Err(Error::Message(format!(
-            "unexpected newtype variant {name:?}"
-        )))
+        Err(self.unimplemented("newtype variant", name))
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        Err(Error::Message("unexpected seq".to_string()))
+        Err(self.unimplemented_type("seq"))
     }
 
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        Err(Error::Message("unexpected tuple".to_string()))
+        Err(self.unimplemented_type("tuple"))
     }
 
     fn serialize_tuple_struct(
@@ -190,7 +256,7 @@ where
         name: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        Err(Error::Message(format!("unexpected tuple variant {name:?}")))
+        Err(self.unimplemented("tuple struct", name))
     }
 
     fn serialize_tuple_variant(
@@ -200,11 +266,11 @@ where
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        Err(Error::Message(format!("unexpected tuple variant {name:?}")))
+        Err(self.unimplemented("tuple variant", name))
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        Err(Error::Message("unexpected map".to_string()))
+        Err(self.unimplemented_type("map"))
     }
 
     fn serialize_struct(
@@ -222,9 +288,7 @@ where
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Err(Error::Message(format!(
-            "unexpected struct variant {name:?}"
-        )))
+        Err(self.unimplemented("struct variant", name))
     }
 }
 impl<'a, V> serde::ser::SerializeStruct for &'a mut Serializer<V>
@@ -232,7 +296,7 @@ where
     V: KdlEntryVisitor,
 {
     type Ok = ();
-    type Error = Error<V::Error>;
+    type Error = SuperError<V::Error>;
 
     fn serialize_field<T: ?Sized>(
         &mut self,
@@ -242,10 +306,12 @@ where
     where
         T: Serialize,
     {
-        if let Some(existing_key) = self.pending_key.replace(key) {
-            Err(Error::Message(format!(
-                "serializing field {key:?} found unhandled key: {existing_key:?}"
-            )))
+        if let Some(pending_key) = self.pending_key.replace(key) {
+            Err(Error::PendingKey {
+                pending_key,
+                next_key: Some(key),
+            }
+            .into())
         } else {
             value.serialize(&mut **self)
         }
@@ -253,9 +319,11 @@ where
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         if let Some(pending_key) = self.pending_key {
-            Err(Error::Message(format!(
-                "pending key while ending SerializeStruct: {pending_key:?}"
-            )))
+            Err(Error::PendingKey {
+                pending_key,
+                next_key: None,
+            }
+            .into())
         } else {
             Ok(())
         }

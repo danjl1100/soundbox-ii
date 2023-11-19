@@ -1,9 +1,11 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+//! Converts from KDL types to a Rust type by driving a `serde::Deserializer`
+
 use crate::persistence::KdlEntryVisitor;
 use std::collections::VecDeque;
 
-type Error = super::Error<shared::Never>;
+type SuperError = super::Error<shared::Never>;
 
 // Stores the entities visited by [`KdlEntryVisitor`], in order to trigger equivalent callbacks in
 // [`serde::de::Deserializer`]
@@ -13,15 +15,87 @@ pub struct DeserializeVisitor {
     current_key: Option<String>,
     current_value: Option<Value>,
 }
-#[derive(Debug)]
-enum Entry {
+#[derive(Debug, Clone, PartialEq)]
+pub enum Entry {
     Property { key: String, value: Value },
 }
-#[derive(Debug)]
-enum Value {
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
     String(String),
     I64(i64),
     Bool(bool),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    UnimplementedType(&'static str),
+    NextKeyExistingKey(String),
+    NextKeyExistingValue(Value),
+    ValueTypeMismatch {
+        expected: &'static str,
+        value: Value,
+    },
+    IntOutOfRange(i64),
+    PendingEntries(Vec<Entry>),
+    PendingKey(String),
+    PendingValue(Value),
+    MissingPreparedKey,
+    MissingPreparedValue(&'static str),
+    UnexpectedKdlArgument {
+        value: Value,
+        after_entry: Option<Entry>,
+    },
+}
+impl Error {
+    fn unimplemented_type(ty: &'static str) -> SuperError {
+        SuperError::Deserialize(Error::UnimplementedType(ty))
+    }
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnimplementedType(ty) => {
+                write!(f, "KDL to serde-deserialize unimplemented for type {ty:?}")
+            }
+            Self::NextKeyExistingKey(key) => write!(
+                f,
+                "when requesting next key, pending un-processed key {key:?}"
+            ),
+            Self::NextKeyExistingValue(value) => write!(
+                f,
+                "when requesting next key, pending un-processed value {value:?}"
+            ),
+            Self::ValueTypeMismatch { expected, value } => {
+                write!(f, "expected {expected}, found: {value:?}")
+            }
+            Self::IntOutOfRange(int) => write!(f, "integer out of range: {int}"),
+            Self::PendingEntries(entries) => {
+                write!(f, "finished, but pending entries: {entries:?}")
+            }
+            Self::PendingKey(key) => write!(f, "finished, but pending key: {key:?}"),
+            Self::PendingValue(value) => write!(f, "finished, but pending value: {value:?}"),
+            Self::MissingPreparedKey => write!(f, "no key requested to be processed"),
+            Self::MissingPreparedValue(ty) => {
+                write!(f, "no value (ty {ty}) requested to be processed")
+            }
+            Self::UnexpectedKdlArgument { value, after_entry } => {
+                write!(
+                    f,
+                    "expected key/value KDL pairs, found argument with no key: {value:?}"
+                )?;
+                if let Some(after_entry) = after_entry {
+                    write!(f, " after entry {after_entry:?}")
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+impl From<Error> for SuperError {
+    fn from(err: Error) -> Self {
+        SuperError::Deserialize(err)
+    }
 }
 
 impl DeserializeVisitor {
@@ -32,17 +106,11 @@ impl DeserializeVisitor {
             current_value,
         } = self;
         if !entries.is_empty() {
-            Err(Error::Message(format!(
-                "entries not processed: {entries:?}"
-            )))
+            Err(Error::PendingEntries(entries.into()))
         } else if let Some(current_key) = current_key {
-            Err(Error::Message(format!(
-                "key not processed: {current_key:?}"
-            )))
+            Err(Error::PendingKey(current_key))
         } else if let Some(current_value) = current_value {
-            Err(Error::Message(format!(
-                "value not processed: {current_value:?}"
-            )))
+            Err(Error::PendingValue(current_value))
         } else {
             Ok(())
         }
@@ -52,19 +120,23 @@ impl DeserializeVisitor {
         T: TryFrom<i64>,
         T::Error: std::fmt::Display,
     {
+        const TYPE: &str = "int";
         match self.current_value.take() {
-            Some(Value::I64(value)) => value
-                .try_into()
-                .map_err(|err| Error::Message(format!("int range error: {err:}"))),
-            Some(value) => Err(Error::Message(format!("expected integer got {value:?}"))),
-            None => Err(Error::Message(
-                "serde expecting integer, but no value prepared".to_string(),
-            )),
+            Some(Value::I64(value)) => value.try_into().map_err(|_| Error::IntOutOfRange(value)),
+            Some(value) => Err(Error::ValueTypeMismatch {
+                expected: TYPE,
+                value,
+            }),
+            None => Err(Error::MissingPreparedValue(TYPE)),
         }
+    }
+    fn unexpected_kdl_argument(&self, value: Value) -> Error {
+        let after_entry = self.entries.iter().last().cloned();
+        Error::UnexpectedKdlArgument { value, after_entry }
     }
 }
 impl KdlEntryVisitor for DeserializeVisitor {
-    type Error = Error;
+    type Error = SuperError;
 
     fn visit_property_str(&mut self, key: &str, value: &str) -> Result<(), Self::Error> {
         self.entries.push_back(Entry::Property {
@@ -91,13 +163,15 @@ impl KdlEntryVisitor for DeserializeVisitor {
     }
 
     fn visit_argument_str(&mut self, value: &str) -> Result<(), Self::Error> {
-        Err(Error::Message(format!("unexpected argument {value:?}")))
+        Err(self
+            .unexpected_kdl_argument(Value::String(value.to_string()))
+            .into())
     }
     fn visit_argument_i64(&mut self, value: i64) -> Result<(), Self::Error> {
-        Err(Error::Message(format!("unexpected argument {value:?}")))
+        Err(self.unexpected_kdl_argument(Value::I64(value)).into())
     }
     fn visit_argument_bool(&mut self, value: bool) -> Result<(), Self::Error> {
-        Err(Error::Message(format!("unexpected argument {value:?}")))
+        Err(self.unexpected_kdl_argument(Value::Bool(value)).into())
     }
 
     // fn visit_argument_str(&mut self, value: &str) -> Result<(), Self::Error> {
@@ -123,7 +197,7 @@ impl KdlEntryVisitor for DeserializeVisitor {
 }
 
 impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
-    type Error = Error;
+    type Error = SuperError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
@@ -159,9 +233,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
         if let Some(key) = self.current_key.take() {
             visitor.visit_string(key)
         } else {
-            Err(Error::Message(
-                "serde expecting identifier, but no key prepared".to_string(),
-            ))
+            Err(Error::MissingPreparedKey.into())
         }
     }
 
@@ -169,12 +241,14 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
+        const TYPE: &str = "bool";
         let value = match self.current_value.take() {
             Some(Value::Bool(value)) => Ok(value),
-            Some(value) => Err(Error::Message(format!("expected bool got {value:?}"))),
-            None => Err(Error::Message(
-                "serde expecting bool, but no value prepared".to_string(),
-            )),
+            Some(value) => Err(Error::ValueTypeMismatch {
+                expected: TYPE,
+                value,
+            }),
+            None => Err(Error::MissingPreparedValue(TYPE)),
         }?;
         visitor.visit_bool(value)
     }
@@ -239,33 +313,35 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize f32".to_string()))
+        Err(Error::unimplemented_type("f32"))
     }
 
     fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize f64".to_string()))
+        Err(Error::unimplemented_type("f64"))
     }
 
     fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize char".to_string()))
+        Err(Error::unimplemented_type("char"))
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
+        const TYPE: &str = "str";
         let value = match self.current_value.take() {
             Some(Value::String(value)) => Ok(value),
-            Some(value) => Err(Error::Message(format!("expected str got {value:?}"))),
-            None => Err(Error::Message(
-                "serde expecting str, but no value prepared".to_string(),
-            )),
+            Some(value) => Err(Error::ValueTypeMismatch {
+                expected: TYPE,
+                value,
+            }),
+            None => Err(Error::MissingPreparedValue(TYPE)),
         }?;
         visitor.visit_str(&value)
     }
@@ -274,12 +350,14 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
+        const TYPE: &str = "string";
         let value = match self.current_value.take() {
             Some(Value::String(value)) => Ok(value),
-            Some(value) => Err(Error::Message(format!("expected string got {value:?}"))),
-            None => Err(Error::Message(
-                "serde expecting string, but no value prepared".to_string(),
-            )),
+            Some(value) => Err(Error::ValueTypeMismatch {
+                expected: TYPE,
+                value,
+            }),
+            None => Err(Error::MissingPreparedValue(TYPE)),
         }?;
         visitor.visit_string(value)
     }
@@ -288,28 +366,28 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize bytes".to_string()))
+        Err(Error::unimplemented_type("bytes"))
     }
 
     fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize byte_buf".to_string()))
+        Err(Error::unimplemented_type("byte_buf"))
     }
 
     fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize option".to_string()))
+        Err(Error::unimplemented_type("option"))
     }
 
     fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize unit".to_string()))
+        Err(Error::unimplemented_type("unit"))
     }
 
     fn deserialize_unit_struct<V>(
@@ -320,7 +398,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize unit_struct".to_string()))
+        Err(Error::unimplemented_type("unit_struct"))
     }
 
     fn deserialize_newtype_struct<V>(
@@ -331,23 +409,21 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message(
-            "cannot deserialize newtype_struct".to_string(),
-        ))
+        Err(Error::unimplemented_type("newtype_struct"))
     }
 
     fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize seq".to_string()))
+        Err(Error::unimplemented_type("seq"))
     }
 
     fn deserialize_tuple<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize tuple".to_string()))
+        Err(Error::unimplemented_type("tuple"))
     }
 
     fn deserialize_tuple_struct<V>(
@@ -359,9 +435,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message(
-            "cannot deserialize tuple_struct".to_string(),
-        ))
+        Err(Error::unimplemented_type("tuple_struct"))
     }
 
     fn deserialize_enum<V>(
@@ -373,19 +447,19 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize enum".to_string()))
+        Err(Error::unimplemented_type("enum"))
     }
 
     fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        Err(Error::Message("cannot deserialize ignored_any".to_string()))
+        Err(Error::unimplemented_type("ignored_any"))
     }
 }
 
 impl<'de, 'a> serde::de::MapAccess<'de> for &'a mut DeserializeVisitor {
-    type Error = Error;
+    type Error = SuperError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
     where
@@ -397,9 +471,9 @@ impl<'de, 'a> serde::de::MapAccess<'de> for &'a mut DeserializeVisitor {
                 let existing_value = self.current_value.replace(value);
 
                 if let Some(existing_key) = existing_key {
-                    Err(Error::Message(format!("existing key {existing_key:?}")))
+                    Err(Error::NextKeyExistingKey(existing_key).into())
                 } else if let Some(existing_value) = existing_value {
-                    Err(Error::Message(format!("existing value {existing_value:?}")))
+                    Err(Error::NextKeyExistingValue(existing_value).into())
                 } else {
                     seed.deserialize(&mut **self).map(Some)
                 }

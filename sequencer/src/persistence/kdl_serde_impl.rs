@@ -18,12 +18,12 @@ mod de;
 
 mod never;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error<E> {
     Message(String),
     KdlEntryVisitor(E),
-    // TODO add more like this:
-    // ExpectedMap,
+    Deserialize(de::Error),
+    Serialize(ser::Error),
 }
 
 impl<E> std::error::Error for Error<E> where E: std::fmt::Debug {}
@@ -35,8 +35,8 @@ where
         match self {
             Error::Message(message) => f.write_str(message),
             Error::KdlEntryVisitor(visitor_err) => write!(f, "visitor: {visitor_err:?}"),
-            // TODO display example for the added error variants:
-            // Error::ExpectedMap => f.write_str("expected map"),
+            Error::Deserialize(de_err) => write!(f, "deserialize: {de_err}"),
+            Error::Serialize(ser_err) => write!(f, "serialize: {ser_err}"),
         }
     }
 }

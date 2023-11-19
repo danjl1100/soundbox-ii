@@ -8,3 +8,7 @@ command = ["cargo", "run", "--color", "always", "--",
   "--source-type", "folder-listing",
 ]
 need_stdout = true
+
+[jobs.test]
+command = ["cargo", "test", "--color", "always"]
+need_stdout = true
