@@ -11,6 +11,7 @@
     # decrease total count of flake dependencies by following versions from "rust-overlay" input
     flake-utils.follows = "rust-overlay/flake-utils";
     nixpkgs.follows = "rust-overlay/nixpkgs";
+    nixpkgs-unstable-for-vlc.url = "github:nixos/nixpkgs?branch=nixpkgs-unstable";
     crane.inputs.rust-overlay.follows = "rust-overlay";
     crane.inputs.nixpkgs.follows = "nixpkgs";
     crane.inputs.flake-utils.follows = "flake-utils";
@@ -21,6 +22,7 @@
     self,
     flake-utils,
     nixpkgs,
+    nixpkgs-unstable-for-vlc,
     # rust
     rust-overlay,
     crane,
@@ -28,8 +30,14 @@
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
+        nixpkgs-unstable = import nixpkgs-unstable-for-vlc {
+          inherit system;
+        };
         overlays = [
           rust-overlay.overlays.default
+          (next: prev: {
+            vlc = nixpkgs-unstable.vlc;
+          })
         ];
         pkgs = import nixpkgs {
           inherit system overlays;
@@ -59,9 +67,21 @@
             };
           };
 
-        packages = (
-          core.packages
-        );
+        packages = let
+          # not_available = names: pkgs.lib.listToAttrs (builtins.map (name: {
+          #   inherit name;
+          #   value = builtins.throw "package \"${name}\" is not available on Darwin";
+          # }) names);
+          vlc_packages =
+            if pkgs.stdenv.isDarwin
+            then {}
+            else {
+              # TODO wrap the vlc commands as before
+              vlc = pkgs.vlc;
+              # cvlc = #TODO;
+            };
+        in
+          core.packages // vlc_packages;
 
         apps = core.apps;
 

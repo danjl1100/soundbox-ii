@@ -70,6 +70,21 @@
         "type": "github"
       }
     },
+    "nixpkgs-unstable-for-vlc": {
+      "locked": {
+        "lastModified": 1700444282,
+        "narHash": "sha256-s/+tgT+Iz0LZO+nBvSms+xsMqvHt2LqYniG9r+CYyJc=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "3f21a22b5aafefa1845dec6f4a378a8f53d8681c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "advisory-db": "advisory-db",
@@ -82,6 +97,7 @@
           "rust-overlay",
           "nixpkgs"
         ],
+        "nixpkgs-unstable-for-vlc": "nixpkgs-unstable-for-vlc",
         "rust-overlay": "rust-overlay"
       }
     },
