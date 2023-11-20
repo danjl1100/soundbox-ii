@@ -39,6 +39,16 @@ true \
   && true # trailing commas for the win
 RESULT=$?
 
+if [ $RESULT -eq 0 ]; then
+  nix --version >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    nix flake check
+    RESULT=$?
+  else
+    echo "No nix found, skipping nix flake check"
+  fi
+fi
+
 echo ""
 echo "NOTICE: These commands will verify the NixOS module builds successfully"
 echo "   nix flake show"
