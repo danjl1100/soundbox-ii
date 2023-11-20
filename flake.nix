@@ -12,9 +12,7 @@
     flake-utils.follows = "rust-overlay/flake-utils";
     nixpkgs.follows = "rust-overlay/nixpkgs";
     nixpkgs-unstable-for-vlc.url = "github:nixos/nixpkgs?branch=nixpkgs-unstable";
-    crane.inputs.rust-overlay.follows = "rust-overlay";
     crane.inputs.nixpkgs.follows = "nixpkgs";
-    crane.inputs.flake-utils.follows = "flake-utils";
   };
 
   outputs = {
