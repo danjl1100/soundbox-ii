@@ -16,8 +16,9 @@
 //
 //! Sequences tracks from various sources
 
-// teach me
-#![deny(clippy::pedantic)]
+// TODO - restore after finalizing flake
+// // teach me
+// #![deny(clippy::pedantic)]
 // no unsafe
 #![forbid(unsafe_code)]
 // no unwrap

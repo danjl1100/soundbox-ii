@@ -121,7 +121,7 @@ with_define! {
 impl<'a> ConverterIterator<'a> for State {
     type Status = &'a Channels;
     type Command = ();
-    fn next(&mut self, channels: &'a Channels, _: &()) -> Result<(), LowAction> {
+    fn next(&mut self, channels: &'a Channels, (): &()) -> Result<(), LowAction> {
         match self {
             State::PlaybackMode { converter, command } => {
                 with_status!(if let Ok(status) = borrow(channels.playback_status_tx) {
