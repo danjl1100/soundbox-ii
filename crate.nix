@@ -105,10 +105,17 @@ in rec {
   package = my-crate;
   doc = my-crate-doc;
 
-  drv-open-doc-for-crate = crate-name:
-    pkgs.writeShellScriptBin "open-doc-${crate-name}" ''
-      ${pkgs.xdg-utils}/bin/xdg-open "file://${my-crate-doc}/target/doc/${crate-name}/index.html"
-    '';
+  drv-open-doc-for-crate = let
+    open-cmd =
+      if pkgs.stdenv.isDarwin
+      then "open"
+      else "${pkgs.xdg-utils}/bin/xdg-open";
+    dash-to-underscores = input: builtins.replaceStrings ["-"] ["_"] input;
+  in
+    crate-name:
+      pkgs.writeShellScriptBin "open-doc-${crate-name}" ''
+        ${open-cmd} "file://${my-crate-doc}/share/doc/${dash-to-underscores crate-name}/index.html"
+      '';
 
   devShellFn = inputs:
     craneLib.devShell (inputs
