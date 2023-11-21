@@ -60,26 +60,40 @@
 
       ${launch}
     '';
-  # not_available = names: pkgs.lib.listToAttrs (builtins.map (name: {
-  #   inherit name;
-  #   value = builtins.throw "package \"${name}\" is not available on Darwin";
-  # }) names);
-in {
-  apps =
-    {
-      vlc = mkVlcApp {
-        name = "vlc";
-        visual = true;
-      };
-    }
-    // (
-      if isDarwin
-      then {}
-      else {
-        cvlc = mkVlcApp {
-          name = "cvlc";
-          visual = false;
-        };
-      }
-    );
+  not_available = names:
+    pkgs.lib.listToAttrs (builtins.map (name: {
+        inherit name;
+        value = builtins.throw "package \"${name}\" is usually not available on Darwin (blocked in flake.nix)";
+      })
+      names);
+
+  vlc = vlc_script {
+    name = "vlc";
+    visual = true;
+  };
+  cvlc =
+    if isDarwin
+    then (not_available ["cvlc"]).cvlc
+    else
+      (vlc_script {
+        name = "cvlc";
+        visual = false;
+      });
+in rec {
+  packages =
+    if isDarwin
+    # then (not_available ["vlc" "cvlc"]) #NOTE: errors on `nix flake show`
+    then {}
+    else {inherit vlc cvlc;};
+
+  apps = {
+    vlc = flake-utils.lib.mkApp {
+      name = "vlc";
+      drv = vlc;
+    };
+    cvlc = flake-utils.lib.mkApp {
+      name = "cvlc";
+      drv = cvlc;
+    };
+  };
 }

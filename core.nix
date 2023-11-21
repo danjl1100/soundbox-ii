@@ -20,6 +20,7 @@
   };
   craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
   craneLibWasm = (crane.mkLib pkgs).overrideToolchain rustToolchainWasm;
+  craneLibForDevShell = (crane.mkLib pkgs).overrideToolchain rustToolchainForDevshell;
 
   crates = let
     licenseFilter = path: _type: builtins.match ".*shared/src/license/COPYING.*" path != null;
@@ -89,11 +90,17 @@ in rec {
     drv = packages.${name};
   };
   apps.rust-doc = flake-utils.lib.mkApp {
-    drv = crates.server.drv-open-doc-for-crate "soundbox-ii";
+    drv = crates.server.drv-open-doc.for-crate "soundbox-ii";
+  };
+  apps.rust-doc-std = flake-utils.lib.mkApp {
+    drv = crates.server.drv-open-doc.for-std rustToolchainForDevshell;
   };
 
-  # inherit (crates.server) devShellFn;
-  inherit (crates.client) devShellFn;
+  devShellFn = inputs:
+    crates.client.devShellFn (inputs
+      // {
+        craneLib = craneLibForDevShell;
+      });
 
   checks = let
     inner_checks = {

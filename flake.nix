@@ -32,7 +32,12 @@
     crane,
     advisory-db,
   }:
-    flake-utils.lib.eachSystem ["x86_64-linux" "aarch64-darwin"] (
+    {
+      nixosModules = import ./module.nix {
+        inherit (self) packages;
+      };
+    }
+    // flake-utils.lib.eachSystem ["x86_64-linux" "aarch64-darwin"] (
       system: let
         pkgs-for-vlc = import nixpkgs-for-vlc {
           inherit system;
@@ -79,7 +84,7 @@
             };
           };
 
-        packages = core.packages;
+        packages = core.packages // vlc.packages;
 
         apps = core.apps // vlc.apps;
 

@@ -114,20 +114,30 @@ in rec {
   package = my-crate;
   doc = my-crate-doc;
 
-  drv-open-doc-for-crate = let
+  drv-open-doc = let
     open-cmd =
       if pkgs.stdenv.isDarwin
       then "open"
       else "${pkgs.xdg-utils}/bin/xdg-open";
     dash-to-underscores = input: builtins.replaceStrings ["-"] ["_"] input;
-  in
-    crate-name:
+  in {
+    for-crate = crate-name:
       pkgs.writeShellScriptBin "open-doc-${crate-name}" ''
+        echo "Opening docs for crate \"${crate-name}\""
         ${open-cmd} "file://${my-crate-doc}/share/doc/${dash-to-underscores crate-name}/index.html"
       '';
+    for-std = toolchainWithRustDoc:
+      pkgs.writeShellScriptBin "open-doc-std" ''
+        echo "Opening docs for rust std..."
+        ${open-cmd} file://${toolchainWithRustDoc}/share/doc/rust/html/std/index.html
+      '';
+    inherit open-cmd;
+  };
 
-  devShellFn = inputs:
-    craneLib.devShell (inputs
+  devShellFn = {craneLib ? craneLib, ...} @ inputs: let
+    inputs_sanitized = builtins.removeAttrs inputs ["craneLib"];
+  in
+    craneLib.devShell (inputs_sanitized
       // {
         inherit checks;
       });
