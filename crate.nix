@@ -5,9 +5,11 @@
   advisory-db,
   cargoExtraArgs ? "",
   extraBuildArgs ? {},
+  commonArgOverrides ? {},
   pname ? null,
   src ? null,
   srcDir ? ./.,
+  isWasm ? false,
 } @ inputs: let
   src =
     if (builtins.isNull inputs.src)
@@ -33,7 +35,8 @@
       if (builtins.isNull pname)
       then {}
       else {inherit pname;}
-    );
+    )
+    // commonArgOverrides;
 
   # Build *just* the cargo dependencies, so we can reuse
   # all of that work (e.g. via cachix) when running in CI
@@ -50,8 +53,14 @@
   my-crate-doc = craneLib.cargoDoc (commonArgs
     // {
       inherit cargoArtifacts;
-      cargoDocExtraArgs = "--workspace --no-deps"; # override default which is "--no-deps"
-    });
+    }
+    // (
+      if isWasm
+      then {}
+      else {
+        cargoDocExtraArgs = "--workspace --no-deps"; # override default which is "--no-deps"
+      }
+    ));
 in rec {
   checks = {
     # Build the crate as part of `nix flake check` for convenience
@@ -121,5 +130,14 @@ in rec {
     craneLib.devShell (inputs
       // {
         inherit checks;
+      });
+
+  buildTrunkPackage = {
+    pname,
+    trunkIndexPath,
+  }:
+    craneLib.buildTrunkPackage (commonArgs
+      // {
+        inherit pname cargoArtifacts trunkIndexPath;
       });
 }
