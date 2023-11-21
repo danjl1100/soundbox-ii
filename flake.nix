@@ -91,6 +91,12 @@
             ];
           };
         };
+
+        #TODO:
+        # nixosModules = import ./module.nix { inherit pkgs; core-packages = core.packages; };
+        # hydraJobs = packages // {  # possibly import ./hydra.nix ??
+        #   nixosModule = {...};
+        # };
       }
     );
 }
