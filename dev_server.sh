@@ -18,6 +18,16 @@ fi
 case $APP in
   soundbox-ii_bin | soundbox-ii)
     ATTEMPT_SHELL_USAGE=1
+
+    # auto-detect missing beet, to use fake-beet instead
+    if [ "$BEET_CMD" = "" ]; then
+      which beet > /dev/null
+      if [ $? -ne 0 ]; then
+        echo "\"beet\" not found in path, using fake-beet..."
+        export BEET_CMD="`nix build .#fake-beet --no-link --print-out-paths`/bin/fake-beet"
+      fi
+    fi
+
     ;;
   vlc | cvlc)
     uname -a | grep "Darwin" -q
