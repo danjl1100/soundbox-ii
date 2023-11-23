@@ -1,5 +1,5 @@
-{packages}: {
-  default = {
+{packages}: rec {
+  nixosModules.default = {
     config,
     lib,
     pkgs,
@@ -100,4 +100,43 @@
       networking.firewall.allowedUDPPorts = [cfg.bind_port];
     });
   };
+
+  nixosTestSystems = let
+    required_nixos = {...}: {
+      fileSystems."/" = {
+        device = "none";
+        fsType = "tmpfs";
+        options = ["size=2G" "mode=755"];
+      };
+      boot.loader.systemd-boot.enable = true;
+      system.stateVersion = "22.11";
+    };
+  in
+    {
+      lib,
+      system,
+    }: {
+      simple-configuration = let
+        service_activation = {...}: {
+          # initialize the soundbox-ii service
+          services.soundbox-ii = {
+            enable = true;
+            vlc_password = "notsecure";
+            user = "soundbox-ii";
+            group = "soundbox-ii";
+            music_dir = "/nonexistent";
+            bind_address = "127.0.0.1";
+            bind_port = 1234;
+          };
+        };
+      in
+        lib.nixosSystem {
+          inherit system;
+          modules = [
+            nixosModules.default
+            service_activation
+            required_nixos
+          ];
+        };
+    };
 }

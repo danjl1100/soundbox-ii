@@ -31,13 +31,33 @@
     rust-overlay,
     crane,
     advisory-db,
-  }:
-    {
-      nixosModules = import ./module.nix {
-        inherit (self) packages;
+  }: let
+    target_systems = ["x86_64-linux" "aarch64-darwin"];
+    target_systems_nixos = ["x86_64-linux"];
+    nixos = import ./nixos.nix {
+      inherit (self) packages;
+    };
+    nixosTestSystems = {system}:
+      nixos.nixosTestSystems {
+        inherit (nixpkgs) lib;
+        inherit system;
       };
+    nixosTestToplevels = system:
+      builtins.mapAttrs (_name: value:
+        value.config.system.build.toplevel)
+      (nixosTestSystems {inherit system;});
+  in
+    {
+      inherit (nixos) nixosModules;
+      hydraJobs =
+        (flake-utils.lib.eachSystem target_systems (system: {
+          soundbox-ii = self.packages.${system}.soundbox-ii;
+          soundbox-ii_bin = self.packages.${system}.soundbox-ii_bin;
+          soundbox-ii_frontend = self.packages.${system}.soundbox-ii_frontend;
+        }))
+        // (flake-utils.lib.eachSystem target_systems_nixos nixosTestToplevels);
     }
-    // flake-utils.lib.eachSystem ["x86_64-linux" "aarch64-darwin"] (
+    // flake-utils.lib.eachSystem target_systems (
       system: let
         pkgs-for-vlc = import nixpkgs-for-vlc {
           inherit system;
@@ -63,14 +83,35 @@
         vlc = import ./vlc.nix {
           inherit pkgs flake-utils;
         };
+
+        testSystemsChecks = let
+          testSystems = nixosTestSystems {inherit system;};
+        in
+          if pkgs.stdenv.isDarwin
+          then {}
+          else
+            builtins.listToAttrs (
+              pkgs.lib.flatten
+              (builtins.map (
+                  name:
+                    if (testSystems.${name}.config.system ? checks)
+                    then
+                      (builtins.map (check: {
+                          name = "${name}-${check.name}";
+                          value = check;
+                        })
+                        testSystems.${name}.config.system.checks)
+                    else []
+                )
+                (builtins.attrNames testSystems))
+            );
       in rec {
         # Combine the outputs from each subsystem,
         #  and pick reasonable defaults.
 
         checks =
-          (
-            core.checks
-          )
+          core.checks
+          // testSystemsChecks
           // {
             nix-alejandra = pkgs.stdenvNoCC.mkDerivation {
               name = "nix-alejandra";
@@ -84,9 +125,19 @@
             };
           };
 
-        packages = core.packages // vlc.packages;
+        packages =
+          core.packages
+          // vlc.packages
+          // {
+            default = core.packages.soundbox-ii;
+          };
 
-        apps = core.apps // vlc.apps;
+        apps =
+          core.apps
+          // vlc.apps
+          // {
+            default = core.apps.soundbox-ii;
+          };
 
         devShells = {
           default = core.devShellFn {
@@ -96,12 +147,6 @@
             ];
           };
         };
-
-        #TODO:
-        # nixosModules = import ./module.nix { inherit pkgs; core-packages = core.packages; };
-        # hydraJobs = packages // {  # possibly import ./hydra.nix ??
-        #   nixosModule = {...};
-        # };
       }
     );
 }
