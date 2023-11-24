@@ -34,7 +34,8 @@
   }: let
     target_systems = ["x86_64-linux" "aarch64-darwin"];
     target_systems_nixos = ["x86_64-linux"];
-    nixos = import ./nixos.nix {
+    target_systems_hydra = target_systems_nixos;
+    nixos = import ./nix/nixos.nix {
       inherit (self) packages;
     };
     nixosTestSystems = {system}:
@@ -50,7 +51,7 @@
     {
       inherit (nixos) nixosModules;
       hydraJobs =
-        (flake-utils.lib.eachSystem target_systems (system: {
+        (flake-utils.lib.eachSystem target_systems_hydra (system: {
           soundbox-ii = self.packages.${system}.soundbox-ii;
           soundbox-ii_bin = self.packages.${system}.soundbox-ii_bin;
           soundbox-ii_frontend = self.packages.${system}.soundbox-ii_frontend;
@@ -76,11 +77,11 @@
           inherit system overlays;
         };
 
-        core = import ./core.nix {
+        core = import ./nix/core.nix {
           inherit pkgs system crane advisory-db flake-utils;
         };
 
-        vlc = import ./vlc.nix {
+        vlc = import ./nix/vlc.nix {
           inherit pkgs flake-utils;
         };
 

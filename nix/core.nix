@@ -33,7 +33,7 @@
       src =
         pkgs.lib.cleanSourceWith
         {
-          src = craneLib.path ./.;
+          src = craneLib.path ./..;
           filter = licenseOrCargo;
         };
     };
@@ -43,7 +43,7 @@
       src =
         pkgs.lib.cleanSourceWith
         {
-          src = craneLib.path ./.;
+          src = craneLib.path ./..;
           filter = licenseOrCargoOrWeb;
         };
       commonArgOverrides = {
@@ -57,7 +57,7 @@
     };
     fake-beet = pkgs.callPackage ./crate.nix {
       inherit system advisory-db craneLib;
-      src = craneLib.path ./fake-beet;
+      src = craneLib.path ./../fake-beet;
     };
   };
 
