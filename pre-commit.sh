@@ -45,15 +45,9 @@ if [ $RESULT -eq 0 ]; then
     nix flake check
     RESULT=$?
   else
-    echo "No nix found, skipping nix flake check"
+    echo "No nix found, skipping 'nix flake check'"
   fi
 fi
-
-echo ""
-echo "NOTICE: These commands will verify the NixOS module builds successfully"
-echo "   nix flake show"
-echo "   nix build .#hydraJobs.nixosModule.x86_64-linux"
-echo ""
 
 # Restore changes
 # again, source: https://stackoverflow.com/a/20480591/5742216
