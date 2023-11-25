@@ -73,10 +73,13 @@
     frontend,
     name,
   }:
-    pkgs.writeShellScriptBin name ''
-      export STATIC_ASSETS="${frontend}"
-      ${bin}/bin/soundbox-ii $*
-    '';
+    pkgs.writeShellApplication {
+      inherit name;
+      text = ''
+        export STATIC_ASSETS="${frontend}"
+        ${bin}/bin/soundbox-ii "$@"
+      '';
+    };
 in rec {
   packages.${name} = wrap_static_assets {
     inherit bin frontend name;

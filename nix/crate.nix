@@ -122,15 +122,21 @@ in rec {
     dash-to-underscores = input: builtins.replaceStrings ["-"] ["_"] input;
   in {
     for-crate = crate-name:
-      pkgs.writeShellScriptBin "open-doc-${crate-name}" ''
-        echo "Opening docs for crate \"${crate-name}\""
-        ${open-cmd} "file://${my-crate-doc}/share/doc/${dash-to-underscores crate-name}/index.html"
-      '';
+      pkgs.writeShellApplication {
+        name = "open-doc-${crate-name}";
+        text = ''
+          echo "Opening docs for crate \"${crate-name}\""
+          ${open-cmd} "file://${my-crate-doc}/share/doc/${dash-to-underscores crate-name}/index.html"
+        '';
+      };
     for-std = toolchainWithRustDoc:
-      pkgs.writeShellScriptBin "open-doc-std" ''
-        echo "Opening docs for rust std..."
-        ${open-cmd} file://${toolchainWithRustDoc}/share/doc/rust/html/std/index.html
-      '';
+      pkgs.writeShellApplication {
+        name = "open-doc-std";
+        text = ''
+          echo "Opening docs for rust std..."
+          ${open-cmd} file://${toolchainWithRustDoc}/share/doc/rust/html/std/index.html
+        '';
+      };
     inherit open-cmd;
   };
 

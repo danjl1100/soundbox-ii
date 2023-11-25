@@ -48,7 +48,7 @@
         value.config.system.build.toplevel)
       (nixosTestSystems {inherit system;});
     nixosTests = system:
-      (import ./nix/nixos-tests) {
+      (import ./nix/vm-tests) {
         pkgs = import nixpkgs {inherit system;};
         module = self.nixosModules.default;
       };
@@ -118,6 +118,7 @@
 
         checks =
           core.checks
+          // vlc.checks
           // testSystemsChecks
           // {
             nix-alejandra = pkgs.stdenvNoCC.mkDerivation {

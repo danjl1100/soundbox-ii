@@ -24,8 +24,8 @@
         echo "!!!NOTE!!! Need to click menu:  VLC media player > Add Interface > Web"
         echo ""
         echo "Press enter to launch visual interface (macos app, external to nix)"
-        read a
-        open -na /Applications/VLC.app --args ''${ARGS}
+        read -r _
+        open -na /Applications/VLC.app --args "''${ARGS[@]}"
       ''
       else
         (
@@ -34,32 +34,35 @@
             echo "!!!NOTE!!! Need to click menu:  View > Add Interface > Web"
             echo ""
             echo "Press enter to launch visual interface"
-            read a
-            ${pkgs.vlc}/bin/vlc ''${ARGS}
+            read -r _
+            ${pkgs.vlc}/bin/vlc "''${ARGS[@]}"
           ''
           else ''
-            ${pkgs.vlc}/bin/cvlc --intf http ''${ARGS}
+            ${pkgs.vlc}/bin/cvlc --intf http "''${ARGS[@]}"
           ''
         );
   in
-    pkgs.writeShellScriptBin name ''
-      if [ "''${VLC_BIND_HOST}" = "" ]; then
-        echo "VLC_BIND_HOST is not set";
-        exit 1;
-      fi
-      if [ "''${VLC_PORT}" = "" ]; then
-        echo "VLC_PORT is not set";
-        exit 1;
-      fi
-      if [ "''${VLC_PASSWORD}" = "" ]; then
-        echo "VLC_PASSWORD is not set";
-        exit 1;
-      fi
+    pkgs.writeShellApplication {
+      inherit name;
+      text = ''
+        if [ "''${VLC_BIND_HOST}" = "" ]; then
+          echo "VLC_BIND_HOST is not set";
+          exit 1;
+        fi
+        if [ "''${VLC_PORT}" = "" ]; then
+          echo "VLC_PORT is not set";
+          exit 1;
+        fi
+        if [ "''${VLC_PASSWORD}" = "" ]; then
+          echo "VLC_PASSWORD is not set";
+          exit 1;
+        fi
 
-      ARGS="--audio-replay-gain-mode track --http-host ''${VLC_BIND_HOST} --http-port ''${VLC_PORT} --http-password ''${VLC_PASSWORD}"
+        ARGS=(--audio-replay-gain-mode track --http-host "''${VLC_BIND_HOST}" --http-port "''${VLC_PORT}" --http-password "''${VLC_PASSWORD}")
 
-      ${launch}
-    '';
+        ${launch}
+      '';
+    };
   not_available = names:
     pkgs.lib.listToAttrs (builtins.map (name: {
         inherit name;
@@ -85,6 +88,18 @@ in rec {
     # then (not_available ["vlc" "cvlc"]) #NOTE: errors on `nix flake show`
     then {}
     else {inherit vlc cvlc;};
+
+  checks =
+    {
+      app-script-vlc = vlc;
+    }
+    // (
+      if isDarwin
+      then {}
+      else {
+        app-script-cvlc = cvlc;
+      }
+    );
 
   apps = {
     vlc = flake-utils.lib.mkApp {
