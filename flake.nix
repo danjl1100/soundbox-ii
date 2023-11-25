@@ -47,6 +47,11 @@
       builtins.mapAttrs (_name: value:
         value.config.system.build.toplevel)
       (nixosTestSystems {inherit system;});
+    nixosTests = system:
+      (import ./nix/nixos-tests) {
+        pkgs = import nixpkgs {inherit system;};
+        module = self.nixosModules.default;
+      };
   in
     {
       inherit (nixos) nixosModules;
@@ -56,7 +61,8 @@
           soundbox-ii_bin = self.packages.${system}.soundbox-ii_bin;
           soundbox-ii_frontend = self.packages.${system}.soundbox-ii_frontend;
         }))
-        // (flake-utils.lib.eachSystem target_systems_nixos nixosTestToplevels);
+        // (flake-utils.lib.eachSystem target_systems_nixos nixosTestToplevels)
+        // (flake-utils.lib.eachSystem target_systems_nixos nixosTests);
     }
     // flake-utils.lib.eachSystem target_systems (
       system: let

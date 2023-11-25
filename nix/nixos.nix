@@ -8,12 +8,20 @@
     pkg = packages.${pkgs.system}.soundbox-ii;
     pkg_cvlc = packages.${pkgs.system}.cvlc;
     cfg = config.services.soundbox-ii;
-    environment = rec {
-      VLC_HOST = "127.0.0.1";
-      VLC_BIND_HOST = VLC_HOST;
-      VLC_PORT = toString cfg.vlc_port;
-      VLC_PASSWORD = cfg.vlc_password;
-    };
+    environment =
+      rec {
+        VLC_HOST = "127.0.0.1";
+        VLC_BIND_HOST = VLC_HOST;
+        VLC_PORT = toString cfg.vlc_port;
+        VLC_PASSWORD = cfg.vlc_password;
+      }
+      // (
+        if (isNull cfg.beets_package)
+        then {}
+        else {
+          BEET_CMD = "${cfg.beets_package}/bin/beet";
+        }
+      );
   in {
     options.services.soundbox-ii = {
       enable = lib.mkEnableOption "soundbox-ii service";
@@ -63,22 +71,72 @@
           IP-Address to bind the web server to
         '';
       };
+      beets_package = lib.mkOption {
+        type = lib.types.nullOr lib.types.package;
+        default = null;
+        example = "pkgs.beets";
+        description = ''
+          Package for beets, containing the `/bin/beet` executable
+        '';
+      };
+      beets_readonly_src = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        example = "/path/to/beets/library.db";
+        description = ''
+          If set, copy the specified file to a temporary folder (writable by the user)
+        '';
+      };
     };
     config = lib.mkIf cfg.enable (let
       vlc_service = "soundbox-ii_vlc";
+      exec_crate = "${pkg}/bin/soundbox-ii --serve";
+      ExecStart =
+        if (isNull cfg.beets_readonly_src)
+        then exec_crate
+        else
+          (pkgs.writeShellApplication {
+            name = "soundbox-ii-launch";
+            runtimeInputs = [
+              pkgs.coreutils # mktemp, mkdir, cp, cat
+            ];
+            text = ''
+              TMP_DIR="$(mktemp -d --suffix=soundbox-ii)"
+              export HOME="$TMP_DIR"
+              BEETS_CONFIG="$HOME/.config/beets"
+              CONFIG_YAML="''${BEETS_CONFIG}/config.yaml"
+
+              echo "Creating BEETS_CONFIG folder... $BEETS_CONFIG"
+              mkdir -p "$BEETS_CONFIG"
+
+              echo "Creating $CONFIG_YAML"
+              echo "directory: ${cfg.music_dir}" > "''${CONFIG_YAML}"
+              echo "library: ''${BEETS_CONFIG}/library.db" >> "''${CONFIG_YAML}"
+              chmod a-w "''${CONFIG_YAML}"
+
+              echo "Copying beets library from ${cfg.beets_readonly_src}"
+              echo " to ''${BEETS_CONFIG}/library.db"
+              cp "${cfg.beets_readonly_src}" "''${BEETS_CONFIG}/library.db"
+              chmod u+w "''${BEETS_CONFIG}/library.db"
+
+              echo "Launching..."
+              ${exec_crate}
+            '';
+          })
+          + "/bin/soundbox-ii-launch";
     in {
       systemd.services.soundbox-ii = {
         description = "soundbox-ii server";
         serviceConfig = {
           Type = "simple";
-          ExecStart = "${pkg}/bin/soundbox-ii --serve";
+          inherit ExecStart;
           WorkingDirectory = cfg.music_dir;
           User = cfg.user;
           Group = cfg.group;
         };
         requires = ["${vlc_service}.service"];
         after = ["${vlc_service}.service"];
-        wantedBy = ["multiuser.target"];
+        wantedBy = ["default.target"];
         environment =
           environment
           // {
@@ -89,7 +147,7 @@
         description = "vlc instance for soundbox-ii";
         serviceConfig = {
           Type = "simple";
-          ExecStart = "${pkg_cvlc}";
+          ExecStart = "${pkg_cvlc}/bin/cvlc";
           WorkingDirectory = cfg.music_dir;
           User = cfg.user;
           Group = cfg.group;

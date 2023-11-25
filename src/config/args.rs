@@ -251,6 +251,8 @@ impl TryFrom<Input<RawSequencer>> for super::Sequencer {
             sequencer::sources::RootFolder::new(folder_path)
                 .map_err(|error| SequencerError::RootFolder { folder, error })?
         };
+        // TODO should this be optional?
+        // if so, would error immediately when attempting to create a beet filter (load file, or user driven)
         let beet_cmd = {
             let Value(cmd, source) = beet_cmd
                 .env(env_vars::BEET_CMD)
