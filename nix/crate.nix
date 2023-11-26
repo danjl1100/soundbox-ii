@@ -87,11 +87,10 @@ in rec {
       inherit src;
     };
 
-    # TODO re-enable audits to ensure they pass!
-    # # Audit dependencies
-    # my-crate-audit = craneLib.cargoAudit {
-    #   inherit src advisory-db;
-    # };
+    # Audit dependencies
+    my-crate-audit = craneLib.cargoAudit {
+      inherit src advisory-db;
+    };
 
     # Run tests with cargo-nextest
     # Consider setting `doCheck = false` on `my-crate` if you do not want

@@ -177,8 +177,8 @@ pub fn time_now() -> Time {
 /// Timestamp from specified seconds sinch epoch (useful for tests)
 #[must_use]
 pub fn time_from_secs_opt(secs: i64) -> Option<Time> {
-    use chrono::{offset::Utc, DateTime, NaiveDateTime};
-    NaiveDateTime::from_timestamp_opt(secs, 0).map(|time| DateTime::from_utc(time, Utc))
+    const ZERO_NANO_SECONDS: u32 = 0;
+    chrono::DateTime::from_timestamp(secs, ZERO_NANO_SECONDS)
 }
 
 /// Testing "awesome number" type
