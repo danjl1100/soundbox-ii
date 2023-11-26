@@ -6,10 +6,7 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:danjl1100/crane?ref=trunk-shellcheck";
-    # TODO return to upstream, once PR lands
-    # <https://github.com/ipetkov/crane/pull/458>
-    # crane.url = "github:ipetkov/crane";
+    crane.url = "github:ipetkov/crane";
     advisory-db = {
       url = "github:rustsec/advisory-db";
       flake = false;

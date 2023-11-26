@@ -23,16 +23,15 @@
         ]
       },
       "locked": {
-        "lastModified": 1700948473,
-        "narHash": "sha256-5SJfqoO8zO8T+mAEvBUq9sDag7rO0QXaWhh6pb/X3vA=",
-        "owner": "danjl1100",
+        "lastModified": 1701025348,
+        "narHash": "sha256-42GHmYH+GF7VjwGSt+fVT1CQuNpGanJbNgVHTAZppUM=",
+        "owner": "ipetkov",
         "repo": "crane",
-        "rev": "23a85904483b3b9ad226c1da5057811b5a4fb8ba",
+        "rev": "42afaeb1a0325194a7cdb526332d2cb92fddd07b",
         "type": "github"
       },
       "original": {
-        "owner": "danjl1100",
-        "ref": "trunk-shellcheck",
+        "owner": "ipetkov",
         "repo": "crane",
         "type": "github"
       }
