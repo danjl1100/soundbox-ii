@@ -115,6 +115,16 @@
                 )
                 (builtins.attrNames testSystems))
             );
+
+        shellcheck = {
+          src_dir,
+          script_name,
+        } @ inputs:
+          pkgs.runCommand "shellcheck" inputs ''
+            cd "$src_dir"
+            ${pkgs.shellcheck}/bin/shellcheck "$script_name" -x
+            touch $out
+          '';
       in rec {
         # Combine the outputs from each subsystem,
         #  and pick reasonable defaults.
@@ -133,6 +143,14 @@
               phases = ["buildPhase"];
               nativeBuildInputs = [pkgs.alejandra];
               buildPhase = "(alejandra -qc $src || alejandra -c $src) > $out";
+            };
+            script-dev_server = shellcheck {
+              src_dir = pkgs.runCommand "script-with-envrc" {} ''
+                mkdir -p $out
+                cp -v "${./dev_server.sh}" $out/dev_server.sh
+                cp -v "${./.envrc}" $out/.envrc
+              '';
+              script_name = "dev_server.sh";
             };
           };
 

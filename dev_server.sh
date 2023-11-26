@@ -10,9 +10,9 @@ source .envrc
 APP=${1:-soundbox-ii_bin}
 shift
 if [ $# -gt 0 ]; then
-  ARGS=$*
+  ARGS=("$@")
 else
-  ARGS="--serve --WATCH_ASSETS --interactive"
+  ARGS=(--serve --WATCH_ASSETS --interactive)
 fi
 
 case $APP in
@@ -24,14 +24,14 @@ case $APP in
       which beet >/dev/null 2>&1; err=$?
       if [ $err -ne 0 ]; then
         echo "\"beet\" not found in path, using fake-beet..."
-        export BEET_CMD="`nix build .#fake-beet --no-link --print-out-paths`/bin/fake-beet"
+        BEET_CMD="$(nix build ".#fake-beet" --no-link --print-out-paths)/bin/fake-beet"
+        export BEET_CMD
       fi
     fi
 
     ;;
   vlc | cvlc)
-    uname -a | grep "Darwin" -q
-    if [ $? -eq 0 ]; then
+    if uname -a | grep "Darwin" -q; then
       ./launch_vlc.sh macos
       exit $?
     fi
@@ -44,32 +44,30 @@ esac
 
 if [ $ATTEMPT_SHELL_USAGE -eq 1 ]; then
   if [ "$IN_NIX_SHELL" != "" ]; then
-    which cargo >/dev/null 2>&1; err=$?
-    if [ $err -eq 0 ]; then
-
-      # fixup BEET_CMD
-      which "${BEET_CMD:-beet}" >/dev/null 2>&1; err=$?
-      if [ $err -ne 0 ]; then
-        echo "Failed to find '${BEET_CMD:-beet}' in path."
-        echo "*** NOTICE: Falling back to fake-beet"
-        pushd ./fake-beet
-        cargo build
-        popd
-        echo export BEET_CMD="./fake-beet/target/debug/fake-beet"
-        export BEET_CMD="./fake-beet/target/debug/fake-beet"
-      fi
+    if which cargo >/dev/null 2>&1; then
+      # TODO remove unused
+      # # fixup BEET_CMD
+      # if which "${BEET_CMD:-beet}" >/dev/null 2>&1; then
+      #   echo "Failed to find '${BEET_CMD:-beet}' in path."
+      #   echo "*** NOTICE: Falling back to fake-beet"
+      #   pushd ./fake-beet || exit
+      #   cargo build
+      #   popd || exit
+      #   echo export BEET_CMD="./fake-beet/target/debug/fake-beet"
+      #   export BEET_CMD="./fake-beet/target/debug/fake-beet"
+      # fi
 
       echo 'Executing cargo directly (within nix shell)'
       echo ''
-      cargo run -- ${ARGS}
+      cargo run -- "${ARGS[@]}"
       exit $?
     fi
-    echo 'No cargo found in this nix shell (fall back to `nix run`)'
+    echo "No cargo found in this nix shell (fall back to \`nix run\`)"
     echo ''
   else
-    echo 'No nix shell detected (run `nix develop` to speed this up for development)'
+    echo "No nix shell detected (run \`nix develop\` to speed this up for development)"
     echo ''
   fi
 fi
 
-nix run .#${APP} -- ${ARGS}
+nix run ".#${APP}" -- "${ARGS[@]}"
