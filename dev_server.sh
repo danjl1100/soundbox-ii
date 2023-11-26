@@ -21,8 +21,8 @@ case $APP in
 
     # auto-detect missing beet, to use fake-beet instead
     if [ "$BEET_CMD" = "" ]; then
-      which beet > /dev/null
-      if [ $? -ne 0 ]; then
+      which beet >/dev/null 2>&1; err=$?
+      if [ $err -ne 0 ]; then
         echo "\"beet\" not found in path, using fake-beet..."
         export BEET_CMD="`nix build .#fake-beet --no-link --print-out-paths`/bin/fake-beet"
       fi
@@ -44,8 +44,8 @@ esac
 
 if [ $ATTEMPT_SHELL_USAGE -eq 1 ]; then
   if [ "$IN_NIX_SHELL" != "" ]; then
-    which cargo >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    which cargo >/dev/null 2>&1; err=$?
+    if [ $err -eq 0 ]; then
 
       # fixup BEET_CMD
       which "${BEET_CMD:-beet}" >/dev/null 2>&1; err=$?

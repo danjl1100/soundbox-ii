@@ -1,5 +1,6 @@
 [build]
 public_url = "/app/"
+# N.B. `dist` is manually overridden for trunk build in craneLib.buildTrunkPackage
 dist = "../dist"
 
 [serve]

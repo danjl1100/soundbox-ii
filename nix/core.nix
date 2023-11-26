@@ -11,7 +11,7 @@
   rustVersion = "latest";
   # TODO simplify to just one toolchain which includes wasm
   rustToolchain = pkgs.rust-bin.${rustChannel}.${rustVersion}.default;
-  rustToolchainForDevshell = rustToolchain.override {
+  rustToolchainForDevshell = rustToolchainWasm.override {
     extensions = ["rust-analyzer" "rust-src"];
   };
   wasmTarget = "wasm32-unknown-unknown";
@@ -65,6 +65,8 @@
   frontend = crates.client.buildTrunkPackage {
     pname = "${name}-frontend";
     trunkIndexPath = "frontend/index.html";
+    trunkExtraArgs = "--config frontend/Trunk.toml";
+    trunkExtraBuildArgs = "--dist frontend/dist"; # trunk is run from root, expects outputs next to "frontend/index.html"
   };
   fake-beet = crates.fake-beet.package;
 
@@ -77,9 +79,18 @@
       inherit name;
       text = ''
         export STATIC_ASSETS="${frontend}"
-        ${bin}/bin/soundbox-ii "$@"
+        ${bin}/bin/${name} "$@"
       '';
     };
+
+  trunkOffline = pkgs.writeShellApplication {
+    name = "trunk";
+    runtimeInputs = frontend.nativeBuildInputs;
+    text = ''
+      ${frontend.preConfigure}
+      ${pkgs.trunk}/bin/trunk "$@"
+    '';
+  };
 in rec {
   packages.${name} = wrap_static_assets {
     inherit bin frontend name;
@@ -93,16 +104,21 @@ in rec {
     drv = packages.${name};
   };
   apps.rust-doc = flake-utils.lib.mkApp {
-    drv = crates.server.drv-open-doc.for-crate "soundbox-ii";
+    drv = crates.server.drv-open-doc.for-crate name;
   };
   apps.rust-doc-std = flake-utils.lib.mkApp {
     drv = crates.server.drv-open-doc.for-std rustToolchainForDevshell;
   };
 
-  devShellFn = inputs:
+  devShellFn = {packages ? []} @ inputs:
     crates.client.devShellFn (inputs
       // {
         craneLib = craneLibForDevShell;
+        packages =
+          packages
+          ++ [
+            trunkOffline
+          ];
       });
 
   checks = let

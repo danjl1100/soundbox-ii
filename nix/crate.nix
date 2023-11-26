@@ -151,9 +151,11 @@ in rec {
   buildTrunkPackage = {
     pname,
     trunkIndexPath,
-  }:
+    ...
+  } @ inputs:
     craneLib.buildTrunkPackage (commonArgs
+      // inputs
       // {
-        inherit pname cargoArtifacts trunkIndexPath;
+        inherit cargoArtifacts;
       });
 }

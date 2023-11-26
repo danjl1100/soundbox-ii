@@ -23,15 +23,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1700327093,
-        "narHash": "sha256-OgYvlBABxJYWhZ/HBd0bPVcIEkT+xDhDCpRYqtVhYWY=",
-        "owner": "ipetkov",
+        "lastModified": 1700948473,
+        "narHash": "sha256-5SJfqoO8zO8T+mAEvBUq9sDag7rO0QXaWhh6pb/X3vA=",
+        "owner": "danjl1100",
         "repo": "crane",
-        "rev": "ae7cd510e508ee03d792005c2f1c0a3ff25ecb80",
+        "rev": "23a85904483b3b9ad226c1da5057811b5a4fb8ba",
         "type": "github"
       },
       "original": {
-        "owner": "ipetkov",
+        "owner": "danjl1100",
+        "ref": "trunk-shellcheck",
         "repo": "crane",
         "type": "github"
       }
@@ -56,30 +57,32 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1700873518,
-        "narHash": "sha256-bYqVduAeBGJX/HBiRmfQHYDtDTVUsNAvL2hM3IAG6Og=",
+        "lastModified": 1700851152,
+        "narHash": "sha256-3PWITNJZyA3jz5IGREJRfSykM6xSLmD8u5A3WpBCyDM=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "74afca48be6193f4eb8b8569933cefcc39109089",
+        "rev": "1216a5ba22a93a4a3a3bfdb4bff0f4727c576fcc",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
+        "ref": "nixos-23.05",
         "repo": "nixpkgs",
         "type": "github"
       }
     },
     "nixpkgs-for-vlc": {
       "locked": {
-        "lastModified": 1700521623,
-        "narHash": "sha256-ZjRRFIitaVROx5n94dhf571DpCa5cYweB5/D5o1hXq0=",
+        "lastModified": 1700856099,
+        "narHash": "sha256-RnEA7iJ36Ay9jI0WwP+/y4zjEhmeN6Cjs9VOFBH7eVQ=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "feae8388e0a43944af59e129b315cbca919d3d98",
+        "rev": "0bd59c54ef06bc34eca01e37d689f5e46b3fe2f1",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
+        "ref": "nixpkgs-unstable",
         "repo": "nixpkgs",
         "type": "github"
       }
