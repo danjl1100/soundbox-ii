@@ -186,6 +186,7 @@ async fn launch(config: config::Config) {
         vlc_http_config,
         web_config,
         sequencer_config,
+        #[allow(unused)]
         cli_config, // TODO: use run_script and state_file
     } = config;
 
