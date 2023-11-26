@@ -16,9 +16,8 @@
 //
 //! Binary crate for running the soundbox-ii logic
 
-// TODO - restore after finalizing flake
-// // teach me
-// #![deny(clippy::pedantic)]
+// teach me
+#![deny(clippy::pedantic)]
 // no unsafe
 #![forbid(unsafe_code)]
 // no unwrap

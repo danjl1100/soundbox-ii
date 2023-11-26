@@ -13,8 +13,6 @@ pub trait Returner<T>: private::Sealed {
     fn apply_with<F>(t: T, observer: F) -> Self::Return
     where
         F: FnOnce(T);
-    // TODO remove unused
-    // fn apply(t: T) -> Self::Return;
 }
 /// Some return data is requested
 pub enum Some {}
@@ -27,9 +25,6 @@ impl<T: Clone> Returner<T> for Some {
         observer(t.clone());
         t
     }
-    // fn apply(t: T) -> T {
-    //     t
-    // }
 }
 /// Return data is not needed
 pub enum None {}
@@ -41,5 +36,4 @@ impl<T> Returner<T> for None {
     {
         observer(t);
     }
-    // fn apply(_: T) {}
 }

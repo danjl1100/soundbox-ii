@@ -51,6 +51,7 @@ mod env_vars {
 }
 
 /// Final structured configuration
+#[allow(clippy::struct_field_names)] // avoids shadowning module names
 pub struct Config {
     /// Configuration for the VLC HTTP interface
     pub vlc_http_config: VlcHttp,
