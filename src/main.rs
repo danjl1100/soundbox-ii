@@ -76,8 +76,9 @@ fn parse_config_or_exit() -> config::Config {
 }
 
 fn print_startup_info(config: &config::Config) {
+    const ITEM: &str = "  - ";
     println!(
-        "  - Interactive mode {}",
+        "{ITEM}Interactive mode {}",
         if config.is_interactive() {
             if config.web_config.is_some() {
                 "enabled"
@@ -91,22 +92,47 @@ fn print_startup_info(config: &config::Config) {
     let config::Config {
         vlc_http_config,
         web_config,
-        sequencer_config: _,
-        cli_config,
+        sequencer_config:
+            config::Sequencer {
+                root_folder,
+                beet_cmd,
+            },
+        cli_config:
+            config::Cli {
+                run_script,
+                state_file,
+                ..
+            },
     } = config;
     println!(
-        "  - VLC-HTTP will connect to: {}",
+        "{ITEM}VLC-HTTP will connect to: {}",
         vlc_http_config.0.authority_str()
     );
+    println!(
+        "{ITEM}Sequencer root folder: {}",
+        root_folder.as_ref().display()
+    );
+    println!("{ITEM}Sequencer beet command: {}", beet_cmd.display());
+    if let Some(run_script) = run_script {
+        println!("{ITEM}Startup by running script: {}", run_script.display());
+    }
+    if let Some(state_file) = state_file {
+        println!(
+            "{ITEM}Persist sequencer state to file: {}",
+            state_file.display()
+        );
+    }
+
+    // web config last, for listen URL to end up last
     if let Some(web_config) = web_config.as_ref() {
         println!(
-            "  - Serving static assets from {:?}",
+            "{ITEM}Serving static assets from {:?}",
             web_config.static_assets
         );
         if web_config.watch_assets {
-            println!("    - Watching for changes, will notify clients");
+            println!("  {ITEM}Watching for changes, will notify clients");
         }
-        println!("  - Listening on: {}", web_config.bind_address);
+        println!("{ITEM}Listening on: {}", web_config.bind_address);
     }
     println!();
     // ^^^ listen URL is last (for easy skimming)
@@ -160,7 +186,7 @@ async fn launch(config: config::Config) {
         vlc_http_config,
         web_config,
         sequencer_config,
-        cli_config,
+        cli_config, // TODO: use run_script and state_file
     } = config;
 
     let authorization = vlc_http_config.0;
@@ -171,6 +197,7 @@ async fn launch(config: config::Config) {
         playlist_info_rx,
         cmd_playlist_tx,
     } = channels;
+    // TODO: before spawning server, verify VLC connection integrity / version (for fail-fast behavior)
 
     let (sequencer_state_tx, sequencer_state_rx) = watch::channel(cli::SequencerState::default());
     let (sequencer_tx, sequencer_rx) = tokio::sync::mpsc::channel(1);

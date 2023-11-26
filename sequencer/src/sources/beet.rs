@@ -62,6 +62,10 @@ impl Beet {
         };
         Err(PathError::new(&command, err))
     }
+    /// Returns a displayable representation of the command
+    pub fn display(&self) -> impl std::fmt::Display + '_ {
+        self.command.display()
+    }
 }
 const BEET_ARGS_VERSION: &[&str] = &["--version"];
 const BEET_ARGS_LOOKUP: &[&str] = &["ls", "-p"];

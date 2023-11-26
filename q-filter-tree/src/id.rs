@@ -91,7 +91,7 @@ pub mod ty {
     }
     impl Child {
         /// Constructor ensures the inner `Vec` is non-empty
-        const NONEMPTY: &str = "nonempty by construction";
+        const NONEMPTY: &'static str = "nonempty by construction";
         /// Constructs a new [`Child`], if the supplied elements Vec is nonempty
         #[must_use]
         pub fn new(elems: Vec<NodePathElem>) -> Option<Self> {

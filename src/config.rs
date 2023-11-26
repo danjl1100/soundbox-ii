@@ -71,11 +71,10 @@ pub struct WebServer {
 pub struct Cli {
     /// Forces interactive mode to activate (even if web server enabled)
     force_interactive: bool,
-    // TODO
-    // /// Script file to run
-    // pub run_script: Option<PathBuf>,
-    // /// File to load state, then periodically store
-    // pub state_file: Option<PathBuf>,
+    /// Script file to run
+    pub run_script: Option<PathBuf>,
+    /// File to load state, then periodically store
+    pub state_file: Option<PathBuf>,
 }
 pub struct Sequencer {
     pub root_folder: sequencer::sources::RootFolder,

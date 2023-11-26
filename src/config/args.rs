@@ -112,7 +112,7 @@ impl TryFrom<Input<RawVlcHttp>> for super::VlcHttp {
                 port: port.map(Value::into_inner),
             }),
         }?;
-        let Value(password, password_source) = password;
+        let Value(password, _password_source) = password;
         let Value(host, host_source) = host;
         let Value(port, port_source) = port;
         let credentials = Credentials {
@@ -219,12 +219,12 @@ impl TryFrom<Input<RawCli>> for super::Cli {
             state_file,
         } = raw.into();
         let force_interactive = interactive.or().into_inner();
-        let run_script = run_script.get_first();
-        let state_file = state_file.get_first();
+        let run_script = run_script.get_first().map(Value::into_inner);
+        let state_file = state_file.get_first().map(Value::into_inner);
         Ok(Self {
             force_interactive,
-            // run_script,
-            // state_file,
+            run_script,
+            state_file,
         })
     }
 }

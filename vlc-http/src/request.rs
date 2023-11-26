@@ -4,10 +4,7 @@
 use crate::http_client::intent::{ArtRequestIntent, CmdArgs, PlaylistIntent, StatusIntent};
 use std::fmt::Write;
 
-pub use http::{
-    uri::{Authority, InvalidUri, PathAndQuery, Uri},
-    Method,
-};
+pub use http::{uri::PathAndQuery, Method};
 
 /// VLC backend request information
 #[must_use]
