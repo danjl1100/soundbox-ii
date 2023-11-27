@@ -5,6 +5,7 @@ use self::args::{RawArgs, RawArgsUnpacked};
 use arg_util::{Input, Source, Value};
 use clap::Parser;
 use http::uri::InvalidUri;
+use sequencer::sources::PathError;
 use shared::{wrapper_enum, IgnoreNever};
 use std::net::{AddrParseError, SocketAddr};
 use std::path::PathBuf;
@@ -130,13 +131,13 @@ pub enum WebError {
     },
     StaticAssets {
         folder: Value<String>,
-        error: std::io::Error,
+        error: PathError,
     },
 }
 pub enum SequencerError {
     RootFolder {
         folder: Value<String>,
-        error: std::io::Error,
+        error: PathError,
     },
     BeetCommand {
         source: Source,
@@ -295,11 +296,10 @@ mod tests {
     use crate::config::args::RawArgs;
 
     #[test]
-    #[allow(clippy::bool_assert_comparison)] // style, idk how to explain
     fn disallows_config_file_recursive() -> Result<(), ConfigFileErrorNoContext> {
         let config_str = "serve=true";
         let config: RawArgs = toml::from_str(config_str)?;
-        assert_eq!(config.serve, true);
+        assert!(config.serve);
         assert_eq!(config.config_file, None);
 
         let fail_str = "foobar=\"hello.txt\"";

@@ -3,9 +3,8 @@
   system,
   craneLib,
   advisory-db,
-  cargoExtraArgs ? "",
   extraBuildArgs ? {},
-  commonArgOverrides ? {},
+  commonArgOverrides ? {}, # includes cargoExtraArgs, cargoTestExtraArgs
   pname ? null,
   src ? null,
   srcDir ? ./.,
@@ -19,7 +18,7 @@
   # Common arguments can be set here to avoid repeating them later
   commonArgs =
     {
-      inherit src cargoExtraArgs;
+      inherit src;
 
       buildInputs =
         [

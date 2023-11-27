@@ -3,7 +3,7 @@
 use std::{
     ffi::OsStr,
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{BufRead, BufReader},
     path::PathBuf,
 };
 use walkdir::WalkDir;
@@ -20,7 +20,7 @@ impl Lines {
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    pub fn new(root: PathBuf) -> Result<Self, io::Error> {
+    pub fn new(root: PathBuf) -> Result<Self, PathError> {
         Ok(Self::from(RootFolder::new(root)?))
     }
 }
@@ -62,7 +62,7 @@ impl FolderListing {
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    pub fn new(root: PathBuf) -> Result<Self, io::Error> {
+    pub fn new(root: PathBuf) -> Result<Self, PathError> {
         Ok(Self::from(RootFolder::new(root)?))
     }
 }

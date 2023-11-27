@@ -6,3 +6,5 @@ NEEDLE="TO"
 NEEDLE="${NEEDLE}DO"
 
 find . -type f -not -path './.git/*' -not -path '*/target/*' -not -path './dist/*' | xargs grep -ni "${NEEDLE}" --color
+COUNT=$(find . -type f -not -path './.git/*' -not -path '*/target/*' -not -path './dist/*' | xargs grep -ni "${NEEDLE}" | wc -l)
+echo "Found ${COUNT} total TODOs"

@@ -36,6 +36,9 @@
           src = craneLib.path ./..;
           filter = licenseOrCargo;
         };
+      commonArgOverrides = {
+        cargoTestExtraArgs = "--workspace";
+      };
     };
     client = pkgs.callPackage ./crate.nix {
       inherit system advisory-db;

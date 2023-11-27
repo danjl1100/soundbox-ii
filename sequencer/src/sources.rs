@@ -31,6 +31,8 @@ pub trait ItemSource<T> {
 }
 
 /// Handle to a root folder, for use in creating [`FileLines`] or [`FolderListing`]
+// TODO is this an antipattern? (TOC-TOU) don't want the inner-error handler to be weak
+// Unclear; "fail-fast" behavior is best, in case the first lookup occurs later in execution
 #[derive(Clone)]
 pub struct RootFolder(PathBuf);
 impl RootFolder {
@@ -38,23 +40,21 @@ impl RootFolder {
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    pub fn new(root: PathBuf) -> Result<Self, std::io::Error> {
+    pub fn new(root: PathBuf) -> Result<Self, PathError> {
         Self::check_to_inner(root).map(Self)
     }
     /// Verifies the [`PathBuf`] is a valid existing directory
     ///
     /// # Errors
     /// Returns an error if the specified root path is not a directory
-    //TODO return a PathError, that's what its for!
-    pub fn check_to_inner(root: PathBuf) -> Result<PathBuf, std::io::Error> {
-        use std::io;
+    pub fn check_to_inner(root: PathBuf) -> Result<PathBuf, PathError> {
         if !root.exists() {
             // TODO change to ErrorKind::NotFound, when stabilized
-            return Err(io::Error::new(io::ErrorKind::Other, "not found"));
+            return Err(PathError::new(&root, std::io::Error::other("not found")));
         }
         if !root.is_dir() {
             // TODO change to ErrorKind::NotADirectory, when stabilized
-            return Err(io::Error::new(io::ErrorKind::Other, "not a directory"));
+            return Err(PathError::new(&root, std::io::Error::other("not found")));
         }
         Ok(root)
     }

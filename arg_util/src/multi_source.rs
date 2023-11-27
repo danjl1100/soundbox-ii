@@ -2,16 +2,17 @@
 //! Combines argument [`Value`]s coming from various [`Source`]s
 
 /// Original source of a value
-// NOTE: Itentionally not deriving Display, Clone, Copy
+// NOTE: Intentionally not deriving Display, Clone, Copy
 #[derive(Debug, PartialEq, Eq)]
 pub enum Source {
     /// Command-line argument
     Cli,
     //TODO refactor Input, InputAndEnv to follow the hierarchy Cli > Env > Config > Default
+    // Trouble is, Environment variable shouldn't be loaded until other sources fail
     /// Environment variable
     Env,
     /// Config file
-    Config,
+    File,
     /// Default value
     Default,
 }
@@ -82,7 +83,7 @@ impl std::fmt::Display for Source {
         match self {
             Source::Cli => write!(f, "command-line argument"),
             Source::Env => write!(f, "environment variable"),
-            Source::Config => write!(f, "config file"),
+            Source::File => write!(f, "config file"),
             Source::Default => write!(f, "default"),
         }
     }
@@ -113,7 +114,7 @@ impl<T> Input<T> {
         if accept_fn(&self.cli_args) {
             Some(Value(self.cli_args, Source::Cli))
         } else if accept_fn(&self.file_args) {
-            Some(Value(self.file_args, Source::Config))
+            Some(Value(self.file_args, Source::File))
         } else {
             None
         }
@@ -145,7 +146,7 @@ impl Input<bool> {
         if cli_args {
             Value(cli_args, Source::Cli)
         } else if file_args {
-            Value(file_args, Source::Config)
+            Value(file_args, Source::File)
         } else {
             DEFAULT_BOOL
         }
@@ -256,7 +257,7 @@ impl InputAndEnv<bool> {
 /// }
 /// let Value(bar, source) = bar.or();
 /// assert_eq!(bar, true);
-/// assert_eq!(source, Source::Config);
+/// assert_eq!(source, Source::File);
 /// ```
 #[macro_export]
 macro_rules! derive_unpack {
