@@ -12,7 +12,7 @@ use q_filter_tree::{OrderType, Weight};
 /// Command-line interface for `Sequencer`
 pub struct Cli<T: ItemSource<Option<F>>, U: FilterArgParser<Filter = F>, F> {
     /// Sequencer
-    pub sequencer: Sequencer<T, Option<F>>,
+    sequencer: Sequencer<T, Option<F>>,
     filter_arg_parser: U,
     params: OutputParams,
 }
@@ -56,8 +56,18 @@ where
     F: serde::Serialize + Clone + std::fmt::Debug,
 {
     /// Constructs a Cli for the specified source, filter arg parser, and output parameters
-    pub fn new(source: T, filter_arg_parser: U, params: OutputParams) -> Self {
-        let sequencer: Sequencer<T, Option<F>> = Sequencer::new(source, None);
+    pub fn new(
+        source: T,
+        filter_arg_parser: U,
+        params: OutputParams,
+        tree: Option<crate::SequencerTree<T::Item, Option<F>>>,
+    ) -> Self {
+        let sequencer: Sequencer<T, Option<F>> = if let Some(tree) = tree {
+            Sequencer::new_from_tree(source, tree)
+        } else {
+            let root_filter = None;
+            Sequencer::new(source, root_filter)
+        };
         Self {
             sequencer,
             filter_arg_parser,
@@ -169,7 +179,8 @@ where
         };
         Ok(())
     }
-    fn run<V>(&mut self, command: V) -> Result<V::Output, Error>
+    /// Executes the action on the sequencer
+    pub fn run<V>(&mut self, command: V) -> Result<V::Output, Error>
     where
         V: Runnable<Option<F>>,
     {
@@ -183,6 +194,19 @@ where
         self.sequencer
             .calculate_required_type(path, requested_type)?
             .map_err(|mismatch_label| format!("{mismatch_label}").into())
+    }
+    /// Read-only access to the sequencer
+    ///
+    /// To modify the sequencer, see [`Self::run()`]
+    pub fn sequencer(&self) -> &Sequencer<T, Option<F>> {
+        &self.sequencer
+    }
+    /// Pops the next item from the sequencer
+    ///
+    /// NOTE: This is the primary modifying operation on the tree. See [`Self::run()`] for other
+    /// modification actions.
+    pub fn pop_next(&mut self) -> Option<q_filter_tree::SequenceAndItem<T::Item>> {
+        self.sequencer.pop_next()
     }
     /// Prints the specified information (unless quiet mode is set)
     pub fn output(&self, fmt_args: std::fmt::Arguments) {
@@ -199,7 +223,7 @@ fn path_clone_description(path_opt: &Option<String>) -> String {
     path_opt.clone().unwrap_or_else(|| "root".to_string())
 }
 
-/// Cli command for the `sequencer`, for the given source-type `clap::ValueEnum`
+/// User-accessible commands for the `sequencer`, for the given source-type `clap::ValueEnum`
 #[derive(Parser, Debug)]
 #[clap(about = "Modify and query sequencer nodes (controls source and order of items)")]
 pub enum NodeCommand<T>

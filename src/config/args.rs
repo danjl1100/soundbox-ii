@@ -68,9 +68,6 @@ arg_util::derive_unpack! {
         ///
         /// End script with the quit command to exit after running
         run_script: Option<PathBuf>,
-        /// File to load state, then periodically store
-        #[clap(long = env_vars::STATE_FILE)]
-        state_file: Option<PathBuf>,
     }
     #[derive(Parser, Deserialize, Default, Debug)]
     pub(super) struct RawSequencer impl unpacked as RawSequencerUnpacked {
@@ -80,6 +77,9 @@ arg_util::derive_unpack! {
         /// Executable to run for querying `Beet` sources (overrides environment variable)
         #[clap(long = env_vars::BEET_CMD)]
         beet_cmd: Option<String>,
+        /// File to load state, then periodically store
+        #[clap(long = env_vars::STATE_FILE)]
+        state_file: Option<PathBuf>,
     }
 }
 
@@ -216,15 +216,12 @@ impl TryFrom<Input<RawCli>> for super::Cli {
         let RawCliUnpacked {
             interactive,
             run_script,
-            state_file,
         } = raw.into();
         let force_interactive = interactive.or().into_inner();
         let run_script = run_script.get_first().map(Value::into_inner);
-        let state_file = state_file.get_first().map(Value::into_inner);
         Ok(Self {
             force_interactive,
             run_script,
-            state_file,
         })
     }
 }
@@ -238,6 +235,7 @@ impl TryFrom<Input<RawSequencer>> for super::Sequencer {
         let RawSequencerUnpacked {
             root_folder,
             beet_cmd,
+            state_file,
         } = raw.into();
         let root_folder = {
             let folder = root_folder
@@ -262,9 +260,11 @@ impl TryFrom<Input<RawSequencer>> for super::Sequencer {
             sequencer::sources::Beet::new(cmd)
                 .map_err(|error| SequencerError::BeetCommand { source, error })?
         };
+        let state_file = state_file.get_first().map(Value::into_inner);
         Ok(Self {
             root_folder,
             beet_cmd,
+            state_file,
         })
     }
 }

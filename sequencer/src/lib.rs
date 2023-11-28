@@ -82,6 +82,12 @@ impl<T: ItemSource<F>, F> Sequencer<T, F> {
             item_source,
         }
     }
+    /// Creates a new Sequencer from the specified tree
+    ///
+    /// (e.g. from [`persistence::SequencerConfigFile::read_from_file`])
+    pub fn new_from_tree(item_source: T, inner: SequencerTree<Item<T, F>, F>) -> Self {
+        Self { item_source, inner }
+    }
 }
 impl<T: Clone, F> SequencerTree<T, F> {
     /// Creates a new, empty [`SequencerTree`]

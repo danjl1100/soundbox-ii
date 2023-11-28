@@ -202,7 +202,7 @@ impl Cli {
     fn print_next(&mut self, count: usize) {
         let mut count_actual = 0;
         for _ in 0..count {
-            let popped = self.sequencer_cli.sequencer.pop_next();
+            let popped = self.sequencer_cli.pop_next();
             if let Some(item) = popped {
                 let (node_seq, item) = item.into_parts();
                 println!("Item {item:?}, from node #{node_seq}");
@@ -296,8 +296,9 @@ fn main() -> Result<(), MainError> {
         default_type: source_type,
     };
     let fatal = args.fatal | args.script.is_some();
+    let preloaded_tree = None; // TODO add state-file handling to sequencer_cli
     let mut cli = Cli {
-        sequencer_cli: sequencer::cli::Cli::new(source, filter_arg_parser, params),
+        sequencer_cli: sequencer::cli::Cli::new(source, filter_arg_parser, params, preloaded_tree),
         fatal,
     };
     if let Some(script) = args.script {

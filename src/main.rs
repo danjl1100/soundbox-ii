@@ -43,12 +43,14 @@ use task::{AsyncTasks, ShutdownReceiver};
 mod task;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), ()> {
     let config = parse_config_or_exit();
 
     eprint!("{}", cli::COMMAND_NAME);
     eprintln!("{}", shared::license::WELCOME);
-    launch(config).await;
+    launch(config).await?;
+
+    Ok(())
 }
 
 fn parse_config_or_exit() -> config::Config {
@@ -95,13 +97,9 @@ fn print_startup_info(config: &config::Config) {
             config::Sequencer {
                 root_folder,
                 beet_cmd,
-            },
-        cli_config:
-            config::Cli {
-                run_script,
                 state_file,
-                ..
             },
+        cli_config: config::Cli { run_script, .. },
     } = config;
     println!(
         "{ITEM}VLC-HTTP will connect to: {}",
@@ -174,19 +172,19 @@ fn launch_hotwatch(
     hotwatch
 }
 
-async fn launch(config: config::Config) {
+async fn launch(config: config::Config) -> Result<(), ()> {
     let (cli_shutdown_tx, shutdown_rx) = ShutdownReceiver::new();
     let (reload_tx, reload_rx) = watch::channel(WebSourceChanged);
 
     print_startup_info(&config);
     let is_interactive = config.is_interactive();
 
+    #[allow(unused)] // TODO
     let config::Config {
         vlc_http_config,
         web_config,
         sequencer_config,
-        #[allow(unused)]
-        cli_config, // TODO: use run_script and state_file
+        cli_config, // TODO: use run_script
     } = config;
 
     let authorization = vlc_http_config.0;
@@ -210,7 +208,7 @@ async fn launch(config: config::Config) {
             sequencer_rx,
             sequencer_cli_rx,
         },
-    )
+    )?
     .run();
 
     let cli_handle = if is_interactive {
@@ -289,4 +287,6 @@ async fn launch(config: config::Config) {
 
     // end of MAIN
     println!("[main exit]");
+
+    Ok(())
 }

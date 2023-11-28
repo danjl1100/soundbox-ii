@@ -9,22 +9,27 @@ use crate::{
 use shared::Shutdown;
 use tokio::sync::{mpsc, oneshot, watch};
 
-pub(crate) type Sequencer = sequencer::Sequencer<source::Source, SequencerFilter>;
+// TODO remove unused
+// type Sequencer = sequencer::Sequencer<source::Source, SequencerFilter>;
+type SequencerCli = sequencer::cli::Cli<source::Source, source::FilterArgParser, source::TypedArg>;
+pub(crate) type SequencerConfigFile =
+    sequencer::persistence::io::SequencerConfigFile<source::Source, SequencerFilter>;
 pub(crate) type SequencerFilter = Option<source::TypedArg>;
 pub(crate) type SequencerCommand = sequencer::command::Command<SequencerFilter>;
 pub(crate) type SequencerResult =
     Result<sequencer::command::TypedOutput<SequencerFilter>, sequencer::Error>;
 pub(crate) type NodeCommand = sequencer::cli::NodeCommand<source::Type>;
 
+/// Command for the sequencer, with a channel to receive the result
 pub(crate) struct SequencerAction(SequencerCommand, oneshot::Sender<SequencerResult>);
 impl SequencerAction {
     pub fn new(cmd: SequencerCommand) -> (Self, oneshot::Receiver<SequencerResult>) {
         let (tx, rx) = oneshot::channel();
         (Self(cmd, tx), rx)
     }
-    fn exec(self, sequencer: &mut Sequencer) {
+    fn exec(self, sequencer_cli: &mut SequencerCli) {
         let Self(command, result_rx) = self;
-        let result = sequencer.run(command);
+        let result = sequencer_cli.run(command);
         if let Err(unsent_result) = result_rx.send(result) {
             drop(dbg!(unsent_result));
         }
@@ -39,27 +44,47 @@ pub(crate) struct Channels {
 }
 
 pub(crate) struct Task {
-    cli: sequencer::cli::Cli<source::Source, source::FilterArgParser, source::TypedArg>,
+    cli: SequencerCli,
     channels: Channels,
+    config_file: Option<SequencerConfigFile>,
 }
 impl Task {
-    pub(crate) fn new(config: config::Sequencer, channels: Channels) -> Self {
+    pub(crate) fn new(config: config::Sequencer, channels: Channels) -> Result<Self, ()> {
+        #[allow(unused)] // TODO
+        let config::Sequencer {
+            root_folder,
+            beet_cmd,
+            state_file, // TODO play in sequencer::main first, then instantiate SequencerConfigFile (need KDL traits to line up)
+        } = config;
+        let (config_file, existing_tree) = None.transpose()?.unzip();
+        // TODO let (config_file, existing_tree) = state_file
+        //     .as_ref()
+        //     .map(|_| {
+        //         Ok((todo!(), todo!()))
+        //         // SequencerConfigFile::read_from_file
+        //     })
+        //     .transpose()?
+        //     .unzip();
         let cli = {
-            let config::Sequencer {
-                root_folder,
-                beet_cmd,
-            } = config;
             let item_source = source::Source::new(root_folder, beet_cmd);
             let filter_arg_parser = source::FilterArgParser {
                 default_ty: source::Type::Beet, // TODO configurable? or no?
             };
             let params = sequencer::cli::OutputParams { quiet: false };
-            sequencer::cli::Cli::new(item_source, filter_arg_parser, params)
+            sequencer::cli::Cli::new(item_source, filter_arg_parser, params, existing_tree)
         };
-        Self { cli, channels }
+        Ok(Self {
+            cli,
+            channels,
+            config_file,
+        })
     }
     pub(crate) async fn run(self) -> Result<shared::Never, Shutdown> {
-        let Self { mut cli, channels } = self;
+        let Self {
+            mut cli,
+            channels,
+            mut config_file,
+        } = self;
         let Channels {
             mut sequencer_rx,
             mut sequencer_cli_rx,
@@ -72,7 +97,7 @@ impl Task {
         } = cmd_playlist_tx;
         loop {
             // publish state
-            match serde_json::to_string_pretty(&cli.sequencer.tree_serializable()) {
+            match serde_json::to_string_pretty(&cli.sequencer().tree_serializable()) {
                 Ok(tree_str) => {
                     let new_state = SequencerState(tree_str);
                     if let Err(send_err) = sequencer_state_tx.send(new_state) {
@@ -83,29 +108,39 @@ impl Task {
                     dbg!(serde_json_err);
                 }
             }
-            tokio::select! {
+            let sequencer_changed = tokio::select! {
                 Some(action) = sequencer_rx.recv() => {
-                    action.exec(&mut cli.sequencer);
+                    // low-level command
+                    action.exec(&mut cli);
+                    true
                 }
                 Some(command) = sequencer_cli_rx.recv() => {
+                    // high-level command
                     let result = cli.exec_command(command);
                     match result {
-                        Ok(()) => {}
-                        Err(err) => eprintln!("Error: {err}"),
+                        Ok(()) => true,
+                        Err(err) => {
+                            eprintln!("Error: {err}");
+                            false
+                        }
                     }
                 }
                 Ok(()) = remove_rx.changed() => {
                     if let Some(removed) = &*remove_rx.borrow() {
-                        Self::exec_remove(removed, &mut cli.sequencer);
+                        Self::exec_remove(removed, &mut cli);
+                        true // TODO is this an actual "sequencer config" update, or just ephemeral queue?
+                    } else {
+                        false
                     }
                 }
                 else => {
                     break;
                 }
-            }
+            };
+            // TODO should "new_urls publish" go at the beginning of the loop?  (when SequencerTree can be pre-loaded?)
             // update cmd_playlist items
             let new_urls = cli
-                .sequencer
+                .sequencer()
                 .get_root_queue_items()
                 .map(cli::parse_url)
                 .collect();
@@ -119,12 +154,21 @@ impl Task {
                     dbg!(url_err);
                 }
             }
+            #[allow(unused)] // TODO
+            if let Some(config_file) = &mut config_file {
+                if sequencer_changed {
+                    // TODO let result = config_file.update_to_file(cli.sequencer());
+                    // if let Err(err) = result {
+                    //     dbg!(err);
+                    // }
+                }
+            }
         }
         Err(Shutdown)
     }
-    fn exec_remove(removed: &url::Url, sequencer: &mut Sequencer) {
+    fn exec_remove(removed: &url::Url, sequencer_cli: &mut SequencerCli) {
         println!("remove_rx changed! removed {removed}");
-        let popped = sequencer.pop_next();
+        let popped = sequencer_cli.pop_next();
         if let Some(popped) = popped {
             let (node_seq, popped) = popped.into_parts();
             println!("\tpopped {popped:?} from node #{node_seq}");
@@ -160,6 +204,8 @@ pub mod source {
             type Error = TypedLookupError;
         }
     }
+    // TODO does `TypedArg` (e.g. source_multi_select! macro) need refactoring to fit the KDL auto-serde trait?
+    // impl sequencer::persistence::StructSerializeDeserialize for TypedArg {}
     impl Source {
         pub(crate) fn new(root_folder: RootFolder, beet: Beet) -> Self {
             let file_lines = FileLines::from(root_folder.clone());

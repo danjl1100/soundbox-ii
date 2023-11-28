@@ -6,7 +6,7 @@ use q_filter_tree::{OrderType, Weight};
 
 pub use out::Typed as TypedOutput;
 command_enum! {
-    /// Operations to perform on a [`Sequencer`]
+    /// Basic operations to modify a [`Sequencer`]
     pub enum Command<F>
     where
         F: Clone,

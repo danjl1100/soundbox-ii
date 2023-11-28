@@ -75,12 +75,14 @@ pub struct Cli {
     force_interactive: bool,
     /// Script file to run
     pub run_script: Option<PathBuf>,
-    /// File to load state, then periodically store
-    pub state_file: Option<PathBuf>,
 }
 pub struct Sequencer {
+    /// Root folder for sequencer item loading
     pub root_folder: sequencer::sources::RootFolder,
+    /// Beet command used by the sequencer
     pub beet_cmd: sequencer::sources::Beet,
+    /// File to load state, then periodically store
+    pub state_file: Option<PathBuf>,
 }
 impl Config {
     pub fn is_interactive(&self) -> bool {

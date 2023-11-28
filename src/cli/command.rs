@@ -245,6 +245,7 @@ impl ActionAndReceiver {
     }
 }
 
+/// Parse an absolute URL, falling back to a file URL relative to the CWD if that succeeds instead
 pub fn parse_url<T>(s: T) -> Result<url::Url, String>
 where
     T: AsRef<str>,
