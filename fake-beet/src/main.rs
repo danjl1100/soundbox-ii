@@ -20,7 +20,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    match (args.get(0), args.get(1)) {
+    match (args.first(), args.get(1)) {
         (Some(first), Some(second)) if first == "ls" && second == "-p" => {
             args.remove(0);
             args.remove(0);

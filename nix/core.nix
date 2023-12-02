@@ -129,17 +129,16 @@ in rec {
       crate_name,
       check_attrs,
     }:
-      builtins.listToAttrs (builtins.map (check_name: {
+      builtins.map (check_name: {
         name = "${crate_name}--${check_name}";
         value = check_attrs.${check_name};
-      }) (builtins.attrNames check_attrs));
+      }) (builtins.attrNames check_attrs);
+    outer_crates = {crates}:
+      builtins.listToAttrs (pkgs.lib.flatten (builtins.map (crate_name:
+        inner_checks {
+          inherit crate_name;
+          check_attrs = crates.${crate_name}.checks;
+        }) (builtins.attrNames crates)));
   in
-    (inner_checks rec {
-      crate_name = "server";
-      check_attrs = crates.${crate_name}.checks;
-    })
-    // (inner_checks rec {
-      crate_name = "client";
-      check_attrs = crates.${crate_name}.checks;
-    });
+    outer_crates {inherit crates;};
 }
