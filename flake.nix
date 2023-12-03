@@ -57,9 +57,14 @@
       inherit (nixos) nixosModules;
       hydraJobs =
         (flake-utils.lib.eachSystem target_systems_hydra (system: {
-          soundbox-ii = self.packages.${system}.soundbox-ii;
-          soundbox-ii_bin = self.packages.${system}.soundbox-ii_bin;
-          soundbox-ii_frontend = self.packages.${system}.soundbox-ii_frontend;
+          inherit
+            (self.packages.${system}) #
+            soundbox-ii
+            soundbox-ii_bin
+            soundbox-ii_frontend
+            sequencer-cli-script
+            sequencer-cli-script-move
+            ;
         }))
         // (flake-utils.lib.eachSystem target_systems_nixos nixosTestToplevels)
         // (flake-utils.lib.eachSystem target_systems_nixos nixosTests);

@@ -6,6 +6,7 @@
   flake-utils,
 }: let
   name = "soundbox-ii";
+  rootPath = ./..;
 
   rustChannel = "beta";
   rustVersion = "latest";
@@ -27,15 +28,16 @@
     webFilter = path: _type: builtins.any (ext: builtins.match ".*${ext}" path != null) ["scss" "html"];
     licenseOrCargo = path: type: (licenseFilter path type) || (craneLib.filterCargoSources path type);
     licenseOrCargoOrWeb = path: type: (licenseOrCargo path type) || (webFilter path type);
+    rootSrc =
+      pkgs.lib.cleanSourceWith
+      {
+        src = craneLib.path rootPath;
+        filter = licenseOrCargo;
+      };
   in {
     server = pkgs.callPackage ./crate.nix {
       inherit system advisory-db craneLib;
-      src =
-        pkgs.lib.cleanSourceWith
-        {
-          src = craneLib.path ./..;
-          filter = licenseOrCargo;
-        };
+      src = rootSrc;
       commonArgOverrides = {
         cargoTestExtraArgs = "--workspace";
       };
@@ -46,7 +48,7 @@
       src =
         pkgs.lib.cleanSourceWith
         {
-          src = craneLib.path ./..;
+          src = craneLib.path rootPath;
           filter = licenseOrCargoOrWeb;
         };
       commonArgOverrides = {
@@ -62,6 +64,14 @@
       inherit system advisory-db craneLib;
       src = craneLib.path ./../fake-beet;
     };
+    sequencer-cli = pkgs.callPackage ./crate.nix {
+      inherit system advisory-db craneLib;
+      src = rootSrc;
+      commonArgOverrides = {
+        cargoExtraArgs = "-p sequencer";
+        pname = "sequencer";
+      };
+    };
   };
 
   bin = crates.server.package;
@@ -72,6 +82,7 @@
     trunkExtraBuildArgs = "--dist frontend/dist"; # trunk is run from root, expects outputs next to "frontend/index.html"
   };
   fake-beet = crates.fake-beet.package;
+  sequencer-cli = crates.sequencer-cli.package;
 
   wrap_static_assets = {
     bin,
@@ -94,6 +105,23 @@
       ${pkgs.trunk}/bin/trunk "$@"
     '';
   };
+
+  sequencer-cli-script = {
+    pname,
+    script_input,
+  }:
+    pkgs.runCommand pname {} ''
+      # context for scripts is within the sequencer source dir
+      cd "${rootPath}/sequencer"
+
+      ${sequencer-cli}/bin/sequencer \
+        --echo-commands \
+        --script "${script_input}" \
+        --beet-cmd "${fake-beet}/bin/fake-beet" \
+        --source-type folder-listing
+
+      touch $out
+    '';
 in rec {
   packages.${name} = wrap_static_assets {
     inherit bin frontend name;
@@ -101,6 +129,23 @@ in rec {
   packages.${"${name}_bin"} = bin;
   packages.${"${name}_frontend"} = frontend;
   packages.fake-beet = fake-beet;
+  packages.sequencer-cli = sequencer-cli;
+  packages.sequencer-cli-script = sequencer-cli-script {
+    pname = "sequencer-cli-script";
+    script_input = ./../sequencer/src/test_script.txt;
+  };
+  packages.sequencer-cli-script-move = sequencer-cli-script {
+    pname = "sequencer-cli-script-move";
+    script_input = ./../sequencer/src/test_script_move.txt;
+  };
+  packages.sequencer-cli-fake-beet = pkgs.writeShellApplication {
+    name = "sequencer-cli-fake-beet";
+    text = ''
+      ${sequencer-cli}/bin/sequencer \
+        --beet-cmd "${fake-beet}/bin/fake-beet" \
+        "$@"
+    '';
+  };
 
   apps.${name} = flake-utils.lib.mkApp {
     inherit name;

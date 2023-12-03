@@ -73,9 +73,12 @@ pub enum ShowCopyingLicenseType {
 }
 
 struct Cli {
+    #[allow(clippy::struct_field_names)]
     sequencer_cli: sequencer::cli::Cli<source::Source, source::FilterArgParser, source::TypedArg>,
     /// Terminates on the first error encountered (implied for `--script` mode)
     fatal: bool,
+    /// If true, echo all commands to stdout
+    echo_commands: bool,
 }
 
 mod source {
@@ -174,6 +177,7 @@ impl Cli {
         } else {
             match Args::try_from(line) {
                 Ok(Args { command: Some(cmd) }) => {
+                    self.print_echo_command(line);
                     let result = match cmd {
                         Command::Quit => Ok(Some(shared::Shutdown)),
                         Command::Show { license } => {
@@ -193,10 +197,16 @@ impl Cli {
                 }
                 Ok(Args { command: None }) => Ok(None),
                 Err(clap_err) => {
+                    self.print_echo_command(line);
                     eprintln!("{clap_err}");
                     Err(())
                 }
             }
+        }
+    }
+    fn print_echo_command(&self, line: &str) {
+        if self.echo_commands {
+            println!("> {line}");
         }
     }
     fn print_next(&mut self, count: usize) {
@@ -238,6 +248,9 @@ struct MainArgs {
     /// Slience non-error output that is not explicitly requested
     #[clap(short, long, action)]
     quiet: bool,
+    /// Echo all commands to stdout
+    #[clap(long, action)]
+    echo_commands: bool,
     /// Filename to read commands from, instead of standard-in
     #[clap(long)]
     script: Option<String>,
@@ -300,6 +313,7 @@ fn main() -> Result<(), MainError> {
     let mut cli = Cli {
         sequencer_cli: sequencer::cli::Cli::new(source, filter_arg_parser, params, preloaded_tree),
         fatal,
+        echo_commands: args.echo_commands,
     };
     if let Some(script) = args.script {
         let script_file = File::open(&script)
