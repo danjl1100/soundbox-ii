@@ -25,7 +25,7 @@
 
   crates = let
     licenseFilter = path: _type: builtins.match ".*shared/src/license/COPYING.*" path != null;
-    webFilter = path: _type: builtins.any (ext: builtins.match ".*${ext}" path != null) ["scss" "html"];
+    webFilter = path: _type: builtins.any (ext: pkgs.lib.hasSuffix ext path) [".scss" ".html"];
     licenseOrCargo = path: type: (licenseFilter path type) || (craneLib.filterCargoSources path type);
     licenseOrCargoOrWeb = path: type: (licenseOrCargo path type) || (webFilter path type);
     rootSrc =

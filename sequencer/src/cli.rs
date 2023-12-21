@@ -74,6 +74,15 @@ where
             params,
         }
     }
+
+    /// Replaces the inner tree
+    pub fn replace_sequencer_tree(
+        &mut self,
+        new_sequencer_tree: crate::SequencerTree<T::Item, Option<F>>,
+    ) -> crate::SequencerTree<T::Item, Option<F>> {
+        self.sequencer.replace_tree(new_sequencer_tree)
+    }
+
     /// Executes the specified command
     ///
     /// # Errors

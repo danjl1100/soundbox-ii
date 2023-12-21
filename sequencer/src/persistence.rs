@@ -33,7 +33,7 @@ const DEFAULT_WEIGHT: Weight = 1;
 /// Fallible creation via a [`KdlEntryVisitor`]
 pub trait FromKdlEntries: Sized + Clone {
     /// Error for the visitor and final creation
-    type Error;
+    type Error: std::fmt::Debug;
     /// Visitor which accepts key/value pairs
     type Visitor: KdlEntryVisitor<Error = Self::Error> + Default;
     /// Attempts to construct the type from the visitor information
@@ -45,7 +45,9 @@ pub trait FromKdlEntries: Sized + Clone {
 /// Fallible serialization via a [`KdlEntryVisitor`]
 pub trait IntoKdlEntries: Sized + Clone {
     /// Error if the conversion fails
-    type Error<E>;
+    type Error<E>: std::fmt::Display
+    where
+        E: std::fmt::Debug;
     /// Informs the specified visitor of all key/value pairs required to reconstruct this type
     ///
     /// # Errors
@@ -178,12 +180,22 @@ impl<T, F> Clone for SequencerConfig<T, F> {
 }
 
 /// Error parsing [`SequencerConfig`] from a string
-#[derive(Debug)]
 #[allow(missing_docs)]
 #[non_exhaustive]
 pub enum ParseError<F: FromKdlEntries> {
     KDL(KdlError),
     Node(NodeError<F::Error>),
+}
+impl<F: FromKdlEntries> std::fmt::Debug for ParseError<F>
+where
+    F::Error: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::KDL(inner) => write!(f, "KDL({inner:?})"),
+            ParseError::Node(inner) => write!(f, "Node({inner:?})"),
+        }
+    }
 }
 
 /// Error parsing [`SequencerTree`] nodes from the KDL input string

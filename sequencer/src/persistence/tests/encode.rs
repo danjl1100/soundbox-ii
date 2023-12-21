@@ -16,8 +16,18 @@ struct FieldsFilter {
 
 const TEST_SKIP_ALL_PROPS: &str = "skip_all_props";
 
+struct Error<E>(E);
+impl<E> std::fmt::Display for Error<E>
+where
+    E: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
 impl IntoKdlEntries for FieldsFilter {
-    type Error<E> = E;
+    type Error<E> = Error<E> where E: std::fmt::Debug; // E where E: std::fmt::Debug;
 
     fn try_into_kdl<V: crate::persistence::KdlEntryVisitor>(
         &self,
@@ -30,12 +40,16 @@ impl IntoKdlEntries for FieldsFilter {
             ref anonymous_str,
         } = *self;
 
-        visitor.visit_argument_str(anonymous_str)?;
+        visitor.visit_argument_str(anonymous_str).map_err(Error)?;
 
         if anonymous_str != TEST_SKIP_ALL_PROPS {
-            visitor.visit_property_str("foo", foo)?;
-            visitor.visit_property_i64("bar", bar.into())?;
-            visitor.visit_property_bool("truthiness", truthiness)?;
+            visitor.visit_property_str("foo", foo).map_err(Error)?;
+            visitor
+                .visit_property_i64("bar", bar.into())
+                .map_err(Error)?;
+            visitor
+                .visit_property_bool("truthiness", truthiness)
+                .map_err(Error)?;
         }
 
         Ok(visitor)
@@ -69,7 +83,10 @@ fn updates_root() {
     }
 
     let mut sequencer_config = SequencerConfig::default();
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     assert_eq!(
         new_doc_str,
         r#"root "hiya" foo="root" bar=3 truthiness=false
@@ -104,7 +121,10 @@ fn test_remove_attribute() {
     }
 
     let mut sequencer_config = SequencerConfig::default();
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     assert_eq!(
         new_doc_str,
         r#"root "skip_all_props"
@@ -124,7 +144,10 @@ fn creates_raw_strings() {
     let seq_tree = SequencerTree::<(), _>::new(root_filter);
 
     let mut sequencer_config = SequencerConfig::default();
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
 
     assert_eq!(
         new_doc_str,
@@ -144,7 +167,10 @@ fn keeps_raw_strings_raw() {
     let mut seq_tree = SequencerTree::<(), _>::new(original_filter);
 
     let mut sequencer_config = SequencerConfig::default();
-    let old_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let old_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     assert_eq!(
         old_doc_str,
         r##"root r#"also "starts" quoted"# foo=r#"starts out "quoted""# bar=0 truthiness=false
@@ -166,7 +192,10 @@ fn keeps_raw_strings_raw() {
         root.filter = new_filter;
     }
 
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     assert_eq!(
         new_doc_str,
         // using non-raw Rust string, for clarity on the tabs (\t) and newlines (\n)
@@ -196,7 +225,10 @@ fn add_remove_child() {
     }
 
     let mut sequencer_config = SequencerConfig::default();
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     let expected = "root \"\" foo=\"\" bar=0 truthiness=false {
     chain weight=2 \"\" foo=\"\" bar=0 truthiness=false
 }
@@ -212,7 +244,10 @@ fn add_remove_child() {
             .expect("child1 exists");
         child1.set_weight(0);
     }
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     let expected = "root \"\" foo=\"\" bar=0 truthiness=false {
     chain weight=0 \"\" foo=\"\" bar=0 truthiness=false
 }
@@ -225,7 +260,10 @@ fn add_remove_child() {
 
         let _info = tree_guard.remove_node(&child1_id).expect("child1 removal");
     }
-    let new_doc_str = sequencer_config.update_to_string(&seq_tree).ignore_never();
+    let new_doc_str = sequencer_config
+        .update_to_string(&seq_tree)
+        .map_err(|e| e.0)
+        .ignore_never();
     // TODO - change back to correct indentation in `expected`
     assert_eq!(
         new_doc_str,

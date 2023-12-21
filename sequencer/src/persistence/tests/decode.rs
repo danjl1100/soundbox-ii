@@ -29,7 +29,7 @@ impl NoOpFilterVisitor {
 }
 // Required for "back to string" checks
 impl IntoKdlEntries for NoOpFilter {
-    type Error<E> = ();
+    type Error<E> = shared::Never where E: std::fmt::Debug;
 
     fn try_into_kdl<V: KdlEntryVisitor>(&self, visitor: V) -> Result<V, Self::Error<V::Error>> {
         Ok(visitor)

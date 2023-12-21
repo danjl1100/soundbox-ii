@@ -10,11 +10,38 @@ pub struct SequencerConfigFile<T, F> {
     path: std::path::PathBuf,
     file: std::fs::File,
 }
+impl<T, F> SequencerConfigFile<T, F> {
+    /// Returns the path to be used for subsequent updates
+    pub fn path(&self) -> &std::path::PathBuf {
+        &self.path
+    }
+}
 impl<T, F> SequencerConfigFile<T, F>
 where
     T: Clone,
     F: FromKdlEntries + IntoKdlEntries,
 {
+    /// Creates a new file, immediately updating for the specified [`SequencerTree`]
+    pub fn create_new_file(
+        path: std::path::PathBuf,
+        sequencer: &SequencerTree<T, F>,
+    ) -> Result<Self, WriteError<F>> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|err| WriteError {
+                path: path.clone(),
+                kind: WriteErrorKind::IO(err),
+            })?;
+        let mut this = Self {
+            inner: SequencerConfig::default(),
+            path,
+            file,
+        };
+        this.update_to_file(sequencer).map(|()| this)
+    }
+
     /// Reads the config from a KDL file
     ///
     /// # Errors
@@ -96,6 +123,21 @@ pub enum ReadErrorKind<F: FromKdlEntries> {
     IO(std::io::Error),
 }
 
+impl<F: FromKdlEntries> std::fmt::Display for ReadError<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { path, kind } = self;
+        write!(f, "for path {path:?}, {kind}")
+    }
+}
+impl<F: FromKdlEntries> std::fmt::Display for ReadErrorKind<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Parse(e) => write!(f, "parse error {e:?}"),
+            Self::IO(e) => write!(f, "IO error {e}"),
+        }
+    }
+}
+
 /// Error saving [`SequencerConfig`] to a file
 #[allow(missing_docs)]
 #[non_exhaustive]
@@ -110,4 +152,19 @@ pub struct WriteError<F: IntoKdlEntries> {
 pub enum WriteErrorKind<E> {
     Serialize(E),
     IO(std::io::Error),
+}
+
+impl<F: IntoKdlEntries> std::fmt::Display for WriteError<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { path, kind } = self;
+        write!(f, "for path {path:?}, {kind}")
+    }
+}
+impl<E: std::fmt::Display> std::fmt::Display for WriteErrorKind<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Serialize(e) => write!(f, "serialize error {e}"),
+            Self::IO(e) => write!(f, "IO error {e}"),
+        }
+    }
 }

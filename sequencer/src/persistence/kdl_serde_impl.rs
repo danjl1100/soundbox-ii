@@ -69,7 +69,7 @@ impl<T> IntoKdlEntries for T
 where
     T: StructSerializeDeserialize,
 {
-    type Error<E> = Error<E>;
+    type Error<E> = Error<E> where E: std::fmt::Debug;
 
     fn try_into_kdl<V: KdlEntryVisitor>(&self, visitor: V) -> Result<V, Self::Error<V::Error>> {
         let mut serializer = ser::Serializer::new(visitor);

@@ -88,6 +88,14 @@ impl<T: ItemSource<F>, F> Sequencer<T, F> {
     pub fn new_from_tree(item_source: T, inner: SequencerTree<Item<T, F>, F>) -> Self {
         Self { item_source, inner }
     }
+
+    /// Replaces the inner tree
+    pub fn replace_tree(
+        &mut self,
+        new_tree: SequencerTree<Item<T, F>, F>,
+    ) -> SequencerTree<Item<T, F>, F> {
+        std::mem::replace(&mut self.inner, new_tree)
+    }
 }
 impl<T: Clone, F> SequencerTree<T, F> {
     /// Creates a new, empty [`SequencerTree`]
@@ -612,6 +620,13 @@ where
     /// Returns a serializable representation of the inner [`Tree`](`q_filter_tree::Tree`)
     pub fn tree_serializable(&self) -> impl serde::Serialize + '_ {
         &*self.inner.tree
+    }
+    /// Returns the sequencer tree
+    ///
+    /// e.g. for use with [`persistence::SequencerConfig::update_to_string`] or
+    /// [`persistence::SequencerConfigFile::update_to_file`]
+    pub fn sequencer_tree(&self) -> &SequencerTree<T::Item, F> {
+        &self.inner
     }
 }
 impl<T: ItemSource<F>, F> std::fmt::Display for Sequencer<T, F>

@@ -17,7 +17,10 @@
 
 use arg_util::ArgSplit;
 use clap::{Parser, ValueEnum};
-use sequencer::cli::{NodeCommand, OutputParams};
+use sequencer::{
+    cli::{NodeCommand, OutputParams},
+    persistence::SequencerConfigFile,
+};
 use std::{
     fs::File,
     io::{stdin, BufRead, BufReader},
@@ -57,9 +60,10 @@ pub(crate) enum Command {
         /// Number of items to print
         count: Option<usize>,
     },
-    // #[clap(flatten)]
     #[clap(subcommand)]
     Node(NodeCommand<source::Type>),
+    #[clap(subcommand)]
+    Persist(PersistenceCommand),
 }
 /// Types of License snippets available to show
 #[derive(clap::Subcommand, Clone, Copy, Debug)]
@@ -72,9 +76,16 @@ pub enum ShowCopyingLicenseType {
     Copying,
 }
 
+#[derive(Parser, Debug)]
+enum PersistenceCommand {
+    Load { file: std::path::PathBuf },
+    Save { file: std::path::PathBuf },
+}
+
 struct Cli {
     #[allow(clippy::struct_field_names)]
     sequencer_cli: sequencer::cli::Cli<source::Source, source::FilterArgParser, source::TypedArg>,
+    sequencer_config_file: Option<SequencerConfigFile<String, Option<source::TypedArg>>>,
     /// Terminates on the first error encountered (implied for `--script` mode)
     fatal: bool,
     /// If true, echo all commands to stdout
@@ -91,6 +102,7 @@ mod source {
         DebugItemSource,
     };
     sequencer::source_multi_select! {
+        #[derive(Clone)]
         pub(crate) struct Source {
             type Args = Args<'a>;
             #[derive(Copy, Clone, ValueEnum)]
@@ -178,7 +190,7 @@ impl Cli {
             match Args::try_from(line) {
                 Ok(Args { command: Some(cmd) }) => {
                     self.print_echo_command(line);
-                    let result = match cmd {
+                    match cmd {
                         Command::Quit => Ok(Some(shared::Shutdown)),
                         Command::Show { license } => {
                             Self::show_license(license);
@@ -190,10 +202,20 @@ impl Cli {
                             Ok(None)
                         }
                         Command::Node(node_command) => {
-                            self.sequencer_cli.exec_command(node_command).map(|()| None)
+                            let result = self.sequencer_cli.exec_command(node_command);
+                            if let Err(err) = &result {
+                                eprintln!("Node command error: {err}");
+                            }
+                            result.map(|()| None).map_err(|_| ())
                         }
-                    };
-                    result.map_err(|err| eprintln!("Error: {err}"))
+                        Command::Persist(persist_command) => {
+                            let result = self.exec_persist_command(persist_command);
+                            if let Err(err) = &result {
+                                eprintln!("Persist command error: {err}");
+                            }
+                            result.map(|()| None).map_err(|_| ())
+                        }
+                    }
                 }
                 Ok(Args { command: None }) => Ok(None),
                 Err(clap_err) => {
@@ -234,6 +256,45 @@ impl Cli {
                 eprintln!("{}", shared::license::REDISTRIBUTION);
             }
         }
+    }
+    #[allow(clippy::needless_pass_by_value)]
+    fn exec_persist_command(&mut self, _cmd: PersistenceCommand) -> Result<(), MainError> {
+        // TODO
+        todo!()
+        // match cmd {
+        //     PersistenceCommand::Load { file } => {
+        //         // let result: Result<(_, sequencer::SequencerTree<String, _>), _> =
+        //         //     SequencerConfigFile::read_from_file(file);
+        //         // match result {
+        //         //     Ok((scf, tree)) => {
+        //         //         self.sequencer_config_file = Some(scf);
+        //         //         self.sequencer_cli.replace_sequencer_tree(tree);
+        //         //         Ok(())
+        //         //     }
+        //         //     Err(err) => Err(MainError::Message(format!("{err}"))),
+        //         // }
+        //     }
+        //     PersistenceCommand::Save { file } => {
+        //         // let sequencer_tree: &sequencer::SequencerTree<_, _> =
+        //         //     self.sequencer_cli.sequencer().sequencer_tree();
+        //         // match &mut self.sequencer_config_file {
+        //         //     Some(scf) if *scf.path() == file => {
+        //         //         let result = scf.update_to_file(sequencer_tree);
+        //         //         result
+        //         //     }
+        //         //     _ => {
+        //         //         let result = SequencerConfigFile::create_new_file(file, sequencer_tree);
+        //         //         match result {
+        //         //             Ok(scf) => {
+        //         //                 self.sequencer_config_file = Some(scf);
+        //         //                 Ok(())
+        //         //             }
+        //         //             Err(err) => Err(MainError::Message(format!("{err}"))),
+        //         //         }
+        //         //     }
+        //         // }
+        //     }
+        // }
     }
 }
 
@@ -309,9 +370,10 @@ fn main() -> Result<(), MainError> {
         default_type: source_type,
     };
     let fatal = args.fatal | args.script.is_some();
-    let preloaded_tree = None; // TODO add state-file handling to sequencer_cli
+    let preloaded_tree = None;
     let mut cli = Cli {
         sequencer_cli: sequencer::cli::Cli::new(source, filter_arg_parser, params, preloaded_tree),
+        sequencer_config_file: None,
         fatal,
         echo_commands: args.echo_commands,
     };
