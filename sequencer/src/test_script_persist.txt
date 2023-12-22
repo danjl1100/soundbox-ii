@@ -1,0 +1,7 @@
+
+node add . src
+node add .
+# node add .1 src
+node add .1 ../q-filter-tree/tests
+
+persist save persist.txt

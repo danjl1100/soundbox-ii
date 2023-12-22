@@ -8,6 +8,8 @@ use serde::Serialize;
 
 type SuperError<E> = super::Error<E>;
 
+const KEY_VARIANT: &str = "variant";
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     UnimplementedType {
@@ -19,6 +21,10 @@ pub enum Error {
     PendingKey {
         pending_key: &'static str,
         next_key: Option<&'static str>,
+    },
+    DuplicateVariantDefinition {
+        existing: &'static str,
+        variant: &'static str,
     },
 }
 impl std::fmt::Display for Error {
@@ -49,6 +55,10 @@ impl std::fmt::Display for Error {
                 f,
                 "encountered key {next_key:?} while still pending key: {pending_key:?}"
             ),
+            Self::DuplicateVariantDefinition { existing, variant } => write!(
+                f,
+                "duplicate variant definitions: {existing:?} and {variant:?}"
+            ),
         }
     }
 }
@@ -61,6 +71,7 @@ impl<E> From<Error> for SuperError<E> {
 pub struct Serializer<V> {
     visitor: V,
     pending_key: Option<&'static str>,
+    marker_recorded_variant: Option<&'static str>,
 }
 impl<V> Serializer<V>
 where
@@ -70,12 +81,14 @@ where
         Self {
             visitor,
             pending_key: None,
+            marker_recorded_variant: None,
         }
     }
     pub fn finish(self) -> Result<V, SuperError<V::Error>> {
         let Self {
             visitor,
             pending_key,
+            marker_recorded_variant: _,
         } = self;
         if let Some(pending_key) = pending_key {
             Err(Error::PendingKey {
@@ -99,6 +112,20 @@ where
             pending_key: self.pending_key,
         })
     }
+
+    fn record_variant(&mut self, variant: &'static str) -> Result<(), SuperError<V::Error>> {
+        if let Some(existing) = self.marker_recorded_variant {
+            Err(SuperError::Serialize(Error::DuplicateVariantDefinition {
+                existing,
+                variant,
+            }))
+        } else {
+            self.marker_recorded_variant = Some(variant);
+            self.visitor
+                .visit_property_str(KEY_VARIANT, variant)
+                .map_err(SuperError::KdlEntryVisitor)
+        }
+    }
 }
 impl<'a, V> serde::ser::Serializer for &'a mut Serializer<V>
 where
@@ -111,7 +138,7 @@ where
     type SerializeSeq = NeverSerialize<V>;
     type SerializeTuple = NeverSerialize<V>;
     type SerializeTupleStruct = NeverSerialize<V>;
-    type SerializeTupleVariant = NeverSerialize<V>;
+    type SerializeTupleVariant = Self;
     type SerializeMap = NeverSerialize<V>;
     type SerializeStruct = Self;
     type SerializeStructVariant = NeverSerialize<V>;
@@ -232,15 +259,15 @@ where
 
     fn serialize_newtype_variant<T: ?Sized>(
         self,
-        name: &'static str,
+        _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: Serialize,
     {
-        Err(self.unimplemented("newtype variant", name))
+        self.record_variant(variant)
     }
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
@@ -327,5 +354,46 @@ where
         } else {
             Ok(())
         }
+    }
+}
+impl<'a, V> serde::ser::SerializeStructVariant for &'a mut Serializer<V>
+where
+    V: KdlEntryVisitor,
+{
+    type Ok = ();
+    type Error = SuperError<V::Error>;
+
+    fn serialize_field<T: ?Sized>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        <Self as serde::ser::SerializeStruct>::serialize_field(self, key, value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        <Self as serde::ser::SerializeStruct>::end(self)
+    }
+}
+
+impl<'a, V> serde::ser::SerializeTupleVariant for &'a mut Serializer<V>
+where
+    V: KdlEntryVisitor,
+{
+    type Ok = ();
+    type Error = SuperError<V::Error>;
+
+    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize,
+    {
+        value.serialize(&mut **self)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        <Self as serde::ser::SerializeStruct>::end(self)
     }
 }

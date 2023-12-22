@@ -94,10 +94,11 @@ struct Cli {
 
 mod source {
     use clap::ValueEnum;
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
 
     use sequencer::{
+        persistence::OptionStructSerializeDeserialize,
         sources::{Beet, FileLines, FolderListing},
         DebugItemSource,
     };
@@ -116,7 +117,7 @@ mod source {
             /// Debug
             debug: DebugItemSource as Debug where arg type = String,
         }
-        #[derive(Clone, Debug, Serialize)]
+        #[derive(Clone, Debug, Serialize, Deserialize)]
         /// Typed argument
         impl ItemSource<Option<TypedArg>> {
             type Item = String;
@@ -124,6 +125,7 @@ mod source {
             type Error = TypedLookupError;
         }
     }
+    impl OptionStructSerializeDeserialize for TypedArg {}
     impl Source {
         pub fn new(root_folder: PathBuf, beet_cmd: String) -> Result<Self, super::MainError> {
             Ok(Self {
@@ -257,44 +259,41 @@ impl Cli {
             }
         }
     }
-    #[allow(clippy::needless_pass_by_value)]
-    fn exec_persist_command(&mut self, _cmd: PersistenceCommand) -> Result<(), MainError> {
-        // TODO
-        todo!()
-        // match cmd {
-        //     PersistenceCommand::Load { file } => {
-        //         // let result: Result<(_, sequencer::SequencerTree<String, _>), _> =
-        //         //     SequencerConfigFile::read_from_file(file);
-        //         // match result {
-        //         //     Ok((scf, tree)) => {
-        //         //         self.sequencer_config_file = Some(scf);
-        //         //         self.sequencer_cli.replace_sequencer_tree(tree);
-        //         //         Ok(())
-        //         //     }
-        //         //     Err(err) => Err(MainError::Message(format!("{err}"))),
-        //         // }
-        //     }
-        //     PersistenceCommand::Save { file } => {
-        //         // let sequencer_tree: &sequencer::SequencerTree<_, _> =
-        //         //     self.sequencer_cli.sequencer().sequencer_tree();
-        //         // match &mut self.sequencer_config_file {
-        //         //     Some(scf) if *scf.path() == file => {
-        //         //         let result = scf.update_to_file(sequencer_tree);
-        //         //         result
-        //         //     }
-        //         //     _ => {
-        //         //         let result = SequencerConfigFile::create_new_file(file, sequencer_tree);
-        //         //         match result {
-        //         //             Ok(scf) => {
-        //         //                 self.sequencer_config_file = Some(scf);
-        //         //                 Ok(())
-        //         //             }
-        //         //             Err(err) => Err(MainError::Message(format!("{err}"))),
-        //         //         }
-        //         //     }
-        //         // }
-        //     }
-        // }
+    fn exec_persist_command(&mut self, cmd: PersistenceCommand) -> Result<(), MainError> {
+        match cmd {
+            PersistenceCommand::Load { file } => {
+                let result: Result<(_, sequencer::SequencerTree<String, _>), _> =
+                    SequencerConfigFile::read_from_file(file);
+                match result {
+                    Ok((scf, tree)) => {
+                        self.sequencer_config_file = Some(scf);
+                        self.sequencer_cli.replace_sequencer_tree(tree);
+                        Ok(())
+                    }
+                    Err(err) => Err(MainError::Message(format!("{err}"))),
+                }
+            }
+            PersistenceCommand::Save { file } => {
+                let sequencer_tree: &sequencer::SequencerTree<_, _> =
+                    self.sequencer_cli.sequencer().sequencer_tree();
+                match &mut self.sequencer_config_file {
+                    Some(scf) if *scf.path() == file => {
+                        let result = scf.update_to_file(sequencer_tree);
+                        result.map_err(|err| MainError::Message(format!("{err}")))
+                    }
+                    _ => {
+                        let result = SequencerConfigFile::create_new_file(file, sequencer_tree);
+                        match result {
+                            Ok(scf) => {
+                                self.sequencer_config_file = Some(scf);
+                                Ok(())
+                            }
+                            Err(err) => Err(MainError::Message(format!("{err}"))),
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

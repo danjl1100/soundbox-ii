@@ -59,7 +59,7 @@ pub trait IntoKdlEntries: Sized + Clone {
 /// via serde
 // TODO list specific limitations here (and TEST for these!)
 // TODO possibly add a built-in "test structure" function, to test ser/de
-pub trait StructSerializeDeserialize:
+pub trait OptionStructSerializeDeserialize:
     Clone + serde::Serialize + serde::de::DeserializeOwned
 {
 }

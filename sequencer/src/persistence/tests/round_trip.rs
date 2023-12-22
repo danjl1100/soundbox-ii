@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use crate::persistence::{SequencerConfig, StructSerializeDeserialize};
+use crate::persistence::{OptionStructSerializeDeserialize, SequencerConfig};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -16,7 +16,7 @@ fn u32_is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-impl StructSerializeDeserialize for HypotheticalFilter {}
+impl OptionStructSerializeDeserialize for HypotheticalFilter {}
 
 const INPUT: &str = r#"
 /* this doc is annotated.  author: me */
@@ -52,7 +52,8 @@ root filter="weight not allowed on root" {
 #[test]
 fn round_trip() {
     let (mut config, seq_tree) =
-        SequencerConfig::<(), HypotheticalFilter>::parse_from_str(INPUT).expect("valid KDL");
+        SequencerConfig::<(), Option<HypotheticalFilter>>::parse_from_str(INPUT)
+            .expect("valid KDL");
 
     {
         let tree = &seq_tree.tree;
@@ -62,10 +63,10 @@ fn round_trip() {
         assert_eq!(weight, 5);
         assert_eq!(
             artist1_node.filter,
-            HypotheticalFilter {
+            Some(HypotheticalFilter {
                 value: "artist1".to_string(),
                 count: 2,
-            }
+            })
         );
     }
 
@@ -78,7 +79,7 @@ fn round_trip() {
 
 mod error_messages_for_unimplemented {
     use super::{u32_is_zero, INPUT};
-    use crate::persistence::{SequencerConfig, StructSerializeDeserialize};
+    use crate::persistence::{OptionStructSerializeDeserialize, SequencerConfig};
     use serde::{Deserialize, Serialize};
 
     macro_rules! test_case {
@@ -100,10 +101,10 @@ mod error_messages_for_unimplemented {
                     $(#[$meta])*
                     $field: $ty,
                 }
-                impl StructSerializeDeserialize for InvalidFilter {}
+                impl OptionStructSerializeDeserialize for InvalidFilter {}
 
                 let (mut config, seq_tree) =
-                    SequencerConfig::<(), InvalidFilter>::parse_from_str(INPUT).expect("valid KDL");
+                    SequencerConfig::<(), Option<InvalidFilter>>::parse_from_str(INPUT).expect("valid KDL");
 
                 let type_name = $type_name;
                 let field = stringify!($field);

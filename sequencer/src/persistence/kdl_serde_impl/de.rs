@@ -134,6 +134,15 @@ impl DeserializeVisitor {
         let after_entry = self.entries.iter().last().cloned();
         Error::UnexpectedKdlArgument { value, after_entry }
     }
+    /// Returns true if no KDL entities were processed
+    pub fn is_empty(&self) -> bool {
+        let Self {
+            entries,
+            current_key,
+            current_value,
+        } = self;
+        entries.is_empty() && current_key.is_none() && current_value.is_none()
+    }
 }
 impl KdlEntryVisitor for DeserializeVisitor {
     type Error = SuperError;

@@ -10,7 +10,7 @@
 //!
 //! 2. When a type `T` implements [`serde::Serialize`], then it may be stored [`IntoKdlEntries`]
 
-use super::{FromKdlEntries, IntoKdlEntries, KdlEntryVisitor, StructSerializeDeserialize};
+use super::{FromKdlEntries, IntoKdlEntries, KdlEntryVisitor, OptionStructSerializeDeserialize};
 
 mod ser;
 
@@ -65,30 +65,42 @@ where
     }
 }
 
-impl<T> IntoKdlEntries for T
+impl<T> IntoKdlEntries for Option<T>
 where
-    T: StructSerializeDeserialize,
+    T: OptionStructSerializeDeserialize,
 {
     type Error<E> = Error<E> where E: std::fmt::Debug;
 
     fn try_into_kdl<V: KdlEntryVisitor>(&self, visitor: V) -> Result<V, Self::Error<V::Error>> {
-        let mut serializer = ser::Serializer::new(visitor);
-        self.serialize(&mut serializer)?;
-        serializer.finish()
+        match self {
+            Some(inner) => {
+                let mut serializer = ser::Serializer::new(visitor);
+                inner.serialize(&mut serializer)?;
+                serializer.finish()
+            }
+            None => {
+                // None represented by no KDL elements
+                Ok(visitor)
+            }
+        }
     }
 }
 
-impl<T> FromKdlEntries for T
+impl<T> FromKdlEntries for Option<T>
 where
-    T: StructSerializeDeserialize,
+    T: OptionStructSerializeDeserialize,
 {
     type Error = Error<shared::Never>;
 
     type Visitor = de::DeserializeVisitor;
 
     fn try_finish(mut de_visitor: Self::Visitor) -> Result<Self, Self::Error> {
-        let value = T::deserialize(&mut de_visitor)?;
-        de_visitor.check_finish()?;
-        Ok(value)
+        if de_visitor.is_empty() {
+            Ok(None)
+        } else {
+            let value = T::deserialize(&mut de_visitor)?;
+            de_visitor.check_finish()?;
+            Ok(Some(value))
+        }
     }
 }
