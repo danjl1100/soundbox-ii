@@ -8,7 +8,7 @@ use serde::Serialize;
 
 type SuperError<E> = super::Error<E>;
 
-const KEY_VARIANT: &str = "variant";
+pub(super) const KEY_VARIANT: &str = "type";
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
@@ -144,6 +144,7 @@ where
     type SerializeStructVariant = NeverSerialize<V>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
+        dbg!(("serialize_bool", v));
         if let Some(pending_key) = self.pending_key.take() {
             self.visitor.visit_property_bool(pending_key, v)
         } else {
@@ -165,6 +166,7 @@ where
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
+        dbg!(("serialize_i64", v));
         if let Some(pending_key) = self.pending_key.take() {
             self.visitor.visit_property_i64(pending_key, v)
         } else {
@@ -206,6 +208,7 @@ where
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+        dbg!(("serialize_str", v));
         if let Some(pending_key) = self.pending_key.take() {
             self.visitor.visit_property_str(pending_key, v)
         } else {
@@ -267,6 +270,7 @@ where
     where
         T: Serialize,
     {
+        dbg!(("serialize_newtype_variant", variant));
         self.record_variant(variant)
     }
 
@@ -333,6 +337,7 @@ where
     where
         T: Serialize,
     {
+        dbg!(("SerializeStruct::serialize_field", key));
         if let Some(pending_key) = self.pending_key.replace(key) {
             Err(Error::PendingKey {
                 pending_key,
@@ -371,6 +376,7 @@ where
     where
         T: Serialize,
     {
+        dbg!(("SerializeStructVariant::serialize_field", key));
         <Self as serde::ser::SerializeStruct>::serialize_field(self, key, value)
     }
 
@@ -390,6 +396,7 @@ where
     where
         T: Serialize,
     {
+        dbg!("SerializeTupleVariant::serialize_field");
         value.serialize(&mut **self)
     }
 

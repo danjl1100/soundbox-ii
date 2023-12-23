@@ -4,6 +4,16 @@ use crate::persistence::{OptionStructSerializeDeserialize, SequencerConfig};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+enum HypotheticalEnum {
+    Filter(HypotheticalFilter),
+    OtherVariant(AnotherOne),
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct AnotherOne {
+    only_used_in_enum: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 struct HypotheticalFilter {
     #[serde(rename = "filter", default, skip_serializing_if = "str::is_empty")]
     value: String,
@@ -17,6 +27,7 @@ fn u32_is_zero(n: &u32) -> bool {
 }
 
 impl OptionStructSerializeDeserialize for HypotheticalFilter {}
+impl OptionStructSerializeDeserialize for HypotheticalEnum {}
 
 const INPUT: &str = r#"
 /* this doc is annotated.  author: me */
@@ -49,6 +60,67 @@ root filter="weight not allowed on root" {
 }
 "#;
 
+const INPUT_ENUM: &str = r#"
+/* this doc is also annotated.  author: me */
+root type="Filter" filter="weight not allowed on root" {
+    chain /* this top-level chain is just to organize things */ {
+        chain weight=5 type="Filter" filter="artist1" count=2 {
+            leaf type="Filter" filter="year:2023"
+        }
+        leaf weight=2 type="Filter" filter="artist2"
+    }
+    /* trash can, to be restored if needed */
+    chain weight=0 {
+        chain {
+            chain {
+                chain {
+                    chain {
+                        /* well well well, someone was trying out deeply-nested nodes... */
+                        leaf;
+                    }
+                }
+                /* this is empty */
+                leaf;
+                /* NOTE: THIS IS THE CENTRAL DIFFERENCE... */
+                chain type="OtherVariant" only_used_in_enum=42 {
+                    /* also this one */
+                    leaf;
+                }
+            }
+        }
+    }
+}
+"#;
+
+#[test]
+fn round_trip_enum() {
+    let (mut config, seq_tree) =
+        SequencerConfig::<(), Option<HypotheticalEnum>>::parse_from_str(INPUT_ENUM)
+            .expect("valid KDL");
+
+    {
+        let tree = &seq_tree.tree;
+        // check "artist1" node
+        let artist1_path = tree.root_id().append(1).append(0).append(0).append(2);
+        let (weight, artist1_node) = artist1_path.try_ref_shared(tree).expect("node exists");
+        assert_eq!(weight, 1);
+        assert_eq!(
+            artist1_node.filter,
+            Some(HypotheticalEnum::OtherVariant(AnotherOne {
+                only_used_in_enum: 42,
+            }))
+        );
+    }
+
+    // complete round-trip
+    let output = config
+        .update_to_string(&seq_tree)
+        .expect("re-serialize works");
+
+    println!("FOUND:\n{output}\nEXPECTED:\n{INPUT_ENUM}");
+    assert_eq!(output, INPUT_ENUM);
+}
+
 #[test]
 fn round_trip() {
     let (mut config, seq_tree) =
@@ -74,7 +146,7 @@ fn round_trip() {
     let output = config
         .update_to_string(&seq_tree)
         .expect("re-serialize works");
-    assert_eq!(INPUT, output);
+    assert_eq!(output, INPUT);
 }
 
 mod error_messages_for_unimplemented {
@@ -200,11 +272,11 @@ mod error_messages_for_unimplemented {
                 #[serde(default)]
                 not_me: NewtypeStruct,
             }
-            {
-                for r#"newtype variant "NewtypeEnum""#;
-                #[serde(default)]
-                im_not_unique: NewtypeEnum,
-            }
+            // {
+            //     for r#"newtype variant "NewtypeEnum""#;
+            //     #[serde(default)]
+            //     im_not_unique: NewtypeEnum,
+            // }
             {
                 for r#"tuple struct "TupleStruct""#;
                 #[serde(default)]
@@ -222,7 +294,7 @@ mod error_messages_for_unimplemented {
             }
         };
         // verify macro counter is as expected (avoid dead macro)
-        assert_eq!(cases_count_other, 7);
+        assert_eq!(cases_count_other, 7 - 1);
     }
 
     #[allow(clippy::unnecessary_wraps)]

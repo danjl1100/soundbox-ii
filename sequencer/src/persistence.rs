@@ -244,12 +244,13 @@ pub enum NodeErrorKind<E> {
 #[cfg(test)]
 #[allow(clippy::panic)] // tests are allowed to panic
 mod tests {
-
     mod decode;
 
     mod encode;
 
     mod round_trip;
+
+    mod source_mutli_select;
 }
 
 #[allow(clippy::module_name_repetitions)]
