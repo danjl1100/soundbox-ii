@@ -160,7 +160,7 @@
   };
 
   nixosTestSystems = let
-    required_nixos = {...}: {
+    required_nixos = {
       fileSystems."/" = {
         device = "none";
         fsType = "tmpfs";
@@ -175,7 +175,7 @@
       system,
     }: {
       simple-configuration = let
-        service_activation = {...}: {
+        service_activation = {
           # initialize the soundbox-ii service
           services.soundbox-ii = {
             enable = true;
