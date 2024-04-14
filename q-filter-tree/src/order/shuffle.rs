@@ -3,7 +3,7 @@
 use super::{Orderer, OrdererImpl, Weights};
 use rand;
 use rand_chacha::ChaCha8Rng;
-use std::{convert::TryInto, ops::Range};
+use std::ops::Range;
 
 #[derive(Clone)]
 /// Tracks the remaining (shuffled) indices to be returned
