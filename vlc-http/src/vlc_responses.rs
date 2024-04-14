@@ -165,7 +165,6 @@ mod playlist {
     use crate::http_client::intent::FromSliceAtTime;
     use serde::Deserialize;
     use shared::Time;
-    use std::convert::TryInto;
 
     /// Playlist information
     #[must_use]

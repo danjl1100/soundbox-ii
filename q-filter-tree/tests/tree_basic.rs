@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::{borrow::Cow, collections::VecDeque, iter::FromIterator};
+use std::{borrow::Cow, collections::VecDeque};
 
 use q_filter_tree::{error::RemoveError, NodeInfo, OrderType, SequenceAndItem, Tree};
 #[test]

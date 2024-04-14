@@ -32,9 +32,9 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_element<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
+    fn serialize_element<T>(&mut self, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},
@@ -54,9 +54,9 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_element<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
+    fn serialize_element<T>(&mut self, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match self {
             NeverSerialize::Never { never, _marker } => match *never {},
@@ -76,9 +76,9 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_field<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},
@@ -98,9 +98,9 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_field<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},
@@ -120,18 +120,18 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_key<T: ?Sized>(&mut self, _key: &T) -> Result<(), Self::Error>
+    fn serialize_key<T>(&mut self, _key: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},
         }
     }
 
-    fn serialize_value<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
+    fn serialize_value<T>(&mut self, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},
@@ -151,13 +151,9 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        _key: &'static str,
-        _value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, _key: &'static str, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},
@@ -177,13 +173,9 @@ where
     type Ok = ();
     type Error = super::Error<V::Error>;
 
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        _key: &'static str,
-        _value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, _key: &'static str, _value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: ?Sized + Serialize,
     {
         match *self {
             NeverSerialize::Never { never, _marker } => match never {},

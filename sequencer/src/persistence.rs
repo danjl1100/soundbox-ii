@@ -295,9 +295,9 @@ mod single_root {
             Self::try_from(doc).expect("added one and only one root")
         }
     }
-    impl ToString for SingleRootKdlDocument {
-        fn to_string(&self) -> String {
-            self.0.to_string()
+    impl std::fmt::Display for SingleRootKdlDocument {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
         }
     }
 

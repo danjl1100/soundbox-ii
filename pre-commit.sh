@@ -18,7 +18,8 @@ if [ "${old_stash}" = "${new_stash}" ]; then
   exit 0
 fi
 
-COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
+# COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
+COPYRIGHT_TEXT="Copyright (C) 2021-$(($(date +%Y)-1))  Daniel Lambert. Licensed under GPL-3.0-or-later"
 
 # Run tests
 true \

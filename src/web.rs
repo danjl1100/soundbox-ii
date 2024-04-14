@@ -63,9 +63,7 @@ mod filter {
             warp::path("art") //
                 .and(with_sender(vlc_tx)) //
                 .and_then(|vlc_tx| async move {
-                    let response = query_album_art(vlc_tx)
-                        .await
-                        .map_or_else(build_response, |r| r);
+                    let response = query_album_art(vlc_tx).await.unwrap_or_else(build_response);
                     Ok::<_, std::convert::Infallible>(response)
                 })
         }

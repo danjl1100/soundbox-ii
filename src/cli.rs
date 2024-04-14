@@ -4,7 +4,7 @@ use arg_util::ArgSplit;
 use shared::Shutdown;
 use std::io::{BufRead, Write};
 use tokio::sync::{mpsc, watch};
-use vlc_http::{self, PlaybackStatus, PlaylistInfo};
+use vlc_http::{PlaybackStatus, PlaylistInfo};
 
 pub use command::{parse_url, COMMAND_NAME};
 /// Definition of interactive commands

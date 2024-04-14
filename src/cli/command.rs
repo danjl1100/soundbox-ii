@@ -5,7 +5,7 @@ use crate::{
     Shutdown,
 };
 use tokio::sync::oneshot;
-use vlc_http::{self, PlaybackStatus, PlaylistInfo, ResultReceiver as VlcResultReceiver};
+use vlc_http::{PlaybackStatus, PlaylistInfo, ResultReceiver as VlcResultReceiver};
 
 pub const COMMAND_NAME: &str = "soundbox-ii";
 pub const PROMPT_STR: &str = "soundbox-ii>";

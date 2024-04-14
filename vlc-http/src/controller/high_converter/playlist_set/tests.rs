@@ -132,7 +132,7 @@ impl TestHarness {
         self.pending_done_check.take();
     }
     fn publish_playlist_items(&mut self, items: Vec<PlaylistItem>) {
-        self.data.playlist_items = items.clone();
+        self.data.playlist_items.clone_from(&items);
         self.data_published.playlist_items = items;
     }
     fn publish_playback_current_id(&mut self, current_id: Option<u64>) {
@@ -207,7 +207,7 @@ impl TestHarnessData {
         dest.playback_current_id = self.playback_current_id;
     }
     fn clone_playlist_to(&self, dest: &mut Self) {
-        dest.playlist_items = self.playlist_items.clone();
+        dest.playlist_items.clone_from(&self.playlist_items);
     }
 }
 fn make_urls(current_str: &str, next_strs: &[&str]) -> Vec<url::Url> {
