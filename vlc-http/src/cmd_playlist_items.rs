@@ -26,7 +26,7 @@ pub struct Data {
 pub struct Sender {
     /// Sender for commanded Playlist Items
     pub urls_tx: watch::Sender<Data>,
-    /// Receiver for signal to remove_current
+    /// Receiver for signal to `remove_current`
     pub remove_rx: watch::Receiver<Option<url::Url>>,
 }
 pub(crate) struct Receiver(Option<ReceiverInner>);

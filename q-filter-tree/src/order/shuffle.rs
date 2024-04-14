@@ -1,7 +1,6 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Orderer, OrdererImpl, Weights};
-use rand;
 use rand_chacha::ChaCha8Rng;
 use std::ops::Range;
 

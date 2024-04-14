@@ -11,7 +11,6 @@ mod playback {
 
     use serde::Deserialize;
     use std::collections::HashMap;
-    use std::convert::TryInto;
 
     /// Status of the current playback
     #[must_use]

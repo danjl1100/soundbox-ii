@@ -6,7 +6,6 @@ use http::{
     uri::{Authority, Builder as UriBuilder},
 };
 
-use std::convert::TryFrom;
 use std::str::FromStr;
 
 /// Error obtaining a sepecific environment variable

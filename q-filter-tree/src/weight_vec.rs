@@ -4,7 +4,6 @@
 //! See [`OrderVec`] for details of usage.
 
 use crate::{order, OrderType};
-use std::iter::FromIterator;
 
 pub use weights::{Weight, Weights};
 mod weights {

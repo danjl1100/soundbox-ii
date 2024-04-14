@@ -5,7 +5,7 @@ use super::{Command, PlaylistItem};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct IndexItem<'a> {
-    /// Type of indexed item, some DesiredType, or none for undesired current item
+    /// Type of indexed item, some [`DesiredType`], or none for undesired current item
     pub ty: Option<DesiredType>,
     /// Index of the item
     pub index: usize,

@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::{convert::TryFrom, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 pub(crate) use crate::http_client::intent::{CmdArgs, TextIntent};
 use crate::http_client::intent::{PlaylistIntent, StatusIntent};

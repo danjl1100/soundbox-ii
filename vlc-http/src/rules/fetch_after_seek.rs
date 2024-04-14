@@ -21,8 +21,8 @@ impl FetchAfterSpec<(u64, Option<u64>)> for FetchAfterSeek {
 }
 
 #[cfg(test)]
+#[allow(clippy::bool_assert_comparison)]
 mod tests {
-    #![allow(clippy::bool_assert_comparison)]
     use super::super::{tests::PlaybackInfo, PlaybackTiming};
     use super::*;
 

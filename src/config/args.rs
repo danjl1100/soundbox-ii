@@ -3,9 +3,9 @@
 use super::{env_vars, Input, SequencerError, UsageError, Value, VlcHttpError, WebError};
 use clap::Parser;
 use serde::Deserialize;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::{convert::TryFrom, net::SocketAddr};
 
 arg_util::derive_unpack! {
     #[derive(Parser, Deserialize, Default, Debug)]

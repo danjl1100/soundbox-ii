@@ -24,8 +24,8 @@ impl FetchAfterSpec<u16> for FetchAfterVolume {
 }
 
 #[cfg(test)]
+#[allow(clippy::bool_assert_comparison)]
 mod tests {
-    #![allow(clippy::bool_assert_comparison)]
     use super::*;
 
     #[test]
