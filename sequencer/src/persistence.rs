@@ -59,7 +59,7 @@ pub trait IntoKdlEntries: Sized + Clone {
 /// via serde
 // TODO list specific limitations here (and TEST for these!)
 // TODO possibly add a built-in "test structure" function, to test ser/de
-pub trait StructSerializeDeserialize:
+pub trait OptionStructSerializeDeserialize:
     Clone + serde::Serialize + serde::de::DeserializeOwned
 {
 }
@@ -244,12 +244,13 @@ pub enum NodeErrorKind<E> {
 #[cfg(test)]
 #[allow(clippy::panic)] // tests are allowed to panic
 mod tests {
-
     mod decode;
 
     mod encode;
 
     mod round_trip;
+
+    mod source_mutli_select;
 }
 
 #[allow(clippy::module_name_repetitions)]

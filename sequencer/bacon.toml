@@ -12,3 +12,11 @@ need_stdout = true
 [jobs.test]
 command = ["cargo", "test", "--color", "always"]
 need_stdout = true
+
+[jobs.check]
+command = ["cargo", "check", "--color", "always"]
+need_stdout = false
+
+[jobs.clippy]
+command = ["cargo", "clippy", "--color", "always", "--tests"]
+need_stdout = false
