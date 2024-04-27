@@ -78,8 +78,14 @@ pub enum ShowCopyingLicenseType {
 
 #[derive(Parser, Debug)]
 enum PersistenceCommand {
-    Load { file: std::path::PathBuf },
-    Save { file: std::path::PathBuf },
+    Load {
+        file: std::path::PathBuf,
+    },
+    Save {
+        file: std::path::PathBuf,
+        #[clap(long)]
+        overwrite: bool,
+    },
 }
 
 struct Cli {
@@ -109,7 +115,7 @@ mod source {
             #[derive(Copy, Clone, ValueEnum)]
             type Type = Type;
             /// Beet
-            beet: Beet as Beet where arg type = Vec<String>,
+            beet: Option<Beet> as Beet where arg type = Vec<String>,
             /// File lines
             file_lines: FileLines as FileLines where arg type = String,
             /// Folder listing
@@ -127,12 +133,16 @@ mod source {
     }
     impl OptionStructSerializeDeserialize for TypedArg {}
     impl Source {
-        pub fn new(root_folder: PathBuf, beet_cmd: String) -> Result<Self, super::MainError> {
+        pub fn new(
+            root_folder: PathBuf,
+            beet_cmd: Option<String>,
+        ) -> Result<Self, super::MainError> {
+            let beet = beet_cmd.map(Beet::new).transpose()?;
             Ok(Self {
                 debug: DebugItemSource,
                 file_lines: FileLines::new(root_folder.clone())?,
                 folder_listing: FolderListing::new(root_folder)?,
-                beet: Beet::new(beet_cmd)?,
+                beet,
             })
         }
     }
@@ -273,7 +283,7 @@ impl Cli {
                     Err(err) => Err(MainError::Message(format!("{err}"))),
                 }
             }
-            PersistenceCommand::Save { file } => {
+            PersistenceCommand::Save { file, overwrite } => {
                 let sequencer_tree: &sequencer::SequencerTree<_, _> =
                     self.sequencer_cli.sequencer().sequencer_tree();
                 match &mut self.sequencer_config_file {
@@ -282,7 +292,8 @@ impl Cli {
                         result.map_err(|err| MainError::Message(format!("{err}")))
                     }
                     _ => {
-                        let result = SequencerConfigFile::create_new_file(file, sequencer_tree);
+                        let result =
+                            SequencerConfigFile::create_new_file(file, sequencer_tree, overwrite);
                         match result {
                             Ok(scf) => {
                                 self.sequencer_config_file = Some(scf);
@@ -301,7 +312,7 @@ impl Cli {
 struct MainArgs {
     /// Command to use for the [`Beet`] item source type
     #[clap(long)]
-    beet_cmd: String,
+    beet_cmd: Option<String>,
     /// Initial default source type used for setting filters
     #[clap(long, value_enum)]
     source_type: Option<source::Type>,

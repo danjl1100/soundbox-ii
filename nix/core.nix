@@ -25,14 +25,24 @@
 
   crates = let
     licenseFilter = path: _type: builtins.match ".*shared/src/license/COPYING.*" path != null;
-    webFilter = path: _type: builtins.any (ext: pkgs.lib.hasSuffix ext path) [".scss" ".html"];
+    webFilter = path: _type:
+      builtins.any (ext: pkgs.lib.hasSuffix ext path) [
+        ".scss"
+        ".html"
+      ];
+    seqTestFilter = path: _type:
+      builtins.any (p: builtins.match p path != null) [
+        ".*sequencer/src.*"
+        ".*sequencer/test_script.*\\.txt"
+      ];
     licenseOrCargo = path: type: (licenseFilter path type) || (craneLib.filterCargoSources path type);
     licenseOrCargoOrWeb = path: type: (licenseOrCargo path type) || (webFilter path type);
+    licenseOrCargoOrSeqTest = path: type: (licenseOrCargo path type) || (seqTestFilter path type);
     rootSrc =
       pkgs.lib.cleanSourceWith
       {
         src = craneLib.path rootPath;
-        filter = licenseOrCargo;
+        filter = licenseOrCargoOrSeqTest;
       };
   in {
     server = pkgs.callPackage ./crate.nix {
@@ -40,6 +50,8 @@
       src = rootSrc;
       commonArgOverrides = {
         cargoTestExtraArgs = "--workspace";
+        # TODO remove if unused
+        cargoNextestExtraArgs = "--workspace";
       };
     };
     client = pkgs.callPackage ./crate.nix {

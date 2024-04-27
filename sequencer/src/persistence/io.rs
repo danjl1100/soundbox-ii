@@ -25,15 +25,18 @@ where
     pub fn create_new_file(
         path: std::path::PathBuf,
         sequencer: &SequencerTree<T, F>,
+        allow_overwrite: bool,
     ) -> Result<Self, WriteError<F>> {
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|err| WriteError {
-                path: path.clone(),
-                kind: WriteErrorKind::IO(err),
-            })?;
+        let mut file = std::fs::OpenOptions::new();
+        if allow_overwrite {
+            file.create(true);
+        } else {
+            file.create_new(true);
+        }
+        let file = file.write(true).open(&path).map_err(|err| WriteError {
+            path: path.clone(),
+            kind: WriteErrorKind::IO(err),
+        })?;
         let mut this = Self {
             inner: SequencerConfig::default(),
             path,

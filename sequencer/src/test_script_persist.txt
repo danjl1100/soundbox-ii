@@ -4,6 +4,6 @@ node add .
 # node add .1 src
 node add .1 ../q-filter-tree/tests
 
-persist save persist.txt
+persist save persist.txt --overwrite
 
 persist load persist.txt

@@ -114,3 +114,29 @@ impl<T: ArgSource> ItemSource<T> for Beet {
         }
     }
 }
+
+pub enum ErrorOptionalBeet {
+    IO(std::io::Error),
+    None,
+}
+impl std::fmt::Display for ErrorOptionalBeet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ErrorOptionalBeet::IO(inner) => write!(f, "{inner}"),
+            ErrorOptionalBeet::None => write!(f, "optional beet disabled at runtime"),
+        }
+    }
+}
+
+impl<T: ArgSource> ItemSource<T> for Option<Beet> {
+    type Item = String;
+    type Error = ErrorOptionalBeet;
+
+    fn lookup(&self, args: &[T]) -> Result<Vec<Self::Item>, Self::Error> {
+        if let Some(inner) = self {
+            inner.lookup(args).map_err(ErrorOptionalBeet::IO)
+        } else {
+            Err(ErrorOptionalBeet::None)
+        }
+    }
+}

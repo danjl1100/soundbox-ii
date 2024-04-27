@@ -364,13 +364,9 @@ where
     type Ok = ();
     type Error = SuperError<V::Error>;
 
-    fn serialize_field<T: ?Sized>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: Serialize + ?Sized,
     {
         dbg!(("SerializeStructVariant::serialize_field", key));
         <Self as serde::ser::SerializeStruct>::serialize_field(self, key, value)
@@ -388,9 +384,9 @@ where
     type Ok = ();
     type Error = SuperError<V::Error>;
 
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Self::Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
     where
-        T: Serialize,
+        T: Serialize + ?Sized,
     {
         dbg!("SerializeTupleVariant::serialize_field");
         value.serialize(&mut **self)
