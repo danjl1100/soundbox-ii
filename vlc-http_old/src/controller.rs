@@ -44,7 +44,7 @@ struct Channels {
 /// # Example
 ///
 /// ```
-/// use vlc_http::{Authorization, Credentials, Controller};
+/// use vlc_http_old::{Authorization, Credentials, Controller};
 ///
 /// let auth = Authorization::try_from(Credentials {
 ///     password: "1234".to_string(),
