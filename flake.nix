@@ -175,6 +175,7 @@
             packages = [
               pkgs.alejandra
               pkgs.bacon
+              pkgs.cargo-insta
             ];
           };
         };

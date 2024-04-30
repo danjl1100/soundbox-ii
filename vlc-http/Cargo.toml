@@ -1,0 +1,15 @@
+[package]
+name = "vlc-http"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+http = "1.1.0"
+serde = { version = "1.0.199", features = ["derive"] }
+shared = { path = "../shared" }
+url = { version = "2.5.0", features = ["serde"] }
+urlencoding = "2.1.3"
+
+[dev-dependencies]
+insta = { version = "1.38.0", features = ["ron"] }
