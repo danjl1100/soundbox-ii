@@ -18,15 +18,14 @@ if [ "${old_stash}" = "${new_stash}" ]; then
   exit 0
 fi
 
-# COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
-COPYRIGHT_TEXT="Copyright (C) 2021-$(($(date +%Y)-1))  Daniel Lambert. Licensed under GPL-3.0-or-later"
+COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
 
 # Run tests
 true \
-  && echo "Missing copyright notice in files:" \
+  && echo "Missing copyright notice in changed files:" \
     && [[ ! $( \
-          find $(git rev-parse --show-toplevel) -path $(git rev-parse --show-toplevel)/target -prune \
-              -o -name '*.rs' -exec grep -LH "${COPYRIGHT_TEXT}" {} + | tee /dev/stderr \
+        cd "$(git rev-parse --show-toplevel)" && git diff --name-only HEAD | grep '.rs$' | \
+        xargs --no-run-if-empty grep -LH "${COPYRIGHT_TEXT}" | tee /dev/stderr \
       ) ]] \
       || (echo "fix using:   echo \"// ${COPYRIGHT_TEXT}, see /COPYING file for details
 \$(cat \$FILE)\" > \$FILE" && false) \
