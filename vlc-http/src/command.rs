@@ -151,7 +151,7 @@ mod volume {
             let percent = percent.value();
 
             // result is 0-768 (inclusive), comfortably fits in u16
-            let based_256 = f32::from(percent * 256) / 100.0;
+            let based_256 = f32::from(percent) * (256.0 / 100.0);
             #[allow(clippy::cast_possible_truncation)] // target size comfortably fits 0-768 (inclusive)
             #[allow(clippy::cast_sign_loss)] // value is always non-negative
             {
