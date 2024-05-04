@@ -33,8 +33,11 @@
 pub use command::{Command, VolumePercent, VolumePercentDelta};
 pub mod command;
 
-pub use request::Endpoint;
+pub use request::{Auth, Endpoint};
 pub mod request;
 
 pub use action::Action;
 mod action;
+
+#[cfg(feature = "clap")]
+pub mod clap;

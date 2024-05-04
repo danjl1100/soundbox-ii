@@ -10,7 +10,7 @@
 pub enum Command {
     /// Add the specified item to the playlist
     PlaylistAdd {
-        /// Path to the file to enqueue
+        /// URL of the file to enqueue (for local files: `file:///path/to/file`)
         url: url::Url,
     },
     /// Deletes the specified item from the playlist
@@ -170,10 +170,10 @@ pub struct VolumeBoundsError {
 impl std::fmt::Display for VolumeBoundsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { value, signed } = *self;
-        let signs = if signed { "+/-" } else { "" };
+        let range_prefix = if signed { "+/-" } else { "0-" };
         write!(
             f,
-            "volume value {value} out of range {signs}{}",
+            "volume value {value} out of range ({range_prefix}{})",
             volume::MAX_INCLUSIVE
         )
     }

@@ -19,12 +19,12 @@ pub struct Endpoint {
 impl Endpoint {
     /// Returns the combined HTTP path and query string for the endpoint
     #[must_use]
-    pub fn path_and_query(&self) -> &str {
+    pub fn get_path_and_query(&self) -> &str {
         &self.path_and_query
     }
     /// Returns the HTTP method for the endpoint
     #[must_use]
-    pub fn method(&self) -> http::Method {
+    pub fn get_method(&self) -> http::Method {
         // NOTE: this is a function for future expansion purposes
         http::Method::GET
     }
@@ -95,9 +95,13 @@ mod endpoint_args {
 }
 
 impl Command {
-    /// Creates a request for the current art
-    pub fn art(id: &str) -> Endpoint {
+    /// Creates a request endpoint for the current art
+    pub fn art_endpoint(id: &str) -> Endpoint {
         endpoint_args::EndpointArgs::new_art(id).finish()
+    }
+    /// Creates a request endpoint for the command
+    pub fn into_endpoint(self) -> Endpoint {
+        self.into()
     }
 }
 impl From<Command> for Endpoint {
