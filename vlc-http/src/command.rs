@@ -248,28 +248,3 @@ impl std::fmt::Display for SecondsDelta {
         write!(f, "{seconds_delta:+}")
     }
 }
-
-impl TryFrom<shared::Command> for Command {
-    type Error = VolumeBoundsError;
-    fn try_from(other: shared::Command) -> Result<Self, Self::Error> {
-        use shared::Command as Shared;
-        Ok(match other {
-            Shared::PlaybackResume => Self::PlaybackResume,
-            Shared::PlaybackPause => Self::PlaybackPause,
-            Shared::PlaybackStop => Self::PlaybackStop,
-            Shared::SeekNext => Self::SeekNext,
-            Shared::SeekPrevious => Self::SeekPrevious,
-            Shared::SeekTo { seconds } => Self::SeekTo { seconds },
-            Shared::SeekRelative { seconds_delta } => Self::SeekRelative {
-                seconds_delta: seconds_delta.into(),
-            },
-            Shared::Volume { percent } => Self::Volume {
-                percent: percent.try_into()?,
-            },
-            Shared::VolumeRelative { percent_delta } => Self::VolumeRelative {
-                percent_delta: percent_delta.try_into()?,
-            },
-            Shared::PlaybackSpeed { speed } => Self::PlaybackSpeed { speed },
-        })
-    }
-}

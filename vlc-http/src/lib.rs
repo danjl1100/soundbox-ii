@@ -30,6 +30,10 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+// --------------------------------------------------
+// Requests sent to VLC
+// --------------------------------------------------
+
 pub use command::{Command, VolumePercent, VolumePercentDelta};
 pub mod command;
 
@@ -38,6 +42,16 @@ pub mod request;
 
 pub use action::Action;
 mod action;
+
+// --------------------------------------------------
+// Responses received from VLC
+// --------------------------------------------------
+
+// TODO
+
+// --------------------------------------------------
+// Utilities
+// --------------------------------------------------
 
 #[cfg(feature = "clap")]
 pub mod clap;

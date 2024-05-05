@@ -1,5 +1,5 @@
 // soundbox-ii/shared music playback controller *don't keep your sounds boxed up*
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -345,6 +345,31 @@ macro_rules! cheap_float_eq {
         )+
     }
 }
+
+impl TryFrom<Command> for vlc_http::Command {
+    type Error = vlc_http::command::VolumeBoundsError;
+    fn try_from(other: Command) -> Result<Self, Self::Error> {
+        Ok(match other {
+            Command::PlaybackResume => Self::PlaybackResume,
+            Command::PlaybackPause => Self::PlaybackPause,
+            Command::PlaybackStop => Self::PlaybackStop,
+            Command::SeekNext => Self::SeekNext,
+            Command::SeekPrevious => Self::SeekPrevious,
+            Command::SeekTo { seconds } => Self::SeekTo { seconds },
+            Command::SeekRelative { seconds_delta } => Self::SeekRelative {
+                seconds_delta: seconds_delta.into(),
+            },
+            Command::Volume { percent } => Self::Volume {
+                percent: percent.try_into()?,
+            },
+            Command::VolumeRelative { percent_delta } => Self::VolumeRelative {
+                percent_delta: percent_delta.try_into()?,
+            },
+            Command::PlaybackSpeed { speed } => Self::PlaybackSpeed { speed },
+        })
+    }
+}
+
 cheap_float_eq! {
     #[derive(Debug, Default, Clone, Copy, serde::Serialize, serde::Deserialize)]
     /// Fractional position within the current item (unit scale)

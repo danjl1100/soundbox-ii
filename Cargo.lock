@@ -1638,6 +1638,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
+ "vlc-http",
 ]
 
 [[package]]
@@ -2046,7 +2047,6 @@ dependencies = [
  "http 1.1.0",
  "insta",
  "serde",
- "shared",
  "url",
  "urlencoding",
 ]
