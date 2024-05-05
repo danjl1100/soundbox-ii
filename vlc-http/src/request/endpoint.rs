@@ -38,18 +38,14 @@ mod endpoint_args {
     /// Builder for [`Endpoint`]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(crate) struct EndpointArgs {
-        // TODO combine path, query into one field (e.g. if query grows large, reduce amount of
-        // buffer copying in `finish`
-        path: &'static str,
-        query: Cow<'static, str>,
-        // command: &'static str,
-        // args: Vec<(&'static str, String)>,
+        path_and_query: Cow<'static, str>,
+        pending_query_prefix: Option<()>,
     }
     impl EndpointArgs {
         fn new(path: &'static str, command: Option<&'static str>) -> Self {
             let mut this = Self {
-                path,
-                query: "".into(),
+                path_and_query: path.into(),
+                pending_query_prefix: Some(()),
             };
             if let Some(command) = command {
                 this = this.append("command", command);
@@ -64,10 +60,11 @@ mod endpoint_args {
             const PATH_PLAYLIST_JSON: &str = "/requests/playlist.json";
             Self::new(PATH_PLAYLIST_JSON, Some(command))
         }
-        pub fn new_art(id: &str) -> Self {
-            const PATH_ART: &str = "/art";
-            Self::new(PATH_ART, None).append("item", id)
-        }
+        // TODO
+        // pub fn new_art(id: &str) -> Self {
+        //     const PATH_ART: &str = "/art";
+        //     Self::new(PATH_ART, None).append("item", id)
+        // }
         //
         pub fn append(self, key: &str, value: &str) -> Self {
             let key = urlencoding::encode(key);
@@ -82,23 +79,38 @@ mod endpoint_args {
             self.append_raw(&key, value)
         }
         fn append_raw(mut self, key: &str, value: &str) -> Self {
-            let sep = if self.query.is_empty() { "" } else { "&" };
-            write!(self.query.to_mut(), "{sep}{key}={value}").expect("string write succeeds");
+            let sep = if self.pending_query_prefix.take().is_some() {
+                "?"
+            } else {
+                "&"
+            };
+
+            {
+                let dest: &mut String = self.path_and_query.to_mut();
+                write!(dest, "{sep}{key}={value}")
+            }
+            .expect("string write is infallible");
+
             self
         }
         pub fn finish(self) -> Endpoint {
-            let Self { path, query } = self;
-            let path_and_query = format!("{path}?{query}");
-            Endpoint { path_and_query }
+            let Self {
+                path_and_query,
+                pending_query_prefix: _,
+            } = self;
+            Endpoint {
+                path_and_query: Cow::into_owned(path_and_query),
+            }
         }
     }
 }
 
 impl Command {
-    /// Creates a request endpoint for the current art
-    pub fn art_endpoint(id: &str) -> Endpoint {
-        endpoint_args::EndpointArgs::new_art(id).finish()
-    }
+    // TODO
+    // /// Creates a request endpoint for the current art
+    // pub fn art_endpoint(id: &str) -> Endpoint {
+    //     endpoint_args::EndpointArgs::new_art(id).finish()
+    // }
     /// Creates a request endpoint for the command
     pub fn into_endpoint(self) -> Endpoint {
         self.into()
