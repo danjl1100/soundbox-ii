@@ -5,6 +5,5 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.82"
-arg_util = { version = "0.1.0", path = "../arg_util" }
 ureq = { version = "2.9.7", features = ["http-crate"] }
-vlc-http = { path = "../vlc-http", features = ["clap"] }
+vlc-http = { version = "0.1.0", path = "../vlc-http", features = ["clap"] }

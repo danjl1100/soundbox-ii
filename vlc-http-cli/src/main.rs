@@ -43,7 +43,9 @@ fn main() -> anyhow::Result<()> {
             continue;
         }
 
-        let args = arg_util::ArgSplit::split_into_owned(line);
+        // NOTE: simplistic whitespace splitting should suffice,
+        // as any path/string arguments should be in URL form (percent-encoded)
+        let args = line.split_whitespace();
         let command = match CliArgs::try_parse_from(args) {
             Ok(command) => command,
             Err(err) => {
