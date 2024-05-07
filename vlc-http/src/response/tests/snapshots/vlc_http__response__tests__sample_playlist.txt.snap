@@ -1,0 +1,16 @@
+---
+source: vlc-http/src/response/tests/mod.rs
+expression: response
+---
+Response(
+  inner: PlaylistInfo(Info(
+    items: [
+      Item(
+        duration_secs: None,
+        id: "1580",
+        name: "Floaters.mp3",
+        url: "file:///path/to/Music/Jimmy%20Fontanez/Floaters.mp3",
+      ),
+    ],
+  )),
+)

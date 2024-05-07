@@ -1,0 +1,26 @@
+{
+  "children":[{
+      "children":[{
+          "duration":-1,
+          "uri":"file:///path/to/Music/Jimmy Fontanez/Floaters.mp3",
+          "type":"leaf",
+          "id":"1580",
+          "ro":"rw",
+          "name":"Floaters.mp3"
+        }],
+      "type":"node",
+      "id":"1",
+      "ro":"ro",
+      "name":"Playlist"
+    },{
+      "children":[],
+      "type":"node",
+      "id":"2",
+      "ro":"ro",
+      "name":"Media Library"
+    }],
+  "type":"node",
+  "id":"0",
+  "ro":"rw",
+  "name":""
+}

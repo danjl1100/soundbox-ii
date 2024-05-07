@@ -1,0 +1,41 @@
+---
+source: vlc-http/src/response/tests/mod.rs
+expression: response
+---
+Response(
+  inner: PlaybackStatus(Status(
+    apiversion: 3,
+    information: Some(Info(
+      title: "Floaters",
+      artist: "Jimmy Fontanez",
+      album: "Royalty Free Music",
+      date: "",
+      track_number: "0",
+      track_total: "0",
+      extra: {
+        "Lyrics": "",
+        "R128_ALBUM_GAIN": "0",
+        "R128_TRACK_GAIN": "0",
+        "compatible_brands": "iso6mp41",
+        "description": " 0000207E 0000207E 0000513A 0000513A 00000000 00000000 0000892B 0000892B 00000000 00000000",
+        "filename": "Floaters.mp3",
+        "major_brand": "dash",
+        "minor_version": "0",
+        "replaygain_track_gain": "-9.20 dB",
+        "replaygain_track_peak": "1.071630",
+        "track_id": "",
+      },
+      playlist_item_id: Some(438),
+    )),
+    is_loop_all: true,
+    is_random: true,
+    is_repeat_one: false,
+    version: "3.0.20 Vetinari",
+    volume_percent: 105,
+    mode: Playing,
+    duration_secs: 110,
+    position_secs: 13,
+    position_fraction: 0.11884185671806,
+    rate_ratio: 1.0,
+  )),
+)

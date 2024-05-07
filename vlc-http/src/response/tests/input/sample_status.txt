@@ -1,0 +1,84 @@
+{
+  "rate":1,
+  "stats":{
+    "sentbytes":0,
+    "demuxreadbytes":340426,
+    "inputbitrate":0.024122757837176,
+    "lostabuffers":0,
+    "averagedemuxbitrate":0,
+    "averageinputbitrate":0,
+    "demuxcorrupted":0,
+    "decodedaudio":1083,
+    "playedabuffers":541,
+    "demuxreadpackets":0,
+    "sendbitrate":0,
+    "demuxbitrate":0.023998986929655,
+    "demuxdiscontinuity":0,
+    "readpackets":335,
+    "displayedpictures":0,
+    "sentpackets":0,
+    "readbytes":343040,
+    "lostpictures":0,
+    "decodedvideo":0
+  },
+  "time":13,
+  "repeat":false,
+  "audiofilters":{
+    "filter_0":""
+  },
+  "loop":true,
+  "length":110,
+  "random":true,
+  "subtitledelay":0,
+  "apiversion":3,
+  "seek_sec":10,
+  "audiodelay":0,
+  "version":"3.0.20 Vetinari",
+  "equalizer":[],
+  "currentplid":438,
+  "position":0.11884185671806,
+  "volume":269,
+  "state":"playing",
+  "fullscreen":0,
+  "videoeffects":{
+    "gamma":1,
+    "saturation":1,
+    "contrast":1,
+    "brightness":1,
+    "hue":0
+  },
+  "information":{
+    "category":{
+      "meta":{
+        "description":" 0000207E 0000207E 0000513A 0000513A 00000000 00000000 0000892B 0000892B 00000000 00000000",
+        "filename":"Floaters.mp3",
+        "Lyrics":"",
+        "replaygain_track_gain":"-9.20 dB",
+        "minor_version":"0",
+        "R128_ALBUM_GAIN":"0",
+        "replaygain_track_peak":"1.071630",
+        "major_brand":"dash",
+        "R128_TRACK_GAIN":"0",
+        "artist":"Jimmy Fontanez",
+        "track_id":"",
+        "album":"Royalty Free Music",
+        "track_total":"0",
+        "title":"Floaters",
+        "compatible_brands":"iso6mp41",
+        "track_number":"0"
+      },
+      "Stream 0":{
+        "Type":"Audio",
+        "Channels":"Stereo",
+        "Codec":"MPEG Audio layer 1/2 (mpga)",
+        "Track_replay_gain":"-9.20 dB",
+        "Sample_rate":"44100 Hz",
+        "Bits_per_sample":"32"
+      }
+    },
+    "chapters":[],
+    "title":0,
+    "chapter":0,
+    "titles":[]
+  }
+}

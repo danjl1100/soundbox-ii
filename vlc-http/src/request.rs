@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-//! HTTP-level primitives (interchange for test purposes)
+//! HTTP-level request primitives (interchange for test purposes)
 
 use base64::{prelude::BASE64_STANDARD, Engine as _};
 pub use endpoint::Endpoint;

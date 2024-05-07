@@ -145,13 +145,16 @@ mod volume {
         }
     }
 
+    impl super::VolumePercent256 {
+        pub(super) const PERCENT_TO_256: f32 = (256.0 / 100.0);
+    }
     impl From<Percent> for super::VolumePercent256 {
         fn from(percent: Percent) -> Self {
             // VolumePercent enforces bounds 0-300 (inclusive)
             let percent = percent.value();
 
             // result is 0-768 (inclusive), comfortably fits in u16
-            let based_256 = f32::from(percent) * (256.0 / 100.0);
+            let based_256 = f32::from(percent) * Self::PERCENT_TO_256;
             #[allow(clippy::cast_possible_truncation)] // target size comfortably fits 0-768 (inclusive)
             #[allow(clippy::cast_sign_loss)] // value is always non-negative
             {
@@ -198,6 +201,15 @@ pub(crate) struct VolumePercent256(u16);
 impl VolumePercent256 {
     pub fn value(self) -> u16 {
         self.0
+    }
+    /// Convert the 256-based value into the equivalent precentage
+    pub(crate) fn unchecked_to_percent(based_256: u16) -> u16 {
+        let percent = f32::from(based_256) / Self::PERCENT_TO_256;
+        #[allow(clippy::cast_possible_truncation)] // guaranteed, conversion factor is <1.0
+        #[allow(clippy::cast_sign_loss)] // value is always non-negative
+        {
+            percent.round() as u16
+        }
     }
 }
 

@@ -47,6 +47,9 @@ mod action;
 // Responses received from VLC
 // --------------------------------------------------
 
+pub use response::Response;
+pub mod response;
+
 // TODO
 
 // --------------------------------------------------

@@ -271,7 +271,7 @@ serde_derive_unidirectional! {
             pub timing: PlaybackTiming,
         }
         /// Time-related information of playback
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+        #[derive(Debug, Clone, Copy, PartialEq, Default)]
         pub struct PlaybackTiming {
             /// Duration of the current song in seconds
             pub duration_secs: u64,
@@ -300,6 +300,7 @@ serde_derive_unidirectional! {
         }
         /// Mode of the playback
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+        // TODO rename to PlaybackMode, for consistency
         pub enum PlaybackState {
             /// Paused
             Paused,
@@ -320,18 +321,17 @@ macro_rules! cheap_float_eq {
     ) => {
         $(
             $(#[$attr])*
-            #[derive(PartialOrd)]
+            #[derive(PartialOrd, PartialEq)]
             #[serde(transparent)]
             $vis struct $name ( pub $float_ty );
-            impl PartialEq for $name {
-                fn eq(&self, rhs: &Self) -> bool {
-                    let Self(lhs) = self;
-                    let Self(rhs) = rhs;
-                    let max = lhs.abs().max(rhs.abs());
-                    (lhs - rhs).abs() <= (max * <$float_ty>::EPSILON)
-                }
-            }
-            impl Eq for $name {}
+            // impl PartialEq for $name {
+            //     fn eq(&self, rhs: &Self) -> bool {
+            //         let Self(lhs) = self;
+            //         let Self(rhs) = rhs;
+            //         let max = lhs.abs().max(rhs.abs());
+            //         (lhs - rhs).abs() <= (max * <$float_ty>::EPSILON)
+            //     }
+            // }
             impl From<$float_ty> for $name {
                 fn from(val: $float_ty) -> Self {
                     Self(val)

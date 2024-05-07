@@ -10,6 +10,9 @@ use vlc_http::clap::clap_crate::{self as clap, Parser};
 struct GlobalArgs {
     #[clap(flatten)]
     auth: vlc_http::clap::AuthInput,
+    /// Print full response text for each request
+    #[clap(long)]
+    print_responses: bool,
 }
 
 #[derive(clap::Parser, Debug)]
@@ -33,13 +36,20 @@ enum CliAction {
 struct Shutdown;
 
 fn main() -> anyhow::Result<()> {
-    let GlobalArgs { auth } = GlobalArgs::parse();
-    let auth = vlc_http::Auth::new(auth.into())?;
+    let GlobalArgs {
+        auth,
+        print_responses,
+    } = GlobalArgs::parse();
+
+    let mut client = Client {
+        auth: vlc_http::Auth::new(auth.into())?,
+        print_responses,
+    };
 
     for line in std::io::stdin().lines() {
         let line = line?;
         let line = line.trim();
-        if line.is_empty() {
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
@@ -54,7 +64,7 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
-        match run_action(command.action, &auth) {
+        match client.run_action(command.action) {
             Ok(Some(Shutdown)) => break,
             Ok(None) => {}
             Err(err) => {
@@ -66,22 +76,33 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_action(action: CliAction, auth: &vlc_http::Auth) -> anyhow::Result<Option<Shutdown>> {
-    match action {
-        CliAction::Command { command } => {
-            let endpoint = vlc_http::Command::try_from(command)?.into_endpoint();
-            let request = endpoint.with_auth(auth).build_http_request();
+struct Client {
+    auth: vlc_http::Auth,
+    print_responses: bool,
+}
+impl Client {
+    fn run_action(&mut self, action: CliAction) -> anyhow::Result<Option<Shutdown>> {
+        match action {
+            CliAction::Command { command } => {
+                let endpoint = vlc_http::Command::try_from(command)?.into_endpoint();
+                let request = endpoint.with_auth(&self.auth).build_http_request();
 
-            let request = {
-                let (parts, ()) = request.into_parts();
-                ureq::Request::from(parts)
-            };
+                let request = {
+                    let (parts, ()) = request.into_parts();
+                    ureq::Request::from(parts)
+                };
 
-            request.call()?;
+                let response = request.call()?;
+                let response_body = response.into_string()?;
 
-            Ok(None)
+                if self.print_responses {
+                    println!("{response_body}");
+                }
+
+                Ok(None)
+            }
+            CliAction::Action {} => todo!(),
+            CliAction::Quit => Ok(Some(Shutdown)),
         }
-        CliAction::Action {} => todo!(),
-        CliAction::Quit => Ok(Some(Shutdown)),
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Response data types from the VLC HTTP endpoint
 
 pub use playback::Info as PlaybackInfo;
@@ -14,7 +14,7 @@ mod playback {
 
     /// Status of the current playback
     #[must_use]
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Status {
         /// version of the VLC-HTTP interface api
         pub apiversion: u32,
