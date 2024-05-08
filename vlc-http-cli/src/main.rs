@@ -4,6 +4,7 @@
 //! For the experiment to succeed, this binary crate should be simple and tiny
 //! (e.g. main.rs < 200 lines)
 
+use std::str::FromStr as _;
 use vlc_http::clap::clap_crate::{self as clap, Parser};
 
 #[derive(clap::Parser, Debug)]
@@ -11,6 +12,8 @@ struct GlobalArgs {
     #[clap(flatten)]
     auth: vlc_http::clap::AuthInput,
     /// Print full response text for each request
+    #[clap(long)]
+    print_responses_http: bool,
     #[clap(long)]
     print_responses: bool,
 }
@@ -38,11 +41,13 @@ struct Shutdown;
 fn main() -> anyhow::Result<()> {
     let GlobalArgs {
         auth,
+        print_responses_http,
         print_responses,
     } = GlobalArgs::parse();
 
     let mut client = Client {
         auth: vlc_http::Auth::new(auth.into())?,
+        print_responses_http,
         print_responses,
     };
 
@@ -78,6 +83,7 @@ fn main() -> anyhow::Result<()> {
 
 struct Client {
     auth: vlc_http::Auth,
+    print_responses_http: bool,
     print_responses: bool,
 }
 impl Client {
@@ -95,8 +101,14 @@ impl Client {
                 let response = request.call()?;
                 let response_body = response.into_string()?;
 
-                if self.print_responses {
+                if self.print_responses_http {
                     println!("{response_body}");
+                }
+
+                let response = vlc_http::Response::from_str(&response_body)?;
+
+                if self.print_responses {
+                    println!("{response:#?}");
                 }
 
                 Ok(None)

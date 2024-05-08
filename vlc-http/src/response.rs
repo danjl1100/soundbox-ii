@@ -15,10 +15,12 @@ mod playlist;
 mod tests;
 
 /// Parsed response from VLC
+#[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct Response {
     inner: ResponseInner,
 }
+#[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) enum ResponseInner {
     PlaylistInfo(PlaylistInfo),
@@ -32,7 +34,22 @@ enum ResponseJSON {
     PlaybackStatus(playback::StatusJSON),
 }
 
+impl std::str::FromStr for Response {
+    type Err = ParseError;
+    fn from_str(s: &str) -> Result<Self, ParseError> {
+        let response_json: ResponseJSON = serde_json::from_str(s)?;
+        Ok(response_json.into())
+    }
+}
 impl Response {
+    /// Parse the VLC response from the specified bytes
+    ///
+    /// # Errors
+    /// Returns an error if the response is invalid
+    pub fn from_slice(b: &[u8]) -> Result<Self, ParseError> {
+        let response_json: ResponseJSON = serde_json::from_slice(b)?;
+        Ok(response_json.into())
+    }
     /// Parse the VLC response from the specified reader
     ///
     /// # Errors
@@ -42,7 +59,6 @@ impl Response {
         R: Read,
     {
         let response_json: ResponseJSON = serde_json::from_reader(reader)?;
-
         Ok(response_json.into())
     }
 }
