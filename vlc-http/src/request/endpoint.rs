@@ -5,6 +5,7 @@ use crate::{
     command::{VolumePercent256, VolumePercentDelta256},
     Command,
 };
+use std::borrow::Cow;
 
 #[cfg(test)]
 mod tests;
@@ -14,7 +15,7 @@ mod tests;
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct Endpoint {
-    path_and_query: String,
+    path_and_query: Cow<'static, str>,
 }
 impl Endpoint {
     /// Returns the combined HTTP path and query string for the endpoint
@@ -35,6 +36,19 @@ mod endpoint_args {
     use std::borrow::Cow;
     use std::fmt::Write;
 
+    const PATH_STATUS_JSON: &str = "/requests/status.json";
+    const PATH_PLAYLIST_JSON: &str = "/requests/playlist.json";
+
+    impl Endpoint {
+        // TODO
+        // pub(crate) fn query_status() -> Endpoint {
+        //     EndpointArgs::new(PATH_STATUS_JSON, None).finish()
+        // }
+        pub(crate) fn query_playlist() -> Endpoint {
+            EndpointArgs::new(PATH_PLAYLIST_JSON, None).finish()
+        }
+    }
+
     /// Builder for [`Endpoint`]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub(crate) struct EndpointArgs {
@@ -53,11 +67,9 @@ mod endpoint_args {
             this
         }
         pub fn new_status(command: &'static str) -> Self {
-            const PATH_STATUS_JSON: &str = "/requests/status.json";
             Self::new(PATH_STATUS_JSON, Some(command))
         }
         pub fn new_playlist(command: &'static str) -> Self {
-            const PATH_PLAYLIST_JSON: &str = "/requests/playlist.json";
             Self::new(PATH_PLAYLIST_JSON, Some(command))
         }
         // TODO
@@ -98,9 +110,7 @@ mod endpoint_args {
                 path_and_query,
                 pending_query_prefix: _,
             } = self;
-            Endpoint {
-                path_and_query: Cow::into_owned(path_and_query),
-            }
+            Endpoint { path_and_query }
         }
     }
 }

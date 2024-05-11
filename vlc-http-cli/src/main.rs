@@ -31,9 +31,20 @@ enum CliAction {
         #[command(subcommand)]
         command: vlc_http::clap::Command,
     },
+    Query {
+        #[command(subcommand)]
+        query: Query,
+    },
     Action {},
     #[clap(alias = "exit", alias = "q")]
     Quit,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Query {
+    Playlist,
+    // TODO
+    // Playback,
 }
 
 struct Shutdown;
@@ -49,6 +60,7 @@ fn main() -> anyhow::Result<()> {
         auth: vlc_http::Auth::new(auth.into())?,
         print_responses_http,
         print_responses,
+        client_state: vlc_http::ClientState::new(),
     };
 
     for line in std::io::stdin().lines() {
@@ -85,36 +97,70 @@ struct Client {
     auth: vlc_http::Auth,
     print_responses_http: bool,
     print_responses: bool,
+    client_state: vlc_http::ClientState,
 }
 impl Client {
     fn run_action(&mut self, action: CliAction) -> anyhow::Result<Option<Shutdown>> {
         match action {
             CliAction::Command { command } => {
                 let endpoint = vlc_http::Command::try_from(command)?.into_endpoint();
-                let request = endpoint.with_auth(&self.auth).build_http_request();
+                let _response = self.call_endpoint(endpoint);
+                Ok(None)
+            }
+            CliAction::Query {
+                query: Query::Playlist,
+            } => {
+                let action = vlc_http::Action::query_playlist(&self.client_state);
 
-                let request = {
-                    let (parts, ()) = request.into_parts();
-                    ureq::Request::from(parts)
-                };
-
-                let response = request.call()?;
-                let response_body = response.into_string()?;
-
-                if self.print_responses_http {
-                    println!("{response_body}");
-                }
-
-                let response = vlc_http::Response::from_str(&response_body)?;
-
-                if self.print_responses {
-                    println!("{response:#?}");
-                }
+                let result = self.exhaust_pollable(action)?;
+                dbg!(result);
 
                 Ok(None)
             }
             CliAction::Action {} => todo!(),
             CliAction::Quit => Ok(Some(Shutdown)),
         }
+    }
+
+    fn call_endpoint(&self, endpoint: vlc_http::Endpoint) -> anyhow::Result<vlc_http::Response> {
+        let request = endpoint.with_auth(&self.auth).build_http_request();
+
+        let request = {
+            let (parts, ()) = request.into_parts();
+            ureq::Request::from(parts)
+        };
+
+        let response = request.call()?;
+        let response_body = response.into_string()?;
+
+        if self.print_responses_http {
+            println!("{response_body}");
+        }
+
+        let response = vlc_http::Response::from_str(&response_body)?;
+
+        if self.print_responses {
+            println!("{response:#?}");
+        }
+
+        Ok(response)
+    }
+
+    fn exhaust_pollable<T: vlc_http::Pollable>(
+        &mut self,
+        mut source: T,
+    ) -> anyhow::Result<T::Output> {
+        const MAX_ITER_COUNT: usize = 100;
+        for _ in 0..MAX_ITER_COUNT {
+            let endpoint = match source.next_endpoint(&self.client_state) {
+                Ok(endpoint) => endpoint,
+                Err(result) => return Ok(result),
+            };
+            let response = self.call_endpoint(endpoint)?;
+            self.client_state.update(response);
+        }
+        anyhow::bail!(
+            "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}"
+        )
     }
 }

@@ -1,15 +1,13 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-level response primitives
 
-#![allow(dead_code)] // TODO
-
 use std::io::Read;
 
 pub use playback::Status as PlaybackStatus;
 mod playback;
 
 pub use playlist::Info as PlaylistInfo;
-mod playlist;
+pub mod playlist;
 
 #[cfg(test)]
 mod tests;
@@ -18,10 +16,11 @@ mod tests;
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct Response {
-    inner: ResponseInner,
+    pub(crate) inner: ResponseInner,
 }
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize))]
+#[allow(dead_code)] // TODO
 pub(crate) enum ResponseInner {
     PlaylistInfo(PlaylistInfo),
     PlaybackStatus(PlaybackStatus),

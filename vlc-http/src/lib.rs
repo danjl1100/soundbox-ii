@@ -40,7 +40,7 @@ pub mod command;
 pub use request::{Auth, Endpoint};
 pub mod request;
 
-pub use action::Action;
+pub use action::{Action, Pollable};
 mod action;
 
 // --------------------------------------------------
@@ -50,7 +50,8 @@ mod action;
 pub use response::Response;
 pub mod response;
 
-// TODO
+pub use client_state::ClientState;
+mod client_state;
 
 // --------------------------------------------------
 // Utilities
