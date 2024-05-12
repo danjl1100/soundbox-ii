@@ -71,14 +71,17 @@ enum ActionPollableInner {
 impl Action {
     /// Returns an endpoint source for querying the playlist info
     #[must_use]
-    pub fn query_playlist(
-        state: &ClientState,
-    ) -> impl Pollable<Output = Vec<response::playlist::Item>> {
+    #[allow(clippy::needless_lifetimes)] // reference <https://github.com/rust-lang/rust-clippy/issues/11291>
+    pub fn query_playlist<'a>(
+        state: &'a ClientState,
+    ) -> impl Pollable<Output<'a> = &'a [response::playlist::Item]> + 'static {
         query_playlist::QueryPlaylist::new((), state)
     }
     /// Returns an endpoint source for querying the playlist info
     #[must_use]
-    pub fn query_playback(state: &ClientState) -> impl Pollable<Output = response::PlaybackStatus> {
+    pub fn query_playback<'a>(
+        state: &ClientState,
+    ) -> impl Pollable<Output<'a> = &'a response::PlaybackStatus> + 'static {
         query_playback::QueryPlayback::new((), state)
     }
 }
@@ -86,7 +89,7 @@ impl Action {
 /// Sequence of endpoints required to calculated the output
 pub trait Pollable: std::fmt::Debug {
     /// Final output when no more endpoints are needed
-    type Output: std::fmt::Debug;
+    type Output<'a>: std::fmt::Debug;
 
     /// Returns an [`Endpoint`] to make progress on the action on the [`ClientState`]
     ///
@@ -94,12 +97,12 @@ pub trait Pollable: std::fmt::Debug {
     /// Returns an error describing why no further actions are possible.
     ///
     /// The error may contain a query result (for queries), or an error (for non-queries)
-    fn next_endpoint(&mut self, state: &ClientState) -> Result<Endpoint, Self::Output>;
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>>;
 }
 trait PollableConstructor: Pollable
 where
     // NOTE: `Serialize` is for tests... hopefully not too invasive?
-    Self::Output: serde::Serialize,
+    for<'a> Self::Output<'a>: serde::Serialize,
 {
     type Args;
     fn new(args: Self::Args, state: &ClientState) -> Self;

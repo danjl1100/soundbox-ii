@@ -8,14 +8,12 @@ pub struct QueryPlayback {
     start_sequence: Sequence,
 }
 impl Pollable for QueryPlayback {
-    type Output = response::PlaybackStatus;
+    type Output<'a> = &'a response::PlaybackStatus;
 
-    fn next_endpoint(&mut self, state: &ClientState) -> Result<Endpoint, Self::Output> {
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>> {
         let playback_status = state.playback_status();
         match &**playback_status {
-            Some(playback) if playback_status.get_sequence() > self.start_sequence => {
-                Err(playback.clone())
-            }
+            Some(playback) if playback_status.get_sequence() > self.start_sequence => Err(playback),
             _ => Ok(Endpoint::query_status()),
         }
     }

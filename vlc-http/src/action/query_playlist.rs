@@ -8,12 +8,12 @@ pub struct QueryPlaylist {
     start_sequence: Sequence,
 }
 impl Pollable for QueryPlaylist {
-    type Output = Vec<response::playlist::Item>;
+    type Output<'a> = &'a [response::playlist::Item];
 
-    fn next_endpoint(&mut self, state: &ClientState) -> Result<Endpoint, Self::Output> {
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>> {
         let playlist_info = state.playlist_info();
         if playlist_info.get_sequence() > self.start_sequence {
-            Err(playlist_info.items.clone())
+            Err(&playlist_info.items)
         } else {
             Ok(Endpoint::query_playlist())
         }
