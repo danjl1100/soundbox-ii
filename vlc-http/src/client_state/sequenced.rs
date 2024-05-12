@@ -8,18 +8,6 @@ pub(crate) struct Sequenced<T> {
     inner: T,
     sequence: Sequence,
 }
-// TODO delete unused
-// impl<T> Sequenced<T>
-// where
-//     T: Default,
-// {
-//     pub fn default(instance: Instance) -> Self {
-//         Self {
-//             inner: Default::default(),
-//             sequence: Sequence::new(instance),
-//         }
-//     }
-// }
 impl<T> Sequenced<T> {
     fn new(inner: T, instance: Instance) -> Self {
         Self {
@@ -33,10 +21,11 @@ impl<T> Sequenced<T> {
     fn increment(&mut self) {
         self.sequence = self.sequence.next();
     }
-    pub fn modify<U>(&mut self, modify_fn: impl Fn(&mut T) -> U) -> U {
-        self.increment();
-        (modify_fn)(&mut self.inner)
-    }
+    // TODO delete if unused
+    // pub fn modify<U>(&mut self, modify_fn: impl Fn(&mut T) -> U) -> U {
+    //     self.increment();
+    //     (modify_fn)(&mut self.inner)
+    // }
     pub fn replace(&mut self, new: T) -> T {
         self.increment();
         std::mem::replace(&mut self.inner, new)

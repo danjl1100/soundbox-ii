@@ -40,10 +40,9 @@ mod endpoint_args {
     const PATH_PLAYLIST_JSON: &str = "/requests/playlist.json";
 
     impl Endpoint {
-        // TODO
-        // pub(crate) fn query_status() -> Endpoint {
-        //     EndpointArgs::new(PATH_STATUS_JSON, None).finish()
-        // }
+        pub(crate) fn query_status() -> Endpoint {
+            EndpointArgs::new(PATH_STATUS_JSON, None).finish()
+        }
         pub(crate) fn query_playlist() -> Endpoint {
             EndpointArgs::new(PATH_PLAYLIST_JSON, None).finish()
         }

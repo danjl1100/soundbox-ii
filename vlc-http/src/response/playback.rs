@@ -6,8 +6,7 @@ use std::collections::BTreeMap;
 
 /// Status of the current playback
 #[must_use]
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Status {
     /// version of the VLC-HTTP interface api
     pub apiversion: u32,
@@ -38,8 +37,7 @@ pub struct Status {
     pub rate_ratio: f64,
 }
 /// Mode of the playback
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[allow(missing_docs)]
 pub enum Mode {
     Paused,
@@ -48,8 +46,7 @@ pub enum Mode {
     Stopped,
 }
 /// Information about the current (playing/paused) item
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(serde::Serialize))]
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
 #[allow(missing_docs)]
 pub struct Info {
     pub title: String,

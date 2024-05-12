@@ -11,9 +11,8 @@ mod sequenced;
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ClientState {
-    // NOTE: do not necessarily store the entire playlist... it can easily be re-queried
     playlist_info: Sequenced<response::PlaylistInfo>,
-    playback_status: Sequenced<()>,
+    playback_status: Sequenced<Option<response::PlaybackStatus>>,
 }
 
 impl ClientState {
@@ -45,16 +44,17 @@ impl ClientState {
             crate::response::ResponseInner::PlaylistInfo(new) => {
                 let _prev = self.playlist_info.replace(new);
             }
-            crate::response::ResponseInner::PlaybackStatus(_) => {
-                // TODO
-                self.playback_status.modify(|()| ());
-                drop(response);
+            crate::response::ResponseInner::PlaybackStatus(new) => {
+                let _prev = self.playback_status.replace(Some(new));
             }
         }
     }
 
     pub(crate) fn playlist_info(&self) -> &Sequenced<response::PlaylistInfo> {
         &self.playlist_info
+    }
+    pub(crate) fn playback_status(&self) -> &Sequenced<Option<response::PlaybackStatus>> {
+        &self.playback_status
     }
 }
 impl Default for ClientState {

@@ -4,6 +4,7 @@
 
 use crate::{client_state::Sequence, response, ClientState, Endpoint};
 
+mod query_playback;
 mod query_playlist;
 
 /// High-level actions to control VLC (dynamic API calls depending on the current state)
@@ -74,6 +75,11 @@ impl Action {
         state: &ClientState,
     ) -> impl Pollable<Output = Vec<response::playlist::Item>> {
         query_playlist::QueryPlaylist::new((), state)
+    }
+    /// Returns an endpoint source for querying the playlist info
+    #[must_use]
+    pub fn query_playback(state: &ClientState) -> impl Pollable<Output = response::PlaybackStatus> {
+        query_playback::QueryPlayback::new((), state)
     }
 }
 
