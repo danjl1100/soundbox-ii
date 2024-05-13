@@ -71,9 +71,8 @@ enum ActionPollableInner {
 impl Action {
     /// Returns an endpoint source for querying the playlist info
     #[must_use]
-    #[allow(clippy::needless_lifetimes)] // reference <https://github.com/rust-lang/rust-clippy/issues/11291>
     pub fn query_playlist<'a>(
-        state: &'a ClientState,
+        state: &ClientState,
     ) -> impl Pollable<Output<'a> = &'a [response::playlist::Item]> + 'static {
         query_playlist::QueryPlaylist::new((), state)
     }
