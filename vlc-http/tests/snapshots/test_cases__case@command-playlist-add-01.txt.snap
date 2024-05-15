@@ -1,0 +1,17 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/command-playlist-add-01.txt
+---
+[
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///file.txt",
+  ), Model(
+    items: [
+      Item(
+        id: 0,
+        uri: "file:///file.txt",
+      ),
+    ],
+  )),
+]

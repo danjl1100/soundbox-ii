@@ -1,0 +1,1 @@
+command playlist-add file:///file.txt

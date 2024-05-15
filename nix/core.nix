@@ -30,19 +30,21 @@
         ".scss"
         ".html"
       ];
-    seqTestFilter = path: _type:
+    testFilter = path: _type:
       builtins.any (p: builtins.match p path != null) [
         ".*sequencer/src.*"
         ".*sequencer/test_script.*\\.txt"
+        ".*vlc-http/tests/input.*\\.txt"
+        ".*\\.snap"
       ];
     licenseOrCargo = path: type: (licenseFilter path type) || (craneLib.filterCargoSources path type);
     licenseOrCargoOrWeb = path: type: (licenseOrCargo path type) || (webFilter path type);
-    licenseOrCargoOrSeqTest = path: type: (licenseOrCargo path type) || (seqTestFilter path type);
+    licenseOrCargoOrTest = path: type: (licenseOrCargo path type) || (testFilter path type);
     rootSrc =
       pkgs.lib.cleanSourceWith
       {
         src = craneLib.path rootPath;
-        filter = licenseOrCargoOrSeqTest;
+        filter = licenseOrCargoOrTest;
       };
   in {
     server = pkgs.callPackage ./crate.nix {

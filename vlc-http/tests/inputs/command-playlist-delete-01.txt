@@ -1,0 +1,4 @@
+command playlist-add file:///A.txt
+command playlist-add file:///B.txt
+command playlist-add file:///C.txt
+command playlist-delete 1
