@@ -4,6 +4,8 @@
 
 use crate::{client_state::Sequence, response, ClientState, Endpoint};
 
+mod playback_mode;
+
 mod query_playback;
 mod query_playlist;
 
@@ -30,42 +32,57 @@ pub enum Action {
     //     ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
     //     max_history_count: NonZeroUsize,
     // },
-    // /// Set the item selection mode
-    // PlaybackMode {
-    //     #[allow(missing_docs)]
-    //     repeat: RepeatMode,
-    //     /// Randomizes the VLC playback order when `true`
-    //     random: bool,
-    // },
+    /// Set the item selection mode
+    PlaybackMode(PlaybackMode),
 }
-// /// Rule for selecting the next playback item in the VLC queue
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum RepeatMode {
-//     /// Stop the VLC queue after playing all items
-//     Off,
-//     /// Repeat the VLC queue after playing all items
-//     All,
-//     /// Repeat only the current item
-//     One,
-// }
-// impl RepeatMode {
-//     pub(crate) fn is_loop_all(self) -> bool {
-//         self == Self::All
-//     }
-//     pub(crate) fn is_repeat_one(self) -> bool {
-//         self == Self::One
-//     }
-// }
+/// Rule for selecting the next playback item in the VLC queue
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PlaybackMode {
+    repeat: RepeatMode,
+    is_random: bool,
+}
+impl PlaybackMode {
+    pub fn set_repeat(mut self, repeat: RepeatMode) -> Self {
+        self.repeat = repeat;
+        self
+    }
+    /// Randomizes the VLC playback order when `true`
+    pub fn set_random(mut self, is_random: bool) -> Self {
+        self.is_random = is_random;
+        self
+    }
+    pub fn get_repeat(self) -> RepeatMode {
+        self.repeat
+    }
+    pub fn is_random(self) -> bool {
+        self.is_random
+    }
+    fn is_loop_all(self) -> bool {
+        self.repeat == RepeatMode::All
+    }
+    fn is_repeat_one(self) -> bool {
+        self.repeat == RepeatMode::One
+    }
+}
 
-#[allow(unused)] // TODO
-/// [`Pollable`] container for various (non-query) [`Action`]s
-#[allow(clippy::module_name_repetitions)]
-pub struct ActionPollable {
-    inner: ActionPollableInner,
+/// Rule for repeating items
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RepeatMode {
+    /// Stop the VLC queue after playing all items
+    #[default]
+    Off,
+    /// Repeat the VLC queue after playing all items
+    All,
+    /// Repeat only the current item
+    One,
 }
+
+/// [`Pollable`] container for various (non-query) [`Action`]s
+#[derive(Debug)]
 #[allow(unused)] // TODO
-enum ActionPollableInner {
-    // TODO
+#[allow(clippy::module_name_repetitions)]
+enum ActionPollable {
+    PlaybackMode(playback_mode::Set),
 }
 
 impl Action {
@@ -82,6 +99,14 @@ impl Action {
         state: &ClientState,
     ) -> impl Pollable<Output<'a> = &'a response::PlaybackStatus> + 'static {
         query_playback::QueryPlayback::new((), state)
+    }
+    /// Converts the action into a [`Pollable`] with empty output
+    #[must_use]
+    pub fn pollable<'a>(self, state: &ClientState) -> impl Pollable<Output<'a> = ()> + 'static {
+        use ActionPollable as Dest;
+        match self {
+            Action::PlaybackMode(mode) => Dest::PlaybackMode(playback_mode::Set::new(mode, state)),
+        }
     }
 }
 
@@ -105,4 +130,14 @@ where
 {
     type Args;
     fn new(args: Self::Args, state: &ClientState) -> Self;
+}
+
+impl Pollable for ActionPollable {
+    type Output<'a> = ();
+    // NOTE: However unlikely it is to mutate `self`, the uniqueness of `self` aligns with usage
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>> {
+        match self {
+            ActionPollable::PlaybackMode(inner) => inner.next_endpoint(state),
+        }
+    }
 }
