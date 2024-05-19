@@ -79,7 +79,6 @@ pub enum RepeatMode {
 
 /// [`Pollable`] container for various (non-query) [`Action`]s
 #[derive(Debug)]
-#[allow(unused)] // TODO
 #[allow(clippy::module_name_repetitions)]
 enum ActionPollable {
     PlaybackMode(playback_mode::Set),

@@ -20,7 +20,6 @@ pub struct Response {
 }
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(serde::Serialize))]
-#[allow(dead_code)] // TODO
 pub(crate) enum ResponseInner {
     PlaylistInfo(PlaylistInfo),
     PlaybackStatus(PlaybackStatus),
