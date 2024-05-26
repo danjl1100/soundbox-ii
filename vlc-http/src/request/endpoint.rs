@@ -71,12 +71,10 @@ mod endpoint_args {
         pub fn new_playlist(command: &'static str) -> Self {
             Self::new(PATH_PLAYLIST_JSON, Some(command))
         }
-        // TODO
-        // pub fn new_art(id: &str) -> Self {
-        //     const PATH_ART: &str = "/art";
-        //     Self::new(PATH_ART, None).append("item", id)
-        // }
-        //
+        pub fn new_art(id: &str) -> Self {
+            const PATH_ART: &str = "/art";
+            Self::new(PATH_ART, None).append("item", id)
+        }
         pub fn append(self, key: &str, value: &str) -> Self {
             let key = urlencoding::encode(key);
             let value = urlencoding::encode(value);
@@ -115,11 +113,10 @@ mod endpoint_args {
 }
 
 impl Command {
-    // TODO
-    // /// Creates a request endpoint for the current art
-    // pub fn art_endpoint(id: &str) -> Endpoint {
-    //     endpoint_args::EndpointArgs::new_art(id).finish()
-    // }
+    /// Creates a request endpoint for the current art
+    pub fn art_endpoint(id: &str) -> Endpoint {
+        endpoint_args::EndpointArgs::new_art(id).finish()
+    }
     /// Creates a request endpoint for the command
     pub fn into_endpoint(self) -> Endpoint {
         self.into()

@@ -34,6 +34,9 @@ impl Harness {
                     Err(e) => panic!("invalid command {line:?}: {e}"),
                 }
                 .into_endpoint(),
+                TestAction::Query {
+                    query: Query::Art { item_id },
+                } => vlc_http::Command::art_endpoint(&item_id),
             };
 
             harness.update_for(endpoint, &mut client_state);
@@ -72,6 +75,14 @@ enum TestAction {
         #[command(subcommand)]
         command: vlc_http::clap::Command,
     },
+    Query {
+        #[command(subcommand)]
+        query: Query,
+    },
+}
+#[derive(clap::Subcommand, Debug)]
+enum Query {
+    Art { item_id: String },
 }
 impl TestInput {
     fn full_help_text() -> impl std::fmt::Display {
