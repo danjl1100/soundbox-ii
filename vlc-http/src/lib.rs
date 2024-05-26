@@ -41,7 +41,7 @@ pub use request::{Auth, Endpoint};
 pub mod request;
 
 pub use action::{Action, Pollable};
-mod action;
+pub mod action;
 
 // --------------------------------------------------
 // Responses received from VLC

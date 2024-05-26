@@ -37,11 +37,13 @@ pub enum Action {
 }
 /// Rule for selecting the next playback item in the VLC queue
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[must_use]
 pub struct PlaybackMode {
     repeat: RepeatMode,
     is_random: bool,
 }
 impl PlaybackMode {
+    /// Sets the VLC playback repeat strategy
     pub fn set_repeat(mut self, repeat: RepeatMode) -> Self {
         self.repeat = repeat;
         self
@@ -51,9 +53,12 @@ impl PlaybackMode {
         self.is_random = is_random;
         self
     }
+    #[allow(missing_docs)] // self-explanatory
     pub fn get_repeat(self) -> RepeatMode {
         self.repeat
     }
+    #[allow(missing_docs)] // self-explanatory
+    #[must_use]
     pub fn is_random(self) -> bool {
         self.is_random
     }
@@ -67,6 +72,7 @@ impl PlaybackMode {
 
 /// Rule for repeating items
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[must_use]
 pub enum RepeatMode {
     /// Stop the VLC queue after playing all items
     #[default]
