@@ -47,7 +47,7 @@ impl Harness {
                 }
                 TestAction::Action { action } => {
                     let mut pollable = vlc_http::Action::from(action).pollable(&client_state);
-                    while let Ok(endpoint) = pollable.next_endpoint(&client_state) {
+                    while let Err(endpoint) = pollable.next_endpoint(&client_state) {
                         harness.update_for(endpoint, &mut client_state);
                     }
                 }

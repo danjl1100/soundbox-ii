@@ -9,26 +9,26 @@ pub(crate) struct Set(PlaybackMode);
 impl Pollable for Set {
     type Output<'a> = ();
 
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>> {
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
         let playback = state.playback_status();
 
         let Some(status) = playback.as_ref() else {
-            return Ok(Endpoint::query_status());
+            return Err(Endpoint::query_status());
         };
 
         if status.is_random != self.0.is_random() {
-            return Ok(Command::ToggleRandom.into());
+            return Err(Command::ToggleRandom.into());
         }
 
         if status.is_loop_all != self.0.is_loop_all() {
-            return Ok(Command::ToggleLoopAll.into());
+            return Err(Command::ToggleLoopAll.into());
         }
 
         if status.is_repeat_one != self.0.is_repeat_one() {
-            return Ok(Command::ToggleRepeatOne.into());
+            return Err(Command::ToggleRepeatOne.into());
         }
 
-        Err(())
+        Ok(())
     }
 }
 impl PollableConstructor for Set {
@@ -83,16 +83,16 @@ mod tests {
             action_random.next_endpoint(&state),
         );
         insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
 
         state.update(status(default));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @"Err(())");
+        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @"Ok(())");
         insta::assert_ron_snapshot!(action_random.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_random",
         ))
         "###);
@@ -100,11 +100,11 @@ mod tests {
         state.update(status(default.set_random(true)));
 
         insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_random",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_random.next_endpoint(&state), @"Err(())");
+        insta::assert_ron_snapshot!(action_random.next_endpoint(&state), @"Ok(())");
     }
 
     #[test]
@@ -129,21 +129,21 @@ mod tests {
             action_all.next_endpoint(&state),
         );
         insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
 
         state.update(status(default));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"Err(())"###);
+        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @"Ok(())");
         insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_repeat",
         ))
         "###);
         insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
@@ -151,13 +151,13 @@ mod tests {
         state.update(status(default.set_repeat(RepeatMode::One)));
 
         insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_repeat",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @"Err(())");
+        insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @"Ok(())");
         insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
@@ -165,15 +165,15 @@ mod tests {
         state.update(status(default.set_repeat(RepeatMode::All)));
 
         insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
         insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @"Err(())");
+        insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @"Ok(())");
     }
 }

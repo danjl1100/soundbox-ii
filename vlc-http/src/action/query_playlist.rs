@@ -10,12 +10,12 @@ pub struct QueryPlaylist {
 impl Pollable for QueryPlaylist {
     type Output<'a> = &'a [response::playlist::Item];
 
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>> {
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
         let playlist_info = state.playlist_info();
         if playlist_info.get_sequence() > self.start_sequence {
-            Err(&playlist_info.items)
+            Ok(&playlist_info.items)
         } else {
-            Ok(Endpoint::query_playlist())
+            Err(Endpoint::query_playlist())
         }
     }
 }
@@ -53,12 +53,12 @@ mod tests {
 
         // both request `playlist.json`
         insta::assert_ron_snapshot!(query1.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/playlist.json",
         ))
         "###);
         insta::assert_ron_snapshot!(query2.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/playlist.json",
         ))
         "###);
@@ -68,7 +68,7 @@ mod tests {
 
         // both resolve
         insta::assert_ron_snapshot!(query1.next_endpoint(&state), @r###"
-        Err([
+        Ok([
           Item(
             duration_secs: Some(4567),
             id: "123",
@@ -78,7 +78,7 @@ mod tests {
         ])
         "###);
         insta::assert_ron_snapshot!(query2.next_endpoint(&state), @r###"
-        Err([
+        Ok([
           Item(
             duration_secs: Some(4567),
             id: "123",
@@ -99,7 +99,7 @@ mod tests {
         let mut query = Action::query_playlist(&state);
 
         insta::assert_ron_snapshot!(query.next_endpoint(&state), @r###"
-        Ok(Endpoint(
+        Err(Endpoint(
           path_and_query: "/requests/playlist.json",
         ))
         "###);
@@ -109,7 +109,7 @@ mod tests {
 
         // still resolves (don't wait for a change!)
         insta::assert_ron_snapshot!(query.next_endpoint(&state), @r###"
-        Err([
+        Ok([
           Item(
             duration_secs: Some(4567),
             id: "123",

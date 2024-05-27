@@ -126,7 +126,7 @@ pub trait Pollable: std::fmt::Debug {
     /// Returns an error describing why no further actions are possible.
     ///
     /// The error may contain a query result (for queries), or an error (for non-queries)
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>>;
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint>;
 }
 trait PollableConstructor: Pollable
 where
@@ -140,7 +140,7 @@ where
 impl Pollable for ActionPollable {
     type Output<'a> = ();
     // NOTE: However unlikely it is to mutate `self`, the uniqueness of `self` aligns with usage
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Endpoint, Self::Output<'a>> {
+    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
         match self {
             ActionPollable::PlaybackMode(inner) => inner.next_endpoint(state),
         }

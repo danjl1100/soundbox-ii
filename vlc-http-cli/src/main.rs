@@ -138,19 +138,17 @@ impl Client {
     ) -> anyhow::Result<T::Output<'a>> {
         const MAX_ITER_COUNT: usize = 100;
         for _ in 0..MAX_ITER_COUNT {
-            let endpoint = match source.next_endpoint(client_state) {
-                Ok(endpoint) => endpoint,
-                Err(_result) => break,
+            let Err(endpoint) = source.next_endpoint(client_state) else {
+                break; // final output borrow occurs below
             };
             let response = runner.call_endpoint(endpoint)?;
             client_state.update(response);
         }
-        if let Err(result) = source.next_endpoint(&*client_state) {
-            Ok(result)
-        } else {
-            anyhow::bail!(
-                "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}"
-            )
+        match source.next_endpoint(&*client_state) {
+            Ok(output) => Ok(output),
+            Err(endpoint) => anyhow::bail!(
+                "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}, next endpoint {endpoint:?}"
+            ),
         }
     }
 }

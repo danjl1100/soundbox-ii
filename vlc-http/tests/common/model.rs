@@ -29,11 +29,11 @@ impl Model {
         let dummy_state = ClientState::new();
         let playlist = vlc_http::Action::query_playlist(&dummy_state)
             .next_endpoint(&dummy_state)
-            .expect("dummy playlist path");
+            .expect_err("dummy playlist path");
         let playlist = playlist.get_path_and_query();
         let playback = vlc_http::Action::query_playback(&dummy_state)
             .next_endpoint(&dummy_state)
-            .expect("dummy playback path");
+            .expect_err("dummy playback path");
         let playback = playback.get_path_and_query();
 
         // FIXME improve parsing strategy
