@@ -130,3 +130,67 @@ impl From<AuthInput> for CrateAuthInput {
         }
     }
 }
+
+/// High-level actions to control VLC (dynamic API calls depending on the current state)
+#[derive(Clone, clap::Subcommand, Debug)]
+#[non_exhaustive]
+pub enum Action {
+    /// Set the item selection mode
+    PlaybackMode {
+        /// Rule for repeating items
+        repeat_mode: RepeatMode,
+        /// Randomize the VLC playback order
+        #[clap(long)]
+        random: bool,
+    },
+}
+/// Rule for repeating items
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+#[must_use]
+pub enum RepeatMode {
+    /// Stop the VLC queue after playing all items
+    RepeatOff,
+    /// Repeat the VLC queue after playing all items
+    RepeatAll,
+    /// Repeat only the current item
+    RepeatOne,
+}
+impl From<RepeatMode> for crate::action::RepeatMode {
+    fn from(value: RepeatMode) -> Self {
+        match value {
+            RepeatMode::RepeatOff => Self::Off,
+            RepeatMode::RepeatAll => Self::All,
+            RepeatMode::RepeatOne => Self::One,
+        }
+    }
+}
+impl From<Action> for crate::Action {
+    fn from(value: Action) -> Self {
+        match value {
+            Action::PlaybackMode {
+                repeat_mode,
+                random,
+            } => {
+                let mode = crate::action::PlaybackMode::default()
+                    .set_repeat(repeat_mode.into())
+                    .set_random(random);
+                Self::PlaybackMode(mode)
+            }
+        }
+    }
+}
+
+// TODO how to test derived subcommands?
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use clap::Parser as _;
+//
+//     #[test]
+//     fn clap() {
+//         #[derive(clap::Command)]
+//         struct C {
+//             c: Command,
+//         }
+//     }
+// }

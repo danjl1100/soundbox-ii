@@ -6,11 +6,16 @@ use vlc_http::{ClientState, Pollable as _};
 pub struct Model {
     #[serde(skip)]
     items_created: u32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     items: Vec<Item>,
     // TODO
     // playing: bool,
-    // loop_all: bool,
-    // repeat_one: bool,
+    #[serde(skip_serializing_if = "bool_is_false")]
+    is_loop_all: bool,
+    #[serde(skip_serializing_if = "bool_is_false")]
+    is_repeat_one: bool,
+    #[serde(skip_serializing_if = "bool_is_false")]
+    is_random: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     unknown_endpoints: Vec<String>,
 }
@@ -31,7 +36,7 @@ impl Model {
             .expect("dummy playback path");
         let playback = playback.get_path_and_query();
 
-        // AWFUL parser
+        // FIXME improve parsing strategy
         let (path, args) =
             endpoint
                 .split_once('?')
@@ -59,10 +64,24 @@ impl Model {
             match command {
                 Some("in_enqueue") => self.enqueue(&args),
                 Some("pl_delete") => self.delete(&args),
-                _ => None,
+                Some(_) => None, // unknown
+                None => todo!(), // TODO: self.get_playlist_info(),
             }
         } else if path == playback {
-            todo!()
+            if args.is_empty() {
+                match command {
+                    None => Some(self.get_playback_status()),
+                    Some("pl_random") => Some(self.toggle_random()),
+                    Some("pl_loop") => Some(self.toggle_loop_all()),
+                    Some("pl_repeat") => Some(self.toggle_repeat_one()),
+                    Some(_) => todo!("command {command:?} (no args)"),
+                }
+            } else {
+                match command {
+                    None => None, // unknown (non-empty) args
+                    Some(_) => todo!("command {command:?}, args {args:?}"),
+                }
+            }
         } else {
             None
         };
@@ -99,6 +118,19 @@ impl Model {
         Some(self.get_playlist_info())
     }
 
+    fn toggle_random(&mut self) -> String {
+        self.is_random = !self.is_random;
+        self.get_playback_status()
+    }
+    fn toggle_loop_all(&mut self) -> String {
+        self.is_loop_all = !self.is_loop_all;
+        self.get_playback_status()
+    }
+    fn toggle_repeat_one(&mut self) -> String {
+        self.is_repeat_one = !self.is_repeat_one;
+        self.get_playback_status()
+    }
+
     fn get_playlist_info(&self) -> String {
         let items = self
             .items
@@ -124,23 +156,27 @@ impl Model {
         .to_string()
     }
 
-    // TODO
-    // fn get_playback_status(&self) -> String {
-    //     serde_json::json!({
-    //       "rate":1,
-    //       "time":0,
-    //       "repeat": mode.is_repeat_one(),
-    //       "loop": mode.is_loop_all(),
-    //       "length":0,
-    //       "random": mode.is_random(),
-    //       "apiversion":3,
-    //       "version":"3.0.20 Vetinari",
-    //       "currentplid":438,
-    //       "position":0.0,
-    //       "volume":256,
-    //       "state":"playing",
-    //       "information":{"category":{"meta":{}}},
-    //     })
-    //     .to_string()
-    // }
+    fn get_playback_status(&self) -> String {
+        serde_json::json!({
+            "rate":1,
+            "time":0,
+            "repeat": self.is_repeat_one,
+            "loop": self.is_loop_all,
+            "length":0,
+            "random": self.is_random,
+            "apiversion":3,
+            "version":"3.0.20 Vetinari",
+            "currentplid":438,
+            "position":0.0,
+            "volume":256,
+            "state":"playing",
+            "information":{"category":{"meta":{}}},
+        })
+        .to_string()
+    }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // signature required by serde
+fn bool_is_false(value: &bool) -> bool {
+    !(*value)
 }

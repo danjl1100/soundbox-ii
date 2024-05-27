@@ -7,7 +7,6 @@ input_file: vlc-http/tests/inputs/query-art-01.txt
   LogEntry(Endpoint(
     path_and_query: "/art?item=item_id_01",
   ), Model(
-    items: [],
     unknown_endpoints: [
       "/art?item=item_id_01",
     ],
@@ -15,7 +14,6 @@ input_file: vlc-http/tests/inputs/query-art-01.txt
   LogEntry(Endpoint(
     path_and_query: "/art?item=item_id_02",
   ), Model(
-    items: [],
     unknown_endpoints: [
       "/art?item=item_id_01",
       "/art?item=item_id_02",

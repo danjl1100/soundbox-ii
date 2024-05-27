@@ -3,7 +3,7 @@
 use super::Model;
 use clap::Parser as _;
 use std::str::FromStr;
-use vlc_http::{ClientState, Endpoint, Response};
+use vlc_http::{ClientState, Endpoint, Pollable, Response};
 
 #[derive(Default)]
 pub struct Harness {
@@ -28,18 +28,30 @@ impl Harness {
                     TestInput::full_help_text()
                 ),
             };
-            let endpoint = match test_action.action {
-                TestAction::Command { command } => match vlc_http::Command::try_from(command) {
-                    Ok(endpoint) => endpoint,
-                    Err(e) => panic!("invalid command {line:?}: {e}"),
+            match test_action.action {
+                TestAction::Command { command } => {
+                    let endpoint = match vlc_http::Command::try_from(command) {
+                        Ok(endpoint) => endpoint,
+                        Err(e) => panic!("invalid command {line:?}: {e}"),
+                    }
+                    .into_endpoint();
+
+                    harness.update_for(endpoint, &mut client_state);
                 }
-                .into_endpoint(),
                 TestAction::Query {
                     query: Query::Art { item_id },
-                } => vlc_http::Command::art_endpoint(&item_id),
-            };
+                } => {
+                    let endpoint = vlc_http::Command::art_endpoint(&item_id);
 
-            harness.update_for(endpoint, &mut client_state);
+                    harness.update_for(endpoint, &mut client_state);
+                }
+                TestAction::Action { action } => {
+                    let mut pollable = vlc_http::Action::from(action).pollable(&client_state);
+                    while let Ok(endpoint) = pollable.next_endpoint(&client_state) {
+                        harness.update_for(endpoint, &mut client_state);
+                    }
+                }
+            }
         }
 
         harness.log
@@ -78,6 +90,10 @@ enum TestAction {
     Query {
         #[command(subcommand)]
         query: Query,
+    },
+    Action {
+        #[command(subcommand)]
+        action: vlc_http::clap::Action,
     },
 }
 #[derive(clap::Subcommand, Debug)]

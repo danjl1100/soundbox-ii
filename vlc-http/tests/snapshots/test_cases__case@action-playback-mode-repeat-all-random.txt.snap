@@ -1,0 +1,21 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/action-playback-mode-repeat-all-random.txt
+---
+[
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json",
+  ), Model()),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json?command=pl_random",
+  ), Model(
+    is_random: true,
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json?command=pl_loop",
+  ), Model(
+    is_loop_all: true,
+    is_random: true,
+  )),
+]
