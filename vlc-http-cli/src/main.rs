@@ -5,7 +5,10 @@
 //! (e.g. main.rs < 200 lines)
 
 use std::str::FromStr as _;
-use vlc_http::clap::clap_crate::{self as clap, Parser};
+use vlc_http::{
+    action::Poll,
+    clap::clap_crate::{self as clap, Parser},
+};
 
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
@@ -138,15 +141,15 @@ impl Client {
     ) -> anyhow::Result<T::Output<'a>> {
         const MAX_ITER_COUNT: usize = 100;
         for _ in 0..MAX_ITER_COUNT {
-            let Err(endpoint) = source.next_endpoint(client_state) else {
+            let Poll::Need(endpoint) = source.next(client_state)? else {
                 break; // final output borrow occurs below
             };
             let response = runner.call_endpoint(endpoint)?;
             client_state.update(response);
         }
-        match source.next_endpoint(&*client_state) {
-            Ok(output) => Ok(output),
-            Err(endpoint) => anyhow::bail!(
+        match source.next(&*client_state)? {
+            Poll::Done(output) => Ok(output),
+            Poll::Need(endpoint) => anyhow::bail!(
                 "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}, next endpoint {endpoint:?}"
             ),
         }

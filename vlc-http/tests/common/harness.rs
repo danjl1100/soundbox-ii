@@ -3,7 +3,7 @@
 use super::Model;
 use clap::Parser as _;
 use std::str::FromStr;
-use vlc_http::{ClientState, Endpoint, Pollable, Response};
+use vlc_http::{action::Poll, ClientState, Endpoint, Pollable, Response};
 
 #[derive(Default)]
 pub struct Harness {
@@ -47,7 +47,10 @@ impl Harness {
                 }
                 TestAction::Action { action } => {
                     let mut pollable = vlc_http::Action::from(action).pollable(&client_state);
-                    while let Err(endpoint) = pollable.next_endpoint(&client_state) {
+                    while let Poll::Need(endpoint) = pollable
+                        .next(&client_state)
+                        .expect("singleton client_state")
+                    {
                         harness.update_for(endpoint, &mut client_state);
                     }
                 }

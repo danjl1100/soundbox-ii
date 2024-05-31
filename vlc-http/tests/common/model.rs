@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use vlc_http::{ClientState, Pollable as _};
+use vlc_http::{action::Poll, ClientState, Pollable as _};
 
 #[derive(Clone, Default, serde::Serialize)]
 pub struct Model {
@@ -27,13 +27,20 @@ pub(crate) struct Item {
 impl Model {
     pub fn request(&mut self, endpoint: &str) -> String {
         let dummy_state = ClientState::new();
-        let playlist = vlc_http::Action::query_playlist(&dummy_state)
-            .next_endpoint(&dummy_state)
-            .expect_err("dummy playlist path");
+        let Poll::Need(playlist) = vlc_http::Action::query_playlist(&dummy_state)
+            .next(&dummy_state)
+            .expect("singleton dummy_state")
+        else {
+            panic!("dummy playlist path")
+        };
         let playlist = playlist.get_path_and_query();
-        let playback = vlc_http::Action::query_playback(&dummy_state)
-            .next_endpoint(&dummy_state)
-            .expect_err("dummy playback path");
+
+        let Poll::Need(playback) = vlc_http::Action::query_playback(&dummy_state)
+            .next(&dummy_state)
+            .expect("singleton dummy_state")
+        else {
+            panic!("dummy playback path")
+        };
         let playback = playback.get_path_and_query();
 
         // FIXME improve parsing strategy

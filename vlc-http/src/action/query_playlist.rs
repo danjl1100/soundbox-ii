@@ -1,6 +1,8 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{response, ClientState, Endpoint, Pollable, PollableConstructor, Sequence};
+use super::{
+    response, ClientState, Endpoint, Error, Poll, Pollable, PollableConstructor, Sequence,
+};
 
 /// Query the playlist items
 #[derive(Clone, Debug)]
@@ -10,13 +12,14 @@ pub struct QueryPlaylist {
 impl Pollable for QueryPlaylist {
     type Output<'a> = &'a [response::playlist::Item];
 
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
         let playlist_info = state.playlist_info();
-        if playlist_info.get_sequence() > self.start_sequence {
-            Ok(&playlist_info.items)
+        let poll = if playlist_info.get_sequence().is_after(self.start_sequence)? {
+            Poll::Done(&playlist_info.items[..])
         } else {
-            Err(Endpoint::query_playlist())
-        }
+            Poll::Need(Endpoint::query_playlist())
+        };
+        Ok(poll)
     }
 }
 impl PollableConstructor for QueryPlaylist {
@@ -28,6 +31,7 @@ impl PollableConstructor for QueryPlaylist {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::{Action, Response};
@@ -52,13 +56,13 @@ mod tests {
         let mut query2 = Action::query_playlist(&state);
 
         // both request `playlist.json`
-        insta::assert_ron_snapshot!(query1.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/playlist.json",
         ))
         "###);
-        insta::assert_ron_snapshot!(query2.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(query2.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/playlist.json",
         ))
         "###);
@@ -67,8 +71,8 @@ mod tests {
         state.update(Response::from_str(RESPONSE_PLAYLIST_SIMPLE).expect("valid response"));
 
         // both resolve
-        insta::assert_ron_snapshot!(query1.next_endpoint(&state), @r###"
-        Ok([
+        insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
+        Done([
           Item(
             duration_secs: Some(4567),
             id: "123",
@@ -77,8 +81,8 @@ mod tests {
           ),
         ])
         "###);
-        insta::assert_ron_snapshot!(query2.next_endpoint(&state), @r###"
-        Ok([
+        insta::assert_ron_snapshot!(query2.next(&state).unwrap(), @r###"
+        Done([
           Item(
             duration_secs: Some(4567),
             id: "123",
@@ -98,8 +102,8 @@ mod tests {
 
         let mut query = Action::query_playlist(&state);
 
-        insta::assert_ron_snapshot!(query.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/playlist.json",
         ))
         "###);
@@ -108,8 +112,8 @@ mod tests {
         state.update(Response::from_str(RESPONSE_PLAYLIST_SIMPLE).expect("valid response"));
 
         // still resolves (don't wait for a change!)
-        insta::assert_ron_snapshot!(query.next_endpoint(&state), @r###"
-        Ok([
+        insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
+        Done([
           Item(
             duration_secs: Some(4567),
             id: "123",

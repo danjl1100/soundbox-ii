@@ -1,51 +1,63 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{ClientState, Endpoint, PlaybackMode, Pollable, PollableConstructor};
+use super::{
+    query_playback::QueryPlayback, ClientState, Error, PlaybackMode, Poll, Pollable,
+    PollableConstructor,
+};
 use crate::Command;
 
 #[derive(Debug)]
-pub(crate) struct Set(PlaybackMode);
+pub(crate) struct Set {
+    target: PlaybackMode,
+    query_playback: QueryPlayback,
+}
 
 impl Pollable for Set {
     type Output<'a> = ();
 
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
-        let playback = state.playback_status();
-
-        let Some(status) = playback.as_ref() else {
-            return Err(Endpoint::query_status());
+    fn next(&mut self, state: &ClientState) -> Result<Poll<()>, Error> {
+        let status = match self.query_playback.next(state)? {
+            Poll::Done(status) => status,
+            Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
         };
 
-        if status.is_random != self.0.is_random() {
-            return Err(Command::ToggleRandom.into());
+        if status.is_random != self.target.is_random() {
+            return Ok(Poll::Need(Command::ToggleRandom.into()));
         }
 
-        if status.is_loop_all != self.0.is_loop_all() {
-            return Err(Command::ToggleLoopAll.into());
+        if status.is_loop_all != self.target.is_loop_all() {
+            return Ok(Poll::Need(Command::ToggleLoopAll.into()));
         }
 
-        if status.is_repeat_one != self.0.is_repeat_one() {
-            return Err(Command::ToggleRepeatOne.into());
+        if status.is_repeat_one != self.target.is_repeat_one() {
+            return Ok(Poll::Need(Command::ToggleRepeatOne.into()));
         }
 
-        Ok(())
+        Ok(Poll::Done(()))
     }
 }
 impl PollableConstructor for Set {
     type Args = PlaybackMode;
-    fn new(target: Self::Args, _state: &ClientState) -> Self {
-        Self(target)
+    fn new(target: Self::Args, state: &ClientState) -> Self {
+        Self {
+            target,
+            query_playback: QueryPlayback::new((), state),
+        }
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::{action::RepeatMode, Action, Response};
     use std::str::FromStr as _;
 
-    fn action<'a>(mode: PlaybackMode) -> impl Pollable<Output<'a> = ()> + 'static {
-        Action::PlaybackMode(mode).pollable(&ClientState::new())
+    fn action<'a>(
+        mode: PlaybackMode,
+        state: &ClientState,
+    ) -> impl Pollable<Output<'a> = ()> + 'static {
+        Action::PlaybackMode(mode).pollable(state)
     }
 
     fn status(mode: PlaybackMode) -> Response {
@@ -74,37 +86,34 @@ mod tests {
         let default = PlaybackMode::default();
         let random = default.set_random(true);
 
-        let mut action_default = action(default);
-        let mut action_random = action(random);
+        let mut action_default = action(default, &state);
+        let mut action_random = action(random, &state);
 
         // all require the status
-        assert_eq!(
-            action_default.next_endpoint(&state),
-            action_random.next_endpoint(&state),
-        );
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        assert_eq!(action_default.next(&state), action_random.next(&state));
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
 
         state.update(status(default));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @"Ok(())");
-        insta::assert_ron_snapshot!(action_random.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @"Done(())");
+        insta::assert_ron_snapshot!(action_random.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_random",
         ))
         "###);
 
         state.update(status(default.set_random(true)));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_random",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_random.next_endpoint(&state), @"Ok(())");
+        insta::assert_ron_snapshot!(action_random.next(&state).unwrap(), @"Done(())");
     }
 
     #[test]
@@ -115,65 +124,84 @@ mod tests {
         let one = default.set_repeat(RepeatMode::One);
         let all = default.set_repeat(RepeatMode::All);
 
-        let mut action_default = action(default);
-        let mut action_one = action(one);
-        let mut action_all = action(all);
+        let mut action_default = action(default, &state);
+        let mut action_one = action(one, &state);
+        let mut action_all = action(all, &state);
 
         // all require the status
-        assert_eq!(
-            action_default.next_endpoint(&state),
-            action_one.next_endpoint(&state),
-        );
-        assert_eq!(
-            action_default.next_endpoint(&state),
-            action_all.next_endpoint(&state),
-        );
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        assert_eq!(action_default.next(&state), action_one.next(&state));
+        assert_eq!(action_default.next(&state), action_all.next(&state));
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
 
         state.update(status(default));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @"Ok(())");
-        insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @"Done(())");
+        insta::assert_ron_snapshot!(action_one.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_repeat",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_all.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
 
         state.update(status(default.set_repeat(RepeatMode::One)));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_repeat",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @"Ok(())");
-        insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_one.next(&state).unwrap(), @"Done(())");
+        insta::assert_ron_snapshot!(action_all.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
 
         state.update(status(default.set_repeat(RepeatMode::All)));
 
-        insta::assert_ron_snapshot!(action_default.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_one.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(action_one.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json?command=pl_loop",
         ))
         "###);
-        insta::assert_ron_snapshot!(action_all.next_endpoint(&state), @"Ok(())");
+        insta::assert_ron_snapshot!(action_all.next(&state).unwrap(), @"Done(())");
+    }
+
+    #[test]
+    fn panics_mismatched_instances() {
+        let state1 = ClientState::new();
+        let state2 = ClientState::new();
+
+        let default = PlaybackMode::default();
+
+        let mut action_on_1 = action(default, &state1);
+        let mut action_on_2 = action(default, &state2);
+
+        insta::assert_ron_snapshot!(action_on_1.next(&state1), @r###"
+        Ok(Need(Endpoint(
+          path_and_query: "/requests/status.json",
+        )))
+        "###);
+        insta::assert_ron_snapshot!(action_on_2.next(&state2), @r###"
+        Ok(Need(Endpoint(
+          path_and_query: "/requests/status.json",
+        )))
+        "###);
+
+        insta::assert_ron_snapshot!(action_on_1.next(&state2), @"Err(InvalidClientInstance)");
+        insta::assert_ron_snapshot!(action_on_2.next(&state1), @"Err(InvalidClientInstance)");
     }
 }

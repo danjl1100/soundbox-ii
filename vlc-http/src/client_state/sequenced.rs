@@ -3,7 +3,7 @@
 use sequence::Instance;
 pub(crate) use sequence::Sequence;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Sequenced<T> {
     inner: T,
     sequence: Sequence,
@@ -79,18 +79,17 @@ mod sequence {
                 count: count + 1,
             }
         }
-        #[allow(unused)] // TODO remove if unused?
-        pub fn max(self, other: Self) -> Option<Self> {
-            self.partial_cmp(&other).map(|ord| match ord {
-                // self >= other
-                std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => self,
-                // self < other
-                std::cmp::Ordering::Less => other,
-            })
-        }
-    }
-    impl PartialOrd for Sequence {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // #[allow(unused)] // TODO remove if unused?
+        // pub fn max(self, other: Self) -> Option<Self> {
+        //     self.partial_cmp(&other).map(|ord| match ord {
+        //         // self >= other
+        //         std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => self,
+        //         // self < other
+        //         std::cmp::Ordering::Less => other,
+        //     })
+        // }
+        // NOTE DO NOT implement PartialOrd, this could be confusing for `None` result cases
+        pub fn try_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
             let Self { instance, count } = *self;
             (instance == other.instance).then_some(count.cmp(&other.count))
         }
@@ -109,29 +108,31 @@ mod sequence {
 
             assert_ne!(count1, count2);
         }
-        #[test]
-        fn partial_ord() {
-            let obj1 = Instance::new();
-            let count1 = Sequence::new(obj1);
+        // NOTE While interesting in theory... `PartialOrd` may be confusing in practice
+        // Verify there is a valid use-case before implementing `PartialOrd`
+        // #[test]
+        // fn partial_ord() {
+        //     let obj1 = Instance::new();
+        //     let count1 = Sequence::new(obj1);
 
-            let count1_copy = count1;
-            assert_eq!(count1_copy, count1);
+        //     let count1_copy = count1;
+        //     assert_eq!(count1_copy, count1);
 
-            let count1_next = count1.next();
-            assert_ne!(count1_copy, count1_next);
-            assert_eq!(count1_copy.next(), count1_next);
-            assert_eq!(count1_next.max(count1), Some(count1_next));
+        //     let count1_next = count1.next();
+        //     assert_ne!(count1_copy, count1_next);
+        //     assert_eq!(count1_copy.next(), count1_next);
+        //     assert_eq!(count1_next.max(count1), Some(count1_next));
 
-            assert!(count1_copy < count1_next);
-            assert!(count1_copy.next().next() > count1_next);
+        //     assert!(count1_copy < count1_next);
+        //     assert!(count1_copy.next().next() > count1_next);
 
-            let obj2 = Instance::new();
-            let count2 = Sequence::new(obj2);
+        //     let obj2 = Instance::new();
+        //     let count2 = Sequence::new(obj2);
 
-            assert_ne!(count1.next(), count2.next());
+        //     assert_ne!(count1.next(), count2.next());
 
-            assert_eq!(count1.max(count2), None);
-        }
+        //     assert_eq!(count1.max(count2), None);
+        // }
     }
 
     mod instance {

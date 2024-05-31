@@ -1,6 +1,8 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{response, ClientState, Endpoint, Pollable, PollableConstructor, Sequence};
+use super::{
+    response, ClientState, Endpoint, Error, Poll, Pollable, PollableConstructor, Sequence,
+};
 
 /// Query the playback status
 #[derive(Clone, Debug)]
@@ -10,12 +12,16 @@ pub struct QueryPlayback {
 impl Pollable for QueryPlayback {
     type Output<'a> = &'a response::PlaybackStatus;
 
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
         let playback_status = state.playback_status();
-        match &**playback_status {
-            Some(playback) if playback_status.get_sequence() > self.start_sequence => Ok(playback),
-            _ => Err(Endpoint::query_status()),
-        }
+        let status_updated = playback_status
+            .get_sequence()
+            .is_after(self.start_sequence)?;
+        let poll = match &**playback_status {
+            Some(playback) if status_updated => Poll::Done(playback),
+            _ => Poll::Need(Endpoint::query_status()),
+        };
+        Ok(poll)
     }
 }
 impl PollableConstructor for QueryPlayback {
@@ -28,6 +34,7 @@ impl PollableConstructor for QueryPlayback {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::{Action, Response};
@@ -68,13 +75,13 @@ mod tests {
         let mut query2 = Action::query_playback(&state);
 
         // both request `status.json`
-        insta::assert_ron_snapshot!(query1.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
-        insta::assert_ron_snapshot!(query2.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(query2.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
@@ -83,8 +90,8 @@ mod tests {
         state.update(Response::from_str(RESPONSE_STATUS_SIMPLE).expect("valid response"));
 
         // both resolve
-        insta::assert_ron_snapshot!(query1.next_endpoint(&state), @r###"
-        Ok(Status(
+        insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
+        Done(Status(
           apiversion: 3,
           information: Some(Info(
             title: "Floaters",
@@ -108,8 +115,8 @@ mod tests {
           rate_ratio: 1.0,
         ))
         "###);
-        insta::assert_ron_snapshot!(query2.next_endpoint(&state), @r###"
-        Ok(Status(
+        insta::assert_ron_snapshot!(query2.next(&state).unwrap(), @r###"
+        Done(Status(
           apiversion: 3,
           information: Some(Info(
             title: "Floaters",
@@ -144,8 +151,8 @@ mod tests {
 
         let mut query = Action::query_playback(&state);
 
-        insta::assert_ron_snapshot!(query.next_endpoint(&state), @r###"
-        Err(Endpoint(
+        insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
+        Need(Endpoint(
           path_and_query: "/requests/status.json",
         ))
         "###);
@@ -154,8 +161,8 @@ mod tests {
         state.update(Response::from_str(RESPONSE_STATUS_SIMPLE).expect("valid response"));
 
         // still resolves (don't wait for a change!)
-        insta::assert_ron_snapshot!(query.next_endpoint(&state), @r###"
-        Ok(Status(
+        insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
+        Done(Status(
           apiversion: 3,
           information: Some(Info(
             title: "Floaters",

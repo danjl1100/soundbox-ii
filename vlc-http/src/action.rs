@@ -115,6 +115,52 @@ impl Action {
     }
 }
 
+/// Result of [`Pollable`] [`Action`]s
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+pub enum Poll<T> {
+    /// Final success output
+    Done(T),
+    /// Nexxt endpoint required to determine the result
+    Need(Endpoint),
+}
+/// Error of [`Pollable`] [`Action`]s
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub enum Error {
+    /// The [`ClientState`] identity changed between creation and poll
+    #[allow(missing_docs)]
+    InvalidClientInstance(#[serde(skip)] InvalidClientInstance),
+}
+/// Different [`ClientState`]s used on creation and poll of the [`Action`]
+#[derive(Debug, PartialEq)]
+pub struct InvalidClientInstance {
+    expected: Sequence,
+    found: Sequence,
+}
+impl std::error::Error for Error {}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::InvalidClientInstance(_) => {
+                write!(f, "action shared among multiple client instances")
+            }
+        }
+    }
+}
+
+impl Sequence {
+    fn is_after(self, other: Self) -> Result<bool, Error> {
+        if let Some(order) = self.try_cmp(&other) {
+            // `self.after(other)`: self > other
+            Ok(order == std::cmp::Ordering::Greater)
+        } else {
+            Err(Error::InvalidClientInstance(InvalidClientInstance {
+                expected: self,
+                found: other,
+            }))
+        }
+    }
+}
+
 /// Sequence of endpoints required to calculated the output
 pub trait Pollable: std::fmt::Debug {
     /// Final output when no more endpoints are needed
@@ -126,7 +172,7 @@ pub trait Pollable: std::fmt::Debug {
     /// Returns an error describing why no further actions are possible.
     ///
     /// The error may contain a query result (for queries), or an error (for non-queries)
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint>;
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error>;
 }
 trait PollableConstructor: Pollable
 where
@@ -140,9 +186,9 @@ where
 impl Pollable for ActionPollable {
     type Output<'a> = ();
     // NOTE: However unlikely it is to mutate `self`, the uniqueness of `self` aligns with usage
-    fn next_endpoint<'a>(&mut self, state: &'a ClientState) -> Result<Self::Output<'a>, Endpoint> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
         match self {
-            ActionPollable::PlaybackMode(inner) => inner.next_endpoint(state),
+            ActionPollable::PlaybackMode(inner) => inner.next(state),
         }
     }
 }
