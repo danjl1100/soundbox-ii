@@ -143,6 +143,14 @@ pub enum Action {
         #[clap(long)]
         random: bool,
     },
+    /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
+    PlaylistSet {
+        /// Path to the file(s) to queue next, starting with the current/past item
+        urls: Vec<url::Url>,
+        /// Minimum number of history (past-played) items to retain
+        #[clap(long)]
+        keep_history: u16, // std::num::NonZeroUsize,
+    },
 }
 /// Rule for repeating items
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -176,6 +184,16 @@ impl From<Action> for crate::Action {
                     .set_random(random);
                 Self::PlaybackMode(mode)
             }
+            Action::PlaylistSet {
+                urls,
+                keep_history: _, // TODO
+            } => Self::PlaylistSet {
+                urls,
+                // TODO
+                // max_history_count: keep_history
+                //     .try_into()
+                //     .unwrap_or(1.try_into().expect("nonzero")),
+            },
         }
     }
 }

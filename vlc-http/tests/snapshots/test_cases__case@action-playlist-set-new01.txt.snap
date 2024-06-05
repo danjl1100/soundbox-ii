@@ -1,0 +1,23 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/action-playlist-set-new01.txt
+---
+[
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json",
+  ), Model()),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json",
+  ), Model()),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file://a/",
+  ), Model(
+    items: [
+      Item(
+        id: 0,
+        uri: "file://a/",
+      ),
+    ],
+  )),
+]

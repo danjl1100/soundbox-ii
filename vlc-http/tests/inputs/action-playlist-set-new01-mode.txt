@@ -1,0 +1,2 @@
+action playback-mode repeat-one --random
+action playlist-set file://a --keep-history 1

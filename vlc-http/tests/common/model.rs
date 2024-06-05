@@ -18,6 +18,8 @@ pub struct Model {
     is_random: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     unknown_endpoints: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_item_id: Option<u16>,
 }
 #[derive(Clone, serde::Serialize)]
 pub(crate) struct Item {
@@ -72,7 +74,7 @@ impl Model {
                 Some("in_enqueue") => self.enqueue(&args),
                 Some("pl_delete") => self.delete(&args),
                 Some(_) => None, // unknown
-                None => todo!(), // TODO: self.get_playlist_info(),
+                None => Some(self.get_playlist_info()),
             }
         } else if path == playback {
             if args.is_empty() {
@@ -173,7 +175,7 @@ impl Model {
             "random": self.is_random,
             "apiversion":3,
             "version":"3.0.20 Vetinari",
-            "currentplid":438,
+            "currentplid":self.current_item_id.map_or(-1, i32::from),
             "position":0.0,
             "volume":256,
             "state":"playing",

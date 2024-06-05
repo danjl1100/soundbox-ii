@@ -1,0 +1,13 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/action-playlist-set-empty.txt
+---
+[
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json",
+  ), Model()),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json",
+  ), Model()),
+]

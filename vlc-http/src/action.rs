@@ -5,6 +5,7 @@
 use crate::{client_state::Sequence, response, ClientState, Endpoint};
 
 mod playback_mode;
+mod playlist_items;
 
 mod query_playback;
 mod query_playlist;
@@ -17,49 +18,61 @@ mod query_playlist;
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    // TODO
-    // /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
-    // ///
-    // /// NOTE: The first element of `urls` is accepted as previously-played if it is the most recent history item.
-    // /// NOTE: Forces the playback mode to `{ repeat: RepeatMode::Off, random: false }`
-    // PlaylistSet {
-    //     /// Path to the file(s) to queue next, starting with the current/past item
-    //     urls: Vec<url::Url>,
-    //     /// Maximum number of history (past-played) items to retain
-    //     ///
-    //     /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
-    //     ///  * detect the "past" case of `current_or_past_url`, and
-    //     ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
-    //     max_history_count: NonZeroUsize,
-    // },
     /// Set the item selection mode
     PlaybackMode(PlaybackMode),
+    /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
+    ///
+    /// NOTE: The first element of `urls` is accepted as previously-played if it is the most recent history item.
+    /// NOTE: Forces the playback mode to `{ repeat: RepeatMode::Off, random: false }`
+    PlaylistSet {
+        /// Path to the file(s) to queue next, starting with the current/past item
+        urls: Vec<url::Url>,
+        // TODO
+        // /// Number of history (past-played) items to retain
+        // ///
+        // /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
+        // ///  * detect the "past" case of `current_or_past_url`, and
+        // ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
+        // max_history_count: std::num::NonZeroU16,
+    },
 }
 /// Rule for selecting the next playback item in the VLC queue
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub struct PlaybackMode {
     repeat: RepeatMode,
     is_random: bool,
 }
+impl Default for PlaybackMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl PlaybackMode {
+    /// Creates the default playback mode
+    pub const fn new() -> Self {
+        Self {
+            repeat: RepeatMode::Off,
+            is_random: false,
+        }
+    }
     /// Sets the VLC playback repeat strategy
-    pub fn set_repeat(mut self, repeat: RepeatMode) -> Self {
+    pub const fn set_repeat(mut self, repeat: RepeatMode) -> Self {
         self.repeat = repeat;
         self
     }
     /// Randomizes the VLC playback order when `true`
-    pub fn set_random(mut self, is_random: bool) -> Self {
+    pub const fn set_random(mut self, is_random: bool) -> Self {
         self.is_random = is_random;
         self
     }
     #[allow(missing_docs)] // self-explanatory
-    pub fn get_repeat(self) -> RepeatMode {
+    pub const fn get_repeat(self) -> RepeatMode {
         self.repeat
     }
     #[allow(missing_docs)] // self-explanatory
     #[must_use]
-    pub fn is_random(self) -> bool {
+    pub const fn is_random(self) -> bool {
         self.is_random
     }
     fn is_loop_all(self) -> bool {
@@ -88,6 +101,7 @@ pub enum RepeatMode {
 #[allow(clippy::module_name_repetitions)]
 enum ActionPollable {
     PlaybackMode(playback_mode::Set),
+    PlaylistSet(playlist_items::Set),
 }
 
 impl Action {
@@ -111,6 +125,18 @@ impl Action {
         use ActionPollable as Dest;
         match self {
             Action::PlaybackMode(mode) => Dest::PlaybackMode(playback_mode::Set::new(mode, state)),
+            Action::PlaylistSet {
+                urls,
+                // TODO
+                // max_history_count,
+            } => Dest::PlaylistSet(playlist_items::Set::new(
+                playlist_items::Target {
+                    urls,
+                    // TODO
+                    // max_history_count,
+                },
+                state,
+            )),
         }
     }
 }
@@ -189,6 +215,7 @@ impl Pollable for ActionPollable {
     fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
         match self {
             ActionPollable::PlaybackMode(inner) => inner.next(state),
+            ActionPollable::PlaylistSet(inner) => inner.next(state),
         }
     }
 }

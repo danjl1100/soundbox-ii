@@ -146,14 +146,23 @@
               nativeBuildInputs = [pkgs.alejandra];
               buildPhase = "(alejandra -qc $src || alejandra -c $src) > $out";
             };
-            script-dev_server = shellcheck {
-              src_dir = pkgs.runCommand "script-with-envrc" {} ''
-                mkdir -p $out
-                cp -v "${./dev_server.sh}" $out/dev_server.sh
-                cp -v "${./.envrc}" $out/.envrc
-              '';
-              script_name = "dev_server.sh";
-            };
+            script-dev_server = let
+              # TODO remove workaround once nixos stable updates `nix` to include
+              # <https://github.com/NixOS/nix/pull/9867>
+              # envrc = ./.envrc;
+              envrc = builtins.path {
+                path = ./.envrc;
+                name = "envrc";
+              };
+            in
+              shellcheck {
+                src_dir = pkgs.runCommand "script-with-envrc" {} ''
+                  mkdir -p $out
+                  cp -v "${./dev_server.sh}" $out/dev_server.sh
+                  cp -v "${envrc}" $out/.envrc
+                '';
+                script_name = "dev_server.sh";
+              };
           };
 
         packages =

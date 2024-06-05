@@ -1,0 +1,1 @@
+action playlist-set file://a --keep-history 1

@@ -24,8 +24,8 @@ impl Harness {
             let test_action = match TestInput::try_parse_from(line.split_whitespace()) {
                 Ok(test_action) => test_action,
                 Err(e) => panic!(
-                    "{e}\n{}\ninvalid test action: {line:?}",
-                    TestInput::full_help_text()
+                    "{e}\n--- help text\n{}\ninvalid test input: {line:?}",
+                    TestInput::full_help_text(line.split_whitespace().map(str::to_owned).collect()),
                 ),
             };
             match test_action.action {
@@ -104,17 +104,18 @@ enum Query {
     Art { item_id: String },
 }
 impl TestInput {
-    fn full_help_text() -> impl std::fmt::Display {
-        struct R;
+    fn full_help_text(mut input: Vec<String>) -> impl std::fmt::Display {
+        struct R(Vec<String>);
         impl std::fmt::Display for R {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(
                     f,
                     "{}",
-                    TestInput::try_parse_from(["command", "--help"]).expect_err("help errors"),
+                    TestInput::try_parse_from(&self.0).expect_err("help errors"),
                 )
             }
         }
-        R
+        input.push("--help".to_owned());
+        R(input)
     }
 }
