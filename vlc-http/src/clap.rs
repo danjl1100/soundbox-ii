@@ -149,7 +149,7 @@ pub enum Action {
         urls: Vec<url::Url>,
         /// Minimum number of history (past-played) items to retain
         #[clap(long)]
-        keep_history: u16, // std::num::NonZeroUsize,
+        keep_history: std::num::NonZeroU16,
     },
 }
 /// Rule for repeating items
@@ -184,15 +184,9 @@ impl From<Action> for crate::Action {
                     .set_random(random);
                 Self::PlaybackMode(mode)
             }
-            Action::PlaylistSet {
+            Action::PlaylistSet { urls, keep_history } => Self::PlaylistSet {
                 urls,
-                keep_history: _, // TODO
-            } => Self::PlaylistSet {
-                urls,
-                // TODO
-                // max_history_count: keep_history
-                //     .try_into()
-                //     .unwrap_or(1.try_into().expect("nonzero")),
+                max_history_count: keep_history,
             },
         }
     }

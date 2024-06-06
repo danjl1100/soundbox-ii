@@ -27,13 +27,12 @@ pub enum Action {
     PlaylistSet {
         /// Path to the file(s) to queue next, starting with the current/past item
         urls: Vec<url::Url>,
-        // TODO
-        // /// Number of history (past-played) items to retain
-        // ///
-        // /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
-        // ///  * detect the "past" case of `current_or_past_url`, and
-        // ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
-        // max_history_count: std::num::NonZeroU16,
+        /// Number of history (past-played) items to retain
+        ///
+        /// NOTE: Enforced as non-zero, since at least 1 "history" item is needed to:
+        ///  * detect the "past" case of `current_or_past_url`, and
+        ///  * add current the playlist (to retain during the 1 tick where current is added, but not yet playing)
+        max_history_count: std::num::NonZeroU16,
     },
 }
 /// Rule for selecting the next playback item in the VLC queue
@@ -127,13 +126,11 @@ impl Action {
             Action::PlaybackMode(mode) => Dest::PlaybackMode(playback_mode::Set::new(mode, state)),
             Action::PlaylistSet {
                 urls,
-                // TODO
-                // max_history_count,
+                max_history_count,
             } => Dest::PlaylistSet(playlist_items::Set::new(
                 playlist_items::Target {
                     urls,
-                    // TODO
-                    // max_history_count,
+                    max_history_count,
                 },
                 state,
             )),

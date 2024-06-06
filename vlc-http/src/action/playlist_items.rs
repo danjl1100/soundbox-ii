@@ -17,8 +17,7 @@ pub(crate) struct Set {
 pub(crate) struct Target {
     /// NOTE: The first element of `urls` is accepted as previously-played if it is the most recent history item.
     pub urls: Vec<url::Url>,
-    // TODO
-    // pub max_history_count: std::num::NonZeroU16,
+    pub max_history_count: std::num::NonZeroU16,
 }
 
 impl Pollable for Set {
@@ -40,7 +39,7 @@ impl Pollable for Set {
             Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
         };
 
-        let next = if let Some(current_item_id) = playback
+        let insert_match = if let Some(current_item_id) = playback
             .information
             .as_ref()
             .and_then(|info| info.playlist_item_id)
@@ -50,10 +49,22 @@ impl Pollable for Set {
             todo!()
         } else {
             let playlist_urls: Vec<_> = playlist.iter().map(|item| &item.url).collect();
-            find_next_to_insert(&self.target.urls, &playlist_urls)
+            find_insert_match(&self.target.urls, &playlist_urls)
         };
 
-        if let Some(next) = next {
+        // delete first entry to match `max_history_count`
+        let match_start = insert_match.match_start.unwrap_or(playlist.len());
+        let max_history_count = usize::from(self.target.max_history_count.get());
+        if match_start > max_history_count && !playlist.is_empty() {
+            return Ok(Poll::Need(
+                Command::PlaylistDelete {
+                    item_id: playlist[0].id.clone(),
+                }
+                .into(),
+            ));
+        }
+
+        if let Some(next) = insert_match.next_to_insert {
             return Ok(Poll::Need(
                 Command::PlaylistAdd { url: next.clone() }.into(),
             ));
@@ -65,19 +76,15 @@ impl Pollable for Set {
 
 /// Search for the *beginning* of `target` at the *end* of `existing`
 ///
-/// Returns the next element in `target` that should be appended to `existing`, for the goal of
-/// `existing` to end with all elements of `target` in-order
-fn find_next_to_insert<'a, T>(target: &'a [T], existing: &[&T]) -> Option<&'a T>
+/// Returns the match index and the next element in `target` to append to `existing`,
+/// for the goal of `existing` to end with all elements of `target` in-order
+fn find_insert_match<'a, T>(target: &'a [T], existing: &[&T]) -> InsertMatch<'a, T>
 where
     T: Eq + std::fmt::Debug,
 {
     // trim existing (prefix longer than `target` does not matter)
-    let existing = existing
-        .len()
-        .checked_sub(target.len())
-        .map_or(existing, |excess_existing_len| {
-            &existing[excess_existing_len..]
-        });
+    let start_offset = existing.len().saturating_sub(target.len());
+    let existing = &existing[start_offset..];
 
     // search for perfect match
     if target.len() == existing.len()
@@ -87,12 +94,16 @@ where
             .all(|(target, &existing)| target == existing)
     {
         // perfect match, nothing to add
-        return None;
+        return InsertMatch {
+            match_start: Some(start_offset),
+            next_to_insert: None,
+        };
     }
 
     // search for partial matches
     for (remaining, next) in target.iter().enumerate().skip(1).take(existing.len()).rev() {
-        let existing = &existing[(existing.len() - remaining)..];
+        let match_start = existing.len() - remaining;
+        let existing = &existing[match_start..];
 
         if target
             .iter()
@@ -100,11 +111,22 @@ where
             .all(|(target, &existing)| target == existing)
         {
             // partial match, add the next
-            return Some(next);
+            return InsertMatch {
+                match_start: Some(start_offset + match_start),
+                next_to_insert: Some(next),
+            };
         }
     }
     // no partial matches found, begin by adding the first (if any)
-    target.first()
+    InsertMatch {
+        match_start: None,
+        next_to_insert: target.first(),
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct InsertMatch<'a, T> {
+    match_start: Option<usize>,
+    next_to_insert: Option<&'a T>,
 }
 
 impl PollableConstructor for Set {
@@ -126,31 +148,47 @@ impl PollableConstructor for Set {
 mod tests {
     use super::*;
 
+    fn insert_end<T>(next: &T) -> InsertMatch<'_, T> {
+        InsertMatch {
+            match_start: None,
+            next_to_insert: Some(next),
+        }
+    }
+    fn insert_from<T>(match_start: usize, next: &T) -> InsertMatch<'_, T> {
+        InsertMatch {
+            match_start: Some(match_start),
+            next_to_insert: Some(next),
+        }
+    }
+    fn matched<T>(match_start: usize) -> InsertMatch<'static, T> {
+        InsertMatch {
+            match_start: Some(match_start),
+            next_to_insert: None,
+        }
+    }
+
+    // NOTE tests are easier to read with this alias
+    fn uut<'a, T>(target: &'a [T], existing: &[&T]) -> InsertMatch<'a, T>
+    where
+        T: std::fmt::Debug + Eq,
+    {
+        println!("target={target:?}, existing={existing:?}");
+        find_insert_match(target, existing)
+    }
+
     #[test]
     fn find_next() {
         let needle = &[1, 2, 3, 4];
-        println!("0");
-        assert_eq!(find_next_to_insert(needle, &[]), Some(&1));
-        println!("1");
-        assert_eq!(find_next_to_insert(needle, &[&1]), Some(&2));
-        println!("2");
-        assert_eq!(find_next_to_insert(needle, &[&1, &2]), Some(&3));
-        println!("3");
-        assert_eq!(find_next_to_insert(needle, &[&1, &2, &3]), Some(&4));
-        println!("4");
-        assert_eq!(find_next_to_insert(needle, &[&1, &2, &3, &4]), None);
-        println!("5");
-        assert_eq!(find_next_to_insert(needle, &[&10, &1, &2, &3, &4]), None);
-        println!("6");
-        assert_eq!(
-            find_next_to_insert(needle, &[&10, &10, &1, &2, &3, &4]),
-            None
-        );
-
-        println!("7");
-        assert_eq!(find_next_to_insert(needle, &[&1, &2, &3, &4, &1]), Some(&2));
-
-        println!("8");
-        assert_eq!(find_next_to_insert(needle, &[&10, &10, &1, &2]), Some(&3));
+        assert_eq!(uut(needle, &[]), insert_end(&1));
+        assert_eq!(uut(needle, &[&1]), insert_from(0, &2));
+        assert_eq!(uut(needle, &[&1, &2]), insert_from(0, &3));
+        assert_eq!(uut(needle, &[&1, &2, &3]), insert_from(0, &4));
+        assert_eq!(uut(needle, &[&1, &2, &3, &4]), matched(0));
+        assert_eq!(uut(needle, &[&10, &1, &2, &3, &4]), matched(1));
+        assert_eq!(uut(needle, &[&10, &10, &1, &2, &3, &4]), matched(2));
+        //                        0   1   2   3  [4]
+        assert_eq!(uut(needle, &[&1, &2, &3, &4, &1]), insert_from(4, &2));
+        //                        0    1   [2]
+        assert_eq!(uut(needle, &[&10, &10, &1, &2]), insert_from(2, &3));
     }
 }

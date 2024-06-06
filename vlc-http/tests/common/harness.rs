@@ -11,7 +11,11 @@ pub struct Harness {
     log: Vec<LogEntry>,
 }
 #[derive(serde::Serialize)]
-pub struct LogEntry(Endpoint, Model);
+pub enum LogEntry {
+    #[serde(rename = "LogEntry")]
+    Endpoint(Endpoint, Model),
+    HarnessInit(Model),
+}
 
 impl Harness {
     pub fn run_input(input: &str) -> Vec<LogEntry> {
@@ -54,6 +58,7 @@ impl Harness {
                         harness.update_for(endpoint, &mut client_state);
                     }
                 }
+                TestAction::Harness { init_command } => harness.init_command(init_command),
             }
         }
 
@@ -73,8 +78,14 @@ impl Harness {
 
         target.update(response.clone());
 
-        let log_entry = LogEntry(endpoint, self.model.clone());
+        let log_entry = LogEntry::Endpoint(endpoint, self.model.clone());
         self.log.push(log_entry);
+    }
+    fn init_command(&mut self, init_command: InitCommand) {
+        match init_command {
+            InitCommand::Items { items } => self.model.initialize_items(items),
+        }
+        self.log.push(LogEntry::HarnessInit(self.model.clone()));
     }
 }
 
@@ -98,10 +109,18 @@ enum TestAction {
         #[command(subcommand)]
         action: vlc_http::clap::Action,
     },
+    Harness {
+        #[command(subcommand)]
+        init_command: InitCommand,
+    },
 }
 #[derive(clap::Subcommand, Debug)]
 enum Query {
     Art { item_id: String },
+}
+#[derive(clap::Subcommand, Debug)]
+enum InitCommand {
+    Items { items: Vec<String> },
 }
 impl TestInput {
     fn full_help_text(mut input: Vec<String>) -> impl std::fmt::Display {

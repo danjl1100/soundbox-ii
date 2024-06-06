@@ -27,6 +27,16 @@ pub(crate) struct Item {
     uri: String,
 }
 impl Model {
+    pub fn initialize_items(&mut self, items: Vec<impl ToString>) {
+        assert!(
+            self.items_created == 0,
+            "cannot intialize_items, already processed {} items",
+            self.items_created
+        );
+        for item in items {
+            self.push_uri(item.to_string());
+        }
+    }
     pub fn request(&mut self, endpoint: &str) -> String {
         let dummy_state = ClientState::new();
         let Poll::Need(playlist) = vlc_http::Action::query_playlist(&dummy_state)
@@ -107,13 +117,15 @@ impl Model {
             return None;
         };
 
-        let id = self.items_created;
-        self.items_created += 1;
-        let uri = val.to_owned();
-
-        self.items.push(Item { id, uri });
+        self.push_uri(val.to_owned());
 
         Some(self.get_playlist_info())
+    }
+    fn push_uri(&mut self, uri: String) {
+        let id = self.items_created;
+        self.items_created += 1;
+
+        self.items.push(Item { id, uri });
     }
     fn delete(&mut self, args: &[(&str, Option<&str>)]) -> Option<String> {
         let [("id", Some(val))] = *args else {
