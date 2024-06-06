@@ -1,0 +1,2 @@
+harness items file:///a
+command playlist-play 0

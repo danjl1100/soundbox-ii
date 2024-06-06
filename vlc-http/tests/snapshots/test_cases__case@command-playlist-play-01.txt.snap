@@ -1,0 +1,26 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/command-playlist-play-01.txt
+---
+[
+  HarnessInit(Model(
+    items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
+    ],
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json?command=pl_play&id=0",
+  ), Model(
+    items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
+    ],
+    current_item_id: Some((0, Playing)),
+  )),
+]

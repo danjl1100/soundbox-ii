@@ -8,8 +8,6 @@ pub struct Model {
     items_created: u32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     items: Vec<Item>,
-    // TODO
-    // playing: bool,
     #[serde(skip_serializing_if = "bool_is_false")]
     is_loop_all: bool,
     #[serde(skip_serializing_if = "bool_is_false")]
@@ -19,7 +17,11 @@ pub struct Model {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     unknown_endpoints: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    current_item_id: Option<u16>,
+    current_item_id: Option<(u16, PlayState)>,
+}
+#[derive(Clone, Copy, serde::Serialize)]
+enum PlayState {
+    Playing,
 }
 #[derive(Clone, serde::Serialize)]
 pub(crate) struct Item {
@@ -98,6 +100,7 @@ impl Model {
             } else {
                 match command {
                     None => None, // unknown (non-empty) args
+                    Some("pl_play") => self.play(&args),
                     Some(_) => todo!("command {command:?}, args {args:?}"),
                 }
             }
@@ -137,6 +140,17 @@ impl Model {
         self.items.retain(|item| item.id != id);
 
         Some(self.get_playlist_info())
+    }
+    fn play(&mut self, args: &[(&str, Option<&str>)]) -> Option<String> {
+        let [("id", Some(val))] = *args else {
+            return None;
+        };
+
+        let id: u16 = val.parse::<u16>().ok()?;
+
+        self.current_item_id = Some((id, PlayState::Playing));
+
+        Some(self.get_playback_status())
     }
 
     fn toggle_random(&mut self) -> String {
@@ -187,7 +201,7 @@ impl Model {
             "random": self.is_random,
             "apiversion":3,
             "version":"3.0.20 Vetinari",
-            "currentplid":self.current_item_id.map_or(-1, i32::from),
+            "currentplid":self.current_item_id.map_or(-1, |(id, _)| i32::from(id)),
             "position":0.0,
             "volume":256,
             "state":"playing",
