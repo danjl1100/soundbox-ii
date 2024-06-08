@@ -34,17 +34,17 @@ fn playlist_add() {
 #[test]
 fn playlist_delete() {
     insta::assert_ron_snapshot!(Endpoint::from(Command::PlaylistDelete {
-        item_id: "123".to_owned(),
+        item_id: 123,
     }), @r###"
     Endpoint(
       path_and_query: "/requests/playlist.json?command=pl_delete&id=123",
     )
     "###);
     insta::assert_ron_snapshot!(Endpoint::from(Command::PlaylistDelete {
-        item_id: String::new(),
+        item_id: 0
     }), @r###"
     Endpoint(
-      path_and_query: "/requests/playlist.json?command=pl_delete&id=",
+      path_and_query: "/requests/playlist.json?command=pl_delete&id=0",
     )
     "###);
 }
@@ -60,11 +60,11 @@ fn playlist_play() {
     )
     "###);
     insta::assert_ron_snapshot!(Endpoint::from(Command::PlaylistPlay {
-        item_id: Some("123abc".to_owned()),
+        item_id: Some(456),
     }),
     @r###"
     Endpoint(
-      path_and_query: "/requests/status.json?command=pl_play&id=123abc",
+      path_and_query: "/requests/status.json?command=pl_play&id=456",
     )
     "###);
 }

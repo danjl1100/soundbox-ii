@@ -58,7 +58,7 @@ impl Pollable for Set {
         if match_start > max_history_count && !playlist.is_empty() {
             return Ok(Poll::Need(
                 Command::PlaylistDelete {
-                    item_id: playlist[0].id.clone(),
+                    item_id: playlist[0].id,
                 }
                 .into(),
             ));

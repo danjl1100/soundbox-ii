@@ -75,6 +75,19 @@ mod endpoint_args {
             const PATH_ART: &str = "/art";
             Self::new(PATH_ART, None).append("item", id)
         }
+        pub fn append_uint<T>(self, key: &str, value: T) -> Self
+        where
+            u64: From<T>,
+        {
+            let key = urlencoding::encode(key);
+            // NOTE: urlencode has no effect signed integers, so pass-thru as `Display`
+            let value = u64::from(value);
+            debug_assert_eq!(
+                urlencoding::encode(&format!("{value}")),
+                format!("{value}").as_str()
+            );
+            self.append_raw(&key, &value)
+        }
         pub fn append(self, key: &str, value: &str) -> Self {
             let key = urlencoding::encode(key);
             let value = urlencoding::encode(value);
@@ -87,7 +100,10 @@ mod endpoint_args {
             let value = value.as_str();
             self.append_raw(&key, value)
         }
-        fn append_raw(mut self, key: &str, value: &str) -> Self {
+        fn append_raw<T>(mut self, key: &str, value: &T) -> Self
+        where
+            T: std::fmt::Display + ?Sized,
+        {
             let sep = if self.pending_query_prefix.take().is_some() {
                 "?"
             } else {
@@ -136,7 +152,7 @@ impl From<Command> for Endpoint {
             Command::PlaylistPlay { item_id } => {
                 let mut args = Args::new_status("pl_play");
                 if let Some(item_id) = item_id {
-                    args = args.append("id", &item_id);
+                    args = args.append_uint("id", item_id);
                 }
                 args
             }

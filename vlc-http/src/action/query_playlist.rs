@@ -75,7 +75,7 @@ mod tests {
         Done([
           Item(
             duration_secs: Some(4567),
-            id: "123",
+            id: 123,
             name: "Floaters.mp3",
             url: "file:///path/to/Music/Jimmy%20Fontanez/Floaters.mp3",
           ),
@@ -85,7 +85,7 @@ mod tests {
         Done([
           Item(
             duration_secs: Some(4567),
-            id: "123",
+            id: 123,
             name: "Floaters.mp3",
             url: "file:///path/to/Music/Jimmy%20Fontanez/Floaters.mp3",
           ),
@@ -116,7 +116,7 @@ mod tests {
         Done([
           Item(
             duration_secs: Some(4567),
-            id: "123",
+            id: 123,
             name: "Floaters.mp3",
             url: "file:///path/to/Music/Jimmy%20Fontanez/Floaters.mp3",
           ),

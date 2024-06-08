@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Playlist response types
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// Playlist information
 #[must_use]
@@ -17,7 +17,7 @@ pub struct Item {
     /// Duration of the current song in seconds
     pub duration_secs: Option<u64>,
     /// Playlist ID
-    pub id: String,
+    pub id: u64,
     pub name: String,
     pub url: url::Url,
 }
@@ -68,7 +68,8 @@ struct GroupNodeJSON {
 struct ItemJSON {
     #[serde(rename = "duration")]
     duration_secs: i64,
-    id: String,
+    #[serde(deserialize_with = "from_str", serialize_with = "ToString::to_string")]
+    id: u64,
     name: String,
     #[serde(rename = "uri")]
     url: url::Url,
@@ -103,4 +104,14 @@ impl std::fmt::Debug for Item {
         }
         write!(f, "  <{url}>")
     }
+}
+
+fn from_str<'de, D, T>(de: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let s = String::deserialize(de)?;
+    T::from_str(&s).map_err(serde::de::Error::custom)
 }

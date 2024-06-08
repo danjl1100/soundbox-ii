@@ -22,12 +22,12 @@ pub enum Command {
     /// Deletes the specified item from the playlist
     PlaylistDelete {
         /// Identifier of the playlist item to remove
-        item_id: String,
+        item_id: u64,
     },
     /// Play the specified item in the playlist
     PlaylistPlay {
         /// Identifier of the playlist item
-        item_id: Option<String>,
+        item_id: Option<u64>,
     },
     /// Randomizes VLC playback order when toggled to `true`
     ToggleRandom,
