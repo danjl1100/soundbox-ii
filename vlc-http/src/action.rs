@@ -5,7 +5,7 @@
 use crate::{client_state::Sequence, response, ClientState, Endpoint};
 
 mod playback_mode;
-mod playlist_items;
+pub mod playlist_items;
 
 mod query_playback;
 mod query_playlist;

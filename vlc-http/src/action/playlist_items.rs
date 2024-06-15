@@ -1,10 +1,65 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+//! Sets the playlist to the specified items
+//!
+//! ### Implementation notes
+//!
+//! Labeling sections in the playlist:
+//!
+//! 1. History items (to be kept, per `max_history_count`)
+//! 2. Current playing item
+//! 3. Queued items to be deleted (before the `match_start`)
+//! 4. Matched items to keep
+//! 5. Queued items to be deleted (after the `match_start`)
+//!
+//! Notes:
+//!
+//! - (2) and (3) are empty if nothing is playing
+//! - (2) and (3) are empty if the first matched item is playing
+//! - (4) and (5) are empty if no items match
+//! - Precedence of removing items:
+//!     - (5) Ensure newly-added items will be continuous with matched items
+//!     - (1) Before adding new, remove the history (decrease the search space)
+//!
+//! Examples:
+//!
+//! - Empty, after some matched are added
+//!
+//!     ```text
+//!     | M1 | M2 |
+//!     |<--(4)-->|
+//!     ```
+//!
+//! - None playing
+//!
+//!     ```text
+//!     | X1 | X2 | X3 | X4 | X5 | M1 | M2 | M3 | X7 | X8 |
+//!     |<---------(1)---------->|<----(4)----->|<--(5)-->|
+//!     ```
+//!
+//! - Playing is Matched (P=M1)
+//!
+//!     ```text
+//!     | X1 | X2 | X3 | P = M1 | X4 | X5 |
+//!     |<----(1)----->|<-(4)-->|<--(5)-->|
+//!     ```
+//!
+//! - All sections populated
+//!
+//!     ```text
+//!     | X1 | X2 | X3 | P | X4 | X5 | X6 | M1 | M2 | M3 | X7 | X8 |
+//!     |<-----(1)---->|(2)|<----(3)----->|<----(4)----->|<--(5)-->|
+//!     ```
+//!
+
 use super::{
     playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, Error, Poll,
     PollableConstructor,
 };
-use crate::{action::PlaybackMode, Command, Pollable};
+use crate::{action::PlaybackMode, Pollable};
+
+mod insert_match;
+mod next_command;
 
 #[derive(Debug)]
 pub(crate) struct Set {
@@ -39,94 +94,21 @@ impl Pollable for Set {
             Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
         };
 
-        let insert_match = if let Some(current_item_id) = playback
+        let playing_item_id = playback
             .information
             .as_ref()
-            .and_then(|info| info.playlist_item_id)
-        {
-            dbg!(current_item_id);
-            // TODO
-            todo!()
+            .and_then(|info| info.playlist_item_id);
+
+        let playing_item_index = playing_item_id.and_then(|playing_item_id| {
+            playlist.iter().position(|item| playing_item_id == item.id)
+        });
+
+        if let Some(command) = self.target.next_command(playlist, playing_item_index) {
+            Ok(Poll::Need(command.into()))
         } else {
-            let playlist_urls: Vec<_> = playlist.iter().map(|item| &item.url).collect();
-            find_insert_match(&self.target.urls, &playlist_urls)
-        };
-
-        // delete first entry to match `max_history_count`
-        let match_start = insert_match.match_start.unwrap_or(playlist.len());
-        let max_history_count = usize::from(self.target.max_history_count.get());
-        if match_start > max_history_count && !playlist.is_empty() {
-            return Ok(Poll::Need(
-                Command::PlaylistDelete {
-                    item_id: playlist[0].id,
-                }
-                .into(),
-            ));
-        }
-
-        if let Some(next) = insert_match.next_to_insert {
-            return Ok(Poll::Need(
-                Command::PlaylistAdd { url: next.clone() }.into(),
-            ));
-        }
-
-        Ok(Poll::Done(()))
-    }
-}
-
-/// Search for the *beginning* of `target` at the *end* of `existing`
-///
-/// Returns the match index and the next element in `target` to append to `existing`,
-/// for the goal of `existing` to end with all elements of `target` in-order
-fn find_insert_match<'a, T>(target: &'a [T], existing: &[&T]) -> InsertMatch<'a, T>
-where
-    T: Eq + std::fmt::Debug,
-{
-    // trim existing (prefix longer than `target` does not matter)
-    let start_offset = existing.len().saturating_sub(target.len());
-    let existing = &existing[start_offset..];
-
-    // search for perfect match
-    if target.len() == existing.len()
-        && target
-            .iter()
-            .zip(existing.iter())
-            .all(|(target, &existing)| target == existing)
-    {
-        // perfect match, nothing to add
-        return InsertMatch {
-            match_start: Some(start_offset),
-            next_to_insert: None,
-        };
-    }
-
-    // search for partial matches
-    for (remaining, next) in target.iter().enumerate().skip(1).take(existing.len()).rev() {
-        let match_start = existing.len() - remaining;
-        let existing = &existing[match_start..];
-
-        if target
-            .iter()
-            .zip(existing.iter())
-            .all(|(target, &existing)| target == existing)
-        {
-            // partial match, add the next
-            return InsertMatch {
-                match_start: Some(start_offset + match_start),
-                next_to_insert: Some(next),
-            };
+            Ok(Poll::Done(()))
         }
     }
-    // no partial matches found, begin by adding the first (if any)
-    InsertMatch {
-        match_start: None,
-        next_to_insert: target.first(),
-    }
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct InsertMatch<'a, T> {
-    match_start: Option<usize>,
-    next_to_insert: Option<&'a T>,
 }
 
 impl PollableConstructor for Set {
@@ -141,54 +123,5 @@ impl PollableConstructor for Set {
             query_playback: QueryPlayback::new((), state),
             query_playlist: QueryPlaylist::new((), state),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn insert_end<T>(next: &T) -> InsertMatch<'_, T> {
-        InsertMatch {
-            match_start: None,
-            next_to_insert: Some(next),
-        }
-    }
-    fn insert_from<T>(match_start: usize, next: &T) -> InsertMatch<'_, T> {
-        InsertMatch {
-            match_start: Some(match_start),
-            next_to_insert: Some(next),
-        }
-    }
-    fn matched<T>(match_start: usize) -> InsertMatch<'static, T> {
-        InsertMatch {
-            match_start: Some(match_start),
-            next_to_insert: None,
-        }
-    }
-
-    // NOTE tests are easier to read with this alias
-    fn uut<'a, T>(target: &'a [T], existing: &[&T]) -> InsertMatch<'a, T>
-    where
-        T: std::fmt::Debug + Eq,
-    {
-        println!("target={target:?}, existing={existing:?}");
-        find_insert_match(target, existing)
-    }
-
-    #[test]
-    fn find_next() {
-        let needle = &[1, 2, 3, 4];
-        assert_eq!(uut(needle, &[]), insert_end(&1));
-        assert_eq!(uut(needle, &[&1]), insert_from(0, &2));
-        assert_eq!(uut(needle, &[&1, &2]), insert_from(0, &3));
-        assert_eq!(uut(needle, &[&1, &2, &3]), insert_from(0, &4));
-        assert_eq!(uut(needle, &[&1, &2, &3, &4]), matched(0));
-        assert_eq!(uut(needle, &[&10, &1, &2, &3, &4]), matched(1));
-        assert_eq!(uut(needle, &[&10, &10, &1, &2, &3, &4]), matched(2));
-        //                        0   1   2   3  [4]
-        assert_eq!(uut(needle, &[&1, &2, &3, &4, &1]), insert_from(4, &2));
-        //                        0    1   [2]
-        assert_eq!(uut(needle, &[&10, &10, &1, &2]), insert_from(2, &3));
     }
 }

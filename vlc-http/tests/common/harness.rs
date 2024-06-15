@@ -10,7 +10,7 @@ pub struct Harness {
     model: Model,
     log: Vec<LogEntry>,
 }
-#[derive(serde::Serialize)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
 pub enum LogEntry {
     #[serde(rename = "LogEntry")]
     Endpoint(Endpoint, Model),
@@ -19,6 +19,8 @@ pub enum LogEntry {
 
 impl Harness {
     pub fn run_input(input: &str) -> Vec<LogEntry> {
+        println!("============= run input =============");
+
         let mut harness = Self::new();
         let mut client_state = ClientState::new();
 
@@ -55,6 +57,7 @@ impl Harness {
                         .next(&client_state)
                         .expect("singleton client_state")
                     {
+                        println!("---- {endpoint:?}");
                         harness.update_for(endpoint, &mut client_state);
                     }
                 }
@@ -68,6 +71,8 @@ impl Harness {
         Self::default()
     }
     pub fn update_for(&mut self, endpoint: Endpoint, target: &mut ClientState) {
+        const MAX_LOG_COUNT: usize = 50;
+
         let endpoint_str = endpoint.get_path_and_query();
 
         let response_str = self.model.request(endpoint_str);
@@ -79,7 +84,17 @@ impl Harness {
         target.update(response.clone());
 
         let log_entry = LogEntry::Endpoint(endpoint, self.model.clone());
+
+        if let Some(log_last) = self.log.last() {
+            assert!(
+                *log_last != log_entry,
+                "Cycle detected, duplicated log entry {log_last:#?}"
+            );
+        }
+
         self.log.push(log_entry);
+
+        assert!(self.log.len() <= MAX_LOG_COUNT, "Log length is too long");
     }
     fn init_command(&mut self, init_command: InitCommand) {
         match init_command {

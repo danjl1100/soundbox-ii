@@ -2,7 +2,7 @@
 
 use vlc_http::{action::Poll, ClientState, Pollable as _};
 
-#[derive(Clone, Default, serde::Serialize)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Model {
     #[serde(skip)]
     items_created: u32,
@@ -19,11 +19,11 @@ pub struct Model {
     #[serde(skip_serializing_if = "Option::is_none")]
     current_item_id: Option<(u16, PlayState)>,
 }
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 enum PlayState {
     Playing,
 }
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct Item {
     id: u32,
     uri: String,

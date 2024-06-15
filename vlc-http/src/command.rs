@@ -6,7 +6,7 @@
 ///
 /// See [`Action`](`crate::Action`) for more complex controls
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Command {
     /// Add the specified item to the playlist
     PlaylistAdd {
@@ -258,5 +258,57 @@ impl std::fmt::Display for SecondsDelta {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(seconds_delta) = *self;
         write!(f, "{seconds_delta:+}")
+    }
+}
+
+struct DebugUrl<'a>(&'a url::Url);
+impl std::fmt::Debug for DebugUrl<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // debug `url::Url` as Display (built-in Debug is far too verbose)
+        write!(f, "Url(\"")?;
+        <url::Url as std::fmt::Display>::fmt(self.0, f)?;
+        write!(f, "\")")?;
+        Ok(())
+    }
+}
+impl std::fmt::Debug for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // manual implementation to simplify `url::Url` to Display (Url's Debug is too verbose)
+        match self {
+            Self::PlaylistAdd { url } => f
+                .debug_struct("PlaylistAdd")
+                .field("url", &DebugUrl(url))
+                .finish(),
+            Self::PlaylistDelete { item_id } => f
+                .debug_struct("PlaylistDelete")
+                .field("item_id", item_id)
+                .finish(),
+            Self::PlaylistPlay { item_id } => f
+                .debug_struct("PlaylistPlay")
+                .field("item_id", item_id)
+                .finish(),
+            Self::ToggleRandom => write!(f, "ToggleRandom"),
+            Self::ToggleRepeatOne => write!(f, "ToggleRepeatOne"),
+            Self::ToggleLoopAll => write!(f, "ToggleLoopAll"),
+            Self::PlaybackResume => write!(f, "PlaybackResume"),
+            Self::PlaybackPause => write!(f, "PlaybackPause"),
+            Self::PlaybackStop => write!(f, "PlaybackStop"),
+            Self::SeekNext => write!(f, "SeekNext"),
+            Self::SeekPrevious => write!(f, "SeekPrevious"),
+            Self::SeekTo { seconds } => f.debug_struct("SeekTo").field("seconds", seconds).finish(),
+            Self::SeekRelative { seconds_delta } => f
+                .debug_struct("SeekRelative")
+                .field("seconds_delta", seconds_delta)
+                .finish(),
+            Self::Volume { percent } => f.debug_struct("Volume").field("percent", percent).finish(),
+            Self::VolumeRelative { percent_delta } => f
+                .debug_struct("VolumeRelative")
+                .field("percent_delta", percent_delta)
+                .finish(),
+            Self::PlaybackSpeed { speed } => f
+                .debug_struct("PlaybackSpeed")
+                .field("speed", speed)
+                .finish(),
+        }
     }
 }
