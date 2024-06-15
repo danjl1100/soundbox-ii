@@ -77,17 +77,13 @@ impl Target {
 
         match insert_match.next {
             Some(MatchAction::InsertValue(next)) => {
-                return Some(Command::PlaylistAdd { url: next.clone() });
+                Some(Command::PlaylistAdd { url: next.clone() })
             }
-            Some(MatchAction::DeleteIndex(index)) => {
-                return Some(Command::PlaylistDelete {
-                    item_id: playlist[index].id,
-                });
-            }
-            None => {}
+            Some(MatchAction::DeleteIndex(index)) => Some(Command::PlaylistDelete {
+                item_id: playlist[index].id,
+            }),
+            None => None,
         }
-
-        None
     }
 }
 #[cfg(test)]
@@ -171,5 +167,29 @@ mod tests {
         assert_eq!(uut.check(&["M1"]), add("M2"));
         assert_eq!(uut.check(&["M1", "M2"]), add("M3"));
         assert_eq!(uut.check(&["M1", "M2", "X1"]), delete_nth(2));
+        assert_eq!(uut.check(&["M1", "M2", "M3"]), None);
+
+        // "trailing" (X1) is higher precedence than "prior" (X0)
+        assert_eq!(uut.check(&["X0", "M1", "M2", "M3", "X1"]), delete_nth(4));
+
+        {
+            let tail_mid_1 = &["_", "X0", "M1", "X1", "M2", "M3", "X2"];
+            let tail_mid_2 = &["_", "X0", "M1", "M2", "X1", "M3", "X2"];
+
+            // when *NOTHING* is playing,
+            // first "trailing" (X1) is highest precedence
+            assert_eq!(uut.check(tail_mid_1), delete_nth(3));
+            assert_eq!(uut.check(tail_mid_2), delete_nth(4));
+
+            // when playing *IS* desired,
+            // first "trailing" (X1) is higher precedence than "leading" (X0)
+            // TODO assert_eq!(uut.check_playing(Some(2), tail_mid_1), delete_nth(3));
+            // TODO assert_eq!(uut.check_playing(Some(2), tail_mid_2), delete_nth(4));
+
+            // when playing is *NOT* desired,
+            // first "trailing" (X1) is higher precedence than "leading" (X0)
+            assert_eq!(uut.check_playing(Some(0), tail_mid_1), delete_nth(3));
+            assert_eq!(uut.check_playing(Some(0), tail_mid_2), delete_nth(4));
+        }
     }
 }
