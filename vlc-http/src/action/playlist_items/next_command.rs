@@ -2,14 +2,18 @@
 
 use super::insert_match::{find_insert_match, MatchAction};
 use super::Target;
-use crate::{response::playlist::Item, Command};
 
-impl Target {
-    pub(super) fn next_command(
-        &self,
-        playlist: &[Item],
+impl<T> Target<T> {
+    pub(super) fn next_command<'a, 'b, U>(
+        &'a self,
+        playlist: &'b [U],
         playing_item_index: Option<usize>,
-    ) -> Option<Command> {
+    ) -> Option<NextCommand<'a, T, U>>
+    where
+        U: AsRef<T>,
+        T: std::cmp::Eq + std::fmt::Debug,
+        'b: 'a,
+    {
         // let (insert_match, playing_index) = if let Some(playing_item_index) = playing_item_index {
         //     todo!()
         //     // let playlist_urls: Vec<_> = playlist[..=playing_item_index]
@@ -30,7 +34,7 @@ impl Target {
                 let offset = playing_item_index.saturating_sub(1);
                 (&playlist[offset..], offset)
             });
-        let playlist_urls_trimmed: Vec<_> = playlist_trimmed.iter().map(|item| &item.url).collect();
+        let playlist_urls_trimmed: Vec<_> = playlist_trimmed.iter().map(AsRef::as_ref).collect();
         let insert_match = find_insert_match(&self.urls, &playlist_urls_trimmed);
 
         // delete first entry to match `max_history_count`
@@ -70,32 +74,40 @@ impl Target {
         // let len_history = playing_index.map_or(match_start
 
         if items_before_match_start > max_history_count && !playlist.is_empty() {
-            return Some(Command::PlaylistDelete {
-                item_id: playlist[0].id,
-            });
+            return Some(NextCommand::PlaylistDelete { item: &playlist[0] });
         }
 
         match insert_match.next {
-            Some(MatchAction::InsertValue(next)) => {
-                Some(Command::PlaylistAdd { url: next.clone() })
-            }
-            Some(MatchAction::DeleteIndex(index)) => Some(Command::PlaylistDelete {
-                item_id: playlist[index].id,
+            Some(MatchAction::InsertValue(url)) => Some(NextCommand::PlaylistAdd { url }),
+            Some(MatchAction::DeleteIndex(index)) => Some(NextCommand::PlaylistDelete {
+                item: &playlist[index],
             }),
             None => None,
         }
     }
 }
+
+pub(super) enum NextCommand<'a, T, U> {
+    PlaylistAdd { url: &'a T },
+    PlaylistDelete { item: &'a U },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        fmt::DebugUrl,
+        response::playlist::{Item, ItemBuilder},
+        Command,
+    };
 
     const ID_OFFSET: u64 = 200;
 
-    fn to_url(input: &&str) -> url::Url {
-        url::Url::parse(&format!("file://{input}")).expect("valid URL test param")
+    fn to_url(input: &&str) -> DebugUrl {
+        let url = url::Url::parse(&format!("file://{input}")).expect("valid URL test param");
+        DebugUrl(url)
     }
-    fn strs_to_urls(input: &[&str]) -> Vec<url::Url> {
+    fn strs_to_urls(input: &[&str]) -> Vec<DebugUrl> {
         input.iter().map(to_url).collect()
     }
     fn strs_to_items(input: &[&str]) -> Vec<Item> {
@@ -103,11 +115,14 @@ mod tests {
             .iter()
             .map(to_url)
             .enumerate()
-            .map(|(index, url)| Item {
-                url,
-                id: u64::try_from(index).expect("sane test param length") + ID_OFFSET,
-                duration_secs: None,
-                name: String::new(),
+            .map(|(index, url)| {
+                // TODO refactor test-specific types to avoid Url altogether
+                Item::new(ItemBuilder {
+                    url: url.0,
+                    id: u64::try_from(index).expect("sane test param length") + ID_OFFSET,
+                    duration_secs: None,
+                    name: String::new(),
+                })
             })
             .collect()
     }
@@ -120,7 +135,9 @@ mod tests {
     }
     #[allow(clippy::unnecessary_wraps)] // convenience for tests
     fn add(url: &str) -> Option<Command> {
-        Some(Command::PlaylistAdd { url: to_url(&url) })
+        Some(Command::PlaylistAdd {
+            url: to_url(&url).0,
+        })
     }
 
     fn target(target_urls: &[&str]) -> Uut {
@@ -135,7 +152,7 @@ mod tests {
         }
     }
     struct Uut {
-        target: Target,
+        target: Target<DebugUrl>,
     }
     impl Uut {
         fn check(&self, existing: &[&str]) -> Option<Command> {
@@ -147,7 +164,14 @@ mod tests {
             existing: &[&str],
         ) -> Option<Command> {
             let existing = strs_to_items(existing);
-            self.target.next_command(&existing, playing_item_index)
+            self.target
+                .next_command(&existing, playing_item_index)
+                .map(|command| match command {
+                    NextCommand::PlaylistAdd { url } => Command::PlaylistAdd { url: url.0.clone() },
+                    NextCommand::PlaylistDelete { item } => Command::PlaylistDelete {
+                        item_id: item.get_id(),
+                    },
+                })
         }
     }
 

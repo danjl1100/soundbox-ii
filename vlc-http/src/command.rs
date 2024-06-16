@@ -261,23 +261,13 @@ impl std::fmt::Display for SecondsDelta {
     }
 }
 
-struct DebugUrl<'a>(&'a url::Url);
-impl std::fmt::Debug for DebugUrl<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // debug `url::Url` as Display (built-in Debug is far too verbose)
-        write!(f, "Url(\"")?;
-        <url::Url as std::fmt::Display>::fmt(self.0, f)?;
-        write!(f, "\")")?;
-        Ok(())
-    }
-}
 impl std::fmt::Debug for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // manual implementation to simplify `url::Url` to Display (Url's Debug is too verbose)
         match self {
             Self::PlaylistAdd { url } => f
                 .debug_struct("PlaylistAdd")
-                .field("url", &DebugUrl(url))
+                .field("url", &crate::fmt::DebugUrlRef(url))
                 .finish(),
             Self::PlaylistDelete { item_id } => f
                 .debug_struct("PlaylistDelete")

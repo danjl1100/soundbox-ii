@@ -56,22 +56,22 @@ use super::{
     playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, Error, Poll,
     PollableConstructor,
 };
-use crate::{action::PlaybackMode, Pollable};
+use crate::{action::PlaybackMode, fmt::DebugUrl, Command, Pollable};
 
 mod insert_match;
 mod next_command;
 
 #[derive(Debug)]
 pub(crate) struct Set {
-    target: Target,
+    target: Target<crate::fmt::DebugUrl>,
     playback_mode: playback_mode::Set,
     query_playback: QueryPlayback,
     query_playlist: QueryPlaylist,
 }
 #[derive(Debug)]
-pub(crate) struct Target {
+pub(crate) struct Target<T> {
     /// NOTE: The first element of `urls` is accepted as previously-played if it is the most recent history item.
-    pub urls: Vec<url::Url>,
+    pub urls: Vec<T>,
     pub max_history_count: std::num::NonZeroU16,
 }
 
@@ -100,10 +100,20 @@ impl Pollable for Set {
             .and_then(|info| info.playlist_item_id);
 
         let playing_item_index = playing_item_id.and_then(|playing_item_id| {
-            playlist.iter().position(|item| playing_item_id == item.id)
+            playlist
+                .iter()
+                .position(|item| playing_item_id == item.get_id())
         });
 
         if let Some(command) = self.target.next_command(playlist, playing_item_index) {
+            let command = match command {
+                next_command::NextCommand::PlaylistAdd { url } => {
+                    Command::PlaylistAdd { url: url.0.clone() }
+                }
+                next_command::NextCommand::PlaylistDelete { item } => Command::PlaylistDelete {
+                    item_id: item.get_id(),
+                },
+            };
             Ok(Poll::Need(command.into()))
         } else {
             Ok(Poll::Done(()))
@@ -112,11 +122,21 @@ impl Pollable for Set {
 }
 
 impl PollableConstructor for Set {
-    type Args = Target;
+    type Args = Target<url::Url>;
     fn new(target: Self::Args, state: &crate::ClientState) -> Self {
         const LINEAR_PLAYBACK: PlaybackMode = PlaybackMode::new()
             .set_repeat(crate::action::RepeatMode::Off)
             .set_random(false);
+        let target = {
+            let Target {
+                urls,
+                max_history_count,
+            } = target;
+            Target {
+                urls: urls.into_iter().map(DebugUrl).collect(),
+                max_history_count,
+            }
+        };
         Self {
             target,
             playback_mode: playback_mode::Set::new(LINEAR_PLAYBACK, state),
