@@ -14,79 +14,35 @@ impl<T> Target<T> {
         T: std::cmp::Eq + std::fmt::Debug,
         'b: 'a,
     {
-        // let (insert_match, playing_index) = if let Some(playing_item_index) = playing_item_index {
-        //     todo!()
-        //     // let playlist_urls: Vec<_> = playlist[..=playing_item_index]
-        //     //     .iter()
-        //     //     .map(|item| &item.url)
-        //     //     .collect();
-        //     // let insert_match = find_insert_match(&self.target.urls, &playlist_urls);
-        //     // (insert_match, playlist_urls.len().checked_sub(1))
-        // } else {
-        //     let playlist_urls: Vec<_> = playlist.iter().map(|item| &item.url).collect();
-        //     let insert_match = find_insert_match(&self.urls, &playlist_urls);
-        //     (insert_match, None::<usize>)
-        // };
-
-        // TODO remove `trim_offset` if unused
-        let (playlist_trimmed, _trim_offset) =
-            playing_item_index.map_or((playlist, 0), |playing_item_index| {
-                let offset = playing_item_index.saturating_sub(1);
-                (&playlist[offset..], offset)
-            });
-        let playlist_urls_trimmed: Vec<_> = playlist_trimmed.iter().map(AsRef::as_ref).collect();
-        let insert_match = find_insert_match(&self.urls, &playlist_urls_trimmed);
+        let playlist_trimmed = {
+            let trim_offset = playing_item_index.unwrap_or(0).saturating_sub(1);
+            &playlist[trim_offset..]
+        };
+        let insert_match = find_insert_match(&self.urls, playlist_trimmed);
 
         // delete first entry to match `max_history_count`
-        let items_before_match_start = insert_match
-            .match_start
-            // .or(playing_index.map(|index| {
-            //     // len
-            //     index + 1
-            // }))
-            .unwrap_or(playlist.len());
+        let items_before_match_start = insert_match.match_start.unwrap_or(playlist.len());
         let max_history_count = usize::from(self.max_history_count.get());
 
-        // println!("playlist_urls = [");
-        // for item in playlist {
-        //     println!("    \"{}\",", item.url);
-        // }
-        // println!("]");
-
-        // println!("target urls = [");
-        // for url in &self.target.urls {
-        //     println!("    \"{url}\",");
-        // }
-        // println!("]");
-
-        // println!(
-        //     "insert_match = {{ match_start: {:?}, next_to_insert: {:?} }}",
-        //     insert_match.match_start,
-        //     insert_match.next_to_insert.map(url::Url::as_str)
-        // );
-
-        // println!("playing_index = {playing_index:?}");
-
-        // dbg!(items_before_match_start, max_history_count);
-        // let matched_start = insert_match.match_start.unwrap_or(playlist.len());
-
-        // Size of (1. History) + (2. Current playing item), crucially excluding (4. Matched)
-        // let len_history = playing_index.map_or(match_start
-
-        if items_before_match_start > max_history_count && !playlist.is_empty() {
-            return Some(NextCommand::PlaylistDelete { item: &playlist[0] });
+        if items_before_match_start > max_history_count {
+            return Some(NextCommand::PlaylistDelete {
+                item: playlist
+                    .first()
+                    .expect("excess items implies there is at least one"),
+            });
         }
 
         match insert_match.next {
             Some(MatchAction::InsertValue(url)) => Some(NextCommand::PlaylistAdd { url }),
             Some(MatchAction::DeleteIndex(index)) => Some(NextCommand::PlaylistDelete {
-                item: &playlist[index],
+                item: &playlist_trimmed[index],
             }),
             None => None,
         }
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum NextCommand<'a, T, U> {
     PlaylistAdd { url: &'a T },
     PlaylistDelete { item: &'a U },
@@ -95,125 +51,121 @@ pub(super) enum NextCommand<'a, T, U> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        fmt::DebugUrl,
-        response::playlist::{Item, ItemBuilder},
-        Command,
-    };
 
-    const ID_OFFSET: u64 = 200;
-
-    fn to_url(input: &&str) -> DebugUrl {
-        let url = url::Url::parse(&format!("file://{input}")).expect("valid URL test param");
-        DebugUrl(url)
+    #[derive(Clone, PartialEq, Eq)]
+    struct TestItem(&'static str);
+    impl AsRef<&'static str> for TestItem {
+        fn as_ref(&self) -> &&'static str {
+            &self.0
+        }
     }
-    fn strs_to_urls(input: &[&str]) -> Vec<DebugUrl> {
-        input.iter().map(to_url).collect()
-    }
-    fn strs_to_items(input: &[&str]) -> Vec<Item> {
-        input
-            .iter()
-            .map(to_url)
-            .enumerate()
-            .map(|(index, url)| {
-                // TODO refactor test-specific types to avoid Url altogether
-                Item::new(ItemBuilder {
-                    url: url.0,
-                    id: u64::try_from(index).expect("sane test param length") + ID_OFFSET,
-                    duration_secs: None,
-                    name: String::new(),
-                })
-            })
-            .collect()
+    impl std::fmt::Debug for TestItem {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            <str as std::fmt::Debug>::fmt(self.0, f)
+        }
     }
 
-    #[allow(clippy::unnecessary_wraps)] // convenience for tests
-    fn delete_nth(n: u64) -> Option<Command> {
-        Some(Command::PlaylistDelete {
-            item_id: n + ID_OFFSET,
-        })
-    }
-    #[allow(clippy::unnecessary_wraps)] // convenience for tests
-    fn add(url: &str) -> Option<Command> {
-        Some(Command::PlaylistAdd {
-            url: to_url(&url).0,
-        })
-    }
+    type Cmd<'a> = NextCommand<'a, &'static str, TestItem>;
 
-    fn target(target_urls: &[&str]) -> Uut {
+    fn target(target_urls: &[&'static str]) -> Uut {
         target_history(u16::MAX, target_urls)
     }
-    fn target_history(max_history_count: u16, target_urls: &[&str]) -> Uut {
+    fn target_history(max_history_count: u16, target_urls: &[&'static str]) -> Uut {
         Uut {
             target: Target {
-                urls: strs_to_urls(target_urls),
+                urls: target_urls.to_owned(),
                 max_history_count: max_history_count.try_into().expect("nonzero test param"),
             },
         }
     }
     struct Uut {
-        target: Target<DebugUrl>,
+        target: Target<&'static str>,
     }
     impl Uut {
-        fn check(&self, existing: &[&str]) -> Option<Command> {
+        fn check(&self, existing: &'static [TestItem]) -> Option<Cmd<'_>> {
             self.check_playing(None, existing)
         }
         fn check_playing(
             &self,
             playing_item_index: Option<usize>,
-            existing: &[&str],
-        ) -> Option<Command> {
-            let existing = strs_to_items(existing);
-            self.target
-                .next_command(&existing, playing_item_index)
-                .map(|command| match command {
-                    NextCommand::PlaylistAdd { url } => Command::PlaylistAdd { url: url.0.clone() },
-                    NextCommand::PlaylistDelete { item } => Command::PlaylistDelete {
-                        item_id: item.get_id(),
-                    },
-                })
+            existing: &'static [TestItem],
+        ) -> Option<Cmd<'_>> {
+            self.target.next_command(existing, playing_item_index)
         }
+    }
+
+    macro_rules! check {
+        ($uut:expr => &[$($s:expr),* $(,)?]) => {
+            {
+                let items: &'static [TestItem] = &[$( TestItem($s) ),*];
+                let uut: &Uut = $uut;
+                uut.check(&items)
+            }
+        };
+        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?]) => {
+            {
+                let items: &'static [TestItem] = &[$( TestItem($s) ),*];
+                let uut: &Uut = $uut;
+                uut.check_playing(Some($index), &items)
+            }
+        };
+        ($uut:expr => &[$($s:expr),* $(,)?], None) => {
+            assert_eq!(check!($uut => &[$($s),*]), None);
+        };
+        ($uut:expr => &[$($s:expr),* $(,)?], add($item:expr)) => {
+            let item: &'static str = $item;
+            let expected = Some(Cmd::PlaylistAdd { url: &&item });
+            assert_eq!(check!($uut => &[$($s),*]), expected);
+        };
+        ($uut:expr => &[$($s:expr),* $(,)?], delete($item:expr)) => {
+            let item: &'static str = $item;
+            let item = &TestItem(item);
+            let expected = Some(Cmd::PlaylistDelete { item });
+            assert_eq!(check!($uut => &[$($s),*]), expected);
+        };
+        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], delete($item:expr)) => {
+            let item: &'static str = $item;
+            let item = &TestItem(item);
+            let expected = Some(Cmd::PlaylistDelete { item });
+            assert_eq!(check!($uut => Some($index), &[$($s),*]), expected);
+        };
     }
 
     #[test]
     fn removes_history() {
         let uut = target_history(2, &["M1"]);
-        assert_eq!(uut.check(&["X1"]), add("M1"));
-        assert_eq!(uut.check(&["X1", "X2"]), add("M1"));
-        assert_eq!(uut.check(&["X1", "X2", "X3"]), delete_nth(0));
-        assert_eq!(uut.check(&["X1", "X2", "X3", "X4"]), delete_nth(0));
+        check!(&uut => &["X1"], add("M1"));
+        check!(&uut => &["X1", "X2"], add("M1"));
+        check!(&uut => &["X1", "X2", "X3"], delete("X1"));
+        check!(&uut => &["X1", "X2", "X3", "X4"], delete("X1"));
     }
 
     #[test]
-    #[ignore = "TODO"] // TODO
     fn removes_trailing_items() {
         let uut = target(&["M1", "M2", "M3"]);
-        assert_eq!(uut.check(&["M1"]), add("M2"));
-        assert_eq!(uut.check(&["M1", "M2"]), add("M3"));
-        assert_eq!(uut.check(&["M1", "M2", "X1"]), delete_nth(2));
-        assert_eq!(uut.check(&["M1", "M2", "M3"]), None);
+        check!(&uut => &["M1"], add("M2"));
+        check!(&uut => &["M1", "M2"], add("M3"));
+        check!(&uut => &["M1", "M2", "X1"], delete("X1"));
+        check!(&uut => &["M1", "M2", "M3"], None);
 
         // "trailing" (X1) is higher precedence than "prior" (X0)
-        assert_eq!(uut.check(&["X0", "M1", "M2", "M3", "X1"]), delete_nth(4));
+        check!(&uut => &["X0", "M1", "M2", "M3", "X1"], delete("X1"));
 
-        {
-            let tail_mid_1 = &["_", "X0", "M1", "X1", "M2", "M3", "X2"];
-            let tail_mid_2 = &["_", "X0", "M1", "M2", "X1", "M3", "X2"];
+        // ---
 
-            // when *NOTHING* is playing,
-            // first "trailing" (X1) is highest precedence
-            assert_eq!(uut.check(tail_mid_1), delete_nth(3));
-            assert_eq!(uut.check(tail_mid_2), delete_nth(4));
+        // when *NOTHING* is playing,
+        // first "trailing" (X1) is highest precedence
+        check!(&uut => &["_", "X0", "M1", "X1", "M2", "M3", "X2"], delete("X1"));
+        check!(&uut => &["_", "X0", "M1", "M2", "X1", "M3", "X2"], delete("X1"));
 
-            // when playing *IS* desired,
-            // first "trailing" (X1) is higher precedence than "leading" (X0)
-            // TODO assert_eq!(uut.check_playing(Some(2), tail_mid_1), delete_nth(3));
-            // TODO assert_eq!(uut.check_playing(Some(2), tail_mid_2), delete_nth(4));
+        // when playing *IS* desired,
+        // first "trailing" (X1) is higher precedence than "leading" (X0)
+        check!(&uut => Some(2), &["_", "X0", "M1", "X1", "M2", "M3", "X2"], delete("X1"));
+        check!(&uut => Some(2), &["_", "X0", "M1", "M2", "X1", "M3", "X2"], delete("X1"));
 
-            // when playing is *NOT* desired,
-            // first "trailing" (X1) is higher precedence than "leading" (X0)
-            assert_eq!(uut.check_playing(Some(0), tail_mid_1), delete_nth(3));
-            assert_eq!(uut.check_playing(Some(0), tail_mid_2), delete_nth(4));
-        }
+        // when playing is *NOT* desired,
+        // first "trailing" (X1) is higher precedence than "leading" (X0)
+        check!(&uut => Some(0), &["_", "X0", "M1", "X1", "M2", "M3", "X2"], delete("X1"));
+        check!(&uut => Some(0), &["_", "X0", "M1", "M2", "X1", "M3", "X2"], delete("X1"));
     }
 }

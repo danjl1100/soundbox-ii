@@ -5,15 +5,21 @@
 ///
 /// Returns the match index and the next element in `target` to append to `existing`,
 /// for the goal of `existing` to end with all elements of `target` in-order
-pub(super) fn find_insert_match<'a, T>(target: &'a [T], existing: &[&T]) -> InsertMatch<'a, T>
+pub(super) fn find_insert_match<'a, T, U>(target: &'a [T], existing: &[U]) -> InsertMatch<'a, T>
 where
     T: Eq + std::fmt::Debug,
+    U: AsRef<T>,
 {
+    // TODO remove debug
+    println!(
+        "find_insert_match, target={target:?}, existing={existing:?}",
+        existing = existing.iter().map(AsRef::as_ref).collect::<Vec<_>>()
+    );
     for match_start in 0..existing.len() {
         let existing = &existing[match_start..];
 
         let mut target_iter = target.iter();
-        let mut existing_iter = existing.iter().copied().enumerate();
+        let mut existing_iter = existing.iter().map(AsRef::as_ref).enumerate();
 
         let target_first = target_iter.next();
         let existing_first = existing_iter.next().map(|(_, elem)| elem);
@@ -42,6 +48,8 @@ where
                     Some((_, existing_elem)) if existing_elem == target_elem => continue,
                     // non-equal, delete the offending item
                     Some((existing_index, _)) => {
+                        // TODO remove debug
+                        println!("wanting to delete {existing_elem:?}");
                         break Some(MatchAction::DeleteIndex(match_start + existing_index));
                     }
                     // missing, add new
@@ -79,6 +87,19 @@ pub(super) enum MatchAction<'a, T> {
 mod tests {
     use super::*;
 
+    impl<'a, T> InsertMatch<'a, T> {
+        fn map<U>(self, f: impl Fn(&T) -> &U) -> InsertMatch<'a, U> {
+            let Self { match_start, next } = self;
+            InsertMatch {
+                match_start,
+                next: next.map(|next| match next {
+                    MatchAction::InsertValue(value) => MatchAction::InsertValue(f(value)),
+                    MatchAction::DeleteIndex(index) => MatchAction::DeleteIndex(index),
+                }),
+            }
+        }
+    }
+
     fn insert_end<T>(next: &T) -> InsertMatch<'_, T> {
         InsertMatch {
             match_start: None,
@@ -105,40 +126,78 @@ mod tests {
     }
 
     // NOTE tests are easier to read with this alias
-    fn uut<'a, T>(target: &'a [T], existing: &[&T]) -> InsertMatch<'a, T>
+    fn uut<'a, T, U>(target: &'a [T], existing: &[U]) -> InsertMatch<'a, T>
     where
         T: std::fmt::Debug + Eq,
+        U: AsRef<T>,
     {
-        println!("target={target:?}, existing={existing:?}");
+        println!(
+            "target={target:?}, existing={existing:?}",
+            existing = existing.iter().map(AsRef::as_ref).collect::<Vec<_>>()
+        );
         find_insert_match(target, existing)
     }
 
-    const X: &i32 = &10;
+    // shenanigans to fake a `T: AsRef<T>` behavior for consumers (tests)
+    macro_rules! no_op_wrap {
+        ($($elem:expr),* $(,)?) => {
+            [$( NoOp($elem) ),*]
+        };
+    }
+    macro_rules! uut {
+        ($needle:expr, &[$($elem:expr),* $(,)?]) => {{
+            let needle: &[NoOp<i32>] = $needle;
+            let existing: &[NoOp<i32>] = &no_op_wrap![$($elem),*];
+            uut(needle, existing).map(NoOp::inner)
+        }};
+    }
+    #[derive(PartialEq, Eq)]
+    struct NoOp<T>(T);
+    impl<T> NoOp<T> {
+        fn inner(&self) -> &T {
+            &self.0
+        }
+    }
+    impl<T> std::fmt::Debug for NoOp<T>
+    where
+        T: std::fmt::Debug,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            <T as std::fmt::Debug>::fmt(&self.0, f)
+        }
+    }
+    impl<T> AsRef<NoOp<T>> for NoOp<T> {
+        fn as_ref(&self) -> &Self {
+            self
+        }
+    }
+
+    const X: i32 = 10;
 
     #[test]
     fn find_next() {
-        let needle = &[1, 2, 3, 4];
-        assert_eq!(uut(needle, &[]), insert_end(&1));
-        assert_eq!(uut(needle, &[&1]), insert_from(0, &2));
-        assert_eq!(uut(needle, &[&1, &2]), insert_from(0, &3));
-        assert_eq!(uut(needle, &[&1, &2, &3]), insert_from(0, &4));
-        assert_eq!(uut(needle, &[&1, &2, &3, &4]), matched(0));
-        assert_eq!(uut(needle, &[X, &1, &2, &3, &4]), matched(1));
-        assert_eq!(uut(needle, &[X, X, &1, &2, &3, &4]), matched(2));
-        //                        0   1   2   3  [4]
-        assert_eq!(uut(needle, &[&1, &2, &3, &4, &1]), matched_delete(0, 4));
-        //                       0  1 [2]
-        assert_eq!(uut(needle, &[X, X, &1, &2]), insert_from(2, &3));
+        let needle = &no_op_wrap![1, 2, 3, 4];
+        assert_eq!(uut!(needle, &[]), insert_end(&1));
+        assert_eq!(uut!(needle, &[1]), insert_from(0, &2));
+        assert_eq!(uut!(needle, &[1, 2]), insert_from(0, &3));
+        assert_eq!(uut!(needle, &[1, 2, 3]), insert_from(0, &4));
+        assert_eq!(uut!(needle, &[1, 2, 3, 4]), matched(0));
+        assert_eq!(uut!(needle, &[X, 1, 2, 3, 4]), matched(1));
+        assert_eq!(uut!(needle, &[X, X, 1, 2, 3, 4]), matched(2));
+        //                        0  1  2  3 [4]
+        assert_eq!(uut!(needle, &[1, 2, 3, 4, 1]), matched_delete(0, 4));
+        //                        0  1 [2]
+        assert_eq!(uut!(needle, &[X, X, 1, 2]), insert_from(2, &3));
     }
 
     #[test]
     fn find_interspersed() {
-        let needle = &[1, 2, 3];
-        assert_eq!(uut(needle, &[X, &1, X, &2]), matched_delete(1, 2));
-        assert_eq!(uut(needle, &[X, &1, X, &2, X]), matched_delete(1, 2));
-        assert_eq!(uut(needle, &[X, &1, &2, X]), matched_delete(1, 3));
-        assert_eq!(uut(needle, &[X, &1, &2, X, &3]), matched_delete(1, 3));
-        assert_eq!(uut(needle, &[X, &1, &2, &3, X]), matched_delete(1, 4));
-        assert_eq!(uut(needle, &[X, &1, &2, &3]), matched(1));
+        let needle = &no_op_wrap![1, 2, 3];
+        assert_eq!(uut!(needle, &[X, 1, X, 2]), matched_delete(1, 2));
+        assert_eq!(uut!(needle, &[X, 1, X, 2, X]), matched_delete(1, 2));
+        assert_eq!(uut!(needle, &[X, 1, 2, X]), matched_delete(1, 3));
+        assert_eq!(uut!(needle, &[X, 1, 2, X, 3]), matched_delete(1, 3));
+        assert_eq!(uut!(needle, &[X, 1, 2, 3, X]), matched_delete(1, 4));
+        assert_eq!(uut!(needle, &[X, 1, 2, 3]), matched(1));
     }
 }
