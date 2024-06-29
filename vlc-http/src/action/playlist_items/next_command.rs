@@ -37,7 +37,17 @@ impl<T> Target<T> {
             Some(MatchAction::DeleteIndex(index)) => Some(NextCommand::PlaylistDelete {
                 item: &playlist_trimmed[index],
             }),
-            None => None,
+            None => match insert_match.match_start {
+                Some(match_start) if match_start > 1 && playing_item_index.is_some() => {
+                    // remove items between `playing_item_index` and `match_start`
+                    Some(NextCommand::PlaylistDelete {
+                        item: playlist_trimmed
+                            .get(1)
+                            .expect("index=1 exists because match_start > 1"),
+                    })
+                }
+                _ => None,
+            },
         }
     }
 }
@@ -112,6 +122,9 @@ mod tests {
         ($uut:expr => &[$($s:expr),* $(,)?], None) => {
             assert_eq!(check!($uut => &[$($s),*]), None);
         };
+        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], None) => {
+            assert_eq!(check!($uut => Some($index), &[$($s),*]), None);
+        };
         ($uut:expr => &[$($s:expr),* $(,)?], add($item:expr)) => {
             let item: &'static str = $item;
             let expected = Some(Cmd::PlaylistAdd { url: &&item });
@@ -167,5 +180,19 @@ mod tests {
         // first "trailing" (X1) is higher precedence than "leading" (X0)
         check!(&uut => Some(0), &["_", "X0", "M1", "X1", "M2", "M3", "X2"], delete("X1"));
         check!(&uut => Some(0), &["_", "X0", "M1", "M2", "X1", "M3", "X2"], delete("X1"));
+
+        // finish out the scenario above
+        check!(&uut => Some(0), &["_", "X0", "M1", "M2", "M3", "X2"], delete("X2"));
+        check!(&uut => Some(0), &["_", "X0", "M1", "M2", "M3"], delete("X0"));
+        check!(&uut => Some(0), &["_", "M1", "M2", "M3"], None);
+    }
+
+    #[test]
+    fn removes_between_playing_and_match() {
+        let uut = target(&["M1", "M2", "M3"]);
+        check!(&uut => Some(0), &["_", "X0", "X1", "X2", "M1", "M2", "M3"], delete("X0"));
+        check!(&uut => Some(0), &["_", "X1", "X2", "M1", "M2", "M3"], delete("X1"));
+        check!(&uut => Some(0), &["_", "X2", "M1", "M2", "M3"], delete("X2"));
+        check!(&uut => Some(0), &["_", "M1", "M2", "M3"], None);
     }
 }
