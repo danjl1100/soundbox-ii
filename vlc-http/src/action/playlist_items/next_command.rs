@@ -14,29 +14,27 @@ impl<T> Target<T> {
         T: std::cmp::Eq + std::fmt::Debug,
         'b: 'a,
     {
-        let playlist_trimmed = {
-            let trim_offset = playing_item_index.unwrap_or(0);
-            &playlist[trim_offset..]
-        };
+        let trim_offset = playing_item_index.unwrap_or(0);
+        let playlist_trimmed = &playlist[trim_offset..];
         let insert_match = find_insert_match(&self.urls, playlist_trimmed);
 
         // delete first entry to match `max_history_count`
         let trimmed_items_before_match_start =
             insert_match.match_start.unwrap_or(playlist_trimmed.len());
-        let max_history_count = usize::from(self.max_history_count.get());
+        let undesired_items_count = playing_item_index.unwrap_or(
+            // none playing, count before match_start (adjust to global)
+            trimmed_items_before_match_start + trim_offset,
+        );
+        let max_history_count = self.max_history_count.into();
 
-        let delete_first_item = match playing_item_index {
-            Some(playing_item_index) if playing_item_index >= max_history_count => Some(
+        let delete_first_item = if undesired_items_count > max_history_count {
+            Some(
                 playlist
                     .first()
-                    .expect("playlist nonempty, playing index >= a nonzero"),
-            ),
-            None if playlist.len() > max_history_count => Some(
-                playlist
-                    .first()
-                    .expect("playlist nonempty, longer than a nonzero"),
-            ),
-            _ => None,
+                    .expect("playlist nonempty, items before playing/match"),
+            )
+        } else {
+            None
         };
         let delete_after_playing_item =
             if playing_item_index.is_some() && trimmed_items_before_match_start > 1 {
@@ -232,14 +230,18 @@ mod tests {
         //                         \/
         check!(&uut => Some(0), &["X0", "X1", "X2", "X3"], add("M1"));
         check!(&uut => Some(0), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], delete("X1"));
-        //                         2    3\/
+        //                         1     \/
         check!(&uut => Some(1), &["X0", "X1", "X2", "X3"], add("M1"));
         check!(&uut => Some(1), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], delete("X2"));
-        //                         1     2    3\/
+        //                         1     2     \/
         check!(&uut => Some(2), &["X0", "X1", "X2", "X3"], add("M1"));
         check!(&uut => Some(2), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], delete("X3"));
-        //                         X     1      2   3\/
-        check!(&uut => Some(3), &["X0", "X1", "X2", "X3"], delete("X0"));
+        //                         1     2     3     \/
+        check!(&uut => Some(3), &["X0", "X1", "X2", "X3"], add("M1"));
+        check!(&uut => Some(3), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], None);
+        //                         X     1     2     3     \/
+        check!(&uut => Some(4), &["X0", "X1", "X2", "X3", "X4"], delete("X0"));
+        check!(&uut => Some(4), &["X0", "X1", "X2", "X3", "X4", "M1", "M2", "M3"], delete("X0"));
 
         check!(&uut => Some(2), &["X1", "X2", "P"], add("M1"));
     }
@@ -252,5 +254,31 @@ mod tests {
         check!(&uut => Some(3), &["M1", "M2", "M3", "P", "M1"], add("M2"));
         check!(&uut => Some(3), &["M1", "M2", "M3", "P", "M1", "M2"], add("M3"));
         check!(&uut => Some(3), &["M1", "M2", "M3", "P", "M1", "M2", "M3"], None);
+    }
+
+    #[test]
+    fn history_trims_before_match_only() {
+        let uut = target_history(3, &["M1", "M2", "M3", "M4", "M5"]);
+        //
+        check!(&uut => &[], add("M1"));
+        check!(&uut => &["M1"], add("M2"));
+        check!(&uut => &["M1","M2"], add("M3"));
+        check!(&uut => &["M1","M2","M3"], add("M4"));
+        check!(&uut => &["M1","M2","M3","M4"], add("M5"));
+        check!(&uut => &["M1","M2","M3","M4","M5"], None);
+        //
+        check!(&uut => Some(0), &["_"], add("M1"));
+        check!(&uut => Some(0), &["_","M1"], add("M2"));
+        check!(&uut => Some(0), &["_","M1","M2"], add("M3"));
+        check!(&uut => Some(0), &["_","M1","M2","M3"], add("M4"));
+        check!(&uut => Some(0), &["_","M1","M2","M3","M4"], add("M5"));
+        check!(&uut => Some(0), &["_","M1","M2","M3","M4","M5"], None);
+        //
+        check!(&uut => &["_"], add("M1"));
+        check!(&uut => &["_","M1"], add("M2"));
+        check!(&uut => &["_","M1","M2"], add("M3"));
+        check!(&uut => &["_","M1","M2","M3"], add("M4"));
+        check!(&uut => &["_","M1","M2","M3","M4"], add("M5"));
+        check!(&uut => &["_","M1","M2","M3","M4","M5"], None);
     }
 }

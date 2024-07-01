@@ -110,32 +110,13 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=pl_delete&id=0",
-  ), Model(
-    items: [
-      Item(
-        id: 1,
-        uri: "file:///b",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
-    current_item_id: Some((3, Playing)),
-  )),
-  LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
   ), Model(
     items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
       Item(
         id: 1,
         uri: "file:///b",
@@ -163,6 +144,10 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
   ), Model(
     items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
       Item(
         id: 1,
         uri: "file:///b",
@@ -194,6 +179,10 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
   ), Model(
     items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
       Item(
         id: 1,
         uri: "file:///b",
@@ -229,6 +218,10 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     path_and_query: "/requests/playlist.json?command=pl_delete&id=4",
   ), Model(
     items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
       Item(
         id: 1,
         uri: "file:///b",

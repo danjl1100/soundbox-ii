@@ -79,9 +79,13 @@ pub(crate) struct Set {
 }
 #[derive(Debug)]
 pub(crate) struct Target<T> {
-    /// NOTE: The first element of `urls` is accepted as previously-played if it is the most recent history item.
+    /// Path to the file(s) to queue next, starting with the current/past item
+    ///
+    /// NOTE: When an item is already playing, the first element in `urls` is only matched **at** or
+    /// **after** the currently playing item
     pub urls: Vec<T>,
-    pub max_history_count: std::num::NonZeroU16,
+    /// Number of history (past-played) items to retain before the specified `urls`
+    pub max_history_count: u16,
 }
 
 impl Pollable for Set {

@@ -142,22 +142,4 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
       ),
     ],
   )),
-  LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=pl_delete&id=2",
-  ), Model(
-    items: [
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-      Item(
-        id: 5,
-        uri: "file:///new",
-      ),
-    ],
-  )),
 ]

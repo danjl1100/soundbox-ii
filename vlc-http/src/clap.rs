@@ -149,7 +149,7 @@ pub enum Action {
         urls: Vec<url::Url>,
         /// Minimum number of history (past-played) items to retain
         #[clap(long)]
-        keep_history: std::num::NonZeroU16,
+        keep_history: u16,
     },
 }
 /// Rule for repeating items
