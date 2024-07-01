@@ -1,7 +1,7 @@
 ---
 source: vlc-http/tests/test_cases.rs
 expression: output
-input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
+input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
 ---
 [
   HarnessInit(Model(
@@ -29,6 +29,33 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
     ],
   )),
   LogEntry(Endpoint(
+    path_and_query: "/requests/status.json?command=pl_play&id=3",
+  ), Model(
+    items: [
+      Item(
+        id: 0,
+        uri: "file:///a",
+      ),
+      Item(
+        id: 1,
+        uri: "file:///b",
+      ),
+      Item(
+        id: 2,
+        uri: "file:///c",
+      ),
+      Item(
+        id: 3,
+        uri: "file:///d",
+      ),
+      Item(
+        id: 4,
+        uri: "file:///e",
+      ),
+    ],
+    current_item_id: Some((3, Playing)),
+  )),
+  LogEntry(Endpoint(
     path_and_query: "/requests/status.json",
   ), Model(
     items: [
@@ -53,6 +80,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
         uri: "file:///e",
       ),
     ],
+    current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json",
@@ -79,6 +107,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
         uri: "file:///e",
       ),
     ],
+    current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=pl_delete&id=0",
@@ -101,29 +130,16 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
         uri: "file:///e",
       ),
     ],
+    current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=pl_delete&id=1",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
   ), Model(
     items: [
       Item(
-        id: 2,
-        uri: "file:///c",
+        id: 1,
+        uri: "file:///b",
       ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
-  )),
-  LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new",
-  ), Model(
-    items: [
       Item(
         id: 2,
         uri: "file:///c",
@@ -138,14 +154,23 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
       ),
       Item(
         id: 5,
-        uri: "file:///new",
+        uri: "file:///new1",
       ),
     ],
+    current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=pl_delete&id=2",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
   ), Model(
     items: [
+      Item(
+        id: 1,
+        uri: "file:///b",
+      ),
+      Item(
+        id: 2,
+        uri: "file:///c",
+      ),
       Item(
         id: 3,
         uri: "file:///d",
@@ -156,8 +181,79 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
       ),
       Item(
         id: 5,
-        uri: "file:///new",
+        uri: "file:///new1",
+      ),
+      Item(
+        id: 6,
+        uri: "file:///new2",
       ),
     ],
+    current_item_id: Some((3, Playing)),
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  ), Model(
+    items: [
+      Item(
+        id: 1,
+        uri: "file:///b",
+      ),
+      Item(
+        id: 2,
+        uri: "file:///c",
+      ),
+      Item(
+        id: 3,
+        uri: "file:///d",
+      ),
+      Item(
+        id: 4,
+        uri: "file:///e",
+      ),
+      Item(
+        id: 5,
+        uri: "file:///new1",
+      ),
+      Item(
+        id: 6,
+        uri: "file:///new2",
+      ),
+      Item(
+        id: 7,
+        uri: "file:///new3",
+      ),
+    ],
+    current_item_id: Some((3, Playing)),
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=4",
+  ), Model(
+    items: [
+      Item(
+        id: 1,
+        uri: "file:///b",
+      ),
+      Item(
+        id: 2,
+        uri: "file:///c",
+      ),
+      Item(
+        id: 3,
+        uri: "file:///d",
+      ),
+      Item(
+        id: 5,
+        uri: "file:///new1",
+      ),
+      Item(
+        id: 6,
+        uri: "file:///new2",
+      ),
+      Item(
+        id: 7,
+        uri: "file:///new3",
+      ),
+    ],
+    current_item_id: Some((3, Playing)),
   )),
 ]

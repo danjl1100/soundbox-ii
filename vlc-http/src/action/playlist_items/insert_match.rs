@@ -10,7 +10,7 @@ where
     T: Eq + std::fmt::Debug,
     U: AsRef<T>,
 {
-    // TODO remove debug
+    #[cfg(test)]
     println!(
         "find_insert_match, target={target:?}, existing={existing:?}",
         existing = existing.iter().map(AsRef::as_ref).collect::<Vec<_>>()
@@ -24,8 +24,10 @@ where
         let target_first = target_iter.next();
         let existing_first = existing_iter.next().map(|(_, elem)| elem);
 
-        // TODO remove debug
-        println!("match_start = {match_start}, target_first = {target_first:?}, existing_first = {existing_first:?}");
+        {
+            #[cfg(test)]
+            println!("match_start = {match_start}, target_first = {target_first:?}, existing_first = {existing_first:?}");
+        }
 
         if target_first == existing_first {
             let next = loop {
@@ -38,18 +40,25 @@ where
                     break None;
                 };
                 let existing_elem = existing_iter.next();
-                // TODO remove debug
-                println!(
-                    "target_elem = {target_elem:?}, existing_elem = {:?}",
-                    existing_elem.map(|(_, elem)| elem)
-                );
+
+                {
+                    #[cfg(test)]
+                    println!(
+                        "target_elem = {target_elem:?}, existing_elem = {:?}",
+                        existing_elem.map(|(_, elem)| elem)
+                    );
+                }
+
                 match existing_elem {
                     // equal, continue search
                     Some((_, existing_elem)) if existing_elem == target_elem => continue,
                     // non-equal, delete the offending item
                     Some((existing_index, _)) => {
-                        // TODO remove debug
-                        println!("wanting to delete {existing_elem:?}");
+                        {
+                            #[cfg(test)]
+                            println!("wanting to delete {existing_elem:?}");
+                        }
+
                         break Some(MatchAction::DeleteIndex(match_start + existing_index));
                     }
                     // missing, add new

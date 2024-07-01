@@ -1,0 +1,3 @@
+harness items file:///a file:///b file:///c file:///d file:///e
+command playlist-play 3
+action playlist-set file:///new1 file:///new2 file:///new3 --keep-history 3

@@ -17,9 +17,18 @@
 //! - (2) and (3) are empty if nothing is playing
 //! - (2) and (3) are empty if the first matched item is playing
 //! - (4) and (5) are empty if no items match
-//! - Precedence of removing items:
-//!     - (5) Ensure newly-added items will be continuous with matched items
-//!     - (1) Before adding new, remove the history (decrease the search space)
+//! - Precedence of operations:
+//!     - Remove (1) - Before adding new, remove the history (decrease the search space)
+//!     - Remove (5) - Ensure newly-added items will be continuous with matched items
+//!     - Add (4) - Add new desired items to the end
+//!     - Remove (3) - Remove items blocking the desired items (all in place)
+//!     - NOTE: No action performed for (2), application will send `Command::SeekNext` when immediate
+//!     playback is required
+//! - Key Constraints:
+//!     - "Remove(5)" comes before "Add (4)" for consistent matches
+//!     - "Remove(3)" comes after "Add(4)" for seamless playback progression to desired items
+//!     - (minor) "Remove (1)" can go anywhere, but place first as a "pre-step" before material
+//!     changes to the playback order
 //!
 //! Examples:
 //!

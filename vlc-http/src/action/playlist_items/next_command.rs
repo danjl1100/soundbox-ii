@@ -15,40 +15,65 @@ impl<T> Target<T> {
         'b: 'a,
     {
         let playlist_trimmed = {
-            let trim_offset = playing_item_index.unwrap_or(0).saturating_sub(1);
+            let trim_offset = playing_item_index.unwrap_or(0);
             &playlist[trim_offset..]
         };
         let insert_match = find_insert_match(&self.urls, playlist_trimmed);
 
         // delete first entry to match `max_history_count`
-        let items_before_match_start = insert_match.match_start.unwrap_or(playlist.len());
+        let trimmed_items_before_match_start =
+            insert_match.match_start.unwrap_or(playlist_trimmed.len());
         let max_history_count = usize::from(self.max_history_count.get());
 
-        if items_before_match_start > max_history_count {
-            return Some(NextCommand::PlaylistDelete {
-                item: playlist
+        let delete_first_item = match playing_item_index {
+            Some(playing_item_index) if playing_item_index >= max_history_count => Some(
+                playlist
                     .first()
-                    .expect("excess items implies there is at least one"),
-            });
+                    .expect("playlist nonempty, playing index >= a nonzero"),
+            ),
+            None if playlist.len() > max_history_count => Some(
+                playlist
+                    .first()
+                    .expect("playlist nonempty, longer than a nonzero"),
+            ),
+            _ => None,
+        };
+        let delete_after_playing_item =
+            if playing_item_index.is_some() && trimmed_items_before_match_start > 1 {
+                Some(
+                    playlist_trimmed
+                        .get(1)
+                        .expect("after playing exists, since match occurs after playing"),
+                )
+            } else {
+                None
+            };
+
+        let (insert_end, delete_end) = match insert_match.next {
+            Some(MatchAction::InsertValue(url)) => (Some(url), None),
+            Some(MatchAction::DeleteIndex(index)) => (None, Some(&playlist_trimmed[index])),
+            None => (None, None),
+        };
+
+        // precedence ordering:
+
+        // A. [#5] clear items from the end
+        // B. [#1] clear history items from beginning
+        if let Some(item) = delete_end.or(delete_first_item) {
+            return Some(NextCommand::PlaylistDelete { item });
         }
 
-        match insert_match.next {
-            Some(MatchAction::InsertValue(url)) => Some(NextCommand::PlaylistAdd { url }),
-            Some(MatchAction::DeleteIndex(index)) => Some(NextCommand::PlaylistDelete {
-                item: &playlist_trimmed[index],
-            }),
-            None => match insert_match.match_start {
-                Some(match_start) if match_start > 1 && playing_item_index.is_some() => {
-                    // remove items between `playing_item_index` and `match_start`
-                    Some(NextCommand::PlaylistDelete {
-                        item: playlist_trimmed
-                            .get(1)
-                            .expect("index=1 exists because match_start > 1"),
-                    })
-                }
-                _ => None,
-            },
+        // C. [#4] Add new item to end
+        if let Some(url) = insert_end {
+            return Some(NextCommand::PlaylistAdd { url });
         }
+
+        // D. [#3] clear items between playing and first desired
+        if let Some(item) = delete_after_playing_item {
+            return Some(NextCommand::PlaylistDelete { item });
+        }
+
+        None
     }
 }
 
@@ -130,6 +155,11 @@ mod tests {
             let expected = Some(Cmd::PlaylistAdd { url: &&item });
             assert_eq!(check!($uut => &[$($s),*]), expected);
         };
+        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], add($item:expr)) => {
+            let item: &'static str = $item;
+            let expected = Some(Cmd::PlaylistAdd { url: &&item });
+            assert_eq!(check!($uut => Some($index), &[$($s),*]), expected);
+        };
         ($uut:expr => &[$($s:expr),* $(,)?], delete($item:expr)) => {
             let item: &'static str = $item;
             let item = &TestItem(item);
@@ -194,5 +224,33 @@ mod tests {
         check!(&uut => Some(0), &["_", "X1", "X2", "M1", "M2", "M3"], delete("X1"));
         check!(&uut => Some(0), &["_", "X2", "M1", "M2", "M3"], delete("X2"));
         check!(&uut => Some(0), &["_", "M1", "M2", "M3"], None);
+    }
+
+    #[test]
+    fn persists_history_anticipating_next() {
+        let uut = target_history(3, &["M1", "M2", "M3"]);
+        //                         \/
+        check!(&uut => Some(0), &["X0", "X1", "X2", "X3"], add("M1"));
+        check!(&uut => Some(0), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], delete("X1"));
+        //                         2    3\/
+        check!(&uut => Some(1), &["X0", "X1", "X2", "X3"], add("M1"));
+        check!(&uut => Some(1), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], delete("X2"));
+        //                         1     2    3\/
+        check!(&uut => Some(2), &["X0", "X1", "X2", "X3"], add("M1"));
+        check!(&uut => Some(2), &["X0", "X1", "X2", "X3", "M1", "M2", "M3"], delete("X3"));
+        //                         X     1      2   3\/
+        check!(&uut => Some(3), &["X0", "X1", "X2", "X3"], delete("X0"));
+
+        check!(&uut => Some(2), &["X1", "X2", "P"], add("M1"));
+    }
+
+    #[test]
+    fn match_before_playing_starts_again() {
+        let uut = target(&["M1", "M2", "M3"]);
+        //                                          3\/
+        check!(&uut => Some(3), &["M1", "M2", "M3", "P"], add("M1"));
+        check!(&uut => Some(3), &["M1", "M2", "M3", "P", "M1"], add("M2"));
+        check!(&uut => Some(3), &["M1", "M2", "M3", "P", "M1", "M2"], add("M3"));
+        check!(&uut => Some(3), &["M1", "M2", "M3", "P", "M1", "M2", "M3"], None);
     }
 }
