@@ -56,29 +56,33 @@ impl<T> Target<T> {
         // precedence ordering:
 
         // A. [#5] clear items from the end
-        // B. [#1] clear history items from beginning
-        if let Some(item) = delete_end.or(delete_first_item) {
-            return Some(NextCommand::PlaylistDelete { item });
-        }
-
-        // C. [#4] Add new item to end
-        if let Some(url) = insert_end {
-            return Some(NextCommand::PlaylistAdd { url });
-        }
-
-        // D. [#3] clear items between playing and first desired
-        if let Some(item) = delete_after_playing_item {
-            return Some(NextCommand::PlaylistDelete { item });
-        }
-
-        None
+        delete_end
+            .map(NextCommand::PlaylistDelete)
+            .or(
+                // B. [#1] clear history items from beginning
+                delete_first_item.map(NextCommand::PlaylistDelete),
+            )
+            .or(
+                // C. [#4] Add new item to end
+                insert_end.map(NextCommand::PlaylistAdd),
+            )
+            .or(
+                // D. [#3] clear items between playing and first desired
+                delete_after_playing_item.map(NextCommand::PlaylistDelete),
+            )
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum NextCommand<'a, T, U> {
-    PlaylistAdd { url: &'a T },
-    PlaylistDelete { item: &'a U },
+    PlaylistAdd(
+        /// URL
+        &'a T,
+    ),
+    PlaylistDelete(
+        /// Item
+        &'a U,
+    ),
 }
 
 #[cfg(test)]
@@ -107,7 +111,7 @@ mod tests {
         Uut {
             target: Target {
                 urls: target_urls.to_owned(),
-                max_history_count: max_history_count.try_into().expect("nonzero test param"),
+                max_history_count,
             },
         }
     }
@@ -148,26 +152,26 @@ mod tests {
         ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], None) => {
             assert_eq!(check!($uut => Some($index), &[$($s),*]), None);
         };
-        ($uut:expr => &[$($s:expr),* $(,)?], add($item:expr)) => {
-            let item: &'static str = $item;
-            let expected = Some(Cmd::PlaylistAdd { url: &&item });
+        ($uut:expr => &[$($s:expr),* $(,)?], add($url:expr)) => {
+            let url: &'static str = $url;
+            let expected = Some(Cmd::PlaylistAdd(&&url));
             assert_eq!(check!($uut => &[$($s),*]), expected);
         };
-        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], add($item:expr)) => {
-            let item: &'static str = $item;
-            let expected = Some(Cmd::PlaylistAdd { url: &&item });
+        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], add($url:expr)) => {
+            let url: &'static str = $url;
+            let expected = Some(Cmd::PlaylistAdd(&&url));
             assert_eq!(check!($uut => Some($index), &[$($s),*]), expected);
         };
         ($uut:expr => &[$($s:expr),* $(,)?], delete($item:expr)) => {
             let item: &'static str = $item;
             let item = &TestItem(item);
-            let expected = Some(Cmd::PlaylistDelete { item });
+            let expected = Some(Cmd::PlaylistDelete(item));
             assert_eq!(check!($uut => &[$($s),*]), expected);
         };
         ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], delete($item:expr)) => {
             let item: &'static str = $item;
             let item = &TestItem(item);
-            let expected = Some(Cmd::PlaylistDelete { item });
+            let expected = Some(Cmd::PlaylistDelete(item));
             assert_eq!(check!($uut => Some($index), &[$($s),*]), expected);
         };
     }

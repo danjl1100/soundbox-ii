@@ -120,10 +120,10 @@ impl Pollable for Set {
 
         if let Some(command) = self.target.next_command(playlist, playing_item_index) {
             let command = match command {
-                next_command::NextCommand::PlaylistAdd { url } => {
+                next_command::NextCommand::PlaylistAdd(url) => {
                     Command::PlaylistAdd { url: url.0.clone() }
                 }
-                next_command::NextCommand::PlaylistDelete { item } => Command::PlaylistDelete {
+                next_command::NextCommand::PlaylistDelete(item) => Command::PlaylistDelete {
                     item_id: item.get_id(),
                 },
             };
