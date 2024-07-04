@@ -19,37 +19,33 @@ impl<T> Target<T> {
         let insert_match = find_insert_match(&self.urls, playlist_trimmed);
 
         // delete first entry to match `max_history_count`
-        let trimmed_items_before_match_start =
-            insert_match.match_start.unwrap_or(playlist_trimmed.len());
-        let undesired_items_count = playing_item_index.unwrap_or(
-            // none playing, count before match_start (adjust to global)
-            trimmed_items_before_match_start + trim_offset,
-        );
-        let max_history_count = self.max_history_count.into();
+        let trimmed_items_before_match_start = insert_match
+            .match_start
+            .unwrap_or(playlist.len() - trim_offset);
 
-        let delete_first_item = if undesired_items_count > max_history_count {
-            Some(
+        let delete_first_item = {
+            let undesired_items_count = playing_item_index.unwrap_or(
+                // none playing, count before match_start (adjust to global)
+                trimmed_items_before_match_start + trim_offset,
+            );
+            let max_history_count = usize::from(self.max_history_count);
+
+            (undesired_items_count > max_history_count).then(|| {
                 playlist
                     .first()
-                    .expect("playlist nonempty, items before playing/match"),
-            )
-        } else {
-            None
+                    .expect("playlist nonempty, items before playing/match")
+            })
         };
-        let delete_after_playing_item =
-            if playing_item_index.is_some() && trimmed_items_before_match_start > 1 {
-                Some(
-                    playlist_trimmed
-                        .get(1)
-                        .expect("after playing exists, since match occurs after playing"),
-                )
-            } else {
-                None
-            };
+        let delete_after_playing_item = {
+            let item_after_playing =
+                playing_item_index.and_then(|playing| playlist.get(playing + 1));
+            item_after_playing
+                .and_then(|item| (trimmed_items_before_match_start > 1).then_some(item))
+        };
 
         let (insert_end, delete_end) = match insert_match.next {
             Some(MatchAction::InsertValue(url)) => (Some(url), None),
-            Some(MatchAction::DeleteIndex(index)) => (None, Some(&playlist_trimmed[index])),
+            Some(MatchAction::DeleteValue(value)) => (None, Some(value)),
             None => (None, None),
         };
 
