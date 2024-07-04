@@ -22,6 +22,6 @@ fn test_cases() {
 
 fn test_case(input: &std::path::Path) {
     let input = std::fs::read_to_string(input).expect("test input file exists");
-    let output = common::Harness::run_input(&input);
+    let output = common::run_input(&input);
     insta::assert_ron_snapshot!(output);
 }

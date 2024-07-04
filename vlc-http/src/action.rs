@@ -94,11 +94,15 @@ pub enum RepeatMode {
 
 /// [`Pollable`] container for various (non-query) [`Action`]s
 #[derive(Debug)]
-#[allow(clippy::module_name_repetitions)]
-enum ActionPollable {
+enum ActionPollableInner {
     PlaybackMode(playback_mode::Set),
     PlaylistSet(playlist_items::Set),
 }
+
+/// [`Pollable`] container for various (non-query) [`Action`]s
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug)]
+pub struct ActionPollable(ActionPollableInner);
 
 impl Action {
     /// Returns an endpoint source for querying the playlist info
@@ -117,21 +121,22 @@ impl Action {
     }
     /// Converts the action into a [`Pollable`] with empty output
     #[must_use]
-    pub fn pollable<'a>(self, state: &ClientState) -> impl Pollable<Output<'a> = ()> + 'static {
-        use ActionPollable as Dest;
-        match self {
-            Action::PlaybackMode(mode) => Dest::PlaybackMode(playback_mode::Set::new(mode, state)),
+    pub fn pollable(self, state: &ClientState) -> ActionPollable {
+        use ActionPollableInner as Inner;
+        let inner = match self {
+            Action::PlaybackMode(mode) => Inner::PlaybackMode(playback_mode::Set::new(mode, state)),
             Action::PlaylistSet {
                 urls,
                 max_history_count,
-            } => Dest::PlaylistSet(playlist_items::Set::new(
+            } => Inner::PlaylistSet(playlist_items::Set::new(
                 playlist_items::Target {
                     urls,
                     max_history_count,
                 },
                 state,
             )),
-        }
+        };
+        ActionPollable(inner)
     }
 }
 
@@ -196,7 +201,7 @@ pub trait Pollable: std::fmt::Debug {
 }
 trait PollableConstructor: Pollable
 where
-    // NOTE: `Serialize` is for tests... hopefully not too invasive?
+    // NOTE: `Serialize` is for tests, hopefully not too invasive?... KEEP THIS TRAIT PRIVATE!
     for<'a> Self::Output<'a>: serde::Serialize,
 {
     type Args;
@@ -207,9 +212,10 @@ impl Pollable for ActionPollable {
     type Output<'a> = ();
     // NOTE: However unlikely it is to mutate `self`, the uniqueness of `self` aligns with usage
     fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
-        match self {
-            ActionPollable::PlaybackMode(inner) => inner.next(state),
-            ActionPollable::PlaylistSet(inner) => inner.next(state),
+        let Self(inner) = self;
+        match inner {
+            ActionPollableInner::PlaybackMode(inner) => inner.next(state),
+            ActionPollableInner::PlaylistSet(inner) => inner.next(state),
         }
     }
 }
