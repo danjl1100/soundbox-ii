@@ -14,7 +14,8 @@ pub struct Harness {
 pub enum LogEntry {
     #[serde(rename = "LogEntry")]
     Endpoint(Endpoint, Model),
-    HarnessInit(Model),
+    #[serde(rename = "Harness")]
+    HarnessModel(Model),
 }
 
 impl Harness {
@@ -100,7 +101,7 @@ impl Harness {
         match init_command {
             InitCommand::Items { items } => self.model.initialize_items(items),
         }
-        self.log.push(LogEntry::HarnessInit(self.model.clone()));
+        self.log.push(LogEntry::HarnessModel(self.model.clone()));
     }
 }
 

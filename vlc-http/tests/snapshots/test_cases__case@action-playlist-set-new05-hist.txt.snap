@@ -4,7 +4,7 @@ expression: output
 input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
 ---
 [
-  HarnessInit(Model(
+  Harness(Model(
     items: [
       Item(
         id: 0,
