@@ -6,7 +6,6 @@ use super::{
 };
 use crate::Command;
 
-#[derive(Debug)]
 pub(crate) struct Set {
     target: PlaybackMode,
     query_playback: QueryPlayback,
@@ -43,6 +42,11 @@ impl PollableConstructor for Set {
             target,
             query_playback: QueryPlayback::new((), state),
         }
+    }
+}
+impl std::fmt::Debug for Set {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Set").field(&self.target).finish()
     }
 }
 

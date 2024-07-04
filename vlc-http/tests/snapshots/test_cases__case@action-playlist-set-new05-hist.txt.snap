@@ -5,141 +5,63 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new05-hist.txt
 ---
 [
   Harness(Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///a",
-      ),
-      Item(
-        id: 1,
-        uri: "file:///b",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
+    items: {
+      0: "file:///a",
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/status.json",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///a",
-      ),
-      Item(
-        id: 1,
-        uri: "file:///b",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
+    items: {
+      0: "file:///a",
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///a",
-      ),
-      Item(
-        id: 1,
-        uri: "file:///b",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
+    items: {
+      0: "file:///a",
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=pl_delete&id=0",
   ), Model(
-    items: [
-      Item(
-        id: 1,
-        uri: "file:///b",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
+    items: {
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=pl_delete&id=1",
   ), Model(
-    items: [
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-    ],
+    items: {
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new",
   ), Model(
-    items: [
-      Item(
-        id: 2,
-        uri: "file:///c",
-      ),
-      Item(
-        id: 3,
-        uri: "file:///d",
-      ),
-      Item(
-        id: 4,
-        uri: "file:///e",
-      ),
-      Item(
-        id: 5,
-        uri: "file:///new",
-      ),
-    ],
+    items: {
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new",
+    },
   )),
 ]

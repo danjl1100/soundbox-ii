@@ -13,11 +13,8 @@ input_file: vlc-http/tests/inputs/action-playlist-set-new01.txt
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file://a/",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file://a/",
-      ),
-    ],
+    items: {
+      0: "file://a/",
+    },
   )),
 ]

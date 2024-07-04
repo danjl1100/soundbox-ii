@@ -70,7 +70,6 @@ use crate::{action::PlaybackMode, fmt::DebugUrl, Command, Pollable};
 mod insert_match;
 mod next_command;
 
-#[derive(Debug)]
 pub(crate) struct Set {
     target: Target<crate::fmt::DebugUrl>,
     playback_mode: playback_mode::Set,
@@ -156,5 +155,10 @@ impl PollableConstructor for Set {
             query_playback: QueryPlayback::new((), state),
             query_playlist: QueryPlaylist::new((), state),
         }
+    }
+}
+impl std::fmt::Debug for Set {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Set").field(&self.target).finish()
     }
 }

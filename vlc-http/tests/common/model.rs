@@ -7,6 +7,7 @@ pub struct Model {
     #[serde(skip)]
     items_created: u32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(serialize_with = "serialize_items_vec")]
     items: Vec<Item>,
     #[serde(skip_serializing_if = "bool_is_false")]
     is_loop_all: bool,
@@ -23,7 +24,7 @@ pub struct Model {
 enum PlayState {
     Playing,
 }
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Item {
     id: u32,
     uri: String,
@@ -214,4 +215,28 @@ impl Model {
 #[allow(clippy::trivially_copy_pass_by_ref)] // signature required by serde
 fn bool_is_false(value: &bool) -> bool {
     !(*value)
+}
+
+impl std::fmt::Debug for Item {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // force single-line for cleanliness
+        let Self { id, uri } = self;
+        write!(f, "{id}: {uri}")
+    }
+}
+fn serialize_items_vec<S>(items: &Vec<Item>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap as _;
+
+    // NOTE: assumes all IDs are unique (which they *should* be)
+    let len = Some(items.len());
+    let mut seq = serializer.serialize_map(len)?;
+    for item in items {
+        let Item { id, uri } = item;
+        seq.serialize_key(&id)?;
+        seq.serialize_value(&uri)?;
+    }
+    seq.end()
 }

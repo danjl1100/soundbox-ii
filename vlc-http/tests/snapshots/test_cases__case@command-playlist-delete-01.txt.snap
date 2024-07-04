@@ -7,57 +7,33 @@ input_file: vlc-http/tests/inputs/command-playlist-delete-01.txt
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///A.txt",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///A.txt",
-      ),
-    ],
+    items: {
+      0: "file:///A.txt",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///B.txt",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///A.txt",
-      ),
-      Item(
-        id: 1,
-        uri: "file:///B.txt",
-      ),
-    ],
+    items: {
+      0: "file:///A.txt",
+      1: "file:///B.txt",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///C.txt",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///A.txt",
-      ),
-      Item(
-        id: 1,
-        uri: "file:///B.txt",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///C.txt",
-      ),
-    ],
+    items: {
+      0: "file:///A.txt",
+      1: "file:///B.txt",
+      2: "file:///C.txt",
+    },
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=pl_delete&id=1",
   ), Model(
-    items: [
-      Item(
-        id: 0,
-        uri: "file:///A.txt",
-      ),
-      Item(
-        id: 2,
-        uri: "file:///C.txt",
-      ),
-    ],
+    items: {
+      0: "file:///A.txt",
+      2: "file:///C.txt",
+    },
   )),
 ]
