@@ -15,8 +15,7 @@ impl<T> Target<T> {
         'b: 'a,
     {
         let trim_offset = playing_item_index.unwrap_or(0);
-        let playlist_trimmed = &playlist[trim_offset..];
-        let insert_match = find_insert_match(&self.urls, playlist_trimmed);
+        let insert_match = find_insert_match(&self.urls, &playlist[trim_offset..]);
 
         // delete first entry to match `max_history_count`
         let trimmed_items_before_match_start = insert_match
@@ -49,7 +48,7 @@ impl<T> Target<T> {
             None => (None, None),
         };
 
-        // precedence ordering:
+        // precedence ordering A-D:
 
         // A. [#5] clear items from the end
         delete_end

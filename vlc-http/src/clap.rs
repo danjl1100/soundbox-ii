@@ -148,7 +148,7 @@ pub enum Action {
         /// Path to the file(s) to queue next, starting with the current/past item
         urls: Vec<url::Url>,
         /// Minimum number of history (past-played) items to retain
-        #[clap(long)]
+        #[clap(long, default_value_t = 10)]
         keep_history: u16,
     },
 }
