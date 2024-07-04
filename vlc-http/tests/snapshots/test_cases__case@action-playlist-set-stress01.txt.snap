@@ -1,0 +1,278 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
+---
+[
+  Harness(Model(
+    items: {
+      0: "file:///a",
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json",
+  ), Model(
+    items: {
+      0: "file:///a",
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json",
+  ), Model(
+    items: {
+      0: "file:///a",
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=0",
+  ), Model(
+    items: {
+      1: "file:///b",
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=1",
+  ), Model(
+    items: {
+      2: "file:///c",
+      3: "file:///d",
+      4: "file:///e",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=2",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      6: "file:///new1",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      6: "file:///new1",
+      7: "file:///new2",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new4",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      9: "file:///new3",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=9",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      9: "file:///new3",
+      10: "file:///new3",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      9: "file:///new3",
+      10: "file:///new3",
+      11: "file:///new3",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new4",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      9: "file:///new3",
+      10: "file:///new3",
+      11: "file:///new3",
+      12: "file:///new4",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=9",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      10: "file:///new3",
+      11: "file:///new3",
+      12: "file:///new4",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=10",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      11: "file:///new3",
+      12: "file:///new4",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=11",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      7: "file:///new2",
+      8: "file:///new3",
+      12: "file:///new4",
+    },
+  )),
+]

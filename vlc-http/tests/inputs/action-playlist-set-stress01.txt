@@ -1,0 +1,42 @@
+harness items file:///a file:///b file:///c file:///d file:///e
+
+# do not allow `playlist-set` to complete
+harness action-step-limit 5
+
+action playlist-set file:///new1 file:///new2 file:///new3 file:///new4 --keep-history 2
+
+# after intial "playback status" and "trim history", start interfering with Add/Delete after the "match start"
+harness action-step-limit 1
+
+# delay applying the actions (log will show "current" endpoints and the "old applied" endpoints)
+harness action-ignore-push 2
+harness action-ignore-pop
+
+harness action-ignore-push
+harness action-ignore-pop
+
+harness action-ignore-push
+harness action-ignore-pop
+
+# mix up the queue delays (push 3, then later pop 3)
+harness action-ignore-push 3
+harness action-ignore-pop
+
+harness action-ignore-push
+harness action-ignore-pop 3
+
+harness action-ignore-push 3
+harness action-ignore-pop
+
+harness action-ignore-push
+harness action-ignore-pop
+
+harness action-ignore-push
+harness action-ignore-pop 3
+
+# empty the delay queue
+harness action-ignore-pop
+
+# finish the action
+harness action-clear-limit
+harness action-resume
