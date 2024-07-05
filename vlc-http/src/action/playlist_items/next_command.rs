@@ -139,14 +139,14 @@ mod tests {
 
     macro_rules! check {
         // VALUES
-        ($uut:expr => &[$($s:expr),* $(,)?]) => {
+        (@v $uut:expr => &[$($s:expr),* $(,)?]) => {
             {
                 let items: &'static [TestItem] = &[$( TestItem($s) ),*];
                 let uut: &Uut = $uut;
                 uut.check(&items)
             }
         };
-        ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?]) => {
+        (@v $uut:expr => Some($index:expr), &[$($s:expr),* $(,)?]) => {
             {
                 let items: &'static [TestItem] = &[$( TestItem($s) ),*];
                 let uut: &Uut = $uut;
@@ -155,32 +155,32 @@ mod tests {
         };
         // ASSERTIONS
         ($uut:expr => &[$($s:expr),* $(,)?], (None, $matched:expr)) => {
-            assert_eq!(check!($uut => &[$($s),*]), (None, $matched));
+            assert_eq!(check!(@v $uut => &[$($s),*]), (None, $matched));
         };
         ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], (None, $matched:expr)) => {
-            assert_eq!(check!($uut => Some($index), &[$($s),*]), (None, $matched));
+            assert_eq!(check!(@v $uut => Some($index), &[$($s),*]), (None, $matched));
         };
         ($uut:expr => &[$($s:expr),* $(,)?], add($url:expr, $matched:expr)) => {
             let url: &'static str = $url;
             let expected = Some(Cmd::PlaylistAdd(&&url));
-            assert_eq!(check!($uut => &[$($s),*]), (expected, $matched));
+            assert_eq!(check!(@v $uut => &[$($s),*]), (expected, $matched));
         };
         ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], add($url:expr, $matched:expr)) => {
             let url: &'static str = $url;
             let expected = Some(Cmd::PlaylistAdd(&&url));
-            assert_eq!(check!($uut => Some($index), &[$($s),*]), (expected, $matched));
+            assert_eq!(check!(@v $uut => Some($index), &[$($s),*]), (expected, $matched));
         };
         ($uut:expr => &[$($s:expr),* $(,)?], delete($item:expr, $matched:expr)) => {
             let item: &'static str = $item;
             let item = &TestItem(item);
             let expected = Some(Cmd::PlaylistDelete(item));
-            assert_eq!(check!($uut => &[$($s),*]), (expected, $matched));
+            assert_eq!(check!(@v $uut => &[$($s),*]), (expected, $matched));
         };
         ($uut:expr => Some($index:expr), &[$($s:expr),* $(,)?], delete($item:expr, $matched:expr)) => {
             let item: &'static str = $item;
             let item = &TestItem(item);
             let expected = Some(Cmd::PlaylistDelete(item));
-            assert_eq!(check!($uut => Some($index), &[$($s),*]), (expected, $matched));
+            assert_eq!(check!(@v $uut => Some($index), &[$($s),*]), (expected, $matched));
         };
     }
 
