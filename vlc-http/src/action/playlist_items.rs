@@ -62,15 +62,19 @@
 //!
 
 use super::{
-    playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, Error, Poll,
-    PollableConstructor,
+    playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, response, Error,
+    Poll, PollableConstructor,
 };
 use crate::{action::PlaybackMode, fmt::DebugUrl, Command, Pollable};
 
 mod insert_match;
 mod next_command;
 
-pub(crate) struct Set {
+/// Sets the specified target and outputs matched items after the current playing item
+///
+/// Output items will be items from a subset of the original target if playing desired items.
+/// The intended use is to advance a "want to play" list based on playback progress.
+pub(crate) struct Update {
     target: Target<crate::fmt::DebugUrl>,
     playback_mode: playback_mode::Set,
     query_playback: QueryPlayback,
@@ -87,10 +91,10 @@ pub(crate) struct Target<T> {
     pub max_history_count: u16,
 }
 
-impl Pollable for Set {
-    type Output<'a> = ();
+impl Pollable for Update {
+    type Output<'a> = &'a [response::playlist::Item];
 
-    fn next(&mut self, state: &crate::ClientState) -> Result<Poll<()>, Error> {
+    fn next<'a>(&mut self, state: &'a crate::ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
         match self.playback_mode.next(state)? {
             Poll::Done(()) => {}
             Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
@@ -117,7 +121,9 @@ impl Pollable for Set {
                 .position(|item| playing_item_id == item.get_id())
         });
 
-        if let Some(command) = self.target.next_command(playlist, playing_item_index) {
+        let (command, matched_items) = self.target.next_command(playlist, playing_item_index);
+
+        if let Some(command) = command {
             let command = match command {
                 next_command::NextCommand::PlaylistAdd(url) => {
                     Command::PlaylistAdd { url: url.0.clone() }
@@ -128,12 +134,12 @@ impl Pollable for Set {
             };
             Ok(Poll::Need(command.into()))
         } else {
-            Ok(Poll::Done(()))
+            Ok(Poll::Done(matched_items))
         }
     }
 }
 
-impl PollableConstructor for Set {
+impl PollableConstructor for Update {
     type Args = Target<url::Url>;
     fn new(target: Self::Args, state: &crate::ClientState) -> Self {
         const LINEAR_PLAYBACK: PlaybackMode = PlaybackMode::new()
@@ -157,8 +163,33 @@ impl PollableConstructor for Set {
         }
     }
 }
+impl std::fmt::Debug for Update {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Update").field(&self.target).finish()
+    }
+}
 impl std::fmt::Debug for Set {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Set").field(&self.target).finish()
+        f.debug_tuple("Set").field(&self.update.target).finish()
+    }
+}
+
+/// Sets the specified target and outputs matched items after the current playing item
+///
+/// See also: [`Update`] to get information on the desired "after playing" items
+pub(crate) struct Set {
+    update: Update,
+}
+impl Pollable for Set {
+    type Output<'a> = ();
+    fn next<'a>(&mut self, state: &'a crate::ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+        self.update.next(state).map(|poll| poll.map(|_| ()))
+    }
+}
+impl PollableConstructor for Set {
+    type Args = <Update as PollableConstructor>::Args;
+    fn new(args: Self::Args, state: &crate::ClientState) -> Self {
+        let update = Update::new(args, state);
+        Self { update }
     }
 }

@@ -148,6 +148,14 @@ pub enum Poll<T> {
     /// Nexxt endpoint required to determine the result
     Need(Endpoint),
 }
+impl<T> Poll<T> {
+    fn map<U>(self, map_fn: impl FnOnce(T) -> U) -> Poll<U> {
+        match self {
+            Poll::Done(value) => Poll::Done(map_fn(value)),
+            Poll::Need(endpoint) => Poll::Need(endpoint),
+        }
+    }
+}
 /// Error of [`Pollable`] [`Action`]s
 #[derive(Debug, PartialEq, serde::Serialize)]
 pub enum Error {
