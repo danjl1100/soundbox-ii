@@ -50,7 +50,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew1",
   ), Model(
     items: {
       0: "file:///a",
@@ -63,7 +63,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew2",
   ), Model(
     items: {
       0: "file:///a",
@@ -77,7 +77,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-mid01.txt
     current_item_id: Some((3, Playing)),
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   ), Model(
     items: {
       0: "file:///a",

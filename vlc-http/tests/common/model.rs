@@ -121,7 +121,9 @@ impl Model {
             return None;
         };
 
-        self.push_uri(val.to_owned());
+        let uri = urlencoding::decode(val).expect("invalid URI").to_string();
+
+        self.push_uri(uri);
 
         Some(self.get_playlist_info())
     }

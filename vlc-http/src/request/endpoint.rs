@@ -94,11 +94,11 @@ mod endpoint_args {
             self.append_raw(&key, &value)
         }
         pub fn append_url(self, key: &str, value: &url::Url) -> Self {
-            let key = urlencoding::encode(key);
-            // `url::Url` already applies URL encoding,
-            // and VLC does not understand a doubly-encoded URL
-            let value = value.as_str();
-            self.append_raw(&key, value)
+            // NOTE: While URLs (esp. file://) technically work without urlencoding,
+            //       a proper URL-encoded URL will be improperly decoded by VLC.
+            //
+            // This function must encode the URL (by passing to regular `append`)
+            self.append(key, value.as_str())
         }
         fn append_raw<T>(mut self, key: &str, value: &T) -> Self
         where

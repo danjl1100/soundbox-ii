@@ -12,21 +12,21 @@ fn playlist_add() {
         url: normal_url
     }), @r###"
     Endpoint(
-      path_and_query: "/requests/playlist.json?command=in_enqueue&input=file://this/is/a/url.mp4",
+      path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2Fthis%2Fis%2Fa%2Furl.mp4",
     )
     "###);
     insta::assert_ron_snapshot!(Endpoint::from(Command::PlaylistAdd {
         url: small_url,
     }), @r###"
     Endpoint(
-      path_and_query: "/requests/playlist.json?command=in_enqueue&input=file://./",
+      path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F.%2F",
     )
     "###);
     insta::assert_ron_snapshot!(Endpoint::from(Command::PlaylistAdd {
         url: weird_url,
     }), @r###"
     Endpoint(
-      path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///SENTINEL_%20_URL_%20%5E%24",
+      path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2FSENTINEL_%2520_URL_%2520%255E%2524",
     )
     "###);
 }

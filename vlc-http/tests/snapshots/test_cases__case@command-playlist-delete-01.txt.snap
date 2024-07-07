@@ -5,14 +5,14 @@ input_file: vlc-http/tests/inputs/command-playlist-delete-01.txt
 ---
 [
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///A.txt",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2FA.txt",
   ), Model(
     items: {
       0: "file:///A.txt",
     },
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///B.txt",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2FB.txt",
   ), Model(
     items: {
       0: "file:///A.txt",
@@ -20,7 +20,7 @@ input_file: vlc-http/tests/inputs/command-playlist-delete-01.txt
     },
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///C.txt",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2FC.txt",
   ), Model(
     items: {
       0: "file:///A.txt",

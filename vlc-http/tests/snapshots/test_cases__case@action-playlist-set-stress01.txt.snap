@@ -63,13 +63,13 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew1",
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew1",
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew1",
   ), Model(
     items: {
       3: "file:///d",
@@ -78,29 +78,29 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew2",
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new1",
-  ), Model(
-    items: {
-      3: "file:///d",
-      4: "file:///e",
-      5: "file:///new1",
-      6: "file:///new1",
-    },
-  )),
-  Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
-  )),
-  LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new2",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew1",
   ), Model(
     items: {
       3: "file:///d",
       4: "file:///e",
       5: "file:///new1",
       6: "file:///new1",
+    },
+  )),
+  Harness(Endpoint(
+    path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew2",
+  ), Model(
+    items: {
+      3: "file:///d",
+      4: "file:///e",
+      5: "file:///new1",
+      6: "file:///new1",
       7: "file:///new2",
     },
   )),
@@ -124,7 +124,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   )),
   LogEntry(Endpoint(
     path_and_query: "/requests/playlist.json?command=pl_delete&id=6",
@@ -157,16 +157,16 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   ), Model(
     items: {
       3: "file:///d",
@@ -177,10 +177,10 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   Harness(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new4",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew4",
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   ), Model(
     items: {
       3: "file:///d",
@@ -195,7 +195,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     path_and_query: "/requests/playlist.json?command=pl_delete&id=9",
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   ), Model(
     items: {
       3: "file:///d",
@@ -208,7 +208,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new3",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
   ), Model(
     items: {
       3: "file:///d",
@@ -222,7 +222,7 @@ input_file: vlc-http/tests/inputs/action-playlist-set-stress01.txt
     },
   )),
   LogEntry(Endpoint(
-    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file:///new4",
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew4",
   ), Model(
     items: {
       3: "file:///d",
