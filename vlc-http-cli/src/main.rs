@@ -2,7 +2,7 @@
 //! Proof-of-concept for using the [`vlc_http`] crate without an async runtime
 //!
 //! For the experiment to succeed, this binary crate should be simple and tiny
-//! (e.g. main.rs < 200 lines)
+//! (e.g. main.rs ~200 lines, or so)
 
 use std::str::FromStr as _;
 use vlc_http::{
@@ -76,6 +76,7 @@ impl From<OneshotAction> for CliAction {
 enum Query {
     Playlist,
     Playback,
+    PlaylistSet(vlc_http::clap::PlaylistSetQueryMatched),
 }
 
 struct Shutdown;
@@ -146,9 +147,8 @@ impl Client {
             CliAction::Query {
                 query: Query::Playlist,
             } => {
-                let action = vlc_http::Action::query_playlist(&self.client_state);
-
-                let result = Self::exhaust_pollable(action, &self.runner, &mut self.client_state)?;
+                let result =
+                    self.exhaust_pollable(vlc_http::Action::query_playlist(&self.client_state))?;
                 dbg!(result);
 
                 Ok(None)
@@ -156,17 +156,24 @@ impl Client {
             CliAction::Query {
                 query: Query::Playback,
             } => {
-                let action = vlc_http::Action::query_playback(&self.client_state);
+                let result =
+                    self.exhaust_pollable(vlc_http::Action::query_playback(&self.client_state))?;
+                dbg!(result);
 
-                let result = Self::exhaust_pollable(action, &self.runner, &mut self.client_state)?;
+                Ok(None)
+            }
+            CliAction::Query {
+                query: Query::PlaylistSet(target),
+            } => {
+                let result = self.exhaust_pollable(
+                    vlc_http::Action::set_playlist_query_matched(target.into(), &self.client_state),
+                )?;
                 dbg!(result);
 
                 Ok(None)
             }
             CliAction::Action { action } => {
-                let action = vlc_http::Action::from(action).pollable(&self.client_state);
-
-                Self::exhaust_pollable(action, &self.runner, &mut self.client_state)?;
+                self.exhaust_pollable(vlc_http::Action::from(action).pollable(&self.client_state))?;
 
                 Ok(None)
             }
@@ -174,20 +181,19 @@ impl Client {
         }
     }
 
-    fn exhaust_pollable<'a, T: vlc_http::Pollable>(
+    fn exhaust_pollable<T: vlc_http::Pollable>(
+        &mut self,
         mut source: T,
-        runner: &HttpRunner,
-        client_state: &'a mut vlc_http::ClientState,
-    ) -> anyhow::Result<T::Output<'a>> {
+    ) -> anyhow::Result<T::Output<'_>> {
         const MAX_ITER_COUNT: usize = 100;
         for _ in 0..MAX_ITER_COUNT {
-            let Poll::Need(endpoint) = source.next(client_state)? else {
+            let Poll::Need(endpoint) = source.next(&self.client_state)? else {
                 break; // final output borrow occurs below
             };
-            let response = runner.call_endpoint(endpoint)?;
-            client_state.update(response);
+            let response = self.runner.call_endpoint(endpoint)?;
+            self.client_state.update(response);
         }
-        match source.next(&*client_state)? {
+        match source.next(&self.client_state)? {
             Poll::Done(output) => Ok(output),
             Poll::Need(endpoint) => anyhow::bail!(
                 "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}, next endpoint {endpoint:?}"
