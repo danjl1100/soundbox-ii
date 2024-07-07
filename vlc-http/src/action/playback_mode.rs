@@ -6,6 +6,7 @@ use super::{
 };
 use crate::Command;
 
+#[derive(Clone)]
 pub(crate) struct Set {
     target: PlaybackMode,
     query_playback: QueryPlayback,

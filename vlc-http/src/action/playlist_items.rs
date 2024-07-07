@@ -74,20 +74,16 @@ mod next_command;
 ///
 /// Output items will be items from a subset of the original target if playing desired items.
 /// The intended use is to advance a "want to play" list based on playback progress.
-pub(crate) struct Update {
+#[derive(Clone)]
+pub(super) struct Update {
     target: Target<crate::fmt::DebugUrl>,
     playback_mode: playback_mode::Set,
     query_playback: QueryPlayback,
     query_playlist: QueryPlaylist,
 }
-#[derive(Debug)]
-pub(crate) struct Target<T> {
-    /// Path to the file(s) to queue next, starting with the current/past item
-    ///
-    /// NOTE: When an item is already playing, the first element in `urls` is only matched **at** or
-    /// **after** the currently playing item
+#[derive(Clone, Debug)]
+struct Target<T> {
     pub urls: Vec<T>,
-    /// Number of history (past-played) items to retain before the specified `urls`
     pub max_history_count: u16,
 }
 
@@ -140,13 +136,13 @@ impl Pollable for Update {
 }
 
 impl PollableConstructor for Update {
-    type Args = Target<url::Url>;
+    type Args = super::TargetPlaylistItems;
     fn new(target: Self::Args, state: &crate::ClientState) -> Self {
         const LINEAR_PLAYBACK: PlaybackMode = PlaybackMode::new()
             .set_repeat(crate::action::RepeatMode::Off)
             .set_random(false);
         let target = {
-            let Target {
+            let super::TargetPlaylistItems {
                 urls,
                 max_history_count,
             } = target;
@@ -177,6 +173,7 @@ impl std::fmt::Debug for Set {
 /// Sets the specified target and outputs matched items after the current playing item
 ///
 /// See also: [`Update`] to get information on the desired "after playing" items
+#[derive(Clone)]
 pub(crate) struct Set {
     update: Update,
 }

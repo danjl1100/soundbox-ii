@@ -5,7 +5,7 @@
 use crate::{client_state::Sequence, response, ClientState, Endpoint};
 
 mod playback_mode;
-pub mod playlist_items;
+mod playlist_items;
 
 mod query_playback;
 mod query_playlist;
@@ -22,15 +22,8 @@ pub enum Action {
     PlaybackMode(PlaybackMode),
     /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
     ///
-    PlaylistSet {
-        /// Path to the file(s) to queue next, starting with the current/past item
-        ///
-        /// NOTE: When an item is already playing, the first element in `urls` is only matched **at** or
-        /// **after** the currently playing item
-        urls: Vec<url::Url>,
-        /// Number of history (past-played) items to retain before the specified `urls`
-        max_history_count: u16,
-    },
+    /// See also: [`Action::set_playlist_query_matched`] for obtaining the list of matched items
+    PlaylistSet(TargetPlaylistItems),
 }
 /// Rule for selecting the next playback item in the VLC queue
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,8 +85,35 @@ pub enum RepeatMode {
     One,
 }
 
+/// Target parameters for [`Action::PlaylistSet`]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[must_use]
+pub struct TargetPlaylistItems {
+    urls: Vec<url::Url>,
+    max_history_count: u16,
+}
+impl TargetPlaylistItems {
+    /// Constructs the default target, no items and removing all history items from the playlist
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Set the path to the file(s) to queue next, starting with the current/past item
+    ///
+    /// NOTE: When an item is already playing, the first element in `urls` is only matched **at** or
+    /// **after** the currently playing item
+    pub fn set_urls(mut self, urls: Vec<url::Url>) -> Self {
+        self.urls = urls;
+        self
+    }
+    /// Set the number of history (past-played) items to retain before the specified `urls`
+    pub fn set_keep_history(mut self, keep_items: u16) -> Self {
+        self.max_history_count = keep_items;
+        self
+    }
+}
+
 /// [`Pollable`] container for various (non-query) [`Action`]s
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum ActionPollableInner {
     PlaybackMode(playback_mode::Set),
     PlaylistSet(playlist_items::Set),
@@ -101,8 +121,13 @@ enum ActionPollableInner {
 
 /// [`Pollable`] container for various (non-query) [`Action`]s
 #[allow(clippy::module_name_repetitions)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ActionPollable(ActionPollableInner);
+
+/// [`Pollable`] container for [`Action::set_playlist_query_matched`]
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Debug)]
+pub struct ActionQuerySetItems(playlist_items::Update);
 
 impl Action {
     /// Returns an endpoint source for querying the playlist info
@@ -119,22 +144,28 @@ impl Action {
     ) -> impl Pollable<Output<'a> = &'a response::PlaybackStatus> + 'static {
         query_playback::QueryPlayback::new((), state)
     }
+    /// Returns an endpoint source for setting the `playlist_items` and querying matched items after
+    /// the current playing item.
+    ///
+    /// Output items will be items from a subset of the original target if playing desired items.
+    /// The intended use is to advance a "want to play" list based on playback progress.
+    #[must_use]
+    pub fn set_playlist_query_matched(
+        target: TargetPlaylistItems,
+        state: &ClientState,
+    ) -> ActionQuerySetItems {
+        let inner = playlist_items::Update::new(target, state);
+        ActionQuerySetItems(inner)
+    }
     /// Converts the action into a [`Pollable`] with empty output
     #[must_use]
     pub fn pollable(self, state: &ClientState) -> ActionPollable {
         use ActionPollableInner as Inner;
         let inner = match self {
             Action::PlaybackMode(mode) => Inner::PlaybackMode(playback_mode::Set::new(mode, state)),
-            Action::PlaylistSet {
-                urls,
-                max_history_count,
-            } => Inner::PlaylistSet(playlist_items::Set::new(
-                playlist_items::Target {
-                    urls,
-                    max_history_count,
-                },
-                state,
-            )),
+            Action::PlaylistSet(target) => {
+                Inner::PlaylistSet(playlist_items::Set::new(target, state))
+            }
         };
         ActionPollable(inner)
     }
@@ -225,5 +256,11 @@ impl Pollable for ActionPollable {
             ActionPollableInner::PlaybackMode(inner) => inner.next(state),
             ActionPollableInner::PlaylistSet(inner) => inner.next(state),
         }
+    }
+}
+impl Pollable for ActionQuerySetItems {
+    type Output<'a> = &'a [response::playlist::Item];
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+        self.0.next(state)
     }
 }

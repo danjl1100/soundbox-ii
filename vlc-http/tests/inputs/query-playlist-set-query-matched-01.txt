@@ -1,0 +1,17 @@
+harness items file:///existing1 file:///existing2
+
+command playlist-play 1
+query playlist-set-query-matched --keep-history 2 file:///new1 file:///new2 file:///new3
+
+command playlist-play 2
+query playlist-set-query-matched --keep-history 2 file:///new1 file:///new2 file:///new3
+
+# client understands from output `["new2", "new3"]` that `"new1"` is complete
+
+command playlist-play 3
+query playlist-set-query-matched --keep-history 2 file:///new2 file:///new3
+
+# client understands from output `["new3"]` that `"new2"` is complete
+
+command playlist-play 4
+query playlist-set-query-matched --keep-history 2 file:///new3

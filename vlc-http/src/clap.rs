@@ -144,13 +144,9 @@ pub enum Action {
         random: bool,
     },
     /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
-    PlaylistSet {
-        /// Path to the file(s) to queue next, starting with the current/past item
-        urls: Vec<url::Url>,
-        /// Minimum number of history (past-played) items to retain
-        #[clap(long, default_value_t = 10)]
-        keep_history: u16,
-    },
+    ///
+    /// See also: [`PlaylistSetQueryMatched`] for obtaining the list of matched items
+    PlaylistSet(PlaylistSetQueryMatched),
 }
 /// Rule for repeating items
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -184,11 +180,26 @@ impl From<Action> for crate::Action {
                     .set_random(random);
                 Self::PlaybackMode(mode)
             }
-            Action::PlaylistSet { urls, keep_history } => Self::PlaylistSet {
-                urls,
-                max_history_count: keep_history,
-            },
+            Action::PlaylistSet(target) => Self::PlaylistSet(target.into()),
         }
+    }
+}
+
+/// Target for a playlist set action/query
+#[derive(clap::Args, Clone, Debug)]
+pub struct PlaylistSetQueryMatched {
+    /// Path to the file(s) to queue next, starting with the current/past item
+    urls: Vec<url::Url>,
+    /// Minimum number of history (past-played) items to retain
+    #[clap(long, default_value_t = 10)]
+    keep_history: u16,
+}
+impl From<PlaylistSetQueryMatched> for crate::action::TargetPlaylistItems {
+    fn from(value: PlaylistSetQueryMatched) -> Self {
+        let PlaylistSetQueryMatched { urls, keep_history } = value;
+        Self::new()
+            .set_urls(urls) //
+            .set_keep_history(keep_history)
     }
 }
 

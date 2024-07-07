@@ -68,7 +68,20 @@ impl<T> Target<T> {
             delete_after_playing_item.map(NextCommand::PlaylistDelete),
         );
 
-        (next_command, insert_match.matched_subset)
+        let matched_after_playing = {
+            // `insert_match` starts at/after playing item
+            let matched_subset = insert_match.matched_subset;
+            // remove first element if playing >= matched offset
+            match playing_item_index
+                .zip(insert_match.match_start)
+                .zip(matched_subset.split_first().map(|(_first, rest)| rest))
+            {
+                Some(((playing, matched), rest)) if playing >= (matched + trim_offset) => rest,
+                _ => matched_subset,
+            }
+        };
+
+        (next_command, matched_after_playing)
     }
 }
 
@@ -186,7 +199,10 @@ mod tests {
 
     const MATCH_EMPTY: &[TestItem] = &[];
     const MATCH1: &[TestItem] = test_items!["M1"];
+    const MATCH2: &[TestItem] = test_items!["M2"];
+    const MATCH3: &[TestItem] = test_items!["M3"];
     const MATCH12: &[TestItem] = test_items!["M1", "M2"];
+    const MATCH23: &[TestItem] = test_items!["M2", "M3"];
     const MATCH123: &[TestItem] = test_items!["M1", "M2", "M3"];
     const MATCH1234: &[TestItem] = test_items!["M1", "M2", "M3", "M4"];
     const MATCH12345: &[TestItem] = test_items!["M1", "M2", "M3", "M4", "M5"];
@@ -220,8 +236,9 @@ mod tests {
 
         // when playing *IS* desired,
         // first "trailing" (X1) is higher precedence than "leading" (X0)
-        check!(&uut => Some(2), &["_", "X0", "M1", "X1", "M2", "M3", "X2"], delete("X1", MATCH1));
-        check!(&uut => Some(2), &["_", "X0", "M1", "M2", "X1", "M3", "X2"], delete("X1", MATCH12));
+        //                                   2\/
+        check!(&uut => Some(2), &["_", "X0", "M1", "X1", "M2", "M3", "X2"], delete("X1", MATCH_EMPTY));
+        check!(&uut => Some(2), &["_", "X0", "M1", "M2", "X1", "M3", "X2"], delete("X1", MATCH2));
 
         // when playing is *NOT* desired,
         // first "trailing" (X1) is higher precedence than "leading" (X0)
@@ -299,5 +316,21 @@ mod tests {
         check!(&uut => &["_","M1","M2","M3"], add("M4", MATCH123));
         check!(&uut => &["_","M1","M2","M3","M4"], add("M5", MATCH1234));
         check!(&uut => &["_","M1","M2","M3","M4","M5"], (None, MATCH12345));
+    }
+
+    #[test]
+    #[allow(clippy::similar_names)]
+    fn matched_excludes_playing() {
+        let uut123 = target(&["M1", "M2", "M3"]);
+        let uut23 = target(&["M2", "M3"]);
+        let uut3 = target(&["M3"]);
+        //                           0\/
+        check!(&uut123 => Some(0), &["_", "M1", "M2", "M3"], (None, MATCH123));
+        //                                1\/
+        check!(&uut123 => Some(1), &["_", "M1", "M2", "M3"], (None, MATCH23));
+        //                                     2\/
+        check!(&uut23 => Some(2), &["_", "M1", "M2", "M3"], (None, MATCH3));
+        //                                          3\/
+        check!(&uut3 => Some(3), &["_", "M1", "M2", "M3"], (None, MATCH_EMPTY));
     }
 }

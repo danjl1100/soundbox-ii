@@ -37,7 +37,13 @@ struct Runner {
     client_state: ClientState,
     action_step_limit: Option<u32>,
     action_ignored_endpoints: VecDeque<Endpoint>,
-    action_pending: Option<vlc_http::action::ActionPollable>,
+    action_pending: Option<ActionPending>,
+}
+
+#[derive(Debug)]
+enum ActionPending {
+    NoOutput(vlc_http::action::ActionPollable),
+    ItemsOutput(vlc_http::action::ActionQuerySetItems),
 }
 
 impl Runner {
@@ -58,13 +64,25 @@ impl Runner {
                 let endpoint = vlc_http::Command::art_endpoint(&item_id);
                 self.run_endpoint(endpoint);
             }
+            TestAction::Query {
+                query: Query::PlaylistSetQueryMatched(action_query),
+            } => {
+                self.set_action_pending_or_bail(
+                    line,
+                    ActionPending::ItemsOutput(vlc_http::Action::set_playlist_query_matched(
+                        action_query.into(),
+                        &self.client_state,
+                    )),
+                );
+                self.run_pending_action(line);
+            }
             TestAction::Action { action } => {
-                if let Some(action_pending) = &self.action_pending {
-                    // TODO add error-handling, so that we can print the full log on all errors
-                    panic!("invalid command {line:?}: cannot start action when one is already pending: {action_pending:#?}");
-                }
-                self.action_pending =
-                    Some(vlc_http::Action::from(action).pollable(&self.client_state));
+                self.set_action_pending_or_bail(
+                    line,
+                    ActionPending::NoOutput(
+                        vlc_http::Action::from(action).pollable(&self.client_state),
+                    ),
+                );
                 self.run_pending_action(line);
             }
             TestAction::Harness { override_command } => match override_command {
@@ -80,26 +98,14 @@ impl Runner {
                 }
                 OverrideCommand::ActionIgnorePush { push_count } => {
                     let push_count = push_count.map_or(1, NonZeroU32::get);
-                    self.action_pending = {
-                        let mut pollable = self.take_action_pending(line);
-                        let mut iter = 0;
-                        loop {
-                            let Some(endpoint) = self.next_endpoint_from(&mut pollable, line)
-                            else {
-                                panic!("invalid command {line:?}: action returned None (completed) so cannot ignore (iter {iter})")
-                            };
-
-                            // log output from pollable
-                            self.model_logger.log_endpoint_only(endpoint.clone());
-                            // queue for delayed use
-                            self.action_ignored_endpoints.push_back(endpoint);
-
-                            iter += 1;
-                            if iter >= push_count {
-                                break Some(pollable);
-                            }
-                        }
-                    };
+                    self.with_action_pending(line, |this, pollable| match pollable {
+                        ActionPending::NoOutput(inner) => this
+                            .ignore_endpoints(push_count, inner, line)
+                            .map(ActionPending::NoOutput),
+                        ActionPending::ItemsOutput(inner) => this
+                            .ignore_endpoints(push_count, inner, line)
+                            .map(ActionPending::ItemsOutput),
+                    });
                 }
                 OverrideCommand::ActionIgnorePop { pop_count } => {
                     let pop_count = pop_count.map_or(1, NonZeroU32::get);
@@ -118,46 +124,91 @@ impl Runner {
         self.model_logger
             .update_for(endpoint, &mut self.client_state);
     }
-    fn take_action_pending(&mut self, line: &str) -> vlc_http::action::ActionPollable {
+    fn set_action_pending_or_bail(&mut self, line: &str, action_pending: ActionPending) {
+        // TODO add error-handling to print the full log on all errors
+        if let Some(action_pending) = &self.action_pending {
+            panic!("invalid command {line:?}: cannot start action when one is already pending: {action_pending:#?}");
+        }
+        self.action_pending = Some(action_pending);
+    }
+    fn with_action_pending(
+        &mut self,
+        line: &str,
+        use_fn: impl FnOnce(&mut Self, ActionPending) -> Option<ActionPending>,
+    ) {
         let Some(pollable) = self.action_pending.take() else {
             panic!("invalid state for {line:?}: no action_pending to use")
         };
-        pollable
-    }
-    fn next_endpoint_from(
-        &self,
-        pollable: &mut vlc_http::action::ActionPollable,
-        line: &str,
-    ) -> Option<Endpoint> {
-        match pollable.next(&self.client_state) {
-            Ok(Poll::Need(endpoint)) => Some(endpoint),
-            Ok(Poll::Done(())) => None,
-            Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
-                panic!("invalidate state for {line:?}: non-singleton client_state")
-            }
-        }
+        self.action_pending = use_fn(self, pollable);
     }
     fn run_pending_action(&mut self, line: &str) {
-        self.action_pending = {
-            let mut pollable = self.take_action_pending(line);
-            let mut iter_count = 0;
-            loop {
-                match self.action_step_limit {
-                    // NOTE: allow cutoff at "step_limit = 0" for testing the harness
-                    Some(step_limit) if iter_count >= step_limit => {
-                        break Some(pollable);
-                    }
-                    _ => {}
+        self.with_action_pending(line, |this, pollable| match pollable {
+            ActionPending::NoOutput(inner) => this
+                .run_action_generic(inner, line)
+                .map(ActionPending::NoOutput),
+            ActionPending::ItemsOutput(inner) => this
+                .run_action_generic(inner, line)
+                .map(ActionPending::ItemsOutput),
+        });
+    }
+    fn run_action_generic<T>(&mut self, mut pollable: T, line: &str) -> Option<T>
+    where
+        T: Pollable,
+        for<'a> T::Output<'a>: serde::Serialize + std::fmt::Debug,
+    {
+        let mut iter_count = 0;
+        loop {
+            match self.action_step_limit {
+                // NOTE: allow cutoff at "step_limit = 0" for testing the harness
+                Some(step_limit) if iter_count >= step_limit => {
+                    break Some(pollable);
                 }
-
-                let Some(endpoint) = self.next_endpoint_from(&mut pollable, line) else {
-                    break None;
-                };
-                self.run_endpoint(endpoint);
-
-                iter_count += 1;
+                _ => {}
             }
-        };
+
+            let endpoint = match pollable.next(&self.client_state) {
+                Ok(Poll::Need(endpoint)) => endpoint,
+                Ok(Poll::Done(output)) => {
+                    self.model_logger.log_output(&output);
+                    // NOTE: difficult to return the `output`, due to generic associated type shenanigans
+                    break None;
+                }
+                Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
+                    panic!("invalidate state for {line:?}: non-singleton client_state")
+                }
+            };
+            self.model_logger
+                .update_for(endpoint, &mut self.client_state);
+
+            iter_count += 1;
+        }
+    }
+    fn ignore_endpoints<T>(&mut self, push_count: u32, mut pollable: T, line: &str) -> Option<T>
+    where
+        T: Pollable,
+    {
+        let mut iter = 0;
+        loop {
+            let endpoint = match pollable.next(&self.client_state) {
+                Ok(Poll::Need(endpoint)) => endpoint,
+                Ok(Poll::Done(_)) => {
+                    panic!("invalid command {line:?}: action returned None (completed) so cannot ignore (completed iter {iter} of {push_count})")
+                }
+                Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
+                    panic!("invalidate state for {line:?}: non-singleton client_state")
+                }
+            };
+
+            // log output from pollable
+            self.model_logger.log_endpoint_only(endpoint.clone());
+            // queue for delayed use
+            self.action_ignored_endpoints.push_back(endpoint);
+
+            iter += 1;
+            if iter >= push_count {
+                break Some(pollable);
+            }
+        }
     }
 
     fn into_log(self) -> Vec<LogEntry> {
@@ -199,6 +250,7 @@ mod model_logger {
         HarnessEndpoint(Endpoint),
         #[serde(rename = "Harness")]
         HarnessModel(Model),
+        Output(serde_json::Value),
     }
 
     #[derive(Default)]
@@ -244,6 +296,18 @@ mod model_logger {
         pub fn log_endpoint_only(&mut self, endpoint: Endpoint) {
             self.log.push(LogEntry::HarnessEndpoint(endpoint));
         }
+        pub fn log_output<T>(&mut self, output: &T)
+        where
+            T: serde::Serialize + std::fmt::Debug + ?Sized,
+        {
+            let output_json = serde_json::to_value(output).expect("serialize output {output:#?}");
+            if let serde_json::Value::Null = output_json {
+                // ignore `()`
+                return;
+            }
+
+            self.log.push(LogEntry::Output(output_json));
+        }
         pub fn edit_model<R>(&mut self, modify_fn: impl FnOnce(&mut Model) -> R) -> R {
             let result = modify_fn(&mut self.model);
             self.log.push(LogEntry::HarnessModel(self.model.clone()));
@@ -283,6 +347,7 @@ enum TestAction {
 #[derive(clap::Subcommand, Debug)]
 enum Query {
     Art { item_id: String },
+    PlaylistSetQueryMatched(vlc_http::clap::PlaylistSetQueryMatched),
 }
 /// Overrides to simulate anomalies in VLC server behavior
 #[derive(clap::Subcommand, Debug)]
