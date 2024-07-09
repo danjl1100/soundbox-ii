@@ -3,7 +3,7 @@
 use super::Model;
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
-use vlc_http::{action::Poll, ClientState, Endpoint, Pollable};
+use vlc_http::{action::Poll, client_state::ClientStateSequence, ClientState, Endpoint, Pollable};
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
     println!("============= run input =============");
@@ -38,6 +38,7 @@ struct Runner {
     action_step_limit: Option<u32>,
     action_ignored_endpoints: VecDeque<Endpoint>,
     action_pending: Option<ActionPending>,
+    first_cache_instant: Option<ClientStateSequence>,
 }
 
 #[derive(Debug)]
@@ -71,16 +72,29 @@ impl Runner {
                     line,
                     ActionPending::ItemsOutput(vlc_http::Action::set_playlist_query_matched(
                         action_query.into(),
-                        &self.client_state,
+                        self.client_state.get_ref(),
                     )),
                 );
                 self.run_pending_action(line);
             }
-            TestAction::Action { action } => {
+            TestAction::Action {
+                action,
+                extend_cache,
+            } => {
+                let mut client_state_ref = self.client_state.get_ref();
+                if extend_cache {
+                    client_state_ref = client_state_ref
+                        .assume_cache_valid_since(
+                            self.first_cache_instant
+                                .expect("first action cannot use extend_cache"),
+                        )
+                        .expect("non-singleton client_state");
+                }
+
                 self.set_action_pending_or_bail(
                     line,
                     ActionPending::NoOutput(
-                        vlc_http::Action::from(action).pollable(&self.client_state),
+                        vlc_http::Action::from(action).pollable(client_state_ref),
                     ),
                 );
                 self.run_pending_action(line);
@@ -174,11 +188,16 @@ impl Runner {
                     break None;
                 }
                 Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
-                    panic!("invalidate state for {line:?}: non-singleton client_state")
+                    panic!("invalid state for {line:?}: non-singleton client_state")
                 }
             };
-            self.model_logger
+            let previous_cache_instant = self
+                .model_logger
                 .update_for(endpoint, &mut self.client_state);
+
+            if self.first_cache_instant.is_none() {
+                self.first_cache_instant = Some(previous_cache_instant);
+            }
 
             iter_count += 1;
         }
@@ -195,7 +214,7 @@ impl Runner {
                     panic!("invalid command {line:?}: action returned None (completed) so cannot ignore (completed iter {iter} of {push_count})")
                 }
                 Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
-                    panic!("invalidate state for {line:?}: non-singleton client_state")
+                    panic!("invalid state for {line:?}: non-singleton client_state")
                 }
             };
 
@@ -218,6 +237,7 @@ impl Runner {
             action_step_limit: _,
             action_ignored_endpoints,
             action_pending,
+            first_cache_instant: _,
         } = self;
         let log = model_logger.into_log();
         let log_json = || serde_json::to_string_pretty(&log).expect("json serialize log");
@@ -240,7 +260,7 @@ use model_logger::{LogEntry, ModelLogger};
 mod model_logger {
     use super::Model;
     use std::str::FromStr;
-    use vlc_http::{ClientState, Endpoint, Response};
+    use vlc_http::{client_state::ClientStateSequence, ClientState, Endpoint, Response};
 
     #[derive(Debug, PartialEq, Eq, serde::Serialize)]
     pub enum LogEntry {
@@ -259,7 +279,11 @@ mod model_logger {
         log: Vec<LogEntry>,
     }
     impl ModelLogger {
-        pub fn update_for(&mut self, endpoint: Endpoint, target: &mut ClientState) {
+        pub fn update_for(
+            &mut self,
+            endpoint: Endpoint,
+            target: &mut ClientState,
+        ) -> ClientStateSequence {
             const MAX_LOG_COUNT: usize = 50;
             const MAX_REPEAT_COUNT: usize = 10;
 
@@ -273,7 +297,7 @@ mod model_logger {
                 Err(e) => panic!("invalid response from model {response_str:?}: {e}"),
             };
 
-            target.update(response.clone());
+            let client_state_sequence = target.update(response.clone());
 
             let log_entry = LogEntry::Endpoint(endpoint, self.model.clone());
 
@@ -292,6 +316,8 @@ mod model_logger {
             self.log.push(log_entry);
 
             assert!(self.log.len() <= MAX_LOG_COUNT, "Log length is too long");
+
+            client_state_sequence
         }
         pub fn log_endpoint_only(&mut self, endpoint: Endpoint) {
             self.log.push(LogEntry::HarnessEndpoint(endpoint));
@@ -338,6 +364,9 @@ enum TestAction {
     Action {
         #[command(subcommand)]
         action: vlc_http::clap::Action,
+        /// Marks all cached data as valid, behaving as-if the action was created at the beginning of the program
+        #[clap(long)]
+        extend_cache: bool,
     },
     Harness {
         #[command(subcommand)]

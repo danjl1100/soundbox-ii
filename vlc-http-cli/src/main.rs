@@ -147,8 +147,9 @@ impl Client {
             CliAction::Query {
                 query: Query::Playlist,
             } => {
-                let result =
-                    self.exhaust_pollable(vlc_http::Action::query_playlist(&self.client_state))?;
+                let result = self.exhaust_pollable(vlc_http::Action::query_playlist(
+                    self.client_state.get_ref(),
+                ))?;
                 dbg!(result);
 
                 Ok(None)
@@ -156,8 +157,9 @@ impl Client {
             CliAction::Query {
                 query: Query::Playback,
             } => {
-                let result =
-                    self.exhaust_pollable(vlc_http::Action::query_playback(&self.client_state))?;
+                let result = self.exhaust_pollable(vlc_http::Action::query_playback(
+                    self.client_state.get_ref(),
+                ))?;
                 dbg!(result);
 
                 Ok(None)
@@ -165,15 +167,19 @@ impl Client {
             CliAction::Query {
                 query: Query::PlaylistSet(target),
             } => {
-                let result = self.exhaust_pollable(
-                    vlc_http::Action::set_playlist_query_matched(target.into(), &self.client_state),
-                )?;
+                let result =
+                    self.exhaust_pollable(vlc_http::Action::set_playlist_query_matched(
+                        target.into(),
+                        self.client_state.get_ref(),
+                    ))?;
                 dbg!(result);
 
                 Ok(None)
             }
             CliAction::Action { action } => {
-                self.exhaust_pollable(vlc_http::Action::from(action).pollable(&self.client_state))?;
+                self.exhaust_pollable(
+                    vlc_http::Action::from(action).pollable(self.client_state.get_ref()),
+                )?;
 
                 Ok(None)
             }

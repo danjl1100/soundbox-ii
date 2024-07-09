@@ -63,9 +63,9 @@
 
 use super::{
     playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, response, Error,
-    Poll, PollableConstructor,
+    PlaybackMode, Poll, PollableConstructor,
 };
-use crate::{action::PlaybackMode, fmt::DebugUrl, Command, Pollable};
+use crate::{client_state::ClientStateSequence, fmt::DebugUrl, Command, Pollable};
 
 mod insert_match;
 mod next_command;
@@ -137,7 +137,7 @@ impl Pollable for Update {
 
 impl PollableConstructor for Update {
     type Args = super::TargetPlaylistItems;
-    fn new(target: Self::Args, state: &crate::ClientState) -> Self {
+    fn new(target: Self::Args, state: ClientStateSequence) -> Self {
         const LINEAR_PLAYBACK: PlaybackMode = PlaybackMode::new()
             .set_repeat(crate::action::RepeatMode::Off)
             .set_random(false);
@@ -185,7 +185,7 @@ impl Pollable for Set {
 }
 impl PollableConstructor for Set {
     type Args = <Update as PollableConstructor>::Args;
-    fn new(args: Self::Args, state: &crate::ClientState) -> Self {
+    fn new(args: Self::Args, state: ClientStateSequence) -> Self {
         let update = Update::new(args, state);
         Self { update }
     }

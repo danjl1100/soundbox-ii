@@ -1,0 +1,82 @@
+---
+source: vlc-http/tests/test_cases.rs
+expression: output
+input_file: vlc-http/tests/inputs/action-playlist-set-cached01.txt
+---
+[
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json",
+  ), Model()),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json",
+  ), Model()),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew1",
+  ), Model(
+    items: {
+      0: "file:///new1",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew2",
+  ), Model(
+    items: {
+      0: "file:///new1",
+      1: "file:///new2",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew3",
+  ), Model(
+    items: {
+      0: "file:///new1",
+      1: "file:///new2",
+      2: "file:///new3",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew4",
+  ), Model(
+    items: {
+      0: "file:///new1",
+      1: "file:///new2",
+      2: "file:///new3",
+      3: "file:///new4",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew5",
+  ), Model(
+    items: {
+      0: "file:///new1",
+      1: "file:///new2",
+      2: "file:///new3",
+      3: "file:///new4",
+      4: "file:///new5",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/playlist.json?command=in_enqueue&input=file%3A%2F%2F%2Fnew6",
+  ), Model(
+    items: {
+      0: "file:///new1",
+      1: "file:///new2",
+      2: "file:///new3",
+      3: "file:///new4",
+      4: "file:///new5",
+      5: "file:///new6",
+    },
+  )),
+  LogEntry(Endpoint(
+    path_and_query: "/requests/status.json",
+  ), Model(
+    items: {
+      0: "file:///new1",
+      1: "file:///new2",
+      2: "file:///new3",
+      3: "file:///new4",
+      4: "file:///new5",
+      5: "file:///new6",
+    },
+  )),
+]

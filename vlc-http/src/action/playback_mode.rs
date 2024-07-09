@@ -4,7 +4,7 @@ use super::{
     query_playback::QueryPlayback, ClientState, Error, PlaybackMode, Poll, Pollable,
     PollableConstructor,
 };
-use crate::Command;
+use crate::{client_state::ClientStateSequence, Command};
 
 #[derive(Clone)]
 pub(crate) struct Set {
@@ -38,7 +38,7 @@ impl Pollable for Set {
 }
 impl PollableConstructor for Set {
     type Args = PlaybackMode;
-    fn new(target: Self::Args, state: &ClientState) -> Self {
+    fn new(target: Self::Args, state: ClientStateSequence) -> Self {
         Self {
             target,
             query_playback: QueryPlayback::new((), state),
@@ -62,7 +62,7 @@ mod tests {
         mode: PlaybackMode,
         state: &ClientState,
     ) -> impl Pollable<Output<'a> = ()> + 'static {
-        Action::PlaybackMode(mode).pollable(state)
+        Action::PlaybackMode(mode).pollable(state.get_ref())
     }
 
     fn status(mode: PlaybackMode) -> Response {

@@ -1,0 +1,11 @@
+action playlist-set file:///new1
+
+# verify `playlist` and `status` are reused (not re-requested) while extending the cache
+action --extend-cache playlist-set file:///new2
+action --extend-cache playlist-set file:///new3
+action --extend-cache playlist-set file:///new4
+action --extend-cache playlist-set file:///new5
+action --extend-cache playlist-set file:///new6
+
+# verify request is sent for `status` when no longer extending the cache
+action playback-mode repeat-off

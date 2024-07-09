@@ -3,6 +3,7 @@
 use super::{
     response, ClientState, Endpoint, Error, Poll, Pollable, PollableConstructor, Sequence,
 };
+use crate::client_state::ClientStateSequence;
 
 /// Query the playback status
 #[derive(Clone, Debug)]
@@ -27,8 +28,8 @@ impl Pollable for QueryPlayback {
 impl PollableConstructor for QueryPlayback {
     type Args = ();
 
-    fn new((): Self::Args, state: &ClientState) -> Self {
-        let start_sequence = state.playback_status().get_sequence();
+    fn new((): Self::Args, state: ClientStateSequence) -> Self {
+        let start_sequence = state.playback_status();
         Self { start_sequence }
     }
 }
@@ -71,8 +72,8 @@ mod tests {
     fn caches() {
         let mut state = ClientState::new();
 
-        let mut query1 = Action::query_playback(&state);
-        let mut query2 = Action::query_playback(&state);
+        let mut query1 = Action::query_playback(state.get_ref());
+        let mut query2 = Action::query_playback(state.get_ref());
 
         // both request `status.json`
         insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
@@ -149,7 +150,7 @@ mod tests {
         // initialize state before creating query
         state.update(Response::from_str(RESPONSE_STATUS_SIMPLE).expect("valid response"));
 
-        let mut query = Action::query_playback(&state);
+        let mut query = Action::query_playback(state.get_ref());
 
         insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
         Need(Endpoint(

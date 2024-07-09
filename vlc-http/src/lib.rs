@@ -53,7 +53,7 @@ pub use response::Response;
 pub mod response;
 
 pub use client_state::ClientState;
-mod client_state;
+pub mod client_state;
 
 // --------------------------------------------------
 // Utilities

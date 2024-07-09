@@ -79,6 +79,14 @@ mod sequence {
                 count: count + 1,
             }
         }
+        pub fn min(self, other: Self) -> Option<Self> {
+            self.try_cmp(&other).map(|ord| match ord {
+                // self <= other
+                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => self,
+                // self > other
+                std::cmp::Ordering::Greater => other,
+            })
+        }
         // #[allow(unused)] // TODO remove if unused?
         // pub fn max(self, other: Self) -> Option<Self> {
         //     self.partial_cmp(&other).map(|ord| match ord {

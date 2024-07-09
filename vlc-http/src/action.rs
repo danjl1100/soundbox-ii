@@ -2,7 +2,10 @@
 //
 //! High-level actions for VLC (correspond to a single API call)
 
-use crate::{client_state::Sequence, response, ClientState, Endpoint};
+use crate::{
+    client_state::{ClientStateRef, ClientStateSequence, InvalidClientInstance, Sequence},
+    response, ClientState, Endpoint,
+};
 
 mod playback_mode;
 mod playlist_items;
@@ -133,16 +136,16 @@ impl Action {
     /// Returns an endpoint source for querying the playlist info
     #[must_use]
     pub fn query_playlist<'a>(
-        state: &ClientState,
+        state: ClientStateRef<'_>,
     ) -> impl Pollable<Output<'a> = &'a [response::playlist::Item]> + 'static {
-        query_playlist::QueryPlaylist::new((), state)
+        query_playlist::QueryPlaylist::new((), state.get_sequence())
     }
     /// Returns an endpoint source for querying the playlist info
     #[must_use]
     pub fn query_playback<'a>(
-        state: &ClientState,
+        state: ClientStateRef<'_>,
     ) -> impl Pollable<Output<'a> = &'a response::PlaybackStatus> + 'static {
-        query_playback::QueryPlayback::new((), state)
+        query_playback::QueryPlayback::new((), state.get_sequence())
     }
     /// Returns an endpoint source for setting the `playlist_items` and querying matched items after
     /// the current playing item.
@@ -152,19 +155,21 @@ impl Action {
     #[must_use]
     pub fn set_playlist_query_matched(
         target: TargetPlaylistItems,
-        state: &ClientState,
+        state: ClientStateRef<'_>,
     ) -> ActionQuerySetItems {
-        let inner = playlist_items::Update::new(target, state);
+        let inner = playlist_items::Update::new(target, state.get_sequence());
         ActionQuerySetItems(inner)
     }
     /// Converts the action into a [`Pollable`] with empty output
     #[must_use]
-    pub fn pollable(self, state: &ClientState) -> ActionPollable {
+    pub fn pollable(self, state: ClientStateRef<'_>) -> ActionPollable {
         use ActionPollableInner as Inner;
         let inner = match self {
-            Action::PlaybackMode(mode) => Inner::PlaybackMode(playback_mode::Set::new(mode, state)),
+            Action::PlaybackMode(mode) => {
+                Inner::PlaybackMode(playback_mode::Set::new(mode, state.get_sequence()))
+            }
             Action::PlaylistSet(target) => {
-                Inner::PlaylistSet(playlist_items::Set::new(target, state))
+                Inner::PlaylistSet(playlist_items::Set::new(target, state.get_sequence()))
             }
         };
         ActionPollable(inner)
@@ -193,12 +198,6 @@ pub enum Error {
     /// The [`ClientState`] identity changed between creation and poll
     #[allow(missing_docs)]
     InvalidClientInstance(#[serde(skip)] InvalidClientInstance),
-}
-/// Different [`ClientState`]s used on creation and poll of the [`Action`]
-#[derive(Debug, PartialEq)]
-pub struct InvalidClientInstance {
-    expected: Sequence,
-    found: Sequence,
 }
 impl std::error::Error for Error {}
 impl std::fmt::Display for Error {
@@ -244,7 +243,7 @@ where
     for<'a> Self::Output<'a>: serde::Serialize,
 {
     type Args;
-    fn new(args: Self::Args, state: &ClientState) -> Self;
+    fn new(args: Self::Args, state: ClientStateSequence) -> Self;
 }
 
 impl Pollable for ActionPollable {
