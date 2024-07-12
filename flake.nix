@@ -14,7 +14,7 @@
     # decrease total count of flake dependencies by following versions from "rust-overlay" input
     flake-utils.follows = "rust-overlay/flake-utils";
     # nixpkgs.follows = "rust-overlay/nixpkgs";
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-23.05";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-24.05";
     nixpkgs-for-vlc.url = "github:nixos/nixpkgs?ref=nixpkgs-unstable";
     nixpkgs-for-wasm-bindgen.url = "github:nixos/nixpkgs/34bfa9403e42eece93d1a3740e9d8a02fceafbca";
     crane.inputs.nixpkgs.follows = "nixpkgs";
