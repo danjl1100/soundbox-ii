@@ -21,11 +21,6 @@ impl<T> Sequenced<T> {
     fn increment(&mut self) {
         self.sequence = self.sequence.next();
     }
-    // TODO delete if unused
-    // pub fn modify<U>(&mut self, modify_fn: impl Fn(&mut T) -> U) -> U {
-    //     self.increment();
-    //     (modify_fn)(&mut self.inner)
-    // }
     pub fn replace(&mut self, new: T) -> T {
         self.increment();
         std::mem::replace(&mut self.inner, new)
@@ -87,15 +82,6 @@ mod sequence {
                 std::cmp::Ordering::Greater => other,
             })
         }
-        // #[allow(unused)] // TODO remove if unused?
-        // pub fn max(self, other: Self) -> Option<Self> {
-        //     self.partial_cmp(&other).map(|ord| match ord {
-        //         // self >= other
-        //         std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => self,
-        //         // self < other
-        //         std::cmp::Ordering::Less => other,
-        //     })
-        // }
         // NOTE DO NOT implement PartialOrd, this could be confusing for `None` result cases
         pub fn try_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
             let Self { instance, count } = *self;
