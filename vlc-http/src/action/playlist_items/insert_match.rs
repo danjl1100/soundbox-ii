@@ -5,13 +5,14 @@
 ///
 /// Returns the match index and the next element in `target` to append to `existing`,
 /// for the goal of `existing` to end with all elements of `target` in-order
-pub(super) fn find_insert_match<'a, 'b, T, U>(
+pub(super) fn find_insert_match<'a, 'b, T, U, I>(
     target: &'a [T],
     existing: &'b [U],
-) -> InsertMatch<'a, 'b, T, U>
+) -> InsertMatch<'a, 'b, T, U, I>
 where
     T: Eq + std::fmt::Debug,
     U: AsRef<T>,
+    I: From<usize> + std::fmt::Debug,
     'b: 'a,
 {
     {
@@ -84,7 +85,7 @@ where
                 }
             };
             return InsertMatch {
-                match_start: Some(match_start),
+                match_start: Some(I::from(match_start)),
                 next,
                 matched_subset,
             };
@@ -100,8 +101,8 @@ where
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct InsertMatch<'a, 'b, T, U> {
-    pub match_start: Option<usize>,
+pub(super) struct InsertMatch<'a, 'b, T, U, I> {
+    pub match_start: Option<I>,
     pub next: Option<MatchAction<'a, T, U>>,
     pub matched_subset: &'b [U],
 }
@@ -118,7 +119,7 @@ mod tests {
     fn insert_end<'a, T>(
         next: &'a T,
         matched: &'a [Indexed<T>],
-    ) -> InsertMatch<'a, 'a, T, Indexed<T>> {
+    ) -> InsertMatch<'a, 'a, T, Indexed<T>, usize> {
         InsertMatch {
             match_start: None,
             next: Some(MatchAction::InsertValue(next)),
@@ -129,7 +130,7 @@ mod tests {
         match_start: usize,
         next: &'a T,
         matched: &'a [Indexed<T>],
-    ) -> InsertMatch<'a, 'a, T, Indexed<T>> {
+    ) -> InsertMatch<'a, 'a, T, Indexed<T>, usize> {
         InsertMatch {
             match_start: Some(match_start),
             next: Some(MatchAction::InsertValue(next)),
@@ -139,7 +140,7 @@ mod tests {
     fn matched<T>(
         match_start: usize,
         matched: &[Indexed<T>],
-    ) -> InsertMatch<'_, '_, T, Indexed<T>> {
+    ) -> InsertMatch<'_, '_, T, Indexed<T>, usize> {
         InsertMatch {
             match_start: Some(match_start),
             next: None,
@@ -150,7 +151,7 @@ mod tests {
         match_start: usize,
         delete: &'a Indexed<T>,
         matched: &'a [Indexed<T>],
-    ) -> InsertMatch<'a, 'a, T, Indexed<T>> {
+    ) -> InsertMatch<'a, 'a, T, Indexed<T>, usize> {
         InsertMatch {
             match_start: Some(match_start),
             next: Some(MatchAction::DeleteValue(delete)),
@@ -159,7 +160,7 @@ mod tests {
     }
 
     // NOTE tests are easier to read with this alias
-    fn uut<'a, 'b, T, U>(target: &'a [T], existing: &'b [U]) -> InsertMatch<'a, 'a, T, U>
+    fn uut<'a, 'b, T, U>(target: &'a [T], existing: &'b [U]) -> InsertMatch<'a, 'a, T, U, usize>
     where
         T: std::fmt::Debug + Eq,
         U: AsRef<T>,

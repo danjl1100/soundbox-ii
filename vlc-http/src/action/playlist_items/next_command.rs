@@ -28,7 +28,7 @@ impl<T> Target<T> {
 
         let items_before_match_start = insert_match.match_start.map_or(
             ItemsBeforeMatchStart::Absolute(playlist.len()),
-            ItemsBeforeMatchStart::Trimmed,
+            ItemsBeforeMatchStart::Relative,
         );
 
         // delete first entry to match `max_history_count`
@@ -37,12 +37,11 @@ impl<T> Target<T> {
                 // count before playing
                 (Some(playing_item_index), _) => playing_item_index,
                 // none playing, count before match_start (adjusted to global)
-                (
-                    None,
-                    // NOTE: Trimmed == Absolute when playing_item_index is None (e.g. trim_offset == 0)
-                    ItemsBeforeMatchStart::Trimmed(absolute)
-                    | ItemsBeforeMatchStart::Absolute(absolute),
-                ) => absolute,
+                (None, ItemsBeforeMatchStart::Absolute(absolute)) => absolute,
+                (None, ItemsBeforeMatchStart::Relative(relative)) => {
+                    // NOTE: Relative == Absolute when playing_item_index is None (e.g. trim_offset == 0)
+                    relative.assume_absolute()
+                }
             };
             let max_history_count = usize::from(self.max_history_count);
 
@@ -56,7 +55,9 @@ impl<T> Target<T> {
         let delete_after_playing_item = {
             playing_item_index.and_then(|playing| {
                 let trimmed_items_before_match_start = match items_before_match_start {
-                    ItemsBeforeMatchStart::Trimmed(trimmed) => trimmed,
+                    ItemsBeforeMatchStart::Relative(relative) => {
+                        relative.assume_relative_context_ok()
+                    }
                     ItemsBeforeMatchStart::Absolute(absolute) => absolute - playing,
                 };
                 let item_after_playing = playlist.get(playing + 1)?;
@@ -97,7 +98,9 @@ impl<T> Target<T> {
                 .zip(insert_match.match_start)
                 .zip(matched_subset.split_first().map(|(_first, rest)| rest))
             {
-                Some(((playing, matched), rest)) if playing >= (matched + trim_offset) => rest,
+                Some(((playing, matched), rest)) if playing >= matched.with_offset(trim_offset) => {
+                    rest
+                }
                 _ => matched_subset,
             }
         };
@@ -120,8 +123,34 @@ pub(super) enum NextCommand<'a, T, U> {
 
 #[derive(Clone, Copy, Debug)]
 enum ItemsBeforeMatchStart {
-    Trimmed(usize),
+    Relative(Relative),
     Absolute(usize),
+}
+
+use relative::Relative;
+mod relative {
+    /// Index relative to the trimmed playlist
+    ///
+    /// Useful to avoid slice indexing with non-absolute indices, instead
+    /// guiding users to add the offset before using as a `usize`
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) struct Relative(usize);
+    impl Relative {
+        pub fn with_offset(self, offset: usize) -> usize {
+            self.0 + offset
+        }
+        pub fn assume_absolute(self) -> usize {
+            self.0
+        }
+        pub fn assume_relative_context_ok(self) -> usize {
+            self.0
+        }
+    }
+    impl From<usize> for Relative {
+        fn from(value: usize) -> Self {
+            Self(value)
+        }
+    }
 }
 
 #[cfg(test)]
