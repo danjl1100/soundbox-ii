@@ -15,19 +15,35 @@ impl<T> Target<T> {
         T: std::cmp::Eq + std::fmt::Debug,
         'b: 'a,
     {
-        let trim_offset = playing_item_index.unwrap_or(0);
+        let trim_offset = if let Some(playing) = playing_item_index {
+            assert!(
+                playing < playlist.len(),
+                "playing_item_index out of bounds of playlist"
+            );
+            playing
+        } else {
+            0
+        };
         let insert_match = find_insert_match(&self.urls, &playlist[trim_offset..]);
 
-        // delete first entry to match `max_history_count`
-        let trimmed_items_before_match_start = insert_match
-            .match_start
-            .unwrap_or(playlist.len() - trim_offset);
+        let items_before_match_start = insert_match.match_start.map_or(
+            ItemsBeforeMatchStart::Absolute(playlist.len()),
+            ItemsBeforeMatchStart::Trimmed,
+        );
 
+        // delete first entry to match `max_history_count`
         let delete_first_item = {
-            let undesired_items_count = playing_item_index.unwrap_or(
-                // none playing, count before match_start (adjust to global)
-                trimmed_items_before_match_start + trim_offset,
-            );
+            let undesired_items_count = match (playing_item_index, items_before_match_start) {
+                // count before playing
+                (Some(playing_item_index), _) => playing_item_index,
+                // none playing, count before match_start (adjusted to global)
+                (
+                    None,
+                    // NOTE: Trimmed == Absolute when playing_item_index is None (e.g. trim_offset == 0)
+                    ItemsBeforeMatchStart::Trimmed(absolute)
+                    | ItemsBeforeMatchStart::Absolute(absolute),
+                ) => absolute,
+            };
             let max_history_count = usize::from(self.max_history_count);
 
             (undesired_items_count > max_history_count).then(|| {
@@ -36,11 +52,16 @@ impl<T> Target<T> {
                     .expect("playlist nonempty, items before playing/match")
             })
         };
+        // delete after the playing item, before the matched item
         let delete_after_playing_item = {
-            let item_after_playing =
-                playing_item_index.and_then(|playing| playlist.get(playing + 1));
-            item_after_playing
-                .and_then(|item| (trimmed_items_before_match_start > 1).then_some(item))
+            playing_item_index.and_then(|playing| {
+                let trimmed_items_before_match_start = match items_before_match_start {
+                    ItemsBeforeMatchStart::Trimmed(trimmed) => trimmed,
+                    ItemsBeforeMatchStart::Absolute(absolute) => absolute - playing,
+                };
+                let item_after_playing = playlist.get(playing + 1)?;
+                (trimmed_items_before_match_start > 1).then_some(item_after_playing)
+            })
         };
 
         let (insert_end, delete_end) = match insert_match.next {
@@ -95,6 +116,12 @@ pub(super) enum NextCommand<'a, T, U> {
         /// Item
         &'a U,
     ),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ItemsBeforeMatchStart {
+    Trimmed(usize),
+    Absolute(usize),
 }
 
 #[cfg(test)]
@@ -332,5 +359,25 @@ mod tests {
         check!(&uut23 => Some(2), &["_", "M1", "M2", "M3"], (None, MATCH3));
         //                                          3\/
         check!(&uut3 => Some(3), &["_", "M1", "M2", "M3"], (None, MATCH_EMPTY));
+    }
+
+    #[test]
+    fn deletes_first_when_no_match() {
+        let uut = target_history(1, &[]);
+        check!(&uut => Some(4), &["X0","X1","X2","X3","X4"], delete("X0", MATCH_EMPTY));
+    }
+
+    #[test]
+    fn tolerates_all_empty() {
+        let uut = target(&[]);
+        check!(&uut => &[], (None, MATCH_EMPTY));
+    }
+
+    #[test]
+    #[should_panic(expected = "playing_item_index out of bounds of playlist")]
+    fn panics_for_playing_out_of_bounds() {
+        let uut = target(&["M1"]);
+        // S.I.C. ---------\2/     0     1
+        check!(&uut => Some(2), &["X0", "X1"], (None, MATCH_EMPTY));
     }
 }
