@@ -185,6 +185,7 @@
               pkgs.alejandra
               pkgs.bacon
               pkgs.cargo-insta
+              pkgs.cargo-mutants
             ];
           };
         };
