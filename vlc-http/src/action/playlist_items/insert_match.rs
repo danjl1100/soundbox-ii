@@ -1,5 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+use tracing::{trace, trace_span};
+
 /// Search for the *beginning* of `target` at the *end* of `existing`, possibly with interspersed
 /// extra undesired elements in `existing`.
 ///
@@ -15,13 +17,13 @@ where
     I: From<usize> + std::fmt::Debug,
     'b: 'a,
 {
-    {
-        #[cfg(test)]
-        println!(
-            "- find_insert_match, target={target:?}, existing={existing:?}",
-            existing = existing.iter().map(AsRef::as_ref).collect::<Vec<_>>()
-        );
-    }
+    let span = trace_span!(
+        "find_insert_match",
+        ?target,
+        existing = ?existing.iter().map(AsRef::as_ref).collect::<Vec<_>>(),
+    );
+    let _guard = span.enter();
+
     for match_start in 0..existing.len() {
         let existing = &existing[match_start..];
 
@@ -31,10 +33,12 @@ where
         let target_first = target_iter.next();
         let existing_first = existing_iter.next().map(|(_index, value)| value.as_ref());
 
-        {
-            #[cfg(test)]
-            println!("match_start = {match_start}, target_first = {target_first:?}, existing_first = {existing_first:?}");
-        }
+        trace!(
+            match_start,
+            ?target_first,
+            ?existing_first,
+            "attempt match offset"
+        );
 
         if target_first == existing_first {
             let mut matched_subset = &existing[0..1]; // first matches (base case)
@@ -51,13 +55,11 @@ where
                 };
                 let existing_elem = existing_iter.next();
 
-                {
-                    #[cfg(test)]
-                    println!(
-                        "target_elem = {target_elem:?}, existing_elem = {:?}",
-                        existing_elem.map(|(_index, value)| value.as_ref())
-                    );
-                }
+                trace!(
+                    ?target_elem,
+                    existing_elem=?existing_elem.map(|(_index, value)| value.as_ref()),
+                    "start of match"
+                );
 
                 match existing_elem {
                     // equal, continue search
@@ -70,10 +72,7 @@ where
                     }
                     // non-equal, delete the offending item
                     Some((existing_index, existing_elem)) => {
-                        {
-                            #[cfg(test)]
-                            println!("wanting to delete {:?}", existing_elem.as_ref());
-                        }
+                        trace!(existing_elem=?existing_elem.as_ref(), "non-equal item to delete");
                         matched_subset = &existing[0..existing_index]; // inequality
 
                         break Some(MatchAction::DeleteValue(existing_elem));
@@ -115,6 +114,7 @@ pub(super) enum MatchAction<'a, T, U> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_log::test;
 
     fn insert_end<'a, T>(
         next: &'a T,
@@ -166,10 +166,6 @@ mod tests {
         U: AsRef<T>,
         'b: 'a,
     {
-        println!(
-            "target={target:?}, existing={existing:?}",
-            existing = existing.iter().map(AsRef::as_ref).collect::<Vec<_>>()
-        );
         find_insert_match(target, existing)
     }
 

@@ -40,6 +40,7 @@ mod tests {
     use super::*;
     use crate::{Action, Response};
     use std::str::FromStr as _;
+    use test_log::test;
 
     const RESPONSE_STATUS_SIMPLE: &str = r#"{
       "rate":1,

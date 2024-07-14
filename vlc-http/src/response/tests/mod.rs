@@ -7,6 +7,8 @@ use std::{
     io::BufReader,
     path::{Path, PathBuf},
 };
+use test_log::test;
+use tracing::{error, info};
 
 #[test]
 fn parse() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,10 +30,11 @@ fn parse() -> Result<(), Box<dyn std::error::Error>> {
             let name = name.to_string_lossy();
             let path = entry.path();
 
-            println!("testing {name} ({})...", path.display());
+            info!(%name, path=%path.display(), "test input");
 
             parse_file(&name, &path)?;
         } else {
+            error!(path=%entry.path().display(), "invalid file type");
             panic!("invalid file type for {}", entry.path().display());
         }
     }

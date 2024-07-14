@@ -37,6 +37,7 @@ mod tests {
     use super::*;
     use crate::{Action, Response};
     use std::str::FromStr;
+    use test_log::test;
 
     const RESPONSE_PLAYLIST_SIMPLE: &str = r#"{"children":[{"children":[
         {

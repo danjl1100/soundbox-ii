@@ -156,6 +156,7 @@ mod relative {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_log::test;
 
     #[derive(Clone, PartialEq, Eq)]
     struct TestItem(&'static str);

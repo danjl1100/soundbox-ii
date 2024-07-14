@@ -5,6 +5,7 @@ use super::{
     PollableConstructor,
 };
 use crate::{client_state::ClientStateSequence, Command};
+use tracing::debug;
 
 #[derive(Clone)]
 pub(crate) struct Set {
@@ -22,16 +23,33 @@ impl Pollable for Set {
         };
 
         if status.is_random != self.target.is_random() {
+            debug!(
+                is_random = status.is_random,
+                target = self.target.is_random(),
+                "want to toggle random",
+            );
             return Ok(Poll::Need(Command::ToggleRandom.into()));
         }
 
         if status.is_loop_all != self.target.is_loop_all() {
+            debug!(
+                is_loop_all = status.is_loop_all,
+                target = self.target.is_loop_all(),
+                "want to toggle loop-all",
+            );
             return Ok(Poll::Need(Command::ToggleLoopAll.into()));
         }
 
         if status.is_repeat_one != self.target.is_repeat_one() {
+            debug!(
+                is_loop_all = status.is_repeat_one,
+                target = self.target.is_repeat_one(),
+                "want to toggle repeat-one",
+            );
             return Ok(Poll::Need(Command::ToggleRepeatOne.into()));
         }
+
+        debug!("no change for playback_mode");
 
         Ok(Poll::Done(()))
     }
@@ -57,6 +75,7 @@ mod tests {
     use super::*;
     use crate::{action::RepeatMode, Action, Response};
     use std::str::FromStr as _;
+    use test_log::test;
 
     fn action<'a>(
         mode: PlaybackMode,

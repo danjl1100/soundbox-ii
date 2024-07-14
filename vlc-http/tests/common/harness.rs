@@ -3,11 +3,10 @@
 use super::Model;
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
+use tracing::error;
 use vlc_http::{action::Poll, client_state::ClientStateSequence, ClientState, Endpoint, Pollable};
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
-    println!("============= run input =============");
-
     let mut runner = Runner::default();
 
     for line in input.lines() {
@@ -19,10 +18,13 @@ pub fn run_input(input: &str) -> Vec<LogEntry> {
 
         let test_action = match TestInput::try_parse_from(line.split_whitespace()) {
             Ok(test_action) => test_action,
-            Err(e) => panic!(
-                "{e}\n--- help text\n{}\ninvalid test input: {line:?}",
-                TestInput::full_help_text(line.split_whitespace().map(str::to_owned).collect()),
-            ),
+            Err(e) => {
+                error!(line, "invalid test input");
+                panic!(
+                    "{e}\n--- help text\n{}\ninvalid test input: {line:?}",
+                    TestInput::full_help_text(line.split_whitespace().map(str::to_owned).collect()),
+                )
+            }
         };
 
         runner.run_test_action(test_action, line);
@@ -141,6 +143,11 @@ impl Runner {
     fn set_action_pending_or_bail(&mut self, line: &str, action_pending: ActionPending) {
         // TODO add error-handling to print the full log on all errors
         if let Some(action_pending) = &self.action_pending {
+            error!(
+                line,
+                ?action_pending,
+                "invalid command: cannot start action when one is already pending"
+            );
             panic!("invalid command {line:?}: cannot start action when one is already pending: {action_pending:#?}");
         }
         self.action_pending = Some(action_pending);
@@ -260,6 +267,7 @@ use model_logger::{LogEntry, ModelLogger};
 mod model_logger {
     use super::Model;
     use std::str::FromStr;
+    use tracing::info;
     use vlc_http::{client_state::ClientStateSequence, ClientState, Endpoint, Response};
 
     #[derive(Debug, PartialEq, Eq, serde::Serialize)]
@@ -287,7 +295,7 @@ mod model_logger {
             const MAX_LOG_COUNT: usize = 50;
             const MAX_REPEAT_COUNT: usize = 10;
 
-            println!("---- {endpoint:?}");
+            info!(?endpoint, "update");
 
             let endpoint_str = endpoint.get_path_and_query();
 

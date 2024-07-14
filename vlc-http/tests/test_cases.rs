@@ -13,6 +13,9 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+use test_log::test;
+use tracing::{trace_span, warn_span};
+
 mod common;
 
 #[test]
@@ -21,6 +24,17 @@ fn test_cases() {
 }
 
 fn test_case(input: &std::path::Path) {
+    let name = input
+        .file_name()
+        .expect("input file has a name")
+        .to_str()
+        .expect("test input filenames are UTF-8");
+    let span = warn_span!("test_case", %name);
+    let _guard = span.enter();
+
+    let span = trace_span!("test_case", input_path=%input.display());
+    let _guard = span.enter();
+
     let input = std::fs::read_to_string(input).expect("test input file exists");
     let output = common::run_input(&input);
     insta::assert_ron_snapshot!(output);
