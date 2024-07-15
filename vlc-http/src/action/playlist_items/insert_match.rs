@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use tracing::{trace, trace_span};
+use tracing::{debug, trace, trace_span};
 
 /// Search for the *beginning* of `target` at the *end* of `existing`, possibly with interspersed
 /// extra undesired elements in `existing`.
@@ -42,6 +42,7 @@ where
 
         if target_first == existing_first {
             let mut matched_subset = &existing[0..1]; // first matches (base case)
+            trace!(?target_first, "match found");
             let next = loop {
                 let Some(target_elem) = target_iter.next() else {
                     if let Some((existing_index, existing_elem)) = existing_iter.next() {
@@ -55,12 +56,6 @@ where
                 };
                 let existing_elem = existing_iter.next();
 
-                trace!(
-                    ?target_elem,
-                    existing_elem=?existing_elem.map(|(_index, value)| value.as_ref()),
-                    "start of match"
-                );
-
                 match existing_elem {
                     // equal, continue search
                     Some((existing_index, existing_elem))
@@ -72,13 +67,14 @@ where
                     }
                     // non-equal, delete the offending item
                     Some((existing_index, existing_elem)) => {
-                        trace!(existing_elem=?existing_elem.as_ref(), "non-equal item to delete");
+                        debug!(existing_elem=?existing_elem.as_ref(), "non-equal item to delete");
                         matched_subset = &existing[0..existing_index]; // inequality
 
                         break Some(MatchAction::DeleteValue(existing_elem));
                     }
                     // missing, add new
                     None => {
+                        debug!(?target_elem, "target item to add, not found");
                         break Some(MatchAction::InsertValue(target_elem));
                     }
                 }
