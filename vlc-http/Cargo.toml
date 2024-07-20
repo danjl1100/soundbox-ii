@@ -22,3 +22,6 @@ test-log = { version = "0.2.16", default-features = false, features = ["color", 
 [features]
 default = ["clap"]
 clap = ["dep:clap"]
+
+[lints]
+workspace = true

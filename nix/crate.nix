@@ -29,6 +29,27 @@
           pkgs.libiconv
           pkgs.darwin.apple_sdk.frameworks.CoreServices
         ];
+
+      # adding doc comment to `fn main`, otherwise copied from:
+      # https://github.com/ipetkov/crane/blob/8a68b987c476a33e90f203f0927614a75c3f47ea/lib/mkDummySrc.nix#L133
+      dummyrs = pkgs.writeText "dummy.rs" ''
+        //! in case of Cargo.toml defining any: #![deny(missing_docs)]
+        #![allow(clippy::all)]
+        #![allow(dead_code)]
+        #![cfg_attr(any(target_os = "none", target_os = "uefi"), no_std)]
+        #![cfg_attr(any(target_os = "none", target_os = "uefi"), no_main)]
+
+        #[allow(unused_extern_crates)]
+        extern crate core;
+
+        #[cfg_attr(any(target_os = "none", target_os = "uefi"), panic_handler)]
+        fn panic(_info: &::core::panic::PanicInfo<'_>) -> ! {
+            loop {}
+        }
+
+        /// in case of Cargo.toml defining any: #![deny(missing_docs)]
+        pub fn main() {}
+      '';
     }
     // (
       if (builtins.isNull pname)
