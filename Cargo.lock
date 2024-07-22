@@ -223,6 +223,8 @@ dependencies = [
  "arbtest",
  "insta",
  "rand",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

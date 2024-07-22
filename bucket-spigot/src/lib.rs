@@ -20,6 +20,9 @@
 
 #![allow(unused)] // TODO only while building
 
+// mod clap;
+mod path;
+
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
@@ -27,8 +30,14 @@ pub struct Network<T, U> {
     buckets_needing_fill: Vec<Path>,
 }
 impl<T, U> Network<T, U> {
-    #[allow(clippy::pedantic)] // TODO
-    fn peek<'a, R: rand::Rng + ?Sized>(
+    /// Returns a proposed sequence of items leaving the spigot.
+    ///
+    /// NOTE: Need to finalize the peeked items to progress the [`Network`] state beyond those
+    /// peeked items (depending on the child-ordering involved)
+    ///
+    /// # Errors
+    /// Returns any errors reported by the provided [`rand::Rng`] instance
+    pub fn peek<'a, R: rand::Rng + ?Sized>(
         &self,
         rng: &mut R,
         length: usize,
@@ -218,6 +227,7 @@ type Path = Vec<usize>;
 // type PathRef<'a> = &'a [usize];
 
 /// Command to modify a network
+#[non_exhaustive]
 pub enum ModifyCmd<T, U> {
     /// Add a new bucket
     AddBucket {
@@ -229,7 +239,7 @@ pub enum ModifyCmd<T, U> {
         /// Parent path for the new joint
         parent: Path,
     },
-    /// Sets the contents of the specified bucket
+    /// Set the contents of the specified bucket
     ///
     /// Removes the bucket from the "needing fill" list (if present)
     FillBucket {
@@ -293,6 +303,7 @@ impl std::fmt::Debug for ModifyError {
 }
 
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
+#[derive(Debug)]
 pub struct UnknownPath(Path);
 /// Buckets cannot have filters or child joints or buckets
 pub struct CannotAddToBucket(Path);
@@ -380,9 +391,35 @@ mod tests {
     }
 
     #[test]
+    fn joint_filters() {
+        let mut network = Network::<(), _>::default();
+        network
+            .modify(ModifyCmd::AddJoint { parent: vec![] })
+            .unwrap();
+        let joint1 = vec![0];
+        network
+            .modify(ModifyCmd::SetJointFilters {
+                new_filters: vec![1, 2, 3],
+                joint: joint1.clone(),
+            })
+            .unwrap();
+        insta::assert_ron_snapshot!(network.get_filters(joint1).unwrap(), @r###"
+        [
+          [
+            1,
+            2,
+            3,
+          ],
+        ]
+        "###);
+    }
+
+    #[test]
     fn single_bucket() {
         let mut network = Network::<_, ()>::default();
-        network.modify(ModifyCmd::AddBucket { parent: vec![] });
+        network
+            .modify(ModifyCmd::AddBucket { parent: vec![] })
+            .unwrap();
 
         let paths = network.get_buckets_needing_fill();
         insta::assert_ron_snapshot!(paths, @r###"
