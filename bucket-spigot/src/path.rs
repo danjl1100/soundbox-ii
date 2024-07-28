@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 const DELIMITER: &str = ".";
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub struct Path(
     #[serde(
@@ -16,12 +16,47 @@ pub struct Path(
     Vec<usize>,
 );
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct PathRef<'a>(&'a [usize]);
 
 impl Path {
     fn as_ref(&self) -> PathRef<'_> {
         let Self(elems) = self;
         PathRef(elems)
+    }
+    pub fn iter(&self) -> Iter<'_> {
+        self.as_ref().iter()
+    }
+    pub fn push(&mut self, elem: usize) {
+        self.0.push(elem);
+    }
+}
+impl From<Vec<usize>> for Path {
+    fn from(value: Vec<usize>) -> Self {
+        Self(value)
+    }
+}
+
+impl<'a> PathRef<'a> {
+    fn iter(self) -> Iter<'a> {
+        let Self(elems) = self;
+        Iter(elems.iter())
+    }
+}
+
+pub struct Iter<'a>(std::slice::Iter<'a, usize>);
+impl Iterator for Iter<'_> {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> {
+        let Self(iter) = self;
+        iter.next().copied()
+    }
+}
+impl<'a> IntoIterator for &'a Path {
+    type Item = usize;
+    type IntoIter = Iter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_ref().iter()
     }
 }
 
@@ -79,6 +114,7 @@ impl std::fmt::Debug for Path {
 #[serde(transparent)]
 pub struct Error(ErrorInner);
 
+impl std::error::Error for Error {}
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(inner) = self;

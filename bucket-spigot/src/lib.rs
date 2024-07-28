@@ -18,9 +18,9 @@
 //! walking from the spigot (root node) to the bucket.
 //!
 
-#![allow(unused)] // TODO only while building
+use path::Path;
 
-// mod clap;
+mod clap;
 mod path;
 
 /// Group of buckets with a central spigot
@@ -37,6 +37,7 @@ impl<T, U> Network<T, U> {
     ///
     /// # Errors
     /// Returns any errors reported by the provided [`rand::Rng`] instance
+    #[allow(unused)] // TODO
     pub fn peek<'a, R: rand::Rng + ?Sized>(
         &self,
         rng: &mut R,
@@ -86,7 +87,7 @@ impl<T, U> Network<T, U> {
 
         let mut current_children = self.root.as_ref();
 
-        for &next_index in &path {
+        for next_index in &path {
             let Some(next_child) = current_children.and_then(|c| c.get(next_index)) else {
                 return Err(UnknownPath(path));
             };
@@ -112,7 +113,7 @@ impl<T, U> Network<T, U> {
             self.root.as_mut().expect("initialized root just now")
         };
 
-        for &next_index in &parent_path {
+        for next_index in &parent_path {
             let Some(next_child) = current_children.get_mut(next_index) else {
                 return Err(UnknownPath(parent_path).into());
             };
@@ -153,7 +154,7 @@ impl<T, U> Network<T, U> {
 
         let mut bucket_path_iter = bucket_path.iter();
         let dest_contents = loop {
-            let Some(&next_index) = bucket_path_iter.next() else {
+            let Some(next_index) = bucket_path_iter.next() else {
                 return Err(ModifyErr::CannotFillJoint.into());
             };
             let Some(next_child) = current_children.and_then(|c| c.get_mut(next_index)) else {
@@ -175,7 +176,7 @@ impl<T, U> Network<T, U> {
     ) -> Result<(), ModifyError> {
         let mut current_children = self.root.as_mut();
         let mut dest_filters = None;
-        for &next_index in &joint_path {
+        for next_index in &joint_path {
             let Some(next_child) = current_children.and_then(|c| c.get_mut(next_index)) else {
                 return Err(UnknownPath(joint_path).into());
             };
@@ -222,11 +223,8 @@ impl<T, U> Child<T, U> {
     }
 }
 
-// TODO
-type Path = Vec<usize>;
-// type PathRef<'a> = &'a [usize];
-
 /// Command to modify a network
+#[derive(serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ModifyCmd<T, U> {
     /// Add a new bucket
@@ -250,10 +248,10 @@ pub enum ModifyCmd<T, U> {
     },
     /// Set the filters on a joint
     SetJointFilters {
-        /// List of filters to set on the joint
-        new_filters: Vec<U>,
         /// Path for the existing joint
         joint: Path,
+        /// List of filters to set on the joint
+        new_filters: Vec<U>,
     },
 }
 
@@ -313,7 +311,6 @@ pub struct CannotAddToBucket(Path);
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use std::any::Any;
 
     /// Random Number Generator that is fed by a deterministic `arbtest::arbitrary`
     struct ArbitraryRng<'a, 'b>(&'a mut arbtest::arbitrary::Unstructured<'b>)
@@ -351,10 +348,10 @@ mod tests {
         fn next_u64(&mut self) -> u64 {
             unreachable!("next_u64 in PanicRng");
         }
-        fn fill_bytes(&mut self, dest: &mut [u8]) {
+        fn fill_bytes(&mut self, _dest: &mut [u8]) {
             unreachable!("fill_bytes in PanicRng");
         }
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+        fn try_fill_bytes(&mut self, _dest: &mut [u8]) -> Result<(), rand::Error> {
             unreachable!("try_fill_bytes in PanicRng");
         }
     }
@@ -394,13 +391,15 @@ mod tests {
     fn joint_filters() {
         let mut network = Network::<(), _>::default();
         network
-            .modify(ModifyCmd::AddJoint { parent: vec![] })
+            .modify(ModifyCmd::AddJoint {
+                parent: Path::from(vec![]),
+            })
             .unwrap();
-        let joint1 = vec![0];
+        let joint1 = Path::from(vec![0]);
         network
             .modify(ModifyCmd::SetJointFilters {
-                new_filters: vec![1, 2, 3],
                 joint: joint1.clone(),
+                new_filters: vec![1, 2, 3],
             })
             .unwrap();
         insta::assert_ron_snapshot!(network.get_filters(joint1).unwrap(), @r###"
@@ -418,15 +417,15 @@ mod tests {
     fn single_bucket() {
         let mut network = Network::<_, ()>::default();
         network
-            .modify(ModifyCmd::AddBucket { parent: vec![] })
+            .modify(ModifyCmd::AddBucket {
+                parent: Path::from(vec![]),
+            })
             .unwrap();
 
         let paths = network.get_buckets_needing_fill();
         insta::assert_ron_snapshot!(paths, @r###"
         [
-          [
-            0,
-          ],
+          ".0",
         ]
         "###);
         let Some((bucket, &[])) = paths.split_first() else {
