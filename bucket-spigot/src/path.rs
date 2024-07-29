@@ -210,11 +210,11 @@ mod tests {
     }
 
     fn json_de_elems(input: &str) -> PathStructural {
-        let Path(elems) = serde_json::from_str(input).expect("valid test JSON input");
+        let Path(elems) = serde_json::from_str(input).expect("test JSON input should be valid");
         // verify Serialize <==> Deserialize
         // (note: restricts flexibility of test JSON inputs)
         assert_eq!(
-            serde_json::to_string(&Path(elems.clone())).expect("serialize OK"),
+            serde_json::to_string(&Path(elems.clone())).expect("should serialize OK"),
             input
         );
         PathStructural(elems)

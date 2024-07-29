@@ -430,8 +430,7 @@ mod tests {
         pub(super) fn assert_arb_error<T>(
             inner_fn: impl FnOnce() -> Result<T, rand::Error>,
         ) -> Result<T, arbtest::arbitrary::Error> {
-            extract_arb_error(inner_fn)
-                .expect("expected only arbitrary::Error can be thrown by RNG")
+            extract_arb_error(inner_fn).expect("RNG should only throw arbitrary::Error type")
         }
     }
 
@@ -447,6 +446,7 @@ mod tests {
         pub(super) enum Entry<U> {
             BucketsNeedingFill(Vec<Path>),
             Filters(Path, Vec<Vec<U>>),
+            ExpectError(String, String),
         }
 
         #[derive(clap::Parser)]
@@ -465,41 +465,60 @@ mod tests {
             },
         }
 
-        pub(super) struct Runner<T, U> {
-            network: Network<T, U>,
-        }
-        impl<T, U> Network<T, U> {
-            pub(super) fn into_runner(self) -> Runner<T, U> {
-                Runner { network: self }
-            }
-        }
         impl Network<String, String> {
-            pub(super) fn strs_runner() -> Runner<String, String> {
-                Self::default().into_runner()
+            pub(super) fn new_strings() -> Self {
+                Self::default()
             }
         }
 
-        impl<T, U> Runner<T, U>
+        impl<T, U> Network<T, U>
         where
             T: crate::clap::ArgBounds,
             U: crate::clap::ArgBounds,
         {
-            pub(super) fn into_inner(self) -> Network<T, U> {
-                let Self { network } = self;
-                network
-            }
             pub(super) fn run_script(&mut self, commands: &'static str) -> Log<U> {
-                let entries = commands
-                    .lines()
-                    .filter_map(|cmd| 'run_cmd: {
-                        let cmd = cmd.trim();
-                        if cmd.is_empty() || cmd.starts_with('#') {
-                            break 'run_cmd None;
-                        }
-                        self.run_script_command(cmd)
-                            .unwrap_or_else(|err| panic!("error running command {cmd:?}:\n{err}"))
-                    })
-                    .collect();
+                let mut entries = vec![];
+
+                let mut expect_error = None;
+                for (index, cmd) in commands.lines().enumerate() {
+                    let cmd = cmd.trim();
+                    let debug_line = || format!("{cmd:?} (line {number})", number = index + 1);
+
+                    if cmd.starts_with("!!expect_error") {
+                        let expect_why = debug_line();
+                        let None = expect_error.replace(expect_why) else {
+                            panic!("duplicate expect_err annotation: {}", debug_line());
+                        };
+                        continue;
+                    }
+                    if cmd.is_empty() || cmd.starts_with('#') {
+                        continue;
+                    }
+
+                    let result = self.run_script_command(cmd);
+
+                    let entry = if let Some(expect_error_why) = expect_error.take() {
+                        // expect error
+                        let error_str = result.expect_err(&expect_error_why).to_string();
+                        // log error value
+                        Some(Entry::ExpectError(cmd.to_owned(), error_str))
+                    } else {
+                        // expect success
+                        result.unwrap_or_else(|err| {
+                            // print unexpected error
+                            panic!("error running command: {}\n{err}", debug_line())
+                        })
+                    };
+                    if let Some(entry) = entry {
+                        entries.push(entry);
+                    }
+                }
+                if let Some(expect_why) = expect_error {
+                    panic!(
+                        "unused expect_err annotation, must be followed by a command: {expect_why}"
+                    );
+                };
+
                 Log(entries)
             }
             pub(super) fn run_script_command(
@@ -514,10 +533,10 @@ mod tests {
                             &cmd,
                             ModifyCmd::AddBucket { .. } | ModifyCmd::FillBucket { .. }
                         );
-                        self.network.modify(cmd)?;
+                        self.modify(cmd)?;
 
                         let entry = if output_buckets {
-                            let buckets = self.network.get_buckets_needing_fill();
+                            let buckets = self.get_buckets_needing_fill();
                             Some(Entry::BucketsNeedingFill(buckets.to_owned()))
                         } else {
                             None
@@ -525,10 +544,7 @@ mod tests {
                         Ok(entry)
                     }
                     Command::GetFilters { path } => {
-                        let filters = self
-                            .network
-                            .get_filters(path.clone())
-                            .map_err(ModifyError::from)?;
+                        let filters = self.get_filters(path.clone()).map_err(ModifyError::from)?;
                         let filters = filters
                             .iter()
                             .map(|&filter_set| filter_set.to_owned())
@@ -536,26 +552,6 @@ mod tests {
                         Ok(Some(Entry::Filters(path, filters)))
                     }
                 }
-            }
-            pub(super) fn expect_command_error<V>(
-                &mut self,
-                (why_error, command_str): (&'static str, &'static str),
-            ) -> V
-            where
-                V: std::error::Error + 'static,
-            {
-                let value = self
-                    .run_script_command(command_str)
-                    .expect_err(why_error)
-                    .downcast::<V>()
-                    .unwrap_or_else(|other_err| {
-                        panic!(
-                            "expected error to be of type {}: {other_err}",
-                            std::any::type_name::<V>()
-                        )
-                    });
-                // unbox
-                *value
             }
         }
     }
@@ -572,11 +568,24 @@ mod tests {
 
     #[test]
     fn joint_filters() {
-        let log = Network::<u8, i32>::default().into_runner().run_script(
+        let log = Network::<u8, i32>::default().run_script(
             "
             modify add-joint .
             modify set-joint-filters .0 1 2 3
             get-filters .0
+
+            modify add-joint .0
+            modify set-joint-filters -- .0.0 -4
+            get-filters .0.0
+
+            modify add-joint .0
+            modify set-joint-filters .0.1 5
+            get-filters .0.1
+
+            modify set-joint-filters .0
+            get-filters .0
+            get-filters .0.0
+            get-filters .0.1
             ",
         );
         insta::assert_ron_snapshot!(log, @r###"
@@ -588,15 +597,45 @@ mod tests {
               3,
             ],
           ]),
+          Filters(".0.0", [
+            [
+              1,
+              2,
+              3,
+            ],
+            [
+              -4,
+            ],
+          ]),
+          Filters(".0.1", [
+            [
+              1,
+              2,
+              3,
+            ],
+            [
+              5,
+            ],
+          ]),
+          Filters(".0", []),
+          Filters(".0.0", [
+            [
+              -4,
+            ],
+          ]),
+          Filters(".0.1", [
+            [
+              5,
+            ],
+          ]),
         ])
         "###);
     }
 
     #[test]
     fn single_bucket() {
-        let network = Network::<String, u8>::default();
-        let mut runner = network.into_runner();
-        let log = runner.run_script(
+        let mut network = Network::<String, u8>::default();
+        let log = network.run_script(
             "
             modify add-bucket .
             modify fill-bucket .0 a b c
@@ -611,7 +650,6 @@ mod tests {
         ])
         "###);
 
-        let network = runner.into_inner();
         let peeked = network.peek(&mut PanicRng, usize::MAX).unwrap();
         let empty: &[&str] = &[];
         assert_eq!(peeked, empty);
@@ -619,11 +657,17 @@ mod tests {
 
     #[test]
     fn delete_empty_bucket() {
-        let mut runner = Network::strs_runner();
-        let log = runner.run_script(
+        let mut network = Network::new_strings();
+        let log = network.run_script(
             "
             modify add-bucket .
             modify fill-bucket .0 abc def
+
+            !!expect_error delete non-empty bucket
+            modify delete-empty .0
+
+            modify fill-bucket .0
+            modify delete-empty .0
             ",
         );
         insta::assert_ron_snapshot!(log, @r###"
@@ -632,50 +676,29 @@ mod tests {
             ".0",
           ]),
           BucketsNeedingFill([]),
-        ])
-        "###);
-
-        let result = runner.expect_command_error::<ModifyError>((
-            "delete non-empty bucket",
-            "modify delete-empty .0",
-        ));
-        insta::assert_snapshot!(result, @"cannot delete non-empty bucket: Path(.0)");
-
-        let log = runner.run_script(
-            "
-            modify fill-bucket .0
-            modify delete-empty .0
-            ",
-        );
-        insta::assert_ron_snapshot!(log, @r###"
-        Log([
+          ExpectError("modify delete-empty .0", "cannot delete non-empty bucket: Path(.0)"),
           BucketsNeedingFill([]),
         ])
         "###);
     }
     #[test]
     fn delete_empty_joint() {
-        let mut runner = Network::strs_runner();
-        let log = runner.run_script(
+        let log = Network::new_strings().run_script(
             "
             modify add-joint .
             modify add-joint .0
-            ",
-        );
-        insta::assert_ron_snapshot!(log, @"Log([])");
 
-        let result = runner.expect_command_error::<ModifyError>((
-            "delete non-empty joint",
-            "modify delete-empty .0",
-        ));
-        insta::assert_snapshot!(result, @"cannot delete non-empty joint: Path(.0)");
+            !!expect_error delete non-empty joint
+            modify delete-empty .0
 
-        let log = runner.run_script(
-            "
             modify delete-empty .0.0
             modify delete-empty .0
             ",
         );
-        insta::assert_ron_snapshot!(log, @"Log([])");
+        insta::assert_ron_snapshot!(log, @r###"
+        Log([
+          ExpectError("modify delete-empty .0", "cannot delete non-empty joint: Path(.0)"),
+        ])
+        "###);
     }
 }
