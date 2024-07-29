@@ -166,6 +166,9 @@ impl<T, U> Network<T, U> {
             };
         };
 
+        self.buckets_needing_fill
+            .retain(|path| *path != bucket_path);
+
         *dest_contents = new_contents;
         Ok(())
     }
@@ -279,6 +282,7 @@ impl From<ModifyErr> for ModifyError {
     }
 }
 
+impl std::error::Error for ModifyError {}
 impl std::fmt::Display for ModifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(inner) = self;
@@ -311,70 +315,177 @@ pub struct CannotAddToBucket(Path);
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use arb_rng::{assert_arb_error, fake_rng, PanicRng};
 
-    /// Random Number Generator that is fed by a deterministic `arbtest::arbitrary`
-    struct ArbitraryRng<'a, 'b>(&'a mut arbtest::arbitrary::Unstructured<'b>)
-    where
-        'b: 'a;
-    impl<'a, 'b> rand::RngCore for ArbitraryRng<'a, 'b> {
-        fn next_u32(&mut self) -> u32 {
-            unimplemented!("non-fallible RngCore method called");
-        }
-        fn next_u64(&mut self) -> u64 {
-            unimplemented!("non-fallible RngCore method called");
-        }
-        fn fill_bytes(&mut self, _dest: &mut [u8]) {
-            unimplemented!("non-fallible RngCore method called");
-        }
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
-            for dest in dest {
-                *dest = self.0.arbitrary().map_err(rand::Error::new)?;
+    mod arb_rng {
+
+        /// Random Number Generator that is fed by a deterministic `arbtest::arbitrary`
+        pub(super) struct ArbitraryRng<'a, 'b>(&'a mut arbtest::arbitrary::Unstructured<'b>)
+        where
+            'b: 'a;
+        impl<'a, 'b> rand::RngCore for ArbitraryRng<'a, 'b> {
+            fn next_u32(&mut self) -> u32 {
+                unimplemented!("non-fallible RngCore method called");
             }
-            Ok(())
+            fn next_u64(&mut self) -> u64 {
+                unimplemented!("non-fallible RngCore method called");
+            }
+            fn fill_bytes(&mut self, _dest: &mut [u8]) {
+                unimplemented!("non-fallible RngCore method called");
+            }
+            fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+                for dest in dest {
+                    *dest = self.0.arbitrary().map_err(rand::Error::new)?;
+                }
+                Ok(())
+            }
         }
-    }
-    fn fake_rng<'a, 'b>(
-        arbitrary: &'a mut arbtest::arbitrary::Unstructured<'b>,
-    ) -> ArbitraryRng<'a, 'b> {
-        ArbitraryRng(arbitrary)
-    }
+        pub(super) fn fake_rng<'a, 'b>(
+            arbitrary: &'a mut arbtest::arbitrary::Unstructured<'b>,
+        ) -> ArbitraryRng<'a, 'b> {
+            ArbitraryRng(arbitrary)
+        }
 
-    /// Rng that panics when called
-    struct PanicRng;
-    impl rand::RngCore for PanicRng {
-        fn next_u32(&mut self) -> u32 {
-            unreachable!("next_u32 in PanicRng");
+        /// Rng that panics when called
+        pub(super) struct PanicRng;
+        impl rand::RngCore for PanicRng {
+            fn next_u32(&mut self) -> u32 {
+                unreachable!("next_u32 in PanicRng");
+            }
+            fn next_u64(&mut self) -> u64 {
+                unreachable!("next_u64 in PanicRng");
+            }
+            fn fill_bytes(&mut self, _dest: &mut [u8]) {
+                unreachable!("fill_bytes in PanicRng");
+            }
+            fn try_fill_bytes(&mut self, _dest: &mut [u8]) -> Result<(), rand::Error> {
+                unreachable!("try_fill_bytes in PanicRng");
+            }
         }
-        fn next_u64(&mut self) -> u64 {
-            unreachable!("next_u64 in PanicRng");
-        }
-        fn fill_bytes(&mut self, _dest: &mut [u8]) {
-            unreachable!("fill_bytes in PanicRng");
-        }
-        fn try_fill_bytes(&mut self, _dest: &mut [u8]) -> Result<(), rand::Error> {
-            unreachable!("try_fill_bytes in PanicRng");
-        }
-    }
 
-    fn extract_arb_error<T>(
-        inner_fn: impl FnOnce() -> Result<T, rand::Error>,
-    ) -> Result<Result<T, arbtest::arbitrary::Error>, Box<dyn std::error::Error + Sync + Send>>
-    {
-        match inner_fn() {
-            Ok(value) => Ok(Ok(value)),
-            Err(err) => {
-                let inner_error = err.take_inner();
-                match inner_error.downcast() {
-                    Ok(arb_error) => Ok(Err(*arb_error)),
-                    Err(other_error) => Err(other_error),
+        fn extract_arb_error<T>(
+            inner_fn: impl FnOnce() -> Result<T, rand::Error>,
+        ) -> Result<Result<T, arbtest::arbitrary::Error>, Box<dyn std::error::Error + Sync + Send>>
+        {
+            match inner_fn() {
+                Ok(value) => Ok(Ok(value)),
+                Err(err) => {
+                    let inner_error = err.take_inner();
+                    match inner_error.downcast() {
+                        Ok(arb_error) => Ok(Err(*arb_error)),
+                        Err(other_error) => Err(other_error),
+                    }
                 }
             }
         }
+        pub(super) fn assert_arb_error<T>(
+            inner_fn: impl FnOnce() -> Result<T, rand::Error>,
+        ) -> Result<T, arbtest::arbitrary::Error> {
+            extract_arb_error(inner_fn)
+                .expect("expected only arbitrary::Error can be thrown by RNG")
+        }
     }
-    fn assert_arb_error<T>(
-        inner_fn: impl FnOnce() -> Result<T, rand::Error>,
-    ) -> Result<T, arbtest::arbitrary::Error> {
-        extract_arb_error(inner_fn).expect("expected only arbitrary::Error can be thrown by RNG")
+
+    mod network_script {
+        use crate::{
+            clap::ModifyCmd as ClapModifyCmd, path::Path, ModifyCmd, ModifyError, Network,
+        };
+        use ::clap::Parser as _;
+
+        #[derive(serde::Serialize)]
+        pub(super) struct Log<U>(Vec<Entry<U>>);
+        #[derive(serde::Serialize)]
+        pub(super) enum Entry<U> {
+            BucketsNeedingFill(Vec<Path>),
+            Filters(Path, Vec<Vec<U>>),
+        }
+
+        #[derive(clap::Parser)]
+        #[clap(no_binary_name = true)]
+        enum Command<T, U>
+        where
+            T: crate::clap::ArgBounds,
+            U: crate::clap::ArgBounds,
+        {
+            Modify {
+                #[clap(subcommand)]
+                cmd: ClapModifyCmd<T, U>,
+            },
+            GetFilters {
+                path: Path,
+            },
+        }
+
+        pub(super) struct Runner<'a, T, U> {
+            network: &'a mut Network<T, U>,
+        }
+        impl<T, U> Network<T, U> {
+            pub(super) fn as_mut_runner(&mut self) -> Runner<'_, T, U> {
+                Runner { network: self }
+            }
+        }
+
+        impl<T, U> Runner<'_, T, U>
+        where
+            T: crate::clap::ArgBounds,
+            U: crate::clap::ArgBounds,
+        {
+            pub(super) fn run_script(&mut self, commands: &'static str) -> Log<U> {
+                let mut entries = vec![];
+                // TODO filter map?
+                for cmd in commands.lines() {
+                    let cmd = cmd.trim();
+                    if cmd.is_empty() || cmd.starts_with('#') {
+                        continue;
+                    }
+                    match self.run_script_command(cmd) {
+                        Ok(Some(entry)) => {
+                            entries.push(entry);
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            panic!("error running command {cmd:?}:\n{err}");
+                        }
+                    }
+                }
+                Log(entries)
+            }
+            fn run_script_command(
+                &mut self,
+                command_str: &'static str,
+            ) -> Result<Option<Entry<U>>, Box<dyn std::error::Error>> {
+                let cmd = Command::<T, U>::try_parse_from(command_str.split_whitespace())?;
+                match cmd {
+                    Command::Modify { cmd } => {
+                        let cmd = cmd.into();
+                        let output_buckets = matches!(
+                            &cmd,
+                            ModifyCmd::AddBucket { .. } | ModifyCmd::FillBucket { .. }
+                        );
+                        self.network.modify(cmd)?;
+
+                        let entry = if output_buckets {
+                            let buckets = self.network.get_buckets_needing_fill();
+                            Some(Entry::BucketsNeedingFill(buckets.to_owned()))
+                        } else {
+                            None
+                        };
+                        Ok(entry)
+                    }
+                    Command::GetFilters { path } => {
+                        let filters = self
+                            .network
+                            .get_filters(path.clone())
+                            .map_err(ModifyError::from)?;
+                        let filters = filters
+                            .iter()
+                            .map(|&filter_set| filter_set.to_owned())
+                            .collect();
+                        Ok(Some(Entry::Filters(path, filters)))
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -389,55 +500,44 @@ mod tests {
 
     #[test]
     fn joint_filters() {
-        let mut network = Network::<(), _>::default();
-        network
-            .modify(ModifyCmd::AddJoint {
-                parent: Path::from(vec![]),
-            })
-            .unwrap();
-        let joint1 = Path::from(vec![0]);
-        network
-            .modify(ModifyCmd::SetJointFilters {
-                joint: joint1.clone(),
-                new_filters: vec![1, 2, 3],
-            })
-            .unwrap();
-        insta::assert_ron_snapshot!(network.get_filters(joint1).unwrap(), @r###"
-        [
-          [
-            1,
-            2,
-            3,
-          ],
-        ]
+        let mut network = Network::<u8, i32>::default();
+        let log = network.as_mut_runner().run_script(
+            "
+            modify add-joint .
+            modify set-joint-filters .0 1 2 3
+            get-filters .0
+            ",
+        );
+        insta::assert_ron_snapshot!(log, @r###"
+        Log([
+          Filters(".0", [
+            [
+              1,
+              2,
+              3,
+            ],
+          ]),
+        ])
         "###);
     }
 
     #[test]
     fn single_bucket() {
-        let mut network = Network::<_, ()>::default();
-        network
-            .modify(ModifyCmd::AddBucket {
-                parent: Path::from(vec![]),
-            })
-            .unwrap();
-
-        let paths = network.get_buckets_needing_fill();
-        insta::assert_ron_snapshot!(paths, @r###"
-        [
-          ".0",
-        ]
+        let mut network = Network::<String, u8>::default();
+        let log = network.as_mut_runner().run_script(
+            "
+            modify add-bucket .
+            modify fill-bucket .0 a b c
+            ",
+        );
+        insta::assert_ron_snapshot!(log, @r###"
+        Log([
+          BucketsNeedingFill([
+            ".0",
+          ]),
+          BucketsNeedingFill([]),
+        ])
         "###);
-        let Some((bucket, &[])) = paths.split_first() else {
-            panic!("expected one path")
-        };
-
-        network
-            .modify(ModifyCmd::FillBucket {
-                bucket: bucket.to_owned(),
-                new_contents: vec!["a", "b", "c"],
-            })
-            .unwrap();
 
         let peeked = network.peek(&mut PanicRng, usize::MAX).unwrap();
         let empty: &[&str] = &[];

@@ -8,15 +8,30 @@ use crate::path::Path;
 pub use ::clap as clap_crate;
 use std::str::FromStr;
 
+/// Generic bounds required for all [`ModifyCmd`] type parameters
+pub trait ArgBounds:
+    FromStr<Err: std::error::Error + Send + Sync + 'static>
+    + Clone
+    + std::fmt::Debug
+    + Send
+    + Sync
+    + 'static
+{
+}
+impl<T> ArgBounds for T
+where
+    Self: FromStr + Clone + std::fmt::Debug + Send + Sync + 'static,
+    Self::Err: std::error::Error + Send + Sync + 'static,
+{
+}
+
 /// Low-level Control commands for VLC (correspond to a single API call)
 #[derive(Clone, clap::Subcommand, Debug, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ModifyCmd<T, U>
 where
-    T: FromStr + Clone + std::fmt::Debug + Send + Sync + 'static,
-    U: FromStr + Clone + std::fmt::Debug + Send + Sync + 'static,
-    T::Err: std::error::Error + Send + Sync + 'static,
-    U::Err: std::error::Error + Send + Sync + 'static,
+    T: ArgBounds,
+    U: ArgBounds,
 {
     /// Add a new bucket
     AddBucket {
@@ -47,10 +62,8 @@ where
 }
 impl<T, U> From<ModifyCmd<T, U>> for crate::ModifyCmd<T, U>
 where
-    T: FromStr + Clone + std::fmt::Debug + Send + Sync + 'static,
-    U: FromStr + Clone + std::fmt::Debug + Send + Sync + 'static,
-    T::Err: std::error::Error + Send + Sync + 'static,
-    U::Err: std::error::Error + Send + Sync + 'static,
+    T: ArgBounds,
+    U: ArgBounds,
 {
     fn from(value: ModifyCmd<T, U>) -> Self {
         match value {
