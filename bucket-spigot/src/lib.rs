@@ -20,13 +20,13 @@
 
 use path::Path;
 
-mod clap;
-mod path;
+pub mod clap;
+pub mod path;
 
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
-    root: Option<Vec<Child<T, U>>>,
+    root: Vec<Child<T, U>>,
     buckets_needing_fill: Vec<Path>,
 }
 impl<T, U> Network<T, U> {
@@ -54,13 +54,14 @@ impl<T, U> Network<T, U> {
     pub fn modify(&mut self, cmd: ModifyCmd<T, U>) -> Result<(), ModifyError> {
         match cmd {
             ModifyCmd::AddBucket { parent } => {
-                self.push(Child::bucket(), parent)?;
+                self.add_child(Child::bucket(), parent)?;
                 Ok(())
             }
             ModifyCmd::AddJoint { parent } => {
-                self.push(Child::joint(), parent)?;
+                self.add_child(Child::joint(), parent)?;
                 Ok(())
             }
+            ModifyCmd::DeleteEmpty { path } => self.delete_empty(path),
             ModifyCmd::FillBucket {
                 bucket,
                 new_contents,
@@ -85,7 +86,7 @@ impl<T, U> Network<T, U> {
     pub fn get_filters(&self, path: Path) -> Result<Vec<&[U]>, UnknownPath> {
         let mut filter_groups = Vec::new();
 
-        let mut current_children = self.root.as_ref();
+        let mut current_children = Some(&self.root);
 
         for next_index in &path {
             let Some(next_child) = current_children.and_then(|c| c.get(next_index)) else {
@@ -105,13 +106,8 @@ impl<T, U> Network<T, U> {
         Ok(filter_groups)
     }
 
-    fn push(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
-        let mut current_children = if let Some(root) = &mut self.root {
-            root
-        } else {
-            self.root = Some(Vec::new());
-            self.root.as_mut().expect("initialized root just now")
-        };
+    fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
+        let mut current_children = &mut self.root;
 
         for next_index in &parent_path {
             let Some(next_child) = current_children.get_mut(next_index) else {
@@ -145,24 +141,60 @@ impl<T, U> Network<T, U> {
 
         Ok(child_path)
     }
+    fn delete_empty(&mut self, path: Path) -> Result<(), ModifyError> {
+        let mut current_children = &mut self.root;
+
+        let Some((final_index, parent_path)) = path.as_ref().split_last() else {
+            return Err(ModifyErr::DeleteRoot.into());
+        };
+
+        for next_index in parent_path {
+            let Some(next_child) = current_children.get_mut(next_index) else {
+                return Err(UnknownPath(path).into());
+            };
+            current_children = match next_child {
+                Child::Bucket(_) => {
+                    return Err(UnknownPath(path).into());
+                }
+                Child::Joint(joint) => &mut joint.children,
+            };
+        }
+
+        let Some(target_elem) = current_children.get(final_index) else {
+            return Err(UnknownPath(path).into());
+        };
+
+        match target_elem {
+            Child::Bucket(bucket) if !bucket.is_empty() => {
+                Err(ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)).into())
+            }
+            Child::Joint(joint) if !joint.children.is_empty() => {
+                Err(ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)).into())
+            }
+            Child::Bucket(_) | Child::Joint(_) => {
+                current_children.remove(final_index);
+                Ok(())
+            }
+        }
+    }
     fn set_bucket_items(
         &mut self,
         new_contents: Vec<T>,
         bucket_path: Path,
     ) -> Result<(), ModifyError> {
-        let mut current_children = self.root.as_mut();
+        let mut current_children = &mut self.root;
 
         let mut bucket_path_iter = bucket_path.iter();
         let dest_contents = loop {
             let Some(next_index) = bucket_path_iter.next() else {
-                return Err(ModifyErr::CannotFillJoint.into());
+                return Err(ModifyErr::FillJoint.into());
             };
-            let Some(next_child) = current_children.and_then(|c| c.get_mut(next_index)) else {
+            let Some(next_child) = current_children.get_mut(next_index) else {
                 return Err(UnknownPath(bucket_path).into());
             };
             current_children = match next_child {
                 Child::Bucket(bucket) => break bucket,
-                Child::Joint(joint) => Some(&mut joint.children),
+                Child::Joint(joint) => &mut joint.children,
             };
         };
 
@@ -177,10 +209,10 @@ impl<T, U> Network<T, U> {
         new_filters: Vec<U>,
         joint_path: Path,
     ) -> Result<(), ModifyError> {
-        let mut current_children = self.root.as_mut();
+        let mut current_children = &mut self.root;
         let mut dest_filters = None;
         for next_index in &joint_path {
-            let Some(next_child) = current_children.and_then(|c| c.get_mut(next_index)) else {
+            let Some(next_child) = current_children.get_mut(next_index) else {
                 return Err(UnknownPath(joint_path).into());
             };
             current_children = match next_child {
@@ -189,7 +221,7 @@ impl<T, U> Network<T, U> {
                 }
                 Child::Joint(joint) => {
                     dest_filters = Some(&mut joint.filters);
-                    Some(&mut joint.children)
+                    &mut joint.children
                 }
             };
         }
@@ -198,7 +230,7 @@ impl<T, U> Network<T, U> {
             *dest_filters = new_filters;
             Ok(())
         } else {
-            Err(ModifyErr::CannotFilterRoot)?
+            Err(ModifyErr::FilterRoot)?
         }
     }
 }
@@ -240,6 +272,11 @@ pub enum ModifyCmd<T, U> {
         /// Parent path for the new joint
         parent: Path,
     },
+    /// Delete a node (bucket/joint) that is empty
+    DeleteEmpty {
+        /// Path of the node (bucket/joint) to delete
+        path: Path,
+    },
     /// Set the contents of the specified bucket
     ///
     /// Removes the bucket from the "needing fill" list (if present)
@@ -262,9 +299,12 @@ pub enum ModifyCmd<T, U> {
 pub struct ModifyError(ModifyErr);
 enum ModifyErr {
     UnknownPath(UnknownPath),
-    CannotAddToBucket(CannotAddToBucket),
-    CannotFilterRoot,
-    CannotFillJoint,
+    AddToBucket(CannotAddToBucket),
+    DeleteRoot,
+    DeleteNonemptyBucket(CannotDeleteNonempty),
+    DeleteNonemptyJoint(CannotDeleteNonempty),
+    FilterRoot,
+    FillJoint,
 }
 impl From<UnknownPath> for ModifyError {
     fn from(value: UnknownPath) -> Self {
@@ -273,7 +313,7 @@ impl From<UnknownPath> for ModifyError {
 }
 impl From<CannotAddToBucket> for ModifyError {
     fn from(value: CannotAddToBucket) -> Self {
-        Self(ModifyErr::CannotAddToBucket(value))
+        Self(ModifyErr::AddToBucket(value))
     }
 }
 impl From<ModifyErr> for ModifyError {
@@ -288,11 +328,18 @@ impl std::fmt::Display for ModifyError {
         let Self(inner) = self;
         match inner {
             ModifyErr::UnknownPath(UnknownPath(path)) => write!(f, "unknown path: {path:?}"),
-            ModifyErr::CannotAddToBucket(CannotAddToBucket(path)) => {
+            ModifyErr::AddToBucket(CannotAddToBucket(path)) => {
                 write!(f, "cannot add to bucket: {path:?}")
             }
-            ModifyErr::CannotFilterRoot => write!(f, "cannot filter the spigot (root node)"),
-            ModifyErr::CannotFillJoint => {
+            ModifyErr::DeleteRoot => write!(f, "cannot delete the spigot (root node)"),
+            ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)) => {
+                write!(f, "cannot delete non-empty bucket: {path:?}")
+            }
+            ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)) => {
+                write!(f, "cannot delete non-empty joint: {path:?}")
+            }
+            ModifyErr::FilterRoot => write!(f, "cannot filter the spigot (root node)"),
+            ModifyErr::FillJoint => {
                 write!(f, "cannot fill joint (only buckets have items)")
             }
         }
@@ -309,6 +356,8 @@ impl std::fmt::Debug for ModifyError {
 pub struct UnknownPath(Path);
 /// Buckets cannot have filters or child joints or buckets
 pub struct CannotAddToBucket(Path);
+/// Only allowed to delete empty joints or buckets
+pub struct CannotDeleteNonempty(Path);
 
 #[cfg(test)]
 #[allow(clippy::panic)]
@@ -394,7 +443,7 @@ mod tests {
 
         #[derive(serde::Serialize)]
         pub(super) struct Log<U>(Vec<Entry<U>>);
-        #[derive(serde::Serialize)]
+        #[derive(Debug, serde::Serialize)]
         pub(super) enum Entry<U> {
             BucketsNeedingFill(Vec<Path>),
             Filters(Path, Vec<Vec<U>>),
@@ -416,41 +465,44 @@ mod tests {
             },
         }
 
-        pub(super) struct Runner<'a, T, U> {
-            network: &'a mut Network<T, U>,
+        pub(super) struct Runner<T, U> {
+            network: Network<T, U>,
         }
         impl<T, U> Network<T, U> {
-            pub(super) fn as_mut_runner(&mut self) -> Runner<'_, T, U> {
+            pub(super) fn into_runner(self) -> Runner<T, U> {
                 Runner { network: self }
             }
         }
+        impl Network<String, String> {
+            pub(super) fn strs_runner() -> Runner<String, String> {
+                Self::default().into_runner()
+            }
+        }
 
-        impl<T, U> Runner<'_, T, U>
+        impl<T, U> Runner<T, U>
         where
             T: crate::clap::ArgBounds,
             U: crate::clap::ArgBounds,
         {
+            pub(super) fn into_inner(self) -> Network<T, U> {
+                let Self { network } = self;
+                network
+            }
             pub(super) fn run_script(&mut self, commands: &'static str) -> Log<U> {
-                let mut entries = vec![];
-                // TODO filter map?
-                for cmd in commands.lines() {
-                    let cmd = cmd.trim();
-                    if cmd.is_empty() || cmd.starts_with('#') {
-                        continue;
-                    }
-                    match self.run_script_command(cmd) {
-                        Ok(Some(entry)) => {
-                            entries.push(entry);
+                let entries = commands
+                    .lines()
+                    .filter_map(|cmd| 'run_cmd: {
+                        let cmd = cmd.trim();
+                        if cmd.is_empty() || cmd.starts_with('#') {
+                            break 'run_cmd None;
                         }
-                        Ok(None) => {}
-                        Err(err) => {
-                            panic!("error running command {cmd:?}:\n{err}");
-                        }
-                    }
-                }
+                        self.run_script_command(cmd)
+                            .unwrap_or_else(|err| panic!("error running command {cmd:?}:\n{err}"))
+                    })
+                    .collect();
                 Log(entries)
             }
-            fn run_script_command(
+            pub(super) fn run_script_command(
                 &mut self,
                 command_str: &'static str,
             ) -> Result<Option<Entry<U>>, Box<dyn std::error::Error>> {
@@ -485,6 +537,26 @@ mod tests {
                     }
                 }
             }
+            pub(super) fn expect_command_error<V>(
+                &mut self,
+                (why_error, command_str): (&'static str, &'static str),
+            ) -> V
+            where
+                V: std::error::Error + 'static,
+            {
+                let value = self
+                    .run_script_command(command_str)
+                    .expect_err(why_error)
+                    .downcast::<V>()
+                    .unwrap_or_else(|other_err| {
+                        panic!(
+                            "expected error to be of type {}: {other_err}",
+                            std::any::type_name::<V>()
+                        )
+                    });
+                // unbox
+                *value
+            }
         }
     }
 
@@ -500,8 +572,7 @@ mod tests {
 
     #[test]
     fn joint_filters() {
-        let mut network = Network::<u8, i32>::default();
-        let log = network.as_mut_runner().run_script(
+        let log = Network::<u8, i32>::default().into_runner().run_script(
             "
             modify add-joint .
             modify set-joint-filters .0 1 2 3
@@ -523,8 +594,9 @@ mod tests {
 
     #[test]
     fn single_bucket() {
-        let mut network = Network::<String, u8>::default();
-        let log = network.as_mut_runner().run_script(
+        let network = Network::<String, u8>::default();
+        let mut runner = network.into_runner();
+        let log = runner.run_script(
             "
             modify add-bucket .
             modify fill-bucket .0 a b c
@@ -539,8 +611,71 @@ mod tests {
         ])
         "###);
 
+        let network = runner.into_inner();
         let peeked = network.peek(&mut PanicRng, usize::MAX).unwrap();
         let empty: &[&str] = &[];
         assert_eq!(peeked, empty);
+    }
+
+    #[test]
+    fn delete_empty_bucket() {
+        let mut runner = Network::strs_runner();
+        let log = runner.run_script(
+            "
+            modify add-bucket .
+            modify fill-bucket .0 abc def
+            ",
+        );
+        insta::assert_ron_snapshot!(log, @r###"
+        Log([
+          BucketsNeedingFill([
+            ".0",
+          ]),
+          BucketsNeedingFill([]),
+        ])
+        "###);
+
+        let result = runner.expect_command_error::<ModifyError>((
+            "delete non-empty bucket",
+            "modify delete-empty .0",
+        ));
+        insta::assert_snapshot!(result, @"cannot delete non-empty bucket: Path(.0)");
+
+        let log = runner.run_script(
+            "
+            modify fill-bucket .0
+            modify delete-empty .0
+            ",
+        );
+        insta::assert_ron_snapshot!(log, @r###"
+        Log([
+          BucketsNeedingFill([]),
+        ])
+        "###);
+    }
+    #[test]
+    fn delete_empty_joint() {
+        let mut runner = Network::strs_runner();
+        let log = runner.run_script(
+            "
+            modify add-joint .
+            modify add-joint .0
+            ",
+        );
+        insta::assert_ron_snapshot!(log, @"Log([])");
+
+        let result = runner.expect_command_error::<ModifyError>((
+            "delete non-empty joint",
+            "modify delete-empty .0",
+        ));
+        insta::assert_snapshot!(result, @"cannot delete non-empty joint: Path(.0)");
+
+        let log = runner.run_script(
+            "
+            modify delete-empty .0.0
+            modify delete-empty .0
+            ",
+        );
+        insta::assert_ron_snapshot!(log, @"Log([])");
     }
 }

@@ -43,6 +43,11 @@ where
         /// Parent path for the new joint
         parent: Path,
     },
+    /// Delete a node (bucket/joint) that is empty
+    DeleteEmpty {
+        /// Path of the node (bucket/joint) to delete
+        path: Path,
+    },
     /// Set the contents of the specified bucket
     ///
     /// Removes the bucket from the "needing fill" list (if present)
@@ -69,6 +74,7 @@ where
         match value {
             ModifyCmd::AddBucket { parent } => Self::AddBucket { parent },
             ModifyCmd::AddJoint { parent } => Self::AddJoint { parent },
+            ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty { path },
             ModifyCmd::FillBucket {
                 bucket,
                 new_contents,

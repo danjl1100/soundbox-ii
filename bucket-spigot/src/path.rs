@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 const DELIMITER: &str = ".";
 
+/// Path to a node (joint or bucket) in the [`Network`](`crate::Network`)
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub struct Path(
@@ -16,17 +17,23 @@ pub struct Path(
     Vec<usize>,
 );
 
+/// Borrow of a [`Path`]
+#[must_use]
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct PathRef<'a>(&'a [usize]);
+#[allow(clippy::module_name_repetitions)]
+pub struct PathRef<'a>(&'a [usize]);
 
 impl Path {
-    fn as_ref(&self) -> PathRef<'_> {
+    /// Borrows the path
+    pub fn as_ref(&self) -> PathRef<'_> {
         let Self(elems) = self;
         PathRef(elems)
     }
+    /// Returns an iterator for path elements
     pub fn iter(&self) -> Iter<'_> {
-        self.as_ref().iter()
+        self.as_ref().into_iter()
     }
+    /// Appends a path element
     pub fn push(&mut self, elem: usize) {
         self.0.push(elem);
     }
@@ -38,12 +45,16 @@ impl From<Vec<usize>> for Path {
 }
 
 impl<'a> PathRef<'a> {
-    fn iter(self) -> Iter<'a> {
-        let Self(elems) = self;
-        Iter(elems.iter())
+    /// Returns the last element and the rest (if any)
+    #[must_use]
+    pub fn split_last(self) -> Option<(usize, PathRef<'a>)> {
+        let (&last, rest) = self.0.split_last()?;
+        Some((last, Self(rest)))
     }
 }
 
+/// Iterator for a [`Path`]
+#[must_use]
 pub struct Iter<'a>(std::slice::Iter<'a, usize>);
 impl Iterator for Iter<'_> {
     type Item = usize;
@@ -56,7 +67,15 @@ impl<'a> IntoIterator for &'a Path {
     type Item = usize;
     type IntoIter = Iter<'a>;
     fn into_iter(self) -> Self::IntoIter {
-        self.as_ref().iter()
+        self.as_ref().into_iter()
+    }
+}
+impl<'a> IntoIterator for PathRef<'a> {
+    type Item = usize;
+    type IntoIter = Iter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        let Self(elems) = self;
+        Iter(elems.iter())
     }
 }
 
@@ -110,6 +129,7 @@ impl std::fmt::Debug for Path {
     }
 }
 
+/// Error parsing a [`Path`]
 #[derive(serde::Serialize)]
 #[serde(transparent)]
 pub struct Error(ErrorInner);
