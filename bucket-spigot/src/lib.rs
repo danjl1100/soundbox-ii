@@ -38,14 +38,36 @@ impl<T, U> Network<T, U> {
     /// # Errors
     /// Returns any errors reported by the provided [`rand::Rng`] instance
     #[allow(unused)] // TODO
+    #[allow(clippy::missing_panics_doc)] // TODO
     pub fn peek<'a, R: rand::Rng + ?Sized>(
-        &self,
+        &'a self,
         rng: &mut R,
-        length: usize,
-    ) -> Result<&'a [T], rand::Error> {
-        // TODO
-        // rng.try_fill_bytes(&mut [0])?;
-        Ok(&[])
+        peek_len: usize,
+    ) -> Result<Vec<&'a T>, rand::Error> {
+        if self.root.len() == 1 {
+            // TODO actually traverse the network
+            let mut chosen = vec![];
+            let child = self.root.first().expect("should have one child");
+            match child {
+                Child::Bucket(bucket) => {
+                    if !bucket.is_empty() {
+                        let mut count = 0;
+                        while let Some(request_len) = peek_len.checked_sub(chosen.len() + 1) {
+                            dbg!(peek_len, chosen.len());
+                            chosen.extend(bucket.iter().take(request_len + 1));
+                            count += 1;
+                            assert!(count < 20);
+                        }
+                    }
+                    Ok(chosen)
+                }
+                Child::Joint(_) => todo!(),
+            }
+        } else {
+            // TODO
+            // rng.try_fill_bytes(&mut [0])?;
+            Ok(vec![])
+        }
     }
     /// Modify the network topology
     ///
@@ -369,4 +391,5 @@ mod tests {
 
     // test cases
     mod modify_network;
+    mod peek_pop_network;
 }

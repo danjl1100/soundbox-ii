@@ -1,15 +1,17 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+use super::arb_rng::PanicRng;
 use crate::{clap::ModifyCmd as ClapModifyCmd, path::Path, ModifyCmd, ModifyError, Network};
 use ::clap::Parser as _;
 
 #[derive(serde::Serialize)]
-pub(super) struct Log<U>(Vec<Entry<U>>);
+pub(super) struct Log<T, U>(Vec<Entry<T, U>>);
 #[derive(Debug, serde::Serialize)]
-pub(super) enum Entry<U> {
+pub(super) enum Entry<T, U> {
     BucketsNeedingFill(Vec<Path>),
     Filters(Path, Vec<Vec<U>>),
     ExpectError(String, String),
+    Peek(Vec<T>),
 }
 
 #[derive(clap::Parser)]
@@ -26,6 +28,12 @@ where
     GetFilters {
         path: Path,
     },
+    Peek {
+        count: usize,
+    },
+    PeekAssert {
+        expected: Vec<T>,
+    },
 }
 
 impl Network<String, String> {
@@ -36,10 +44,10 @@ impl Network<String, String> {
 
 impl<T, U> Network<T, U>
 where
-    T: crate::clap::ArgBounds,
+    T: crate::clap::ArgBounds + Eq,
     U: crate::clap::ArgBounds,
 {
-    pub(super) fn run_script(&mut self, commands: &'static str) -> Log<U> {
+    pub(super) fn run_script(&mut self, commands: &'static str) -> Log<T, U> {
         let mut entries = vec![];
 
         let mut expect_error = None;
@@ -85,7 +93,7 @@ where
     pub(super) fn run_script_command(
         &mut self,
         command_str: &'static str,
-    ) -> Result<Option<Entry<U>>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<Entry<T, U>>, Box<dyn std::error::Error>> {
         let cmd = Command::<T, U>::try_parse_from(command_str.split_whitespace())?;
         match cmd {
             Command::Modify { cmd } => {
@@ -111,6 +119,22 @@ where
                     .map(|&filter_set| filter_set.to_owned())
                     .collect();
                 Ok(Some(Entry::Filters(path, filters)))
+            }
+            Command::Peek { count } => {
+                let peeked = self.peek(&mut PanicRng, count).unwrap();
+                let peeked = peeked.into_iter().cloned().collect::<Vec<_>>();
+                Ok(Some(Entry::Peek(peeked)))
+            }
+            Command::PeekAssert { expected } => {
+                let count = expected.len();
+                assert_ne!(
+                    count, 0,
+                    "peek-assert should have non-zero number of elements"
+                );
+                let peeked = self.peek(&mut PanicRng, count).unwrap();
+                let peeked = peeked.into_iter().cloned().collect::<Vec<_>>();
+                assert_eq!(peeked, expected);
+                Ok(None)
             }
         }
     }

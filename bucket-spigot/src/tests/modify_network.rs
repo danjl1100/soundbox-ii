@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::arb_rng::{assert_arb_error, fake_rng, PanicRng};
+use super::arb_rng::{assert_arb_error, fake_rng};
 use crate::Network;
 
 #[test]
@@ -8,7 +8,7 @@ fn empty() {
     let network = Network::<(), ()>::default();
     arbtest::arbtest(|u| {
         let peeked = assert_arb_error(|| network.peek(&mut fake_rng(u), usize::MAX))?;
-        assert_eq!(peeked, &[]);
+        assert_eq!(peeked, Vec::<&()>::new());
         Ok(())
     });
 }
@@ -85,6 +85,7 @@ fn single_bucket() {
     let log = network.run_script(
         "
         modify add-bucket .
+        peek 9999
         modify fill-bucket .0 a b c
         ",
     );
@@ -93,13 +94,10 @@ fn single_bucket() {
       BucketsNeedingFill([
         ".0",
       ]),
+      Peek([]),
       BucketsNeedingFill([]),
     ])
     "###);
-
-    let peeked = network.peek(&mut PanicRng, usize::MAX).unwrap();
-    let empty: &[&str] = &[];
-    assert_eq!(peeked, empty);
 }
 
 #[test]
