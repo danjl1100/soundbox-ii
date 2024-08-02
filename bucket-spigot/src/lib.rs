@@ -23,6 +23,8 @@ use path::Path;
 pub mod clap;
 pub mod path;
 
+mod order;
+
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
@@ -30,45 +32,6 @@ pub struct Network<T, U> {
     buckets_needing_fill: Vec<Path>,
 }
 impl<T, U> Network<T, U> {
-    /// Returns a proposed sequence of items leaving the spigot.
-    ///
-    /// NOTE: Need to finalize the peeked items to progress the [`Network`] state beyond those
-    /// peeked items (depending on the child-ordering involved)
-    ///
-    /// # Errors
-    /// Returns any errors reported by the provided [`rand::Rng`] instance
-    #[allow(unused)] // TODO
-    #[allow(clippy::missing_panics_doc)] // TODO
-    pub fn peek<'a, R: rand::Rng + ?Sized>(
-        &'a self,
-        rng: &mut R,
-        peek_len: usize,
-    ) -> Result<Vec<&'a T>, rand::Error> {
-        if self.root.len() == 1 {
-            // TODO actually traverse the network
-            let mut chosen = vec![];
-            let child = self.root.first().expect("should have one child");
-            match child {
-                Child::Bucket(bucket) => {
-                    if !bucket.is_empty() {
-                        let mut count = 0;
-                        while let Some(request_len) = peek_len.checked_sub(chosen.len() + 1) {
-                            dbg!(peek_len, chosen.len());
-                            chosen.extend(bucket.iter().take(request_len + 1));
-                            count += 1;
-                            assert!(count < 20);
-                        }
-                    }
-                    Ok(chosen)
-                }
-                Child::Joint(_) => todo!(),
-            }
-        } else {
-            // TODO
-            // rng.try_fill_bytes(&mut [0])?;
-            Ok(vec![])
-        }
-    }
     /// Modify the network topology
     ///
     /// # Errors

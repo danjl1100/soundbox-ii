@@ -34,3 +34,38 @@ fn simple_in_order() {
     ])
     "###);
 }
+
+#[test]
+fn two_alternating() {
+    let log = Network::new_strings().run_script(
+        "
+        modify add-bucket .
+        modify add-bucket .
+        modify fill-bucket .0 zero
+        modify fill-bucket .1 one
+        peek 5
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill([
+        ".0",
+      ]),
+      BucketsNeedingFill([
+        ".0",
+        ".1",
+      ]),
+      BucketsNeedingFill([
+        ".1",
+      ]),
+      BucketsNeedingFill([]),
+      Peek([
+        "zero",
+        "one",
+        "zero",
+        "one",
+        "zero",
+      ]),
+    ])
+    "###);
+}
