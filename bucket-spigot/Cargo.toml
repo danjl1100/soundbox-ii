@@ -12,6 +12,7 @@ serde = { version = "1.0.199", features = ["derive"] }
 arbtest = "0.3.1"
 insta = { version = "1.39.0", features = ["ron"] }
 serde_json = "1.0.116"
+serde_with = { version = "3.9.0", default-features = false, features = ["std", "alloc"] }
 
 [lints]
 workspace = true

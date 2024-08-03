@@ -11,8 +11,24 @@ pub(super) enum Entry<T, U> {
     BucketsNeedingFill(Vec<Path>),
     Filters(Path, Vec<Vec<U>>),
     ExpectError(String, String),
-    Peek(Vec<T>),
-    Pop(Vec<T>),
+    Peek(
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::unwrap_or_skip"
+        )]
+        Option<u64>,
+        Vec<T>,
+    ),
+    /// Only shown when no values are requested (e.g. [`Command::PeekAssert`])
+    PeekEffort(u64),
+    Pop(
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::unwrap_or_skip"
+        )]
+        Option<u64>,
+        Vec<T>,
+    ),
     Topology(Topology<usize>),
 }
 
@@ -38,16 +54,24 @@ where
         path: Path,
     },
     Peek {
-        #[clap(long)]
-        apply: bool,
+        #[command(flatten)]
+        flags: PeekFlags,
         count: usize,
     },
     PeekAssert {
-        #[clap(long)]
-        apply: bool,
+        #[command(flatten)]
+        flags: PeekFlags,
         expected: Vec<T>,
     },
     Topology,
+}
+
+#[derive(Clone, Copy, Debug, clap::Args)]
+struct PeekFlags {
+    #[clap(long)]
+    apply: bool,
+    #[clap(long)]
+    show_effort: bool,
 }
 
 impl Network<String, String> {
@@ -97,9 +121,7 @@ where
                     panic!("error running command: {}\n{err}", debug_line())
                 })
             };
-            if let Some(entry) = entry {
-                entries.push(entry);
-            }
+            entries.extend(entry);
         }
         if let Some(expect_why) = expect_error {
             panic!("expect_err annotation should be followed by a command: {expect_why}");
@@ -137,21 +159,30 @@ where
                     .collect();
                 Ok(Some(Entry::Filters(path, filters)))
             }
-            Command::Peek { apply, count } => {
-                let peeked = self.run_peek(count, apply);
-                let entry = if apply {
-                    Entry::Pop(peeked)
+            Command::Peek { flags, count } => {
+                let (effort, peeked) = self.run_peek(count, flags);
+                let entry = if flags.apply {
+                    Entry::Pop(effort, peeked)
                 } else {
-                    Entry::Peek(peeked)
+                    Entry::Peek(effort, peeked)
                 };
                 Ok(Some(entry))
             }
-            Command::PeekAssert { apply, expected } => {
+            Command::PeekAssert { flags, expected } => {
                 let count = expected.len();
-                let peeked = self.run_peek(count, apply);
+                let (effort, peeked) = self.run_peek(count, flags);
                 assert_eq!(peeked, expected);
 
-                let entry = apply.then_some(Entry::Pop(peeked));
+                let entry = flags
+                    .apply
+                    .then_some(
+                        // show `Pop` in log, even when redundant with an assert
+                        Entry::Pop(effort, peeked),
+                    )
+                    .or(
+                        // log the effort (if present, e.g. when requested)
+                        effort.map(Entry::PeekEffort),
+                    );
                 Ok(entry)
             }
             Command::Topology => {
@@ -160,17 +191,18 @@ where
             }
         }
     }
-    fn run_peek(&mut self, count: usize, apply: bool) -> Vec<T> {
+    fn run_peek(&mut self, count: usize, flags: PeekFlags) -> (Option<u64>, Vec<T>) {
         let peeked = self.peek(&mut PanicRng, count).unwrap();
         let items = peeked
             .items()
             .iter()
             .map(|&x| x.clone())
             .collect::<Vec<_>>();
-        if apply {
+        let effort = flags.show_effort.then_some(peeked.get_effort_count());
+        if flags.apply {
             self.finalize_peeked(peeked.accept_into_inner());
         }
-        items
+        (effort, items)
     }
 }
 

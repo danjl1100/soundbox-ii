@@ -150,3 +150,181 @@ fn depth_2() {
     ])
     "###);
 }
+
+#[test]
+fn continue_if_first_is_empty() {
+    let log = Network::new_strings_run_script(
+        "
+        # first is empty
+        modify add-bucket .
+        modify fill-bucket .0
+
+        # second has items
+        modify add-bucket .
+        modify fill-bucket .1 a b c
+
+        peek 3
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill([
+        ".0",
+      ]),
+      BucketsNeedingFill([]),
+      BucketsNeedingFill([
+        ".1",
+      ]),
+      BucketsNeedingFill([]),
+      Peek([
+        "a",
+        "b",
+        "c",
+      ]),
+    ])
+    "###);
+}
+
+#[test]
+fn skips_effort_repeat_empty() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-joint .
+        modify add-joint .0
+        modify add-joint .0.0
+        modify add-bucket .
+        modify fill-bucket .1 item
+
+        topology
+
+        peek --show-effort 1
+        peek --show-effort 5
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill([
+        ".1",
+      ]),
+      BucketsNeedingFill([]),
+      Topology([
+        [
+          [
+            [],
+          ],
+        ],
+        1,
+      ]),
+      Peek(5, [
+        "item",
+      ]),
+      Peek(13, [
+        "item",
+        "item",
+        "item",
+        "item",
+        "item",
+      ]),
+    ])
+    "###);
+}
+
+#[test]
+fn skips_effort_repeat_empty_big_branch() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-joint  .
+        modify add-joint  .0
+        modify add-joint  .0.0
+        modify add-joint  .0.0.0
+        modify add-joint  .0.0.0.0
+        modify add-joint  .0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0.0.0.0.0.0
+        modify add-joint  .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
+        modify add-bucket .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
+        modify fill-bucket .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
+        modify add-bucket .0
+        modify fill-bucket .0.1 a
+
+        topology
+
+        # 1
+        peek-assert --show-effort a
+        # 2
+        peek-assert --show-effort a a
+        # 4
+        peek-assert --show-effort a a a a
+        # 8
+        peek-assert --show-effort a a a a a a a a
+        # 16
+        peek-assert --show-effort a a a a a a a a a a a a a a a a
+        # 32
+        peek-assert --show-effort a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a
+        # 64
+        peek-assert --show-effort a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill([
+        ".0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",
+      ]),
+      BucketsNeedingFill([]),
+      BucketsNeedingFill([
+        ".0.1",
+      ]),
+      BucketsNeedingFill([]),
+      Topology([
+        [
+          [
+            [
+              [
+                [
+                  [
+                    [
+                      [
+                        [
+                          [
+                            [
+                              [
+                                [
+                                  [
+                                    [
+                                      [
+                                        0,
+                                      ],
+                                    ],
+                                  ],
+                                ],
+                              ],
+                            ],
+                          ],
+                        ],
+                      ],
+                    ],
+                  ],
+                ],
+              ],
+            ],
+          ],
+          1,
+        ],
+      ]),
+      PeekEffort(19),
+      PeekEffort(22),
+      PeekEffort(28),
+      PeekEffort(40),
+      PeekEffort(64),
+      PeekEffort(112),
+      PeekEffort(208),
+    ])
+    "###);
+}

@@ -25,8 +25,12 @@ impl<T, U> Network<T, U> {
         let mut root_order = self.root_order.0.clone();
         let mut root_remaining = CountsRemaining::new(child_nodes.len());
 
+        let mut effort_count = 0;
+
         let chosen_elems = std::iter::from_fn(|| {
-            peek_inner(rng, child_nodes, &mut root_order, &mut root_remaining)
+            let (elem, effort) = peek_inner(rng, child_nodes, &mut root_order, &mut root_remaining);
+            effort_count += effort;
+            elem
         })
         .take(peek_len)
         .collect();
@@ -34,6 +38,7 @@ impl<T, U> Network<T, U> {
         Ok(Peeked {
             items: chosen_elems,
             root_order: Root(root_order),
+            effort_count,
         })
     }
     /// Finalizes the specified [`Peeked`], advancing the network state (if any)
@@ -48,80 +53,97 @@ fn peek_inner<'a, R, T, U>(
     child_nodes: &'a [Child<T, U>],
     order_node: &mut node::Node,
     current_remaining: &mut CountsRemaining,
-) -> Option<&'a T>
+) -> (Option<&'a T>, u64)
 where
     R: rand::Rng + ?Sized,
 {
     let current_order = &mut order_node.order;
     let child_orders = &mut order_node.children;
 
-    if current_remaining.is_fully_exhausted() || child_nodes.is_empty() {
-        return None;
-    }
+    let mut effort_count = 0;
 
-    assert_eq!(child_nodes.len(), child_orders.len());
-    assert_eq!(
-        child_nodes.len(),
-        current_remaining.child_count_if_nonempty()
-    );
+    while !current_remaining.is_fully_exhausted() {
+        assert_eq!(child_nodes.len(), child_orders.len());
+        assert_eq!(
+            child_nodes.len(),
+            current_remaining.child_count_if_nonempty()
+        );
 
-    let child_index = current_order
-        .next_in(rng, child_nodes)
-        .expect("child_nodes should not be empty");
+        let child_index = current_order
+            .next_in(rng, child_nodes)
+            .expect("child_nodes should not be empty");
 
-    #[allow(clippy::panic)]
-    let Some(child_node) = child_nodes.get(child_index) else {
-        panic!("valid child_nodes index ({child_index}) from order")
-    };
-    #[allow(clippy::panic)]
-    let Some(child_order) = child_orders.get_mut(child_index) else {
-        panic!("valid child_orders index ({child_index}) from order")
-    };
-
-    let elem = match child_node {
-        Child::Bucket(bucket_elems) => {
-            if bucket_elems.is_empty() {
-                None
-            } else {
-                let elem_index = Rc::make_mut(child_order)
-                    .order
-                    .next_in(rng, bucket_elems)
-                    .expect("bucket should not be empty");
-                #[allow(clippy::panic)]
-                let Some(elem) = bucket_elems.get(elem_index) else {
-                    panic!("valid bucket_elems index ({elem_index}) from order")
-                };
-                Some(elem)
-            }
+        let remaining_slot = current_remaining.child_mut(child_index);
+        if remaining_slot.is_none() {
+            // chosen child is known to to be exhausted
+            continue;
         }
-        Child::Joint(joint) => {
-            let remaining_slot = current_remaining.child_mut(child_index);
-            if joint.children.is_empty() {
-                None
-            } else if let Some(remaining) = remaining_slot {
-                peek_inner(
-                    rng,
-                    &joint.children,
-                    Rc::make_mut(child_order),
-                    remaining.as_mut_or_init(|| CountsRemaining::new(joint.children.len())),
-                )
-            } else {
-                None
+
+        #[allow(clippy::panic)]
+        let Some(child_node) = child_nodes.get(child_index) else {
+            panic!("valid child_nodes index ({child_index}) from order")
+        };
+        #[allow(clippy::panic)]
+        let Some(child_order) = child_orders.get_mut(child_index) else {
+            panic!("valid child_orders index ({child_index}) from order")
+        };
+
+        // effort: lookup child_nodes and child_orders
+        effort_count += 1;
+
+        let elem = match child_node {
+            Child::Bucket(bucket_elems) => {
+                if bucket_elems.is_empty() {
+                    None
+                } else {
+                    let elem_index = Rc::make_mut(child_order)
+                        .order
+                        .next_in(rng, bucket_elems)
+                        .expect("bucket should not be empty");
+                    #[allow(clippy::panic)]
+                    let Some(elem) = bucket_elems.get(elem_index) else {
+                        panic!("valid bucket_elems index ({elem_index}) from order")
+                    };
+
+                    // effort: lookup bucket element
+                    effort_count += 1;
+
+                    Some(elem)
+                }
             }
+            Child::Joint(joint) => {
+                if joint.children.is_empty() {
+                    None
+                } else if let Some(remaining) = remaining_slot {
+                    let (elem, child_effort_count) = peek_inner(
+                        rng,
+                        &joint.children,
+                        Rc::make_mut(child_order),
+                        remaining.as_mut_or_init(|| CountsRemaining::new(joint.children.len())),
+                    );
+
+                    // effort: recursion effort
+                    effort_count += child_effort_count;
+
+                    elem
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(elem) = elem {
+            return (Some(elem), effort_count);
         }
-    };
-    // TODO does this need to be refactored to enable tail recursion?
-    //      or does it not matter?
-    if elem.is_none() {
         current_remaining.set_empty(child_index);
     }
-    elem
+    (None, effort_count)
 }
 
 /// Resulting items and tentative ordering state from [`Network::peek`]
 pub struct Peeked<'a, T> {
     items: Vec<&'a T>,
     root_order: Root,
+    effort_count: u64,
 }
 impl<'a, T> Peeked<'a, T> {
     /// Returns an the peeked items
@@ -139,6 +161,11 @@ impl<'a, T> Peeked<'a, T> {
         PeekAccepted {
             new_root_order: self.root_order,
         }
+    }
+    #[allow(unused)]
+    /// For tests only, return the amount of effort required for this peek result
+    pub(crate) fn get_effort_count(&self) -> u64 {
+        self.effort_count
     }
 }
 /// Resulting tentative ordering state from [`Network::peek`] to apply in
