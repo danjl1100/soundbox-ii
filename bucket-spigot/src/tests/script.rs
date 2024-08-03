@@ -12,6 +12,15 @@ pub(super) enum Entry<T, U> {
     Filters(Path, Vec<Vec<U>>),
     ExpectError(String, String),
     Peek(Vec<T>),
+    Pop(Vec<T>),
+    Topology(Topology<usize>),
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+pub(super) enum Topology<T> {
+    Leaf(T),
+    Node(Vec<Topology<T>>),
 }
 
 #[derive(clap::Parser)]
@@ -38,11 +47,15 @@ where
         apply: bool,
         expected: Vec<T>,
     },
+    Topology,
 }
 
 impl Network<String, String> {
     pub(super) fn new_strings() -> Self {
         Self::default()
+    }
+    pub(super) fn new_strings_run_script(commands: &'static str) -> Log<String, String> {
+        Self::new_strings().run_script(commands)
     }
 }
 
@@ -126,13 +139,24 @@ where
             }
             Command::Peek { apply, count } => {
                 let peeked = self.run_peek(count, apply);
-                Ok(Some(Entry::Peek(peeked)))
+                let entry = if apply {
+                    Entry::Pop(peeked)
+                } else {
+                    Entry::Peek(peeked)
+                };
+                Ok(Some(entry))
             }
             Command::PeekAssert { apply, expected } => {
                 let count = expected.len();
                 let peeked = self.run_peek(count, apply);
                 assert_eq!(peeked, expected);
-                Ok(None)
+
+                let entry = apply.then_some(Entry::Pop(peeked));
+                Ok(entry)
+            }
+            Command::Topology => {
+                let topology = Topology::new_from_nodes(&self.root);
+                Ok(Some(Entry::Topology(topology)))
             }
         }
     }
@@ -147,5 +171,18 @@ where
             self.finalize_peeked(peeked.accept_into_inner());
         }
         items
+    }
+}
+
+impl Topology<usize> {
+    fn new_from_nodes<T, U>(nodes: &[crate::Child<T, U>]) -> Self {
+        let elems = nodes
+            .iter()
+            .map(|node| match node {
+                crate::Child::Bucket(bucket) => Self::Leaf(bucket.len()),
+                crate::Child::Joint(joint) => Self::new_from_nodes(&joint.children),
+            })
+            .collect();
+        Self::Node(elems)
     }
 }

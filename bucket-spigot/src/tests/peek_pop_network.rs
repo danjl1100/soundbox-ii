@@ -4,8 +4,7 @@ use crate::Network;
 
 #[test]
 fn simple_in_order() {
-    let mut network = Network::new_strings();
-    let log = network.run_script(
+    let log = Network::new_strings_run_script(
         "
         modify add-bucket .
         modify fill-bucket .0 a b c
@@ -37,11 +36,11 @@ fn simple_in_order() {
 
 #[test]
 fn two_alternating() {
-    let log = Network::new_strings().run_script(
+    let log = Network::new_strings_run_script(
         "
         modify add-bucket .
-        modify add-bucket .
         modify fill-bucket .0 zero
+        modify add-bucket .
         modify fill-bucket .1 one
         peek --apply 5
         peek --apply 5
@@ -52,28 +51,102 @@ fn two_alternating() {
       BucketsNeedingFill([
         ".0",
       ]),
-      BucketsNeedingFill([
-        ".0",
-        ".1",
-      ]),
+      BucketsNeedingFill([]),
       BucketsNeedingFill([
         ".1",
       ]),
       BucketsNeedingFill([]),
-      Peek([
+      Pop([
         "zero",
         "one",
         "zero",
         "one",
         "zero",
       ]),
-      Peek([
+      Pop([
         "one",
         "zero",
         "one",
         "zero",
         "one",
       ]),
+    ])
+    "###);
+}
+
+#[test]
+fn depth_2() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+        modify fill-bucket .0 top-0-a top-0-b top-0-c
+        modify add-joint .
+        modify add-bucket .1
+        modify fill-bucket .1.0 bot-1.0-a bot-1.0-b
+        modify add-bucket .1
+        modify fill-bucket .1.1 bot-1.1-a bot-1.1-b
+
+        topology
+
+        # peek only (no --apply)
+        peek 4
+
+        # peek with apply
+        peek --apply 11
+
+        peek --apply 5
+
+        peek 0
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill([
+        ".0",
+      ]),
+      BucketsNeedingFill([]),
+      BucketsNeedingFill([
+        ".1.0",
+      ]),
+      BucketsNeedingFill([]),
+      BucketsNeedingFill([
+        ".1.1",
+      ]),
+      BucketsNeedingFill([]),
+      Topology([
+        3,
+        [
+          2,
+          2,
+        ],
+      ]),
+      Peek([
+        "top-0-a",
+        "bot-1.0-a",
+        "top-0-b",
+        "bot-1.1-a",
+      ]),
+      Pop([
+        "top-0-a",
+        "bot-1.0-a",
+        "top-0-b",
+        "bot-1.1-a",
+        "top-0-c",
+        "bot-1.0-b",
+        "top-0-a",
+        "bot-1.1-b",
+        "top-0-b",
+        "bot-1.0-a",
+        "top-0-c",
+      ]),
+      Pop([
+        "bot-1.1-a",
+        "top-0-a",
+        "bot-1.0-b",
+        "top-0-b",
+        "bot-1.1-b",
+      ]),
+      Peek([]),
     ])
     "###);
 }

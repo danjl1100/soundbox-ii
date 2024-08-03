@@ -102,8 +102,7 @@ fn single_bucket() {
 
 #[test]
 fn delete_empty_bucket() {
-    let mut network = Network::new_strings();
-    let log = network.run_script(
+    let log = Network::new_strings_run_script(
         "
         modify add-bucket .
         modify fill-bucket .0 abc def
@@ -128,7 +127,7 @@ fn delete_empty_bucket() {
 }
 #[test]
 fn delete_empty_joint() {
-    let log = Network::new_strings().run_script(
+    let log = Network::new_strings_run_script(
         "
         modify add-joint .
         modify add-joint .0

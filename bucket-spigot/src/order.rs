@@ -13,75 +13,26 @@ impl<T, U> Network<T, U> {
     ///
     /// # Errors
     /// Returns any errors reported by the provided [`rand::Rng`] instance
-    #[allow(clippy::missing_panics_doc)] // TODO
+    ///
+    /// # Panics
+    /// Panics if the internal order state does not match the item node structure
     pub fn peek<'a, R: rand::Rng + ?Sized>(
         &'a self,
-        #[allow(unused)] // TODO
         rng: &mut R,
         peek_len: usize,
     ) -> Result<Peeked<'a, T>, rand::Error> {
-        let mut chosen = vec![];
-
         let child_nodes = &self.root;
         let mut root_order = self.root_order.0.clone();
+        let mut root_remaining = CountsRemaining::new(child_nodes.len());
 
-        let child_orders = &mut root_order.children;
+        let chosen_elems = std::iter::from_fn(|| {
+            peek_inner(rng, child_nodes, &mut root_order, &mut root_remaining)
+        })
+        .take(peek_len)
+        .collect();
 
-        let order = &mut root_order.order;
-        let mut remaining = CountsRemaining::new(child_nodes.len());
-
-        let mut debug_count = 0; // DEBUG TRAINING WHEELS
-        while chosen.len() < peek_len {
-            debug_count += 1; // DEBUG TRAINING WHEELS
-            assert!(debug_count < 100); // DEBUG TRAINING WHEELS
-
-            if remaining.is_empty() || child_nodes.is_empty() {
-                // TODO remove early return when implementing depth traversal
-                return Ok(Peeked {
-                    items: vec![],
-                    root_order: Root(root_order),
-                });
-            }
-
-            assert_eq!(child_nodes.len(), child_orders.len());
-
-            let child_index = order
-                .next_in(rng, child_nodes)
-                .expect("child_nodes should not be empty");
-
-            #[allow(clippy::panic)]
-            let Some(child_node) = child_nodes.get(child_index) else {
-                panic!("valid child_nodes index ({child_index}) from order")
-            };
-            #[allow(clippy::panic)]
-            let Some(child_order) = child_orders.get_mut(child_index) else {
-                panic!("valid child_orders index ({child_index}) from order")
-            };
-
-            let is_empty = match child_node {
-                Child::Bucket(bucket_elems) => {
-                    let is_empty = bucket_elems.is_empty();
-                    if !is_empty {
-                        let elem_index = Rc::make_mut(child_order)
-                            .order
-                            .next_in(rng, bucket_elems)
-                            .expect("bucket should not be empty");
-                        #[allow(clippy::panic)]
-                        let Some(elem) = bucket_elems.get(elem_index) else {
-                            panic!("valid bucket_elems index ({elem_index}) from order")
-                        };
-                        chosen.push(elem);
-                    }
-                    is_empty
-                }
-                Child::Joint(_) => todo!(),
-            };
-            if is_empty {
-                remaining.set_empty(child_index);
-            }
-        }
         Ok(Peeked {
-            items: chosen,
+            items: chosen_elems,
             root_order: Root(root_order),
         })
     }
@@ -90,6 +41,81 @@ impl<T, U> Network<T, U> {
         let PeekAccepted { new_root_order } = peeked;
         self.root_order = new_root_order;
     }
+}
+
+fn peek_inner<'a, R, T, U>(
+    rng: &mut R,
+    child_nodes: &'a [Child<T, U>],
+    order_node: &mut node::Node,
+    current_remaining: &mut CountsRemaining,
+) -> Option<&'a T>
+where
+    R: rand::Rng + ?Sized,
+{
+    let current_order = &mut order_node.order;
+    let child_orders = &mut order_node.children;
+
+    if current_remaining.is_fully_exhausted() || child_nodes.is_empty() {
+        return None;
+    }
+
+    assert_eq!(child_nodes.len(), child_orders.len());
+    assert_eq!(
+        child_nodes.len(),
+        current_remaining.child_count_if_nonempty()
+    );
+
+    let child_index = current_order
+        .next_in(rng, child_nodes)
+        .expect("child_nodes should not be empty");
+
+    #[allow(clippy::panic)]
+    let Some(child_node) = child_nodes.get(child_index) else {
+        panic!("valid child_nodes index ({child_index}) from order")
+    };
+    #[allow(clippy::panic)]
+    let Some(child_order) = child_orders.get_mut(child_index) else {
+        panic!("valid child_orders index ({child_index}) from order")
+    };
+
+    let elem = match child_node {
+        Child::Bucket(bucket_elems) => {
+            if bucket_elems.is_empty() {
+                None
+            } else {
+                let elem_index = Rc::make_mut(child_order)
+                    .order
+                    .next_in(rng, bucket_elems)
+                    .expect("bucket should not be empty");
+                #[allow(clippy::panic)]
+                let Some(elem) = bucket_elems.get(elem_index) else {
+                    panic!("valid bucket_elems index ({elem_index}) from order")
+                };
+                Some(elem)
+            }
+        }
+        Child::Joint(joint) => {
+            let remaining_slot = current_remaining.child_mut(child_index);
+            if joint.children.is_empty() {
+                None
+            } else if let Some(remaining) = remaining_slot {
+                peek_inner(
+                    rng,
+                    &joint.children,
+                    Rc::make_mut(child_order),
+                    remaining.as_mut_or_init(|| CountsRemaining::new(joint.children.len())),
+                )
+            } else {
+                None
+            }
+        }
+    };
+    // TODO does this need to be refactored to enable tail recursion?
+    //      or does it not matter?
+    if elem.is_none() {
+        current_remaining.set_empty(child_index);
+    }
+    elem
 }
 
 /// Resulting items and tentative ordering state from [`Network::peek`]
@@ -122,21 +148,66 @@ pub struct PeekAccepted {
     new_root_order: Root,
 }
 
-struct CountsRemaining(Vec<Option<()>>);
+// `Option<Lazy<T>>` seems cleaner and more meaningful than `Option<Option<T>>`
+// (heeding advice from the pedantic lint `clippy::option_option`)
+#[derive(Clone, Default)]
+enum Lazy<T> {
+    Value(T),
+    #[default]
+    Uninit,
+}
+impl<T> Lazy<T> {
+    fn as_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Value(value) => Some(value),
+            Self::Uninit => None,
+        }
+    }
+    fn as_mut_or_init(&mut self, init_fn: impl FnOnce() -> T) -> &mut T {
+        match self {
+            Self::Value(_) => {}
+            Self::Uninit => {
+                *self = Self::Value(init_fn());
+            }
+        }
+        self.as_mut().expect("should initialize directly above")
+    }
+}
+
+#[derive(Clone)]
+struct CountsRemaining(Vec<Option<Lazy<Self>>>);
 impl CountsRemaining {
     fn new(len: usize) -> Self {
-        Self(vec![Some(()); len])
+        Self(vec![Some(Lazy::default()); len])
     }
+    /// # Panics
+    /// Panics if the index is out of bounds (greater than `len` provided in [`Self::new`]),
+    /// or all children are exhausted.
     fn set_empty(&mut self, index: usize) {
         self.0[index].take();
 
-        // check if all is exhausted
+        // check if all are exhausted
         if self.0.iter().all(Option::is_none) {
+            // ensure any future calls error (loudly)
             self.0.clear();
         }
     }
-    fn is_empty(&self) -> bool {
+    /// Returns a mutable reference to the child's remaining count (which may not yet be
+    /// initialized) or `None` if the child is exhausted (e.g. via [`Self::set_empty`])
+    ///
+    /// # Panics
+    /// Panics if the index is out of bounds (greater than `len` provided in [`Self::new`]),
+    /// or all children are exhausted.
+    fn child_mut(&mut self, index: usize) -> Option<&mut Lazy<Self>> {
+        self.0[index].as_mut()
+    }
+    /// Returns true if all children are exhausted
+    fn is_fully_exhausted(&self) -> bool {
         self.0.is_empty()
+    }
+    /// Returns the number of children, or `0` if all children are exhausted
+    fn child_count_if_nonempty(&self) -> usize {
+        self.0.len()
     }
 }
 
