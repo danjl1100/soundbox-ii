@@ -23,13 +23,15 @@ use path::Path;
 pub mod clap;
 pub mod path;
 
-mod order;
+pub mod order;
 
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
     root: Vec<Child<T, U>>,
     buckets_needing_fill: Vec<Path>,
+    /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
+    root_order: order::Root,
 }
 impl<T, U> Network<T, U> {
     /// Modify the network topology
@@ -39,11 +41,11 @@ impl<T, U> Network<T, U> {
     pub fn modify(&mut self, cmd: ModifyCmd<T, U>) -> Result<(), ModifyError> {
         match cmd {
             ModifyCmd::AddBucket { parent } => {
-                self.add_child(Child::bucket(), parent)?;
+                let _path = self.add_child(Child::bucket(), parent)?;
                 Ok(())
             }
             ModifyCmd::AddJoint { parent } => {
-                self.add_child(Child::joint(), parent)?;
+                let _path = self.add_child(Child::joint(), parent)?;
                 Ok(())
             }
             ModifyCmd::DeleteEmpty { path } => self.delete_empty(path),
@@ -57,7 +59,6 @@ impl<T, U> Network<T, U> {
         }
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
-    #[must_use]
     pub fn get_buckets_needing_fill(&self) -> &[Path] {
         &self.buckets_needing_fill
     }
@@ -106,7 +107,15 @@ impl<T, U> Network<T, U> {
             };
         }
 
-        let child_index = current_children.len();
+        // add order for child (fails if node/order structures are not identical)
+        let child_index = self.root_order.add(parent_path.as_ref())?;
+
+        let child_index_expected = current_children.len();
+        assert_eq!(
+            child_index, child_index_expected,
+            "order nodes should match item nodes"
+        );
+
         let is_bucket = matches!(child, Child::Bucket(_));
 
         // add child
@@ -284,6 +293,7 @@ pub enum ModifyCmd<T, U> {
 pub struct ModifyError(ModifyErr);
 enum ModifyErr {
     UnknownPath(UnknownPath),
+    UnknownOrderPath(order::UnknownOrderPath),
     AddToBucket(CannotAddToBucket),
     DeleteRoot,
     DeleteNonemptyBucket(CannotDeleteNonempty),
@@ -294,6 +304,11 @@ enum ModifyErr {
 impl From<UnknownPath> for ModifyError {
     fn from(value: UnknownPath) -> Self {
         Self(ModifyErr::UnknownPath(value))
+    }
+}
+impl From<order::UnknownOrderPath> for ModifyError {
+    fn from(value: order::UnknownOrderPath) -> Self {
+        Self(ModifyErr::UnknownOrderPath(value))
     }
 }
 impl From<CannotAddToBucket> for ModifyError {
@@ -312,7 +327,10 @@ impl std::fmt::Display for ModifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(inner) = self;
         match inner {
-            ModifyErr::UnknownPath(UnknownPath(path)) => write!(f, "unknown path: {path:?}"),
+            ModifyErr::UnknownPath(err) => write!(f, "{err}"),
+            ModifyErr::UnknownOrderPath(order::UnknownOrderPath(path)) => {
+                write!(f, "unknown order path: {path:?}")
+            }
             ModifyErr::AddToBucket(CannotAddToBucket(path)) => {
                 write!(f, "cannot add to bucket: {path:?}")
             }
@@ -339,15 +357,24 @@ impl std::fmt::Debug for ModifyError {
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
 #[derive(Debug)]
 pub struct UnknownPath(Path);
+impl std::fmt::Display for UnknownPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(path) = self;
+        write!(f, "unknown path: {path:?}")
+    }
+}
+
 /// Buckets cannot have filters or child joints or buckets
-pub struct CannotAddToBucket(Path);
+pub(crate) struct CannotAddToBucket(Path);
 /// Only allowed to delete empty joints or buckets
-pub struct CannotDeleteNonempty(Path);
+pub(crate) struct CannotDeleteNonempty(Path);
 
 #[cfg(test)]
 #[allow(clippy::panic)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    pub(crate) use arb_rng::PanicRng;
+
     // utils
     mod arb_rng;
     mod script;

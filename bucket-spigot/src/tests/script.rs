@@ -29,9 +29,13 @@ where
         path: Path,
     },
     Peek {
+        #[clap(long)]
+        apply: bool,
         count: usize,
     },
     PeekAssert {
+        #[clap(long)]
+        apply: bool,
         expected: Vec<T>,
     },
 }
@@ -120,22 +124,28 @@ where
                     .collect();
                 Ok(Some(Entry::Filters(path, filters)))
             }
-            Command::Peek { count } => {
-                let peeked = self.peek(&mut PanicRng, count).unwrap();
-                let peeked = peeked.into_iter().cloned().collect::<Vec<_>>();
+            Command::Peek { apply, count } => {
+                let peeked = self.run_peek(count, apply);
                 Ok(Some(Entry::Peek(peeked)))
             }
-            Command::PeekAssert { expected } => {
+            Command::PeekAssert { apply, expected } => {
                 let count = expected.len();
-                assert_ne!(
-                    count, 0,
-                    "peek-assert should have non-zero number of elements"
-                );
-                let peeked = self.peek(&mut PanicRng, count).unwrap();
-                let peeked = peeked.into_iter().cloned().collect::<Vec<_>>();
+                let peeked = self.run_peek(count, apply);
                 assert_eq!(peeked, expected);
                 Ok(None)
             }
         }
+    }
+    fn run_peek(&mut self, count: usize, apply: bool) -> Vec<T> {
+        let peeked = self.peek(&mut PanicRng, count).unwrap();
+        let items = peeked
+            .items()
+            .iter()
+            .map(|&x| x.clone())
+            .collect::<Vec<_>>();
+        if apply {
+            self.finalize_peeked(peeked.accept_into_inner());
+        }
+        items
     }
 }

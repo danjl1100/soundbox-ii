@@ -9,6 +9,7 @@ const DELIMITER: &str = ".";
 /// Path to a node (joint or bucket) in the [`Network`](`crate::Network`)
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
+#[must_use]
 pub struct Path(
     #[serde(
         serialize_with = "path_elems_serialize",
@@ -44,12 +45,16 @@ impl From<Vec<usize>> for Path {
     }
 }
 
-impl<'a> PathRef<'a> {
+impl PathRef<'_> {
     /// Returns the last element and the rest (if any)
     #[must_use]
-    pub fn split_last(self) -> Option<(usize, PathRef<'a>)> {
+    pub fn split_last(self) -> Option<(usize, Self)> {
         let (&last, rest) = self.0.split_last()?;
         Some((last, Self(rest)))
+    }
+    /// Clones the inner [`Path`]
+    pub fn clone_inner(self) -> Path {
+        Path(self.0.to_vec())
     }
 }
 

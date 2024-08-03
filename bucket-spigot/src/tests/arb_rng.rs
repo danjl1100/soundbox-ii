@@ -28,7 +28,7 @@ pub(super) fn fake_rng<'a, 'b>(
 }
 
 /// Rng that panics when called
-pub(super) struct PanicRng;
+pub(crate) struct PanicRng;
 impl rand::RngCore for PanicRng {
     fn next_u32(&mut self) -> u32 {
         unreachable!("next_u32 in PanicRng");

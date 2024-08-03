@@ -43,7 +43,8 @@ fn two_alternating() {
         modify add-bucket .
         modify fill-bucket .0 zero
         modify fill-bucket .1 one
-        peek 5
+        peek --apply 5
+        peek --apply 5
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -65,6 +66,13 @@ fn two_alternating() {
         "zero",
         "one",
         "zero",
+      ]),
+      Peek([
+        "one",
+        "zero",
+        "one",
+        "zero",
+        "one",
       ]),
     ])
     "###);
