@@ -78,7 +78,7 @@ impl Network<String, String> {
     pub(super) fn new_strings() -> Self {
         Self::default()
     }
-    pub(super) fn new_strings_run_script(commands: &'static str) -> Log<String, String> {
+    pub(super) fn new_strings_run_script(commands: &str) -> Log<String, String> {
         Self::new_strings().run_script(commands)
     }
 }
@@ -88,7 +88,7 @@ where
     T: crate::clap::ArgBounds + Eq,
     U: crate::clap::ArgBounds,
 {
-    pub(super) fn run_script(&mut self, commands: &'static str) -> Log<T, U> {
+    pub(super) fn run_script(&mut self, commands: &str) -> Log<T, U> {
         let mut entries = vec![];
 
         let mut expect_error = None;
@@ -131,7 +131,7 @@ where
     }
     pub(super) fn run_script_command(
         &mut self,
-        command_str: &'static str,
+        command_str: &str,
     ) -> Result<Option<Entry<T, U>>, Box<dyn std::error::Error>> {
         let cmd = Command::<T, U>::try_parse_from(command_str.split_whitespace())?;
         match cmd {

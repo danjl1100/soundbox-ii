@@ -381,5 +381,6 @@ mod tests {
 
     // test cases
     mod modify_network;
+    mod peek_effort;
     mod peek_pop_network;
 }
