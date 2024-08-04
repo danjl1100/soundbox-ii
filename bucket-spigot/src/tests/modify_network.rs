@@ -37,6 +37,7 @@ fn joint_filters() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
+      BucketsNeedingFill("modify set-joint-filters .0 1 2 3"),
       Filters(".0", [
         [
           1,
@@ -44,6 +45,7 @@ fn joint_filters() {
           3,
         ],
       ]),
+      BucketsNeedingFill("modify set-joint-filters -- .0.0 -4"),
       Filters(".0.0", [
         [
           1,
@@ -54,6 +56,7 @@ fn joint_filters() {
           -4,
         ],
       ]),
+      BucketsNeedingFill("modify set-joint-filters .0.1 5"),
       Filters(".0.1", [
         [
           1,
@@ -64,6 +67,7 @@ fn joint_filters() {
           5,
         ],
       ]),
+      BucketsNeedingFill("modify set-joint-filters .0"),
       Filters(".0", []),
       Filters(".0.0", [
         [
@@ -80,6 +84,46 @@ fn joint_filters() {
 }
 
 #[test]
+fn joint_filter_invalidates_buckets() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-joint .
+        modify add-bucket .0
+        modify fill-bucket .0.0 item item2
+        modify add-joint .0
+        modify add-joint .0.1
+        modify add-bucket .0.1.0
+        modify fill-bucket .0.1.0.0 item item2
+
+        modify set-joint-filters .0 filter-1 filter-2
+
+        modify fill-bucket .0.0 item-modified
+        modify fill-bucket .0.1.0.0 item-modified2
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .0", [
+        ".0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.0 item item2"),
+      BucketsNeedingFill("modify add-bucket .0.1.0", [
+        ".0.1.0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.1.0.0 item item2"),
+      BucketsNeedingFill("modify set-joint-filters .0 filter-1 filter-2", [
+        ".0.0",
+        ".0.1.0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.0 item-modified", [
+        ".0.1.0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.1.0.0 item-modified2"),
+    ])
+    "###);
+}
+
+#[test]
 fn single_bucket() {
     let mut network = Network::<String, u8>::default();
     let log = network.run_script(
@@ -91,11 +135,11 @@ fn single_bucket() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
       Peek([]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0 a b c"),
     ])
     "###);
 }
@@ -116,12 +160,12 @@ fn delete_empty_bucket() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0 abc def"),
       ExpectError("modify delete-empty .0", "cannot delete non-empty bucket: Path(.0)"),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0"),
     ])
     "###);
 }
@@ -157,7 +201,7 @@ fn fill_path_past_bucket() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
       ExpectError("modify fill-bucket .0.0", "unknown path: Path(.0.0)"),

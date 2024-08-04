@@ -21,16 +21,16 @@ fn simple_in_order() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0 a b c"),
       Peek([
         "a",
         "b",
         "c",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0"),
       Peek([]),
     ])
     "###);
@@ -50,14 +50,14 @@ fn two_alternating() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      BucketsNeedingFill([]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .0 zero"),
+      BucketsNeedingFill("modify add-bucket .", [
         ".1",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .1 one"),
       Pop([
         "zero",
         "one",
@@ -103,18 +103,18 @@ fn depth_2() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      BucketsNeedingFill([]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .0 top-0-a top-0-b top-0-c"),
+      BucketsNeedingFill("modify add-bucket .1", [
         ".1.0",
       ]),
-      BucketsNeedingFill([]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .1.0 bot-1.0-a bot-1.0-b"),
+      BucketsNeedingFill("modify add-bucket .1", [
         ".1.1",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .1.1 bot-1.1-a bot-1.1-b"),
       Topology([
         3,
         [
@@ -170,14 +170,14 @@ fn continue_if_first_is_empty() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      BucketsNeedingFill([]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .0"),
+      BucketsNeedingFill("modify add-bucket .", [
         ".1",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .1 a b c"),
       Peek([
         "a",
         "b",

@@ -13,7 +13,7 @@
 //!
 //! Both *joints* and *buckets* may have one or more *filters* to inform how to fill the buckets with items.
 //!
-//! Modifying a *joint* queues downstream buckets to be *refilled*.
+//! Modifying *joint filters* queues downstream buckets to be *refilled*.
 //! The user provides a list of items to fill each bucket based on the sequence of filters passed when
 //! walking from the spigot (root node) to the bucket.
 //!
@@ -225,9 +225,35 @@ impl<T, U> Network<T, U> {
 
         if let Some(dest_filters) = dest_filters {
             *dest_filters = new_filters;
+
+            let mut joint_path_buf = joint_path;
+            Self::add_buckets_need_fill_under(
+                &mut joint_path_buf,
+                &mut self.buckets_needing_fill,
+                &*current_children,
+            );
+
             Ok(())
         } else {
             Err(ModifyErr::FilterRoot)?
+        }
+    }
+    fn add_buckets_need_fill_under(
+        path: &mut Path,
+        buckets_needing_fill: &mut HashSet<Path>,
+        child_nodes: &[Child<T, U>],
+    ) {
+        for (index, child) in child_nodes.iter().enumerate() {
+            path.push(index);
+            match child {
+                Child::Bucket(_) => {
+                    buckets_needing_fill.insert(path.clone());
+                }
+                Child::Joint(joint) => {
+                    Self::add_buckets_need_fill_under(path, buckets_needing_fill, &joint.children);
+                }
+            }
+            assert_eq!(path.pop(), Some(index), "should contain the pushed index");
         }
     }
 }

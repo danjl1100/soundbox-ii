@@ -27,14 +27,14 @@ fn repeat_empty() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .0.0.0", [
         ".0.0.0.0",
       ]),
-      BucketsNeedingFill([]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .0.0.0.0"),
+      BucketsNeedingFill("modify add-bucket .", [
         ".1",
       ]),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .1 a"),
       Topology([
         [
           [
@@ -148,14 +148,14 @@ fn creates_script() {
     let log = Network::new_strings_run_script(&script);
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .", [
         ".0",
         ".1",
       ]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .1 a", [
         ".0",
       ]),
       Topology([
@@ -167,7 +167,7 @@ fn creates_script() {
       PeekEffort(9),
       PeekEffort(17),
       PeekEffort(33),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0 a"),
       PeekEffort(2),
       PeekEffort(4),
       PeekEffort(8),
@@ -183,14 +183,14 @@ fn big_branch_8() {
     let log = Network::new_strings_run_script(&script);
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .0.0.0.0.0.0.0.0", [
         ".0.0.0.0.0.0.0.0.0",
       ]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .0", [
         ".0.0.0.0.0.0.0.0.0",
         ".0.1",
       ]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .0.1 a", [
         ".0.0.0.0.0.0.0.0.0",
       ]),
       Topology([
@@ -220,7 +220,7 @@ fn big_branch_8() {
       PeekEffort(56),
       PeekEffort(104),
       PeekEffort(200),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0.0.0.0.0.0.0.0.0 a"),
       PeekEffort(10),
       PeekEffort(13),
       PeekEffort(26),
@@ -238,14 +238,14 @@ fn big_branch_16() {
     let log = Network::new_strings_run_script(&script);
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0", [
         ".0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",
       ]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify add-bucket .0", [
         ".0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",
         ".0.1",
       ]),
-      BucketsNeedingFill([
+      BucketsNeedingFill("modify fill-bucket .0.1 a", [
         ".0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",
       ]),
       Topology([
@@ -291,7 +291,7 @@ fn big_branch_16() {
       PeekEffort(64),
       PeekEffort(112),
       PeekEffort(208),
-      BucketsNeedingFill([]),
+      BucketsNeedingFill("modify fill-bucket .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0 a"),
       PeekEffort(18),
       PeekEffort(21),
       PeekEffort(42),

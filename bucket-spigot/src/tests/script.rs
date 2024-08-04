@@ -8,7 +8,10 @@ use ::clap::Parser as _;
 pub(super) struct Log<T, U>(Vec<Entry<T, U>>);
 #[derive(Debug, serde::Serialize)]
 pub(super) enum Entry<T, U> {
-    BucketsNeedingFill(Vec<Path>),
+    BucketsNeedingFill(
+        String,
+        #[serde(skip_serializing_if = "Vec::is_empty")] Vec<Path>,
+    ),
     Filters(Path, Vec<Vec<U>>),
     ExpectError(String, String),
     Peek(
@@ -139,7 +142,9 @@ where
                 let cmd = cmd.into();
                 let output_buckets = matches!(
                     &cmd,
-                    ModifyCmd::AddBucket { .. } | ModifyCmd::FillBucket { .. }
+                    ModifyCmd::AddBucket { .. }
+                        | ModifyCmd::FillBucket { .. }
+                        | ModifyCmd::SetJointFilters { .. }
                 );
                 self.modify(cmd)?;
 
@@ -149,7 +154,7 @@ where
                         .map(Path::to_owned)
                         .collect();
                     buckets.sort();
-                    Some(Entry::BucketsNeedingFill(buckets))
+                    Some(Entry::BucketsNeedingFill(command_str.to_owned(), buckets))
                 } else {
                     None
                 };

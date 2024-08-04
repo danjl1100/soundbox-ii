@@ -38,6 +38,10 @@ impl Path {
     pub fn push(&mut self, elem: usize) {
         self.0.push(elem);
     }
+    /// Removes the last path element (if any)
+    pub fn pop(&mut self) -> Option<usize> {
+        self.0.pop()
+    }
 }
 impl From<Vec<usize>> for Path {
     fn from(value: Vec<usize>) -> Self {
