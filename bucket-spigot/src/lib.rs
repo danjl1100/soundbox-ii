@@ -191,6 +191,9 @@ impl<T, U> Network<T, U> {
                 Child::Joint(joint) => &mut joint.children,
             };
         };
+        if bucket_path_iter.next().is_some() {
+            return Err(UnknownPath(bucket_path).into());
+        }
 
         self.buckets_needing_fill
             .retain(|path| *path != bucket_path);

@@ -145,3 +145,22 @@ fn delete_empty_joint() {
     ])
     "###);
 }
+
+#[test]
+fn fill_path_past_bucket() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+        !!expect_error fill path beyond bucket
+        modify fill-bucket .0.0
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill([
+        ".0",
+      ]),
+      ExpectError("modify fill-bucket .0.0", "unknown path: Path(.0.0)"),
+    ])
+    "###);
+}
