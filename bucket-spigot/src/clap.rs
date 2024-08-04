@@ -57,11 +57,11 @@ where
         /// Items for the bucket
         new_contents: Vec<T>,
     },
-    /// Set the filters on a joint
-    SetJointFilters {
-        /// Path for the existing joint
-        joint: Path,
-        /// List of filters to set on the joint
+    /// Set the filters on a joint or bucket
+    SetFilters {
+        /// Path for the existing joint or bucket
+        path: Path,
+        /// List of filters to set
         new_filters: Vec<U>,
     },
 }
@@ -82,9 +82,7 @@ where
                 bucket,
                 new_contents,
             },
-            ModifyCmd::SetJointFilters { joint, new_filters } => {
-                Self::SetJointFilters { joint, new_filters }
-            }
+            ModifyCmd::SetFilters { path, new_filters } => Self::SetFilters { path, new_filters },
         }
     }
 }
@@ -148,9 +146,9 @@ mod tests {
     }
     #[test]
     fn set_joint_filters() {
-        insta::assert_ron_snapshot!(parse_cli(&["set-joint-filters", ".1.2", "a", "b", "foo"]), @r###"
-        Ok(SetJointFilters(
-          joint: ".1.2",
+        insta::assert_ron_snapshot!(parse_cli(&["set-filters", ".1.2", "a", "b", "foo"]), @r###"
+        Ok(SetFilters(
+          path: ".1.2",
           new_filters: [
             "a",
             "b",

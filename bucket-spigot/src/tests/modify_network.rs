@@ -18,18 +18,20 @@ fn joint_filters() {
     let log = Network::<u8, i32>::default().run_script(
         "
         modify add-joint .
-        modify set-joint-filters .0 1 2 3
+        modify set-filters .0 1 2 3
         get-filters .0
 
         modify add-joint .0
-        modify set-joint-filters -- .0.0 -4
+        modify set-filters -- .0.0 -4
         get-filters .0.0
 
         modify add-joint .0
-        modify set-joint-filters .0.1 5
+        modify set-filters .0.1 5
         get-filters .0.1
 
-        modify set-joint-filters .0
+        topology
+
+        modify set-filters .0
         get-filters .0
         get-filters .0.0
         get-filters .0.1
@@ -37,7 +39,7 @@ fn joint_filters() {
     );
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify set-joint-filters .0 1 2 3"),
+      BucketsNeedingFill("modify set-filters .0 1 2 3"),
       Filters(".0", [
         [
           1,
@@ -45,7 +47,7 @@ fn joint_filters() {
           3,
         ],
       ]),
-      BucketsNeedingFill("modify set-joint-filters -- .0.0 -4"),
+      BucketsNeedingFill("modify set-filters -- .0.0 -4"),
       Filters(".0.0", [
         [
           1,
@@ -56,7 +58,7 @@ fn joint_filters() {
           -4,
         ],
       ]),
-      BucketsNeedingFill("modify set-joint-filters .0.1 5"),
+      BucketsNeedingFill("modify set-filters .0.1 5"),
       Filters(".0.1", [
         [
           1,
@@ -67,7 +69,13 @@ fn joint_filters() {
           5,
         ],
       ]),
-      BucketsNeedingFill("modify set-joint-filters .0"),
+      Topology([
+        [
+          [],
+          [],
+        ],
+      ]),
+      BucketsNeedingFill("modify set-filters .0"),
       Filters(".0", []),
       Filters(".0.0", [
         [
@@ -75,6 +83,113 @@ fn joint_filters() {
         ],
       ]),
       Filters(".0.1", [
+        [
+          5,
+        ],
+      ]),
+    ])
+    "###);
+}
+
+#[test]
+fn bucket_filters() {
+    let log = Network::<u8, i32>::default().run_script(
+        "
+        modify add-joint .
+        modify set-filters .0 254
+        modify add-bucket .0
+        modify set-filters -- .0.0 -9
+        get-filters .0.0
+
+        modify add-bucket .0
+        modify set-filters -- .0.1 -4
+        get-filters .0.1
+
+        modify add-bucket .
+        modify set-filters .1 5
+        get-filters .1
+
+        topology
+
+        modify set-filters .0
+        get-filters .0
+        get-filters .0.0
+        get-filters .0.1
+        get-filters .1
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify set-filters .0 254"),
+      BucketsNeedingFill("modify add-bucket .0", [
+        ".0.0",
+      ]),
+      BucketsNeedingFill("modify set-filters -- .0.0 -9", [
+        ".0.0",
+      ]),
+      Filters(".0.0", [
+        [
+          254,
+        ],
+        [
+          -9,
+        ],
+      ]),
+      BucketsNeedingFill("modify add-bucket .0", [
+        ".0.0",
+        ".0.1",
+      ]),
+      BucketsNeedingFill("modify set-filters -- .0.1 -4", [
+        ".0.0",
+        ".0.1",
+      ]),
+      Filters(".0.1", [
+        [
+          254,
+        ],
+        [
+          -4,
+        ],
+      ]),
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0.0",
+        ".0.1",
+        ".1",
+      ]),
+      BucketsNeedingFill("modify set-filters .1 5", [
+        ".0.0",
+        ".0.1",
+        ".1",
+      ]),
+      Filters(".1", [
+        [
+          5,
+        ],
+      ]),
+      Topology([
+        [
+          0,
+          0,
+        ],
+        0,
+      ]),
+      BucketsNeedingFill("modify set-filters .0", [
+        ".0.0",
+        ".0.1",
+        ".1",
+      ]),
+      Filters(".0", []),
+      Filters(".0.0", [
+        [
+          -9,
+        ],
+      ]),
+      Filters(".0.1", [
+        [
+          -4,
+        ],
+      ]),
+      Filters(".1", [
         [
           5,
         ],
@@ -95,7 +210,7 @@ fn joint_filter_invalidates_buckets() {
         modify add-bucket .0.1.0
         modify fill-bucket .0.1.0.0 item item2
 
-        modify set-joint-filters .0 filter-1 filter-2
+        modify set-filters .0 filter-1 filter-2
 
         modify fill-bucket .0.0 item-modified
         modify fill-bucket .0.1.0.0 item-modified2
@@ -111,11 +226,64 @@ fn joint_filter_invalidates_buckets() {
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1.0.0 item item2"),
-      BucketsNeedingFill("modify set-joint-filters .0 filter-1 filter-2", [
+      BucketsNeedingFill("modify set-filters .0 filter-1 filter-2", [
         ".0.0",
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.0 item-modified", [
+        ".0.1.0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.1.0.0 item-modified2"),
+    ])
+    "###);
+}
+
+#[test]
+fn bucket_filter_invalidates_only_bucket() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-joint .
+        modify add-bucket .0
+        modify fill-bucket .0.0 item item2
+        modify add-joint .0
+        modify add-joint .0.1
+        modify add-bucket .0.1.0
+        modify fill-bucket .0.1.0.0 item item2
+
+        topology
+
+        modify set-filters .0.0 filter-1 filter-2
+        modify fill-bucket .0.0 item-modified
+
+        modify set-filters .0.1.0.0 filter-1 filter-2
+        modify fill-bucket .0.1.0.0 item-modified2
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .0", [
+        ".0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.0 item item2"),
+      BucketsNeedingFill("modify add-bucket .0.1.0", [
+        ".0.1.0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.1.0.0 item item2"),
+      Topology([
+        [
+          2,
+          [
+            [
+              2,
+            ],
+          ],
+        ],
+      ]),
+      BucketsNeedingFill("modify set-filters .0.0 filter-1 filter-2", [
+        ".0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.0 item-modified"),
+      BucketsNeedingFill("modify set-filters .0.1.0.0 filter-1 filter-2", [
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1.0.0 item-modified2"),
@@ -205,6 +373,25 @@ fn fill_path_past_bucket() {
         ".0",
       ]),
       ExpectError("modify fill-bucket .0.0", "unknown path: Path(.0.0)"),
+    ])
+    "###);
+}
+
+#[test]
+fn set_filter_past_bucket() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+        !!expect_error set filter beyond bucket
+        modify set-filters .0.0
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0",
+      ]),
+      ExpectError("modify set-filters .0.0", "unknown path: Path(.0.0)"),
     ])
     "###);
 }

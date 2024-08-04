@@ -54,9 +54,7 @@ impl<T, U> Network<T, U> {
                 bucket,
                 new_contents,
             } => self.set_bucket_items(new_contents, bucket),
-            ModifyCmd::SetJointFilters { joint, new_filters } => {
-                self.set_joint_filters(new_filters, joint)
-            }
+            ModifyCmd::SetFilters { path, new_filters } => self.set_filters(new_filters, path),
         }
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
@@ -79,14 +77,18 @@ impl<T, U> Network<T, U> {
             let Some(next_child) = current_children.and_then(|c| c.get(next_index)) else {
                 return Err(UnknownPath(path));
             };
+
+            let filters = match next_child {
+                Child::Bucket(bucket) => &bucket.filters,
+                Child::Joint(joint) => &joint.filters,
+            };
+            if !filters.is_empty() {
+                filter_groups.push(&filters[..]);
+            }
+
             current_children = match next_child {
                 Child::Bucket(_) => None,
-                Child::Joint(joint) => {
-                    if !joint.filters.is_empty() {
-                        filter_groups.push(&joint.filters[..]);
-                    }
-                    Some(&joint.children)
-                }
+                Child::Joint(joint) => Some(&joint.children),
             };
         }
 
@@ -160,7 +162,7 @@ impl<T, U> Network<T, U> {
         };
 
         match target_elem {
-            Child::Bucket(bucket) if !bucket.is_empty() => {
+            Child::Bucket(bucket) if !bucket.items.is_empty() => {
                 Err(ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)).into())
             }
             Child::Joint(joint) if !joint.children.is_empty() => {
@@ -198,27 +200,24 @@ impl<T, U> Network<T, U> {
 
         self.buckets_needing_fill.remove(&bucket_path);
 
-        *dest_contents = new_contents;
+        dest_contents.items = new_contents;
         Ok(())
     }
-    fn set_joint_filters(
-        &mut self,
-        new_filters: Vec<U>,
-        joint_path: Path,
-    ) -> Result<(), ModifyError> {
-        let mut current_children = &mut self.root;
+    fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
+        let mut current_children = Some(&mut self.root);
         let mut dest_filters = None;
-        for next_index in &joint_path {
-            let Some(next_child) = current_children.get_mut(next_index) else {
-                return Err(UnknownPath(joint_path).into());
+        for next_index in &path {
+            let Some(next_child) = current_children.and_then(|c| c.get_mut(next_index)) else {
+                return Err(UnknownPath(path).into());
             };
             current_children = match next_child {
-                Child::Bucket(_) => {
-                    return Err(CannotAddToBucket(joint_path).into());
+                Child::Bucket(bucket) => {
+                    dest_filters = Some(&mut bucket.filters);
+                    None
                 }
                 Child::Joint(joint) => {
                     dest_filters = Some(&mut joint.filters);
-                    &mut joint.children
+                    Some(&mut joint.children)
                 }
             };
         }
@@ -226,12 +225,19 @@ impl<T, U> Network<T, U> {
         if let Some(dest_filters) = dest_filters {
             *dest_filters = new_filters;
 
-            let mut joint_path_buf = joint_path;
-            Self::add_buckets_need_fill_under(
-                &mut joint_path_buf,
-                &mut self.buckets_needing_fill,
-                &*current_children,
-            );
+            if let Some(joint_children) = current_children {
+                // target is joint, search for all child buckets
+
+                let mut joint_path_buf = path;
+                Self::add_buckets_need_fill_under(
+                    &mut joint_path_buf,
+                    &mut self.buckets_needing_fill,
+                    &*joint_children,
+                );
+            } else {
+                // target is bucket
+                self.buckets_needing_fill.insert(path);
+            }
 
             Ok(())
         } else {
@@ -260,8 +266,13 @@ impl<T, U> Network<T, U> {
 
 #[derive(Clone, Debug)]
 enum Child<T, U> {
-    Bucket(Vec<T>),
+    Bucket(Bucket<T, U>),
     Joint(Joint<T, U>),
+}
+#[derive(Clone, Debug)]
+struct Bucket<T, U> {
+    items: Vec<T>,
+    filters: Vec<U>,
 }
 #[derive(Clone, Debug)]
 struct Joint<T, U> {
@@ -271,7 +282,10 @@ struct Joint<T, U> {
 
 impl<T, U> Child<T, U> {
     fn bucket() -> Self {
-        Self::Bucket(Vec::new())
+        Self::Bucket(Bucket {
+            items: Vec::new(),
+            filters: Vec::new(),
+        })
     }
     fn joint() -> Self {
         Self::Joint(Joint {
@@ -309,11 +323,11 @@ pub enum ModifyCmd<T, U> {
         /// Items for the bucket
         new_contents: Vec<T>,
     },
-    /// Set the filters on a joint
-    SetJointFilters {
-        /// Path for the existing joint
-        joint: Path,
-        /// List of filters to set on the joint
+    /// Set the filters on a joint or bucket
+    SetFilters {
+        /// Path for the existing joint or bucket
+        path: Path,
+        /// List of filters to set
         new_filters: Vec<U>,
     },
 }

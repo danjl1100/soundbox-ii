@@ -92,17 +92,18 @@ where
         effort_count += 1;
 
         let elem = match child_node {
-            Child::Bucket(bucket_elems) => {
-                if bucket_elems.is_empty() {
+            Child::Bucket(bucket) => {
+                let bucket_items = &bucket.items;
+                if bucket_items.is_empty() {
                     None
                 } else {
                     let elem_index = Rc::make_mut(child_order)
                         .order
-                        .next_in(rng, bucket_elems)
+                        .next_in(rng, bucket_items)
                         .expect("bucket should not be empty");
                     #[allow(clippy::panic)]
-                    let Some(elem) = bucket_elems.get(elem_index) else {
-                        panic!("valid bucket_elems index ({elem_index}) from order")
+                    let Some(elem) = bucket_items.get(elem_index) else {
+                        panic!("valid bucket_items index ({elem_index}) from order")
                     };
 
                     // effort: lookup bucket element

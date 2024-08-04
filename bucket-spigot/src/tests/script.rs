@@ -144,7 +144,7 @@ where
                     &cmd,
                     ModifyCmd::AddBucket { .. }
                         | ModifyCmd::FillBucket { .. }
-                        | ModifyCmd::SetJointFilters { .. }
+                        | ModifyCmd::SetFilters { .. }
                 );
                 self.modify(cmd)?;
 
@@ -220,7 +220,7 @@ impl Topology<usize> {
         let elems = nodes
             .iter()
             .map(|node| match node {
-                crate::Child::Bucket(bucket) => Self::Leaf(bucket.len()),
+                crate::Child::Bucket(bucket) => Self::Leaf(bucket.items.len()),
                 crate::Child::Joint(joint) => Self::new_from_nodes(&joint.children),
             })
             .collect();
