@@ -7,7 +7,7 @@ use std::str::FromStr;
 const DELIMITER: &str = ".";
 
 /// Path to a node (joint or bucket) in the [`Network`](`crate::Network`)
-#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Hash, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 #[must_use]
 pub struct Path(

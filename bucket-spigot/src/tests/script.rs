@@ -144,8 +144,12 @@ where
                 self.modify(cmd)?;
 
                 let entry = if output_buckets {
-                    let buckets = self.get_buckets_needing_fill();
-                    Some(Entry::BucketsNeedingFill(buckets.to_owned()))
+                    let mut buckets: Vec<_> = self
+                        .get_buckets_needing_fill()
+                        .map(Path::to_owned)
+                        .collect();
+                    buckets.sort();
+                    Some(Entry::BucketsNeedingFill(buckets))
                 } else {
                     None
                 };

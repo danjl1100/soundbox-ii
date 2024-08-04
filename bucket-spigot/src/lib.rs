@@ -19,6 +19,7 @@
 //!
 
 use path::Path;
+use std::collections::HashSet;
 
 pub mod clap;
 pub mod path;
@@ -29,7 +30,7 @@ pub mod order;
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
     root: Vec<Child<T, U>>,
-    buckets_needing_fill: Vec<Path>,
+    buckets_needing_fill: HashSet<Path>,
     /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
     root_order: order::Root,
 }
@@ -59,8 +60,8 @@ impl<T, U> Network<T, U> {
         }
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
-    pub fn get_buckets_needing_fill(&self) -> &[Path] {
-        &self.buckets_needing_fill
+    pub fn get_buckets_needing_fill(&self) -> impl Iterator<Item = &'_ Path> {
+        self.buckets_needing_fill.iter()
     }
     /// Returns the filters for the specified path
     ///
@@ -130,7 +131,7 @@ impl<T, U> Network<T, U> {
 
         // queue for refilling new bucket
         if is_bucket {
-            self.buckets_needing_fill.push(child_path.clone());
+            self.buckets_needing_fill.insert(child_path.clone());
         }
 
         Ok(child_path)
@@ -195,8 +196,7 @@ impl<T, U> Network<T, U> {
             return Err(UnknownPath(bucket_path).into());
         }
 
-        self.buckets_needing_fill
-            .retain(|path| *path != bucket_path);
+        self.buckets_needing_fill.remove(&bucket_path);
 
         *dest_contents = new_contents;
         Ok(())
