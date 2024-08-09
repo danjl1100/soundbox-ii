@@ -18,6 +18,7 @@
 //! walking from the spigot (root node) to the bucket.
 //!
 
+use child_vec::ChildVec;
 use path::Path;
 use std::collections::HashSet;
 
@@ -29,7 +30,7 @@ pub mod order;
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
-    root: Vec<Child<T, U>>,
+    root: ChildVec<T, U>,
     buckets_needing_fill: HashSet<Path>,
     /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
     root_order: order::Root,
@@ -42,11 +43,11 @@ impl<T, U> Network<T, U> {
     pub fn modify(&mut self, cmd: ModifyCmd<T, U>) -> Result<(), ModifyError> {
         match cmd {
             ModifyCmd::AddBucket { parent } => {
-                let _path = self.add_child(Child::bucket(), parent)?;
+                let _path = self.add_child(Child::Bucket(Bucket::default()), parent)?;
                 Ok(())
             }
             ModifyCmd::AddJoint { parent } => {
-                let _path = self.add_child(Child::joint(), parent)?;
+                let _path = self.add_child(Child::Joint(Joint::default()), parent)?;
                 Ok(())
             }
             ModifyCmd::DeleteEmpty { path } => self.delete_empty(path),
@@ -55,6 +56,7 @@ impl<T, U> Network<T, U> {
                 new_contents,
             } => self.set_bucket_items(new_contents, bucket),
             ModifyCmd::SetFilters { path, new_filters } => self.set_filters(new_filters, path),
+            ModifyCmd::SetWeight { path, new_weight } => self.set_weight(new_weight, path),
         }
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
@@ -71,10 +73,11 @@ impl<T, U> Network<T, U> {
     pub fn get_filters(&self, path: Path) -> Result<Vec<&[U]>, UnknownPath> {
         let mut filter_groups = Vec::new();
 
-        let mut current_children = Some(&self.root);
+        let mut current = Some(&self.root);
 
+        // TODO [1/5] find common pattern to simplify similar indexing logic...?
         for next_index in &path {
-            let Some(next_child) = current_children.and_then(|c| c.get(next_index)) else {
+            let Some(next_child) = current.and_then(|c| c.children().get(next_index)) else {
                 return Err(UnknownPath(path));
             };
 
@@ -86,9 +89,9 @@ impl<T, U> Network<T, U> {
                 filter_groups.push(&filters[..]);
             }
 
-            current_children = match next_child {
+            current = match next_child {
                 Child::Bucket(_) => None,
-                Child::Joint(joint) => Some(&joint.children),
+                Child::Joint(joint) => Some(&joint.next),
             };
         }
 
@@ -96,24 +99,25 @@ impl<T, U> Network<T, U> {
     }
 
     fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
-        let mut current_children = &mut self.root;
+        let mut current = &mut self.root;
 
+        // TODO [2/5] find common pattern to simplify similar indexing logic...?
         for next_index in &parent_path {
-            let Some(next_child) = current_children.get_mut(next_index) else {
+            let Some(next_child) = current.children_mut().get_mut(next_index) else {
                 return Err(UnknownPath(parent_path).into());
             };
-            current_children = match next_child {
+            current = match next_child {
                 Child::Bucket(_) => {
                     return Err(CannotAddToBucket(parent_path).into());
                 }
-                Child::Joint(joint) => &mut joint.children,
+                Child::Joint(joint) => &mut joint.next,
             };
         }
 
         // add order for child (fails if node/order structures are not identical)
         let child_index = self.root_order.add(parent_path.as_ref())?;
 
-        let child_index_expected = current_children.len();
+        let child_index_expected = current.len();
         assert_eq!(
             child_index, child_index_expected,
             "order nodes should match item nodes"
@@ -122,7 +126,7 @@ impl<T, U> Network<T, U> {
         let is_bucket = matches!(child, Child::Bucket(_));
 
         // add child
-        current_children.push(child);
+        current.push(child);
 
         // build child path
         let child_path = {
@@ -139,25 +143,26 @@ impl<T, U> Network<T, U> {
         Ok(child_path)
     }
     fn delete_empty(&mut self, path: Path) -> Result<(), ModifyError> {
-        let mut current_children = &mut self.root;
+        let mut current = &mut self.root;
 
         let Some((final_index, parent_path)) = path.as_ref().split_last() else {
             return Err(ModifyErr::DeleteRoot.into());
         };
 
+        // TODO [3/5] find common pattern to simplify similar indexing logic...?
         for next_index in parent_path {
-            let Some(next_child) = current_children.get_mut(next_index) else {
+            let Some(next_child) = current.children_mut().get_mut(next_index) else {
                 return Err(UnknownPath(path).into());
             };
-            current_children = match next_child {
+            current = match next_child {
                 Child::Bucket(_) => {
                     return Err(UnknownPath(path).into());
                 }
-                Child::Joint(joint) => &mut joint.children,
+                Child::Joint(joint) => &mut joint.next,
             };
         }
 
-        let Some(target_elem) = current_children.get(final_index) else {
+        let Some(target_elem) = current.children().get(final_index) else {
             return Err(UnknownPath(path).into());
         };
 
@@ -165,11 +170,11 @@ impl<T, U> Network<T, U> {
             Child::Bucket(bucket) if !bucket.items.is_empty() => {
                 Err(ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)).into())
             }
-            Child::Joint(joint) if !joint.children.is_empty() => {
+            Child::Joint(joint) if !joint.next.is_empty() => {
                 Err(ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)).into())
             }
             Child::Bucket(_) | Child::Joint(_) => {
-                current_children.remove(final_index);
+                current.remove(final_index);
                 Ok(())
             }
         }
@@ -179,19 +184,19 @@ impl<T, U> Network<T, U> {
         new_contents: Vec<T>,
         bucket_path: Path,
     ) -> Result<(), ModifyError> {
-        let mut current_children = &mut self.root;
+        let mut current = &mut self.root;
 
         let mut bucket_path_iter = bucket_path.iter();
         let dest_contents = loop {
             let Some(next_index) = bucket_path_iter.next() else {
                 return Err(ModifyErr::FillJoint.into());
             };
-            let Some(next_child) = current_children.get_mut(next_index) else {
+            let Some(next_child) = current.children_mut().get_mut(next_index) else {
                 return Err(UnknownPath(bucket_path).into());
             };
-            current_children = match next_child {
+            current = match next_child {
                 Child::Bucket(bucket) => break bucket,
-                Child::Joint(joint) => &mut joint.children,
+                Child::Joint(joint) => &mut joint.next,
             };
         };
         if bucket_path_iter.next().is_some() {
@@ -204,20 +209,22 @@ impl<T, U> Network<T, U> {
         Ok(())
     }
     fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
-        let mut current_children = Some(&mut self.root);
+        let mut current = Some(&mut self.root);
         let mut dest_filters = None;
+        // TODO [4/5] find common pattern to simplify similar indexing logic...?
         for next_index in &path {
-            let Some(next_child) = current_children.and_then(|c| c.get_mut(next_index)) else {
+            let Some(next_child) = current.and_then(|c| c.children_mut().get_mut(next_index))
+            else {
                 return Err(UnknownPath(path).into());
             };
-            current_children = match next_child {
+            current = match next_child {
                 Child::Bucket(bucket) => {
                     dest_filters = Some(&mut bucket.filters);
                     None
                 }
                 Child::Joint(joint) => {
                     dest_filters = Some(&mut joint.filters);
-                    Some(&mut joint.children)
+                    Some(&mut joint.next)
                 }
             };
         }
@@ -225,14 +232,14 @@ impl<T, U> Network<T, U> {
         if let Some(dest_filters) = dest_filters {
             *dest_filters = new_filters;
 
-            if let Some(joint_children) = current_children {
+            if let Some(joint_children) = current {
                 // target is joint, search for all child buckets
 
                 let mut joint_path_buf = path;
                 Self::add_buckets_need_fill_under(
                     &mut joint_path_buf,
                     &mut self.buckets_needing_fill,
-                    &*joint_children,
+                    joint_children.children(),
                 );
             } else {
                 // target is bucket
@@ -242,6 +249,30 @@ impl<T, U> Network<T, U> {
             Ok(())
         } else {
             Err(ModifyErr::FilterRoot)?
+        }
+    }
+    fn set_weight(&mut self, new_weight: u32, path: Path) -> Result<(), ModifyError> {
+        let mut current = &mut self.root;
+        let Some((last_index, parent_path)) = path.as_ref().split_last() else {
+            return Err(ModifyErr::WeightRoot.into());
+        };
+        // TODO [5/5] find common pattern to simplify similar indexing logic...?
+        for next_index in parent_path {
+            let next_child = current.children_mut().get_mut(next_index);
+            current = match next_child {
+                None | Some(Child::Bucket(_)) => {
+                    return Err(UnknownPath(path).into());
+                }
+                Some(Child::Joint(joint)) => &mut joint.next,
+            };
+        }
+
+        let target_parent = current;
+        if last_index < target_parent.len() {
+            target_parent.set_weight(last_index, new_weight);
+            Ok(())
+        } else {
+            Err(UnknownPath(path).into())
         }
     }
     fn add_buckets_need_fill_under(
@@ -256,7 +287,11 @@ impl<T, U> Network<T, U> {
                     buckets_needing_fill.insert(path.clone());
                 }
                 Child::Joint(joint) => {
-                    Self::add_buckets_need_fill_under(path, buckets_needing_fill, &joint.children);
+                    Self::add_buckets_need_fill_under(
+                        path,
+                        buckets_needing_fill,
+                        joint.next.children(),
+                    );
                 }
             }
             assert_eq!(path.pop(), Some(index), "should contain the pushed index");
@@ -276,22 +311,89 @@ struct Bucket<T, U> {
 }
 #[derive(Clone, Debug)]
 struct Joint<T, U> {
-    children: Vec<Child<T, U>>,
+    next: ChildVec<T, U>,
     filters: Vec<U>,
 }
 
-impl<T, U> Child<T, U> {
-    fn bucket() -> Self {
-        Self::Bucket(Bucket {
-            items: Vec::new(),
-            filters: Vec::new(),
-        })
+impl<T, U> Default for Bucket<T, U> {
+    fn default() -> Self {
+        Self {
+            items: vec![],
+            filters: vec![],
+        }
     }
-    fn joint() -> Self {
-        Self::Joint(Joint {
-            filters: Vec::new(),
-            children: Vec::new(),
-        })
+}
+impl<T, U> Default for Joint<T, U> {
+    fn default() -> Self {
+        Self {
+            next: ChildVec::default(),
+            filters: vec![],
+        }
+    }
+}
+
+mod child_vec {
+    use crate::Child;
+
+    #[derive(Clone, Debug)]
+    pub(crate) struct ChildVec<T, U> {
+        children: Vec<Child<T, U>>,
+        /// Weights for each child (may be empty if all are weighted equally)
+        weights: Vec<u32>,
+    }
+    impl<T, U> From<Vec<Child<T, U>>> for ChildVec<T, U> {
+        fn from(children: Vec<Child<T, U>>) -> Self {
+            Self {
+                children,
+                weights: vec![],
+            }
+        }
+    }
+    impl<T, U> Default for ChildVec<T, U> {
+        fn default() -> Self {
+            vec![].into()
+        }
+    }
+    impl<T, U> ChildVec<T, U> {
+        pub fn children(&self) -> &[Child<T, U>] {
+            &self.children
+        }
+        pub fn weights(&self) -> &[u32] {
+            &self.weights
+        }
+        pub fn children_mut(&mut self) -> &mut [Child<T, U>] {
+            &mut self.children
+        }
+        pub fn set_weight(&mut self, index: usize, value: u32) {
+            if self.weights.is_empty() {
+                self.weights = vec![1; self.len()];
+            }
+            self.weights[index] = value;
+        }
+        pub fn len(&self) -> usize {
+            self.children.len()
+        }
+        pub fn is_empty(&self) -> bool {
+            self.children.is_empty()
+        }
+        pub fn push(&mut self, child: Child<T, U>) {
+            // update to unity weight (if needed)
+            if !self.weights.is_empty() {
+                self.weights.push(1);
+            }
+
+            self.children.push(child);
+        }
+        pub fn remove(&mut self, index: usize) -> (u32, Child<T, U>) {
+            let child = self.children.remove(index);
+
+            let weight = if self.weights.is_empty() {
+                1
+            } else {
+                self.weights.remove(index)
+            };
+            (weight, child)
+        }
     }
 }
 
@@ -330,6 +432,13 @@ pub enum ModifyCmd<T, U> {
         /// List of filters to set
         new_filters: Vec<U>,
     },
+    /// Set the weight on a joint or bucket
+    SetWeight {
+        /// Path for the existing joint or bucket
+        path: Path,
+        /// Weight value (relative to other weights on sibling nodes)
+        new_weight: u32,
+    },
 }
 
 /// Error modifying the [`Network`]
@@ -343,6 +452,7 @@ enum ModifyErr {
     DeleteNonemptyJoint(CannotDeleteNonempty),
     FilterRoot,
     FillJoint,
+    WeightRoot,
 }
 impl From<UnknownPath> for ModifyError {
     fn from(value: UnknownPath) -> Self {
@@ -388,6 +498,7 @@ impl std::fmt::Display for ModifyError {
             ModifyErr::FillJoint => {
                 write!(f, "cannot fill joint (only buckets have items)")
             }
+            ModifyErr::WeightRoot => write!(f, "cannot weight the spigot (root node)"),
         }
     }
 }

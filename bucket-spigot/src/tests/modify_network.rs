@@ -359,6 +359,51 @@ fn delete_empty_joint() {
 }
 
 #[test]
+fn delete_updates_weights() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+        modify add-joint .
+        modify add-joint .1
+        modify add-bucket .1
+
+        modify set-weight .0 5
+        modify set-weight .1.0 7
+
+        topology weights
+
+        modify delete-empty .0
+        modify delete-empty .0.0
+
+        topology weights
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0",
+      ]),
+      BucketsNeedingFill("modify add-bucket .1", [
+        ".0",
+        ".1.1",
+      ]),
+      Topology([
+        (5, ()),
+        (1, [
+          (7, []),
+          (1, ()),
+        ]),
+      ]),
+      Topology([
+        (1, [
+          (1, ()),
+        ]),
+      ]),
+    ])
+    "###);
+}
+
+#[test]
 fn fill_path_past_bucket() {
     let log = Network::new_strings_run_script(
         "
@@ -392,6 +437,48 @@ fn set_filter_past_bucket() {
         ".0",
       ]),
       ExpectError("modify set-filters .0.0", "unknown path: Path(.0.0)"),
+    ])
+    "###);
+}
+
+#[test]
+fn set_weights() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-joint .
+        modify add-bucket .0
+        modify add-bucket .
+
+        topology weights
+
+        modify set-weight .0 2
+        modify set-weight .0.0 0
+        modify set-weight .1 5
+
+        topology weights
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .0", [
+        ".0.0",
+      ]),
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0.0",
+        ".1",
+      ]),
+      Topology([
+        (1, [
+          (1, ()),
+        ]),
+        (1, ()),
+      ]),
+      Topology([
+        (2, [
+          (0, ()),
+        ]),
+        (5, ()),
+      ]),
     ])
     "###);
 }

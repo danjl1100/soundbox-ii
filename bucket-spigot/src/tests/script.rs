@@ -39,7 +39,10 @@ pub(super) enum Entry<T, U> {
 #[serde(untagged)]
 pub(super) enum Topology<T> {
     Leaf(T),
-    Node(Vec<Topology<T>>),
+    LeafEmpty,
+    NodeList(Vec<Topology<T>>),
+    // NOTE: "Map", but still need to maintain insertion order
+    NodeMap(Vec<(T, Topology<T>)>),
 }
 
 #[derive(clap::Parser)]
@@ -66,7 +69,16 @@ where
         flags: PeekFlags,
         expected: Vec<T>,
     },
-    Topology,
+    Topology {
+        kind: Option<TopologyKind>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+enum TopologyKind {
+    #[default]
+    ItemCount,
+    Weights,
 }
 
 #[derive(Clone, Copy, Debug, clap::Args)]
@@ -194,8 +206,11 @@ where
                     );
                 Ok(entry)
             }
-            Command::Topology => {
-                let topology = Topology::new_from_nodes(&self.root);
+            Command::Topology { kind } => {
+                let topology = match kind.unwrap_or_default() {
+                    TopologyKind::ItemCount => Topology::new_from_nodes(&self.root),
+                    TopologyKind::Weights => Topology::new_from_weights(&self.root),
+                };
                 Ok(Some(Entry::Topology(topology)))
             }
         }
@@ -216,14 +231,38 @@ where
 }
 
 impl Topology<usize> {
-    fn new_from_nodes<T, U>(nodes: &[crate::Child<T, U>]) -> Self {
+    fn new_from_nodes<T, U>(nodes: &crate::ChildVec<T, U>) -> Self {
         let elems = nodes
+            .children()
             .iter()
             .map(|node| match node {
                 crate::Child::Bucket(bucket) => Self::Leaf(bucket.items.len()),
-                crate::Child::Joint(joint) => Self::new_from_nodes(&joint.children),
+                crate::Child::Joint(joint) => Self::new_from_nodes(&joint.next),
             })
             .collect();
-        Self::Node(elems)
+        Self::NodeList(elems)
+    }
+    fn new_from_weights<T, U>(nodes: &crate::ChildVec<T, U>) -> Self {
+        let weights = nodes.weights();
+        let map = nodes
+            .children()
+            .iter()
+            .enumerate()
+            .map(|(index, node)| {
+                let weight = if weights.is_empty() {
+                    1
+                } else {
+                    weights[index]
+                        .try_into()
+                        .expect("weight should fit in platform's usize")
+                };
+                let target = match node {
+                    crate::Child::Bucket(_) => Self::LeafEmpty,
+                    crate::Child::Joint(joint) => Self::new_from_weights(&joint.next),
+                };
+                (weight, target)
+            })
+            .collect();
+        Self::NodeMap(map)
     }
 }

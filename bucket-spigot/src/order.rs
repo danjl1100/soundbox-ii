@@ -2,7 +2,7 @@
 
 //! Ordering for selecting child nodes and child items throughout the [`Network`]
 
-use crate::{Child, Network};
+use crate::{child_vec::ChildVec, Child, Network};
 use std::rc::Rc;
 
 impl<T, U> Network<T, U> {
@@ -21,14 +21,14 @@ impl<T, U> Network<T, U> {
         rng: &mut R,
         peek_len: usize,
     ) -> Result<Peeked<'a, T>, rand::Error> {
-        let child_nodes = &self.root;
+        let root = &self.root;
         let mut root_order = self.root_order.0.clone();
-        let mut root_remaining = CountsRemaining::new(child_nodes.len());
+        let mut root_remaining = CountsRemaining::new(root.len());
 
         let mut effort_count = 0;
 
         let chosen_elems = std::iter::from_fn(|| {
-            let (elem, effort) = peek_inner(rng, child_nodes, &mut root_order, &mut root_remaining);
+            let (elem, effort) = peek_inner(rng, root, &mut root_order, &mut root_remaining);
             effort_count += effort;
             elem
         })
@@ -50,28 +50,25 @@ impl<T, U> Network<T, U> {
 
 fn peek_inner<'a, R, T, U>(
     rng: &mut R,
-    child_nodes: &'a [Child<T, U>],
-    order_node: &mut node::Node,
+    current: &'a ChildVec<T, U>,
+    order_node: &mut OrderNode,
     current_remaining: &mut CountsRemaining,
 ) -> (Option<&'a T>, u64)
 where
     R: rand::Rng + ?Sized,
 {
-    let current_order = &mut order_node.order;
-    let child_orders = &mut order_node.children;
+    let order_current = &mut order_node.order;
+    let order_children = &mut order_node.children;
 
     let mut effort_count = 0;
 
     while !current_remaining.is_fully_exhausted() {
-        assert_eq!(child_nodes.len(), child_orders.len());
-        assert_eq!(
-            child_nodes.len(),
-            current_remaining.child_count_if_nonempty()
-        );
+        assert_eq!(current.len(), order_children.len());
+        assert_eq!(current.len(), current_remaining.child_count_if_nonempty());
 
-        let child_index = current_order
-            .next_in(rng, child_nodes)
-            .expect("child_nodes should not be empty");
+        let child_index = order_current
+            .next_in(rng, current)
+            .expect("current should not be empty");
 
         let remaining_slot = current_remaining.child_mut(child_index);
         if remaining_slot.is_none() {
@@ -80,15 +77,15 @@ where
         }
 
         #[allow(clippy::panic)]
-        let Some(child_node) = child_nodes.get(child_index) else {
-            panic!("valid child_nodes index ({child_index}) from order")
+        let Some(child_node) = current.children().get(child_index) else {
+            panic!("valid current.children index ({child_index}) from order")
         };
         #[allow(clippy::panic)]
-        let Some(child_order) = child_orders.get_mut(child_index) else {
-            panic!("valid child_orders index ({child_index}) from order")
+        let Some(child_order) = order_children.get_mut(child_index) else {
+            panic!("valid order_children index ({child_index}) from order")
         };
 
-        // effort: lookup child_nodes and child_orders
+        // effort: lookup child_node and child_order
         effort_count += 1;
 
         let elem = match child_node {
@@ -99,7 +96,7 @@ where
                 } else {
                     let elem_index = Rc::make_mut(child_order)
                         .order
-                        .next_in(rng, bucket_items)
+                        .next_in_equal(rng, bucket_items)
                         .expect("bucket should not be empty");
                     #[allow(clippy::panic)]
                     let Some(elem) = bucket_items.get(elem_index) else {
@@ -113,14 +110,14 @@ where
                 }
             }
             Child::Joint(joint) => {
-                if joint.children.is_empty() {
+                if joint.next.is_empty() {
                     None
                 } else if let Some(remaining) = remaining_slot {
                     let (elem, child_effort_count) = peek_inner(
                         rng,
-                        &joint.children,
+                        &joint.next,
                         Rc::make_mut(child_order),
-                        remaining.as_mut_or_init(|| CountsRemaining::new(joint.children.len())),
+                        remaining.as_mut_or_init(|| CountsRemaining::new(joint.next.len())),
                     );
 
                     // effort: recursion effort
@@ -142,6 +139,7 @@ where
 
 /// Resulting items and tentative ordering state from [`Network::peek`]
 pub struct Peeked<'a, T> {
+    // TODO include metadata for which node the item came from
     items: Vec<&'a T>,
     root_order: Root,
     effort_count: u64,
@@ -241,16 +239,95 @@ impl CountsRemaining {
 
 trait OrderSource<R: rand::Rng + ?Sized> {
     /// Returns the next index in the order, within the range `0..=max_index`
-    fn next(&mut self, rng: &mut R, max_index: usize) -> usize;
-    /// Returns the next index in the order to index the specified `target` slice,
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> usize;
+    /// Returns the next index in the order to index the specified target slice
     /// or `None` if the specified `target` is empty.
-    fn next_in<T>(&mut self, rng: &mut R, target: &[T]) -> Option<usize> {
-        let max_index = target.len().checked_sub(1)?;
-        let next = self.next(rng, max_index);
+    fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<usize> {
+        let weights = Weights::new_equal(target.len())?;
+        let next = self.next(rng, weights);
+        Some(next)
+    }
+    /// Returns the next index in the order to index the specified target [`ChildVec`],
+    /// or `None` if the specified `target` is empty.
+    fn next_in<T, U>(&mut self, rng: &mut R, target: &ChildVec<T, U>) -> Option<usize> {
+        // TODO exhaustively test this function for all OrderTypes using `arbtest`, first for various `len` then various `weights()`
+        //      (assertion: always terminates)
+        let weights = if target.weights().is_empty() {
+            // returns `None` if length is zero
+            Weights::new_equal(target.len())?
+        } else {
+            // returns `None` if weights are all zero
+            Weights::new_custom(target.weights())?
+        };
+        let next = self.next(rng, weights);
         Some(next)
     }
 }
 
+use weights::Weights;
+mod weights {
+    /// Non-empty weights (length non-zero, and contents non-zero)
+    #[derive(Clone, Copy, Debug)]
+    pub(super) struct Weights<'a>(Inner<'a>);
+
+    #[derive(Clone, Copy, Debug)]
+    enum Inner<'a> {
+        Unity {
+            /// NOTE: specifically chosen to avoid awkward `len = 0` case
+            /// e.g. there must be a `next` available for unsigned `max_index >= 0`
+            max_index: usize,
+        },
+        Custom {
+            /// Non-empty weights (e.g. at least one nonzero element)
+            weights: &'a [u32],
+        },
+    }
+    impl<'a> Weights<'a> {
+        /// Returns `None` if the specified slice is empty
+        pub fn new_custom(weights: &'a [u32]) -> Option<Self> {
+            if weights.is_empty() {
+                None
+            } else {
+                assert!(!weights.is_empty());
+                weights
+                    .iter()
+                    .any(|&w| w != 0)
+                    .then_some(Self(Inner::Custom { weights }))
+            }
+        }
+        pub fn new_equal(len: usize) -> Option<Self> {
+            let max_index = len.checked_sub(1)?;
+            Some(Self(Inner::Unity { max_index }))
+        }
+        pub fn get_max_index(self) -> usize {
+            let Self(inner) = self;
+            match inner {
+                Inner::Unity { max_index } => max_index,
+                Inner::Custom { weights } => weights.len() - 1,
+            }
+        }
+        pub fn get(self, index: usize) -> u32 {
+            let Self(inner) = self;
+            match inner {
+                Inner::Unity { max_index } => {
+                    assert!(
+                        index <= max_index,
+                        "index should be in bounds for Weights::get"
+                    );
+                    1
+                }
+                Inner::Custom { weights } => weights[index],
+            }
+        }
+        pub fn get_as_usize(self, index: usize) -> usize {
+            self.get(index)
+                .try_into()
+                .expect("weight should fit in platform's usize")
+        }
+    }
+}
+
+use node::Node as OrderNode;
 pub(crate) use node::{Root, UnknownOrderPath};
 mod node {
     //! Tree structure for [`Order`], meant to mirror the
@@ -305,22 +382,47 @@ impl Default for Order {
     }
 }
 impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
-    fn next(&mut self, rng: &mut R, max_index: usize) -> usize {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> usize {
         match self {
-            Order::InOrder(inner) => inner.next(rng, max_index),
+            Order::InOrder(inner) => inner.next(rng, weights),
         }
     }
 }
 
 #[derive(Clone, Debug, Default)]
-struct InOrder(usize);
+struct InOrder {
+    next_index: usize,
+    count: usize,
+}
 impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
-    fn next(&mut self, _rng: &mut R, max_index: usize) -> usize {
-        let next = if self.0 > max_index { 0 } else { self.0 };
-        self.0 = next.wrapping_add(1);
-        next
+    fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> usize {
+        // TODO clarify in loop body to *prove* loop will terminate
+        // (relying on invariants of `Weights`)
+        // TODO test for case where Weights is decreased (verify count that previously met bounds
+        // is no longer used when weight decreases)
+        loop {
+            if self.next_index > weights.get_max_index() {
+                self.next_index = 0;
+                self.count = 0;
+            }
+            let current = self.next_index;
+            let new_count = self.count + 1;
+            let goal_weight = weights.get_as_usize(current);
+            if self.count >= goal_weight {
+                self.next_index = current.wrapping_add(1);
+                self.count = 0;
+            } else {
+                self.count = new_count;
+            }
+            if new_count <= goal_weight {
+                break current;
+            }
+        }
     }
 }
+
+// TODO add Random (selection of the next item is random, independent from prior selections)
+// TODO add Shuffle (randomize the order of items, then proceed with that fixed order)
 
 #[cfg(test)]
 mod tests {
@@ -330,24 +432,30 @@ mod tests {
     fn in_order() {
         let mut uut = InOrder::default();
         let rng = &mut crate::tests::PanicRng;
+        let mut next = |max_index| {
+            uut.next(
+                rng,
+                Weights::new_equal(max_index + 1usize).expect("usize + 1 should be nonzero"),
+            )
+        };
 
-        assert_eq!(uut.next(rng, 5), 0);
-        assert_eq!(uut.next(rng, 5), 1);
-        assert_eq!(uut.next(rng, 5), 2);
-        assert_eq!(uut.next(rng, 5), 3);
-        assert_eq!(uut.next(rng, 5), 4);
-        assert_eq!(uut.next(rng, 5), 5);
+        assert_eq!(next(5), 0);
+        assert_eq!(next(5), 1);
+        assert_eq!(next(5), 2);
+        assert_eq!(next(5), 3);
+        assert_eq!(next(5), 4);
+        assert_eq!(next(5), 5);
         //
-        assert_eq!(uut.next(rng, 5), 0);
+        assert_eq!(next(5), 0);
         //
-        assert_eq!(uut.next(rng, 2), 1);
-        assert_eq!(uut.next(rng, 2), 2);
-        assert_eq!(uut.next(rng, 2), 0);
-        assert_eq!(uut.next(rng, 2), 1);
+        assert_eq!(next(2), 1);
+        assert_eq!(next(2), 2);
+        assert_eq!(next(2), 0);
+        assert_eq!(next(2), 1);
         //
-        assert_eq!(uut.next(rng, 1), 0);
+        assert_eq!(next(1), 0);
         //
-        assert_eq!(uut.next(rng, 0), 0);
-        assert_eq!(uut.next(rng, 0), 0);
+        assert_eq!(next(0), 0);
+        assert_eq!(next(0), 0);
     }
 }

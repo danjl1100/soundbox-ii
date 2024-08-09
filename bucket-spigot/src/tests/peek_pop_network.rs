@@ -37,6 +37,90 @@ fn simple_in_order() {
 }
 
 #[test]
+fn weighted_in_order() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-joint .
+        modify add-joint .0
+        modify add-bucket .0.0
+        modify fill-bucket .0.0.0 nested-inner-1 nested-inner-2 nested-inner-3
+
+        modify add-bucket .0
+        modify fill-bucket .0.1 middle-1 middle-2 middle-3
+
+        modify add-bucket .
+        modify fill-bucket .1 base-1 base-2 base-3
+
+        modify set-weight .0     4
+        modify set-weight .0.0   2
+        modify set-weight .0.0.0 200
+        modify set-weight .1     1
+
+        topology
+        topology weights
+
+        peek 20
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .0.0", [
+        ".0.0.0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.0.0 nested-inner-1 nested-inner-2 nested-inner-3"),
+      BucketsNeedingFill("modify add-bucket .0", [
+        ".0.1",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0.1 middle-1 middle-2 middle-3"),
+      BucketsNeedingFill("modify add-bucket .", [
+        ".1",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .1 base-1 base-2 base-3"),
+      Topology([
+        [
+          [
+            3,
+          ],
+          3,
+        ],
+        3,
+      ]),
+      Topology([
+        (4, [
+          (2, [
+            (200, ()),
+          ]),
+          (1, ()),
+        ]),
+        (1, ()),
+      ]),
+      Peek([
+        "nested-inner-1",
+        "nested-inner-2",
+        "middle-1",
+        "nested-inner-3",
+        "base-1",
+        "nested-inner-1",
+        "middle-2",
+        "nested-inner-2",
+        "nested-inner-3",
+        "base-2",
+        "middle-3",
+        "nested-inner-1",
+        "nested-inner-2",
+        "middle-1",
+        "base-3",
+        "nested-inner-3",
+        "nested-inner-1",
+        "middle-2",
+        "nested-inner-2",
+        "base-1",
+      ]),
+    ])
+    "###);
+}
+
+#[test]
 fn two_alternating() {
     let log = Network::new_strings_run_script(
         "
@@ -183,6 +267,55 @@ fn continue_if_first_is_empty() {
         "b",
         "c",
       ]),
+    ])
+    "###);
+}
+
+#[test]
+fn skips_empty_weight() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+        modify fill-bucket .0 item-1
+        modify add-bucket .
+        modify fill-bucket .1 item-2
+
+        modify set-weight .0 0
+        topology weights
+
+        peek 4
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0 item-1"),
+      BucketsNeedingFill("modify add-bucket .", [
+        ".1",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .1 item-2"),
+      Topology([
+        (0, ()),
+        (1, ()),
+      ]),
+      Peek([
+        "item-2",
+        "item-2",
+        "item-2",
+        "item-2",
+      ]),
+    ])
+    "###);
+}
+
+#[test]
+fn empty() {
+    let log = Network::new_strings_run_script("peek 1");
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      Peek([]),
     ])
     "###);
 }

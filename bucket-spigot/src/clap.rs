@@ -64,6 +64,13 @@ where
         /// List of filters to set
         new_filters: Vec<U>,
     },
+    /// Set the weight on a joint or bucket
+    SetWeight {
+        /// Path for the existing joint or bucket
+        path: Path,
+        /// Weight value (relative to other weights on sibling nodes)
+        new_weight: u32,
+    },
 }
 impl<T, U> From<ModifyCmd<T, U>> for crate::ModifyCmd<T, U>
 where
@@ -83,6 +90,7 @@ where
                 new_contents,
             },
             ModifyCmd::SetFilters { path, new_filters } => Self::SetFilters { path, new_filters },
+            ModifyCmd::SetWeight { path, new_weight } => Self::SetWeight { path, new_weight },
         }
     }
 }
@@ -145,7 +153,7 @@ mod tests {
         "###);
     }
     #[test]
-    fn set_joint_filters() {
+    fn set_filters() {
         insta::assert_ron_snapshot!(parse_cli(&["set-filters", ".1.2", "a", "b", "foo"]), @r###"
         Ok(SetFilters(
           path: ".1.2",
@@ -154,6 +162,15 @@ mod tests {
             "b",
             "foo",
           ],
+        ))
+        "###);
+    }
+    #[test]
+    fn set_weight() {
+        insta::assert_ron_snapshot!(parse_cli(&["set-weight", ".1.2.3.4", "50"]), @r###"
+        Ok(SetWeight(
+          path: ".1.2.3.4",
+          new_weight: 50,
         ))
         "###);
     }
