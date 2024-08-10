@@ -231,7 +231,7 @@ where
 }
 
 impl Topology<usize> {
-    fn new_from_nodes<T, U>(nodes: &crate::ChildVec<T, U>) -> Self {
+    fn new_from_nodes<T, U>(nodes: &crate::ChildVec<crate::Child<T, U>>) -> Self {
         let elems = nodes
             .children()
             .iter()
@@ -242,7 +242,7 @@ impl Topology<usize> {
             .collect();
         Self::NodeList(elems)
     }
-    fn new_from_weights<T, U>(nodes: &crate::ChildVec<T, U>) -> Self {
+    fn new_from_weights<T, U>(nodes: &crate::ChildVec<crate::Child<T, U>>) -> Self {
         let weights = nodes.weights();
         let map = nodes
             .children()

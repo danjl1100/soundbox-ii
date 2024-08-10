@@ -30,7 +30,7 @@ pub mod order;
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
 pub struct Network<T, U> {
-    root: ChildVec<T, U>,
+    root: ChildVec<Child<T, U>>,
     buckets_needing_fill: HashSet<Path>,
     /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
     root_order: order::Root,
@@ -311,7 +311,7 @@ struct Bucket<T, U> {
 }
 #[derive(Clone, Debug)]
 struct Joint<T, U> {
-    next: ChildVec<T, U>,
+    next: ChildVec<Child<T, U>>,
     filters: Vec<U>,
 }
 
@@ -333,35 +333,33 @@ impl<T, U> Default for Joint<T, U> {
 }
 
 mod child_vec {
-    use crate::Child;
-
     #[derive(Clone, Debug)]
-    pub(crate) struct ChildVec<T, U> {
-        children: Vec<Child<T, U>>,
+    pub(crate) struct ChildVec<T> {
+        children: Vec<T>,
         /// Weights for each child (may be empty if all are weighted equally)
         weights: Vec<u32>,
     }
-    impl<T, U> From<Vec<Child<T, U>>> for ChildVec<T, U> {
-        fn from(children: Vec<Child<T, U>>) -> Self {
+    impl<T> From<Vec<T>> for ChildVec<T> {
+        fn from(children: Vec<T>) -> Self {
             Self {
                 children,
                 weights: vec![],
             }
         }
     }
-    impl<T, U> Default for ChildVec<T, U> {
+    impl<T> Default for ChildVec<T> {
         fn default() -> Self {
             vec![].into()
         }
     }
-    impl<T, U> ChildVec<T, U> {
-        pub fn children(&self) -> &[Child<T, U>] {
+    impl<T> ChildVec<T> {
+        pub fn children(&self) -> &[T] {
             &self.children
         }
         pub fn weights(&self) -> &[u32] {
             &self.weights
         }
-        pub fn children_mut(&mut self) -> &mut [Child<T, U>] {
+        pub fn children_mut(&mut self) -> &mut [T] {
             &mut self.children
         }
         pub fn set_weight(&mut self, index: usize, value: u32) {
@@ -376,7 +374,7 @@ mod child_vec {
         pub fn is_empty(&self) -> bool {
             self.children.is_empty()
         }
-        pub fn push(&mut self, child: Child<T, U>) {
+        pub fn push(&mut self, child: T) {
             // update to unity weight (if needed)
             if !self.weights.is_empty() {
                 self.weights.push(1);
@@ -384,7 +382,7 @@ mod child_vec {
 
             self.children.push(child);
         }
-        pub fn remove(&mut self, index: usize) -> (u32, Child<T, U>) {
+        pub fn remove(&mut self, index: usize) -> (u32, T) {
             let child = self.children.remove(index);
 
             let weight = if self.weights.is_empty() {
@@ -527,7 +525,7 @@ pub(crate) struct CannotDeleteNonempty(Path);
 #[allow(clippy::panic)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    pub(crate) use arb_rng::PanicRng;
+    pub(crate) use arb_rng::{fake_rng, PanicRng};
 
     // utils
     mod arb_rng;

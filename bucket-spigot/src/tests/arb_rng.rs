@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 /// Random Number Generator that is fed by a deterministic `arbtest::arbitrary`
-pub(super) struct ArbitraryRng<'a, 'b>(&'a mut arbtest::arbitrary::Unstructured<'b>)
+pub(crate) struct ArbitraryRng<'a, 'b>(&'a mut arbtest::arbitrary::Unstructured<'b>)
 where
     'b: 'a;
 impl<'a, 'b> rand::RngCore for ArbitraryRng<'a, 'b> {
@@ -21,7 +21,7 @@ impl<'a, 'b> rand::RngCore for ArbitraryRng<'a, 'b> {
         Ok(())
     }
 }
-pub(super) fn fake_rng<'a, 'b>(
+pub(crate) fn fake_rng<'a, 'b>(
     arbitrary: &'a mut arbtest::arbitrary::Unstructured<'b>,
 ) -> ArbitraryRng<'a, 'b> {
     ArbitraryRng(arbitrary)
