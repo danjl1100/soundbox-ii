@@ -382,6 +382,14 @@ impl OrderType {
         Self::InOrder,
     ];
 }
+impl std::fmt::Display for OrderType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrderType::InOrder => write!(f, "InOrder"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Order {
     InOrder(InOrder),
@@ -428,6 +436,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
             }
             let current = self.next_index;
             let new_count = self.count + 1;
+
             let goal_weight = weights.get_as_usize(current);
             if self.count >= goal_weight {
                 self.next_index = current.wrapping_add(1);
@@ -450,13 +459,11 @@ mod tests {
     #![allow(clippy::panic)]
 
     use super::*;
-    use crate::tests::fake_rng;
+    use crate::tests::{fake_rng, run_with_timeout};
     use arbtest::arbitrary::Unstructured;
-    use std::cell::Cell;
+    use std::{cell::Cell, time::Duration};
 
     const NONEMPTY_WEIGHTS: &str = "weights should be nonempty";
-
-    // TODO fn run_with_timeout<T: Send>
 
     // per https://github.com/rust-lang/rust/issues/92698#issuecomment-1680155957
     macro_rules! let_workaround {
@@ -476,15 +483,26 @@ mod tests {
         ty: OrderType,
         weights: Weights<'a>,
         counter: Option<&'a Cell<u64>>,
-        mut next_fn: impl FnMut(&mut Unstructured) -> usize + 'a,
+        mut next_fn: impl FnMut(&mut Unstructured) -> usize + 'a + Send + Sync,
     ) -> impl FnMut(&mut Unstructured) -> arbtest::arbitrary::Result<std::ops::ControlFlow<()>> + 'a
     {
+        const TIMEOUT: Duration = Duration::from_secs(1);
+
         let mut prev = None;
         move |u| {
             if let Some(counter) = counter {
                 counter.replace(counter.get() + 1);
             }
-            let next = next_fn(u);
+            let next = run_with_timeout(
+                || next_fn(u),
+                TIMEOUT,
+                |elapsed| {
+                    // FIXME no way of reporting a "failure" seed if `next_fn` is stuck,
+                    //       since only the process abort will cancel the function
+                    eprintln!("aborting process, call to `next` (type {ty}) took longer than {elapsed:?}\nEXIT 1");
+                    std::process::exit(1)
+                },
+            );
             match (ty, prev) {
                 (OrderType::InOrder, None) => {}
                 (OrderType::InOrder, Some(prev)) => validate_next_in_order(prev, next, weights),
@@ -562,9 +580,6 @@ mod tests {
                 let equal_len_u32: u32 = u.int_in_range(1..=1_000)?;
                 let equal_len: usize = equal_len_u32.try_into().expect("u32 should fit in usize");
                 let weights = Weights::new_equal(equal_len).expect("test len should be nonzero");
-
-                // FIXME this exercises the code, but has no way of reporting a "failure" seed if
-                // `next_in_equal` is stuck in an infinite loop
 
                 let counter = Cell::default();
                 u.arbitrary_loop(

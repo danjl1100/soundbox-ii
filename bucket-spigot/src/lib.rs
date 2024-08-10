@@ -526,10 +526,12 @@ pub(crate) struct CannotDeleteNonempty(Path);
 #[allow(clippy::unwrap_used)]
 mod tests {
     pub(crate) use arb_rng::{fake_rng, PanicRng};
+    pub(crate) use sync::run_with_timeout;
 
     // utils
     mod arb_rng;
     mod script;
+    mod sync;
 
     // test cases
     mod modify_network;
