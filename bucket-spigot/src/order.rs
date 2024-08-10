@@ -427,10 +427,11 @@ struct InOrder {
 }
 impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
     fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> usize {
-        // TODO clarify in loop body to *prove* loop will terminate
-        // (relying on invariants of `Weights`)
+        // PRECONDITION: There exists an index where weights.get_as_usize(index) > 0,
+        //               by the definition of `Weights<'_>`
         loop {
             if self.next_index > weights.get_max_index() {
+                // wrap index back to beginning
                 self.next_index = 0;
                 self.count = 0;
             }
@@ -439,11 +440,14 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
 
             let goal_weight = weights.get_as_usize(current);
             if self.count >= goal_weight {
+                // increment index
                 self.next_index = current.wrapping_add(1);
                 self.count = 0;
             } else {
                 self.count = new_count;
             }
+            // count ranges 1..max(weights), so there exists at least one
+            // `index` where `count <= weights.get_as_usize(index)`
             if new_count <= goal_weight {
                 break current;
             }
@@ -451,8 +455,11 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
     }
 }
 
-// TODO add Random (selection of the next item is random, independent from prior selections)
 // TODO add Shuffle (randomize the order of items, then proceed with that fixed order)
+//      ^^ for Shuffle, test (could) assert that all items are visited (for sufficient `next`s)
+//      ^^ for Shuffle, test can assert that (initially) there are no repeat items, until all seen
+// TODO add Random (selection of the next item is random, independent from prior selections)
+//      ^^ for Random, main assertion is that weights vaguely affect the outcome (with huge margin, stats are weird)
 
 #[cfg(test)]
 mod tests {
