@@ -7,7 +7,7 @@ use crate::Network;
 fn empty() {
     let network = Network::<(), ()>::default();
     arbtest::arbtest(|u| {
-        let peeked = assert_arb_error(|| network.peek(&mut fake_rng(u), usize::MAX))?;
+        let peeked = assert_arb_error(network.peek(&mut fake_rng(u), usize::MAX))?;
         assert_eq!(peeked.cancel_into_items(), Vec::<&()>::new());
         Ok(())
     });

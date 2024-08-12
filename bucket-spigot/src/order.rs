@@ -570,18 +570,6 @@ mod tests {
 
     const NONEMPTY_WEIGHTS: &str = "weights should be nonempty";
 
-    // per https://github.com/rust-lang/rust/issues/92698#issuecomment-1680155957
-    macro_rules! let_workaround {
-        (let $name:ident = $val:expr; $($rest:tt)+) => {
-            match $val {
-                $name => {
-                    let_workaround! { $($rest)+ }
-                }
-            }
-        };
-        ($($rest:tt)+) => { $($rest)+ }
-    }
-
     fn env_arbtest<P>(predicate: P) -> arbtest::ArbTest<P>
     where
         P: FnMut(&mut Unstructured) -> arbitrary::Result<()>,
@@ -638,7 +626,7 @@ mod tests {
             let mut prev = None;
             move |u| {
                 let next = run_with_timeout(
-                    || assert_arb_error(|| next_fn(u)),
+                    || assert_arb_error(next_fn(u)),
                     TIMEOUT,
                     |elapsed| {
                         // FIXME no way of reporting a "failure" seed if `next_fn` is stuck,
@@ -707,16 +695,10 @@ mod tests {
             let idx_to_check = || prev_plus_one..next;
             if prev_plus_one < next && idx_to_check().map(|i| self.weights.get(i)).all(|w| w == 0) {
                 let checked_count = idx_to_check().count();
-                let_workaround! {
-                    let idx_fmt = format_args!("{prev_plus_one}..{next}");
-                    assert!(
-                        checked_count > 0,
-                        "should check `all` on nonempty iter {idx_fmt}"
-                    );
-                    // println!(
-                    //     "VALID prev {prev} -> next {next}, see zero weights {idx_fmt}",
-                    // );
-                }
+                assert!(
+                    checked_count > 0,
+                    "should check `all` on nonempty iter {prev_plus_one}..{next}"
+                );
                 return;
             }
 
@@ -724,16 +706,10 @@ mod tests {
             let idx_to_check = || ((prev + 1)..=max_index).chain(0..next);
             if idx_to_check().map(|i| self.weights.get(i)).all(|w| w == 0) {
                 let checked_count = idx_to_check().count();
-                let_workaround! {
-                    let idx_fmt = format_args!("{prev_plus_one}..={max_index} and 0..{next}");
-                    assert!(
-                        checked_count > 0,
-                        "should check `all` on nonempty iter {idx_fmt}"
-                    );
-                    // println!(
-                    //     "VALID prev {prev} -> next {next}, see zero weights {idx_fmt}",
-                    // );
-                }
+                assert!(
+                    checked_count > 0,
+                    "should check `all` on nonempty iter {prev_plus_one}..={max_index} and 0..{next}"
+                );
                 return;
             }
 
