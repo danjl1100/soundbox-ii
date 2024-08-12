@@ -45,6 +45,7 @@ impl rand::RngCore for PanicRng {
 }
 
 fn extract_arb_error<T>(
+    // TODO remove function, just operate on the value
     inner_fn: impl FnOnce() -> Result<T, rand::Error>,
 ) -> Result<Result<T, arbtest::arbitrary::Error>, Box<dyn std::error::Error + Sync + Send>> {
     match inner_fn() {
@@ -58,7 +59,7 @@ fn extract_arb_error<T>(
         }
     }
 }
-pub(super) fn assert_arb_error<T>(
+pub(crate) fn assert_arb_error<T>(
     inner_fn: impl FnOnce() -> Result<T, rand::Error>,
 ) -> Result<T, arbtest::arbitrary::Error> {
     extract_arb_error(inner_fn).expect("RNG should only throw arbitrary::Error type")

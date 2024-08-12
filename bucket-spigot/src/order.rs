@@ -3,7 +3,10 @@
 //! Ordering for selecting child nodes and child items throughout the [`Network`]
 
 use crate::{child_vec::ChildVec, Child, Network};
+use arbitrary::Unstructured;
 use std::rc::Rc;
+
+type RandResult<T> = Result<T, rand::Error>;
 
 impl<T, U> Network<T, U> {
     /// Returns a proposed sequence of items leaving the spigot.
@@ -20,20 +23,23 @@ impl<T, U> Network<T, U> {
         &'a self,
         rng: &mut R,
         peek_len: usize,
-    ) -> Result<Peeked<'a, T>, rand::Error> {
+    ) -> RandResult<Peeked<'a, T>> {
         let root = &self.root;
         let mut root_order = self.root_order.0.clone();
         let mut root_remaining = CountsRemaining::new(root.len());
 
         let mut effort_count = 0;
 
-        let chosen_elems = std::iter::from_fn(|| {
-            let (elem, effort) = peek_inner(rng, root, &mut root_order, &mut root_remaining);
+        let mut chosen_elems = Vec::with_capacity(peek_len.min(64));
+        for _ in 0..peek_len {
+            let (elem, effort) = peek_inner(rng, root, &mut root_order, &mut root_remaining)?;
             effort_count += effort;
-            elem
-        })
-        .take(peek_len)
-        .collect();
+            if let Some(elem) = elem {
+                chosen_elems.push(elem);
+            } else {
+                break;
+            }
+        }
 
         Ok(Peeked {
             items: chosen_elems,
@@ -53,7 +59,7 @@ fn peek_inner<'a, R, T, U>(
     current: &'a ChildVec<Child<T, U>>,
     order_node: &mut OrderNode,
     current_remaining: &mut CountsRemaining,
-) -> (Option<&'a T>, u64)
+) -> RandResult<(Option<&'a T>, u64)>
 where
     R: rand::Rng + ?Sized,
 {
@@ -68,7 +74,7 @@ where
 
         let child_index = order_current
             .next_in(rng, current)
-            .expect("current should not be empty");
+            .expect("current should not be empty")?;
 
         let remaining_slot = current_remaining.child_mut(child_index);
         if remaining_slot.is_none() {
@@ -97,7 +103,7 @@ where
                     let elem_index = Rc::make_mut(child_order)
                         .order
                         .next_in_equal(rng, bucket_items)
-                        .expect("bucket should not be empty");
+                        .expect("bucket should not be empty")?;
                     #[allow(clippy::panic)]
                     let Some(elem) = bucket_items.get(elem_index) else {
                         panic!("valid bucket_items index ({elem_index}) from order")
@@ -118,7 +124,7 @@ where
                         &joint.next,
                         Rc::make_mut(child_order),
                         remaining.as_mut_or_init(|| CountsRemaining::new(joint.next.len())),
-                    );
+                    )?;
 
                     // effort: recursion effort
                     effort_count += child_effort_count;
@@ -130,11 +136,11 @@ where
             }
         };
         if let Some(elem) = elem {
-            return (Some(elem), effort_count);
+            return Ok((Some(elem), effort_count));
         }
         current_remaining.set_empty(child_index);
     }
-    (None, effort_count)
+    Ok((None, effort_count))
 }
 
 /// Resulting items and tentative ordering state from [`Network::peek`]
@@ -239,17 +245,17 @@ impl CountsRemaining {
 
 trait OrderSource<R: rand::Rng + ?Sized> {
     /// Returns the next index in the order, within the range `0..=max_index`
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> usize;
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize>;
     /// Returns the next index in the order to index the specified target slice
     /// or `None` if the specified `target` is empty.
-    fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<usize> {
+    fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<RandResult<usize>> {
         let weights = Weights::new_equal(target.len())?;
         let next = self.next(rng, weights);
         Some(next)
     }
     /// Returns the next index in the order to index the specified target [`ChildVec`],
     /// or `None` if the specified `target` is empty.
-    fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<usize> {
+    fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<RandResult<usize>> {
         let weights = if target.weights().is_empty() {
             // returns `None` if length is zero
             Weights::new_equal(target.len())?
@@ -374,18 +380,14 @@ mod node {
 enum OrderType {
     #[default]
     InOrder,
-}
-impl OrderType {
-    #[cfg(test)]
-    const ALL: &'static [Self] = &[
-        // rustfmt, delete when multiple items are present
-        Self::InOrder,
-    ];
+    #[allow(unused)]
+    Shuffle, // TODO add OrderType control to nodes (joints and buckets)
 }
 impl std::fmt::Display for OrderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OrderType::InOrder => write!(f, "InOrder"),
+            OrderType::Shuffle => write!(f, "Shuffle"),
         }
     }
 }
@@ -393,6 +395,7 @@ impl std::fmt::Display for OrderType {
 #[derive(Clone, Debug)]
 enum Order {
     InOrder(InOrder),
+    Shuffle(Shuffle),
 }
 impl Default for Order {
     fn default() -> Self {
@@ -403,6 +406,7 @@ impl Order {
     fn new(ty: OrderType) -> Self {
         match ty {
             OrderType::InOrder => Self::InOrder(InOrder::default()),
+            OrderType::Shuffle => Self::Shuffle(Shuffle::default()),
         }
     }
     // TODO remove if unused Order::get_ty
@@ -413,11 +417,22 @@ impl Order {
     // }
 }
 impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> usize {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
         match self {
             Order::InOrder(inner) => inner.next(rng, weights),
+            Order::Shuffle(inner) => inner.next(rng, weights),
         }
     }
+}
+
+fn arbitrary_bytes<'a, R: rand::Rng + ?Sized>(
+    rng: &mut R,
+    buf: &'a mut Vec<u8>,
+    count: usize,
+) -> RandResult<Unstructured<'a>> {
+    buf.resize(count, 0);
+    rng.try_fill(&mut buf[..])?;
+    Ok(Unstructured::new(buf))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -426,7 +441,7 @@ struct InOrder {
     count: usize,
 }
 impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
-    fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> usize {
+    fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
         // PRECONDITION: There exists an index where weights.get_as_usize(index) > 0,
         //               by the definition of `Weights<'_>`
         loop {
@@ -449,26 +464,109 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
             // count ranges 1..max(weights), so there exists at least one
             // `index` where `count <= weights.get_as_usize(index)`
             if new_count <= goal_weight {
-                break current;
+                break Ok(current);
             }
         }
     }
 }
 
-// TODO add Shuffle (randomize the order of items, then proceed with that fixed order)
-//      ^^ for Shuffle, test (could) assert that all items are visited (for sufficient `next`s)
-//      ^^ for Shuffle, test can assert that (initially) there are no repeat items, until all seen
+#[derive(Clone, Debug, Default)]
+struct Shuffle {
+    prev_items_count: usize,
+    indices: Vec<usize>,
+}
+impl Shuffle {
+    fn retain(&mut self, keep_fn: impl Fn(usize) -> bool) {
+        let mut search_position = 0;
+        while let Some(&value) = self.indices.get(search_position) {
+            if keep_fn(value) {
+                // valid value (in bounds), continue
+                search_position += 1;
+
+                // HOW "closer to the end":
+                //   increased search_position
+            } else {
+                // invalid value, remove
+                self.indices.swap_remove(search_position);
+
+                // HOW "closer to the end":
+                //   shortened Vec length
+                // (no change to search_position, to eval swapped on next iteration)
+            }
+        }
+    }
+    fn extend_to_items_count(
+        &mut self,
+        mut u: Unstructured,
+        new_elems: impl Iterator<Item = usize>,
+    ) -> arbitrary::Result<()> {
+        let prev_len = self.indices.len();
+
+        self.indices.extend(new_elems);
+        let new_len = self.indices.len();
+
+        for insert_from in prev_len..new_len {
+            let dest = u.choose_index(insert_from + 1)?;
+            self.indices.swap(insert_from, dest);
+        }
+
+        let remaining = u.take_rest();
+        assert!(
+            remaining.is_empty(),
+            "excess entropy in Unstructured: {remaining:?}"
+        );
+
+        Ok(())
+    }
+}
+impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+        // NOTE: Take care to only use 'index' to name the class of return values
+
+        let items_count = weights.get_max_index() + 1;
+        if items_count < self.prev_items_count {
+            // remove indices that are out of bounds
+            self.retain(|value| value < items_count);
+        }
+
+        if self.indices.is_empty() {
+            // empty `indices` is equivalent to initial filling
+            self.prev_items_count = 0;
+        }
+
+        if items_count > self.prev_items_count {
+            // add new indices
+            let new_elems = (self.prev_items_count..items_count)
+                .flat_map(|index| std::iter::repeat(index).take(weights.get_as_usize(index)));
+            let count = new_elems.clone().count();
+
+            let mut buf = vec![];
+            let u = arbitrary_bytes(rng, &mut buf, count.saturating_sub(1))?;
+            self.extend_to_items_count(u, new_elems)
+                .expect("sufficient Unstructured for extend_to_items_count");
+        }
+        self.prev_items_count = items_count;
+
+        let popped = self
+            .indices
+            .pop()
+            .expect("should have an element after refilling");
+        Ok(popped)
+    }
+}
+
 // TODO add Random (selection of the next item is random, independent from prior selections)
 //      ^^ for Random, main assertion is that weights vaguely affect the outcome (with huge margin, stats are weird)
 
+// TODO extract modules (test, and modules above) into separate files in src/order/
 #[cfg(test)]
 mod tests {
     #![allow(clippy::panic)]
 
     use super::*;
-    use crate::tests::{fake_rng, run_with_timeout};
+    use crate::tests::{assert_arb_error, fake_rng, run_with_timeout};
     use arbtest::arbitrary::Unstructured;
-    use std::{cell::Cell, time::Duration};
+    use std::time::Duration;
 
     const NONEMPTY_WEIGHTS: &str = "weights should be nonempty";
 
@@ -484,127 +582,279 @@ mod tests {
         ($($rest:tt)+) => { $($rest)+ }
     }
 
-    /// Wraps the specified `next_fn` closure, validating the results according to the
-    /// [`OrderType`]
-    fn validate_next<'a>(
-        ty: OrderType,
-        weights: Weights<'a>,
-        counter: Option<&'a Cell<u64>>,
-        mut next_fn: impl FnMut(&mut Unstructured) -> usize + 'a + Send + Sync,
-    ) -> impl FnMut(&mut Unstructured) -> arbtest::arbitrary::Result<std::ops::ControlFlow<()>> + 'a
+    fn env_arbtest<P>(predicate: P) -> arbtest::ArbTest<P>
+    where
+        P: FnMut(&mut Unstructured) -> arbitrary::Result<()>,
     {
-        const TIMEOUT: Duration = Duration::from_secs(1);
-
-        let mut prev = None;
-        move |u| {
-            if let Some(counter) = counter {
-                counter.replace(counter.get() + 1);
-            }
-            let next = run_with_timeout(
-                || next_fn(u),
-                TIMEOUT,
-                |elapsed| {
-                    // FIXME no way of reporting a "failure" seed if `next_fn` is stuck,
-                    //       since only the process abort will cancel the function
-                    eprintln!("aborting process, call to `next` (type {ty}) took longer than {elapsed:?}\nEXIT 1");
-                    std::process::exit(1)
-                },
-            );
-            match (ty, prev) {
-                (OrderType::InOrder, None) => {}
-                (OrderType::InOrder, Some(prev)) => validate_next_in_order(prev, next, weights),
-            }
-            prev = Some(next);
-            Ok(std::ops::ControlFlow::Continue(()))
+        let test = arbtest::arbtest(predicate);
+        if std::env::var("ARBTEST_LONG").is_ok() {
+            println!("running full 10 seconds (ARBTEST_LONG)");
+            test.budget_ms(10_000)
+        } else {
+            test
         }
     }
 
-    /// Identifies clear violtaions in the sequential output from [`InOrder`]
-    fn validate_next_in_order(prev: usize, next: usize, weights: Weights<'_>) {
-        let prev_plus_one = prev + 1;
-        let max_index = weights.get_max_index();
+    // per https://users.rust-lang.org/t/rpitit-allows-more-flexible-code-in-comparison-with-raw-rpit-in-inherit-impl/113417/2
+    // usage:
+    //     // To imply 'a: 'b, express as a reference
+    //     fn f<'a, 'b>(&'a self, ......) -> impl Trait + Captures<&'b &'a ()>
+    trait Captures<T: ?Sized> {}
+    impl<T: ?Sized, U: ?Sized> Captures<T> for U {}
 
-        // same, completing the count
-        if next == prev {
-            return;
-        }
-        // step up
-        if next == prev + 1 {
-            return;
-        }
-        // wrap around to 0
-        if next == 0 && prev == weights.get_max_index() {
-            return;
-        }
-
-        // increased, skipping zero-weight entries
-        let idx_to_check = || prev_plus_one..next;
-        if prev_plus_one < next && idx_to_check().map(|i| weights.get(i)).all(|w| w == 0) {
-            let checked_count = idx_to_check().count();
-            let_workaround! {
-                let idx_fmt = format_args!("{prev_plus_one}..{next}");
-                assert!(
-                    checked_count > 0,
-                    "should check `all` on nonempty iter {idx_fmt}"
-                );
-                // println!(
-                //     "VALID prev {prev} -> next {next}, see zero weights {idx_fmt}",
-                // );
-            }
-            return;
-        }
-
-        // wrapped around, skipping zero-weight entries
-        let idx_to_check = || ((prev + 1)..=max_index).chain(0..next);
-        if idx_to_check().map(|i| weights.get(i)).all(|w| w == 0) {
-            let checked_count = idx_to_check().count();
-            let_workaround! {
-                let idx_fmt = format_args!("{prev_plus_one}..={max_index} and 0..{next}");
-                assert!(
-                    checked_count > 0,
-                    "should check `all` on nonempty iter {idx_fmt}"
-                );
-                // println!(
-                //     "VALID prev {prev} -> next {next}, see zero weights {idx_fmt}",
-                // );
-            }
-            return;
-        }
-
-        panic!("prev {prev} -> next {next} should be a sane step")
+    struct Validator<'a> {
+        step_count: usize,
+        seen: Vec<u32>,
+        order_type: OrderType,
+        weights: Weights<'a>,
+        weights_sum: usize,
+        uut_changed_weights: bool,
     }
 
-    /// Exhaustively test [`Order`] for all [`OrderType`]s using [`arbtest`], first for various `len` then various `weights`
+    impl<'a> Validator<'a> {
+        fn new(order_type: OrderType, weights: Weights<'a>, uut_changed_weights: bool) -> Self {
+            let weights_sum: usize = (0..=weights.get_max_index())
+                .map(|index| weights.get_as_usize(index))
+                .sum();
+            Self {
+                step_count: 0,
+                seen: vec![],
+                order_type,
+                weights,
+                weights_sum,
+                uut_changed_weights,
+            }
+        }
+        /// Wraps the specified `next_fn` closure, validating the results according to the
+        /// [`OrderType`]
+        fn validate_next<'b>(
+            &'b mut self,
+            mut next_fn: impl FnMut(&mut Unstructured) -> RandResult<usize> + Send + Sync + 'b,
+            // TODO type alias for arbtest::arbitrary::Result<ControlFlow<()>>
+        ) -> impl FnMut(&mut Unstructured) -> arbtest::arbitrary::Result<std::ops::ControlFlow<()>>
+               + Captures<&'a &'b ()> {
+            const TIMEOUT: Duration = Duration::from_secs(1);
+
+            let mut prev = None;
+            move |u| {
+                let next = run_with_timeout(
+                    || assert_arb_error(|| next_fn(u)),
+                    TIMEOUT,
+                    |elapsed| {
+                        // FIXME no way of reporting a "failure" seed if `next_fn` is stuck,
+                        //       since only the process abort will cancel the function
+                        eprintln!("aborting process, call to `next` (type {ty}) took longer than {elapsed:?}\nEXIT 1", ty=self.order_type);
+                        std::process::exit(1)
+                    },
+                )?;
+                match (self.order_type, prev) {
+                    (OrderType::InOrder, None) => {}
+                    (OrderType::InOrder, Some(prev)) => {
+                        self.validate_next_in_order(prev, next);
+                    }
+                    (OrderType::Shuffle, _) => {
+                        self.validate_next_shuffle(next);
+                    }
+                }
+                prev = Some(next);
+
+                let max_index = self.weights.get_max_index();
+                assert!(
+                    next <= max_index,
+                    "next {next} should be within max_index {max_index}"
+                );
+                if max_index >= self.seen.len() {
+                    self.seen.resize(max_index + 1, 0);
+                }
+                self.seen[next] += 1;
+
+                self.step_count += 1;
+
+                if !self.uut_changed_weights && self.step_count == self.weights_sum {
+                    match self.order_type {
+                        OrderType::InOrder => {}
+                        OrderType::Shuffle => self.validate_end_shuffle(),
+                    }
+                }
+
+                Ok(std::ops::ControlFlow::Continue(()))
+            }
+        }
+
+        fn into_step_count(self) -> usize {
+            self.step_count
+        }
+
+        /// Identifies clear violtaions in the sequential output from [`InOrder`]
+        fn validate_next_in_order(&self, prev: usize, next: usize) {
+            let prev_plus_one = prev + 1;
+            let max_index = self.weights.get_max_index();
+
+            // same, completing the count
+            if next == prev {
+                return;
+            }
+            // step up
+            if next == prev + 1 {
+                return;
+            }
+            // wrap around to 0
+            if next == 0 && prev == self.weights.get_max_index() {
+                return;
+            }
+
+            // increased, skipping zero-weight entries
+            let idx_to_check = || prev_plus_one..next;
+            if prev_plus_one < next && idx_to_check().map(|i| self.weights.get(i)).all(|w| w == 0) {
+                let checked_count = idx_to_check().count();
+                let_workaround! {
+                    let idx_fmt = format_args!("{prev_plus_one}..{next}");
+                    assert!(
+                        checked_count > 0,
+                        "should check `all` on nonempty iter {idx_fmt}"
+                    );
+                    // println!(
+                    //     "VALID prev {prev} -> next {next}, see zero weights {idx_fmt}",
+                    // );
+                }
+                return;
+            }
+
+            // wrapped around, skipping zero-weight entries
+            let idx_to_check = || ((prev + 1)..=max_index).chain(0..next);
+            if idx_to_check().map(|i| self.weights.get(i)).all(|w| w == 0) {
+                let checked_count = idx_to_check().count();
+                let_workaround! {
+                    let idx_fmt = format_args!("{prev_plus_one}..={max_index} and 0..{next}");
+                    assert!(
+                        checked_count > 0,
+                        "should check `all` on nonempty iter {idx_fmt}"
+                    );
+                    // println!(
+                    //     "VALID prev {prev} -> next {next}, see zero weights {idx_fmt}",
+                    // );
+                }
+                return;
+            }
+
+            panic!("prev {prev} -> next {next} should be a sane step")
+        }
+
+        fn validate_next_shuffle(&self, next: usize) {
+            let len = self.weights.get_max_index() + 1;
+            if (1..len).contains(&self.step_count) && !self.uut_changed_weights {
+                let seen = self.seen[next];
+                let target_weight = self.weights.get(next);
+                assert!(
+                    seen < target_weight,
+                    "already seen: {next} (seen {seen} >= target_weight {target_weight})"
+                );
+            }
+        }
+
+        fn validate_end_shuffle(&self) {
+            if !self.uut_changed_weights {
+                let ratios: Vec<_> = self
+                    .seen
+                    .iter()
+                    .enumerate()
+                    .map(|(index, &seen)| {
+                        let weight = self.weights.get(index);
+                        if weight == 0 {
+                            Err(seen)
+                        } else {
+                            Ok(f64::from(seen) / f64::from(weight))
+                        }
+                    })
+                    .collect();
+                let first = ratios
+                    .iter()
+                    .copied()
+                    .find_map(Result::ok)
+                    .expect("seen should be nonempty");
+                for (index, ratio) in ratios.into_iter().enumerate() {
+                    match ratio {
+                        Ok(ratio) => {
+                            let relative_to_first = ratio / first;
+                            assert!(
+                            relative_to_first > 0.9 && relative_to_first < 1.1,
+                            "{index}: {ratio} ratios should be similar, first {first}, relative_to_first {relative_to_first}"
+                        );
+                        }
+                        Err(seen) => {
+                            assert_eq!(
+                                seen, 0,
+                                "{index}: {seen} seen should be zero for zero weight"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn arb_weights_equal_in_order() {
+        arb_weights_equal(OrderType::InOrder);
+    }
+    #[test]
+    fn arb_weights_equal_shuffle() {
+        arb_weights_equal(OrderType::Shuffle);
+    }
+    /// Exhaustively test [`Order`] for all [`OrderType`]s using [`arbtest`], first for various `len`
     ///
     /// Basic assertion: always terminates for fixed number of polling
-    #[test]
-    fn arb_weights() {
-        for &ty in OrderType::ALL {
+    fn arb_weights_equal(
+        ty: OrderType,
+    ) -> arbtest::ArbTest<impl FnMut(&mut Unstructured) -> arbitrary::Result<()>> {
+        // phase 1 of test - equal weights
+        env_arbtest(move |u| {
             let mut uut = Order::new(ty);
 
-            // phase 1 of test - equal weights
-            arbtest::arbtest(|u| {
+            // Repeat, to bridge UUT over several weights
+            for i in 0..2 {
                 let equal_len_u32: u32 = u.int_in_range(1..=1_000)?;
                 let equal_len: usize = equal_len_u32.try_into().expect("u32 should fit in usize");
                 let weights = Weights::new_equal(equal_len).expect("test len should be nonzero");
 
-                let counter = Cell::default();
+                let uut_changed_weights = i > 0;
+                let mut validator = Validator::new(ty, weights, uut_changed_weights);
+
                 u.arbitrary_loop(
                     Some(1),
                     Some(equal_len_u32 * 10),
-                    validate_next(ty, weights, Some(&counter), |u| {
-                        uut.next(&mut fake_rng(u), weights)
-                    }),
+                    validator.validate_next(|u| uut.next(&mut fake_rng(u), weights)),
                 )?;
+                let step_count = validator.into_step_count();
                 assert!(
-                    counter.into_inner() > 0,
+                    step_count > 0,
                     "should run some iterations for equal weights {weights:?}"
                 );
-                Ok(())
-            });
+            }
+            Ok(())
+        })
+    }
 
-            // phase 2 of test - custom weights
-            arbtest::arbtest(|u| {
+    #[test]
+    fn arb_weights_custom_in_order() {
+        arb_weights_custom(OrderType::InOrder);
+    }
+    #[test]
+    fn arb_weights_custom_shuffle() {
+        arb_weights_custom(OrderType::Shuffle);
+    }
+    /// Exhaustively test [`Order`] for all [`OrderType`]s using [`arbtest`], first for various `weights`
+    ///
+    /// Basic assertion: always terminates for fixed number of polling
+    fn arb_weights_custom(
+        ty: OrderType,
+    ) -> arbtest::ArbTest<impl FnMut(&mut Unstructured) -> arbitrary::Result<()>> {
+        // phase 2 of test - custom weights
+        env_arbtest(move |u| {
+            let mut uut = Order::new(ty);
+
+            // Repeat, to bridge UUT over several weights
+            for i in 0..2 {
                 let weight_values: Vec<u8> = u.arbitrary()?;
                 let weights: Vec<u32> = weight_values.into_iter().map(u32::from).collect();
                 let weights_sum: u32 = weights.iter().sum();
@@ -615,21 +865,22 @@ mod tests {
                 let weights =
                     Weights::new_custom(&weights).expect("test weights should be nonempty");
 
-                let counter = Cell::default();
+                let uut_changed_weights = i > 0;
+                let mut validator = Validator::new(ty, weights, uut_changed_weights);
+
                 u.arbitrary_loop(
                     Some(1),
                     Some(weights_sum * 2),
-                    validate_next(ty, weights, Some(&counter), |u| {
-                        uut.next(&mut fake_rng(u), weights)
-                    }),
+                    validator.validate_next(|u| uut.next(&mut fake_rng(u), weights)),
                 )?;
+                let step_count = validator.into_step_count();
                 assert!(
-                    counter.into_inner() > 0,
+                    step_count > 0,
                     "should run some iterations for custom weights {weights:?}"
                 );
-                Ok(())
-            });
-        }
+            }
+            Ok(())
+        })
     }
 
     #[test]
@@ -641,6 +892,7 @@ mod tests {
                 rng,
                 Weights::new_equal(max_index + 1usize).expect("usize + 1 should be nonzero"),
             )
+            .expect("should not rand::Error")
         };
 
         assert_eq!(next(5), 0);
@@ -663,6 +915,7 @@ mod tests {
         assert_eq!(next(0), 0);
     }
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn in_order_decrease_weights() {
         let rng = &mut crate::tests::PanicRng;
 
@@ -672,13 +925,13 @@ mod tests {
         let weights_reduced = Weights::new_custom(weights_reduced).expect(NONEMPTY_WEIGHTS);
 
         let mut uut = InOrder::default();
-        assert_eq!(uut.next(rng, weights), 0);
-        assert_eq!(uut.next(rng, weights), 0);
-        assert_eq!(uut.next(rng, weights), 0);
+        assert_eq!(uut.next(rng, weights).unwrap(), 0);
+        assert_eq!(uut.next(rng, weights).unwrap(), 0);
+        assert_eq!(uut.next(rng, weights).unwrap(), 0);
 
         let mut uut = InOrder::default();
-        assert_eq!(uut.next(rng, weights), 0);
-        assert_eq!(uut.next(rng, weights), 0);
-        assert_eq!(uut.next(rng, weights_reduced), 1);
+        assert_eq!(uut.next(rng, weights).unwrap(), 0);
+        assert_eq!(uut.next(rng, weights).unwrap(), 0);
+        assert_eq!(uut.next(rng, weights_reduced).unwrap(), 1);
     }
 }

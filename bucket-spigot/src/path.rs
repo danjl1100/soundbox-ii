@@ -256,7 +256,7 @@ mod tests {
           5,
         ])
         "###);
-        insta::assert_ron_snapshot!(dbg!(path_elems(".234.32.9")), @r###"
+        insta::assert_ron_snapshot!(path_elems(".234.32.9"), @r###"
         Ok([
           234,
           32,

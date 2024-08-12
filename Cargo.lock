@@ -220,6 +220,7 @@ dependencies = [
 name = "bucket-spigot"
 version = "0.1.0"
 dependencies = [
+ "arbitrary",
  "arbtest",
  "clap 4.5.4",
  "insta",
