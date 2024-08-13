@@ -1,186 +1,194 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-//! Ordering for selecting child nodes and child items throughout the [`Network`]
+//! Ordering for selecting child nodes and child items throughout the [`Network`](`crate::Network`)
 
-use crate::{child_vec::ChildVec, Child, Network};
-use arbitrary::Unstructured;
-use std::rc::Rc;
+use counts_remaining::CountsRemaining;
+use node::Node as OrderNode;
+pub(crate) use node::{Root, UnknownOrderPath};
+pub use peek::Peeked;
+use source::Order;
+use weights::Weights;
 
 type RandResult<T> = Result<T, rand::Error>;
 
-impl<T, U> Network<T, U> {
-    /// Returns a proposed sequence of items leaving the spigot.
-    ///
-    /// NOTE: Need to finalize the peeked items to progress the [`Network`] state beyond those
-    /// peeked items (depending on the child-ordering involved)
-    ///
-    /// # Errors
-    /// Returns any errors reported by the provided [`rand::Rng`] instance
-    ///
-    /// # Panics
-    /// Panics if the internal order state does not match the item node structure
-    pub fn peek<'a, R: rand::Rng + ?Sized>(
-        &'a self,
+mod peek {
+    use super::{source::OrderSource as _, CountsRemaining, OrderNode, RandResult, Root};
+    use crate::{child_vec::ChildVec, Child, Network};
+    use std::rc::Rc;
+    impl<T, U> Network<T, U> {
+        /// Returns a proposed sequence of items leaving the spigot.
+        ///
+        /// NOTE: Need to finalize the peeked items to progress the [`Network`] state beyond those
+        /// peeked items (depending on the child-ordering involved)
+        ///
+        /// # Errors
+        /// Returns any errors reported by the provided [`rand::Rng`] instance
+        ///
+        /// # Panics
+        /// Panics if the internal order state does not match the item node structure
+        pub fn peek<'a, R: rand::Rng + ?Sized>(
+            &'a self,
+            rng: &mut R,
+            peek_len: usize,
+        ) -> RandResult<Peeked<'a, T>> {
+            let root = &self.root;
+            let mut root_order = self.root_order.0.clone();
+            let mut root_remaining = CountsRemaining::new(root.len());
+
+            let mut effort_count = 0;
+
+            let mut chosen_elems = Vec::with_capacity(peek_len.min(64));
+            for _ in 0..peek_len {
+                let (elem, effort) = peek_inner(rng, root, &mut root_order, &mut root_remaining)?;
+                effort_count += effort;
+                if let Some(elem) = elem {
+                    chosen_elems.push(elem);
+                } else {
+                    break;
+                }
+            }
+
+            Ok(Peeked {
+                items: chosen_elems,
+                root_order: Root(root_order),
+                effort_count,
+            })
+        }
+        /// Finalizes the specified [`Peeked`], advancing the network state (if any)
+        pub fn finalize_peeked(&mut self, peeked: PeekAccepted) {
+            let PeekAccepted { new_root_order } = peeked;
+            self.root_order = new_root_order;
+        }
+    }
+
+    fn peek_inner<'a, R, T, U>(
         rng: &mut R,
-        peek_len: usize,
-    ) -> RandResult<Peeked<'a, T>> {
-        let root = &self.root;
-        let mut root_order = self.root_order.0.clone();
-        let mut root_remaining = CountsRemaining::new(root.len());
+        current: &'a ChildVec<Child<T, U>>,
+        order_node: &mut OrderNode,
+        current_remaining: &mut CountsRemaining,
+    ) -> RandResult<(Option<&'a T>, u64)>
+    where
+        R: rand::Rng + ?Sized,
+    {
+        let order_current = &mut order_node.order;
+        let order_children = &mut order_node.children;
 
         let mut effort_count = 0;
 
-        let mut chosen_elems = Vec::with_capacity(peek_len.min(64));
-        for _ in 0..peek_len {
-            let (elem, effort) = peek_inner(rng, root, &mut root_order, &mut root_remaining)?;
-            effort_count += effort;
+        while !current_remaining.is_fully_exhausted() {
+            assert_eq!(current.len(), order_children.len());
+            assert_eq!(current.len(), current_remaining.child_count_if_nonempty());
+
+            let child_index = order_current
+                .next_in(rng, current)
+                .expect("current should not be empty")?;
+
+            let remaining_slot = current_remaining.child_mut(child_index);
+            if remaining_slot.is_none() {
+                // chosen child is known to to be exhausted
+                continue;
+            }
+
+            #[allow(clippy::panic)]
+            let Some(child_node) = current.children().get(child_index) else {
+                panic!("valid current.children index ({child_index}) from order")
+            };
+            #[allow(clippy::panic)]
+            let Some(child_order) = order_children.get_mut(child_index) else {
+                panic!("valid order_children index ({child_index}) from order")
+            };
+
+            // effort: lookup child_node and child_order
+            effort_count += 1;
+
+            let elem = match child_node {
+                Child::Bucket(bucket) => {
+                    let bucket_items = &bucket.items;
+                    if bucket_items.is_empty() {
+                        None
+                    } else {
+                        let elem_index = Rc::make_mut(child_order)
+                            .order
+                            .next_in_equal(rng, bucket_items)
+                            .expect("bucket should not be empty")?;
+                        #[allow(clippy::panic)]
+                        let Some(elem) = bucket_items.get(elem_index) else {
+                            panic!("valid bucket_items index ({elem_index}) from order")
+                        };
+
+                        // effort: lookup bucket element
+                        effort_count += 1;
+
+                        Some(elem)
+                    }
+                }
+                Child::Joint(joint) => {
+                    if joint.next.is_empty() {
+                        None
+                    } else if let Some(remaining) = remaining_slot {
+                        let (elem, child_effort_count) = peek_inner(
+                            rng,
+                            &joint.next,
+                            Rc::make_mut(child_order),
+                            remaining.as_mut_or_init(|| CountsRemaining::new(joint.next.len())),
+                        )?;
+
+                        // effort: recursion effort
+                        effort_count += child_effort_count;
+
+                        elem
+                    } else {
+                        None
+                    }
+                }
+            };
             if let Some(elem) = elem {
-                chosen_elems.push(elem);
-            } else {
-                break;
+                return Ok((Some(elem), effort_count));
+            }
+            current_remaining.set_empty(child_index);
+        }
+        Ok((None, effort_count))
+    }
+
+    /// Resulting items and tentative ordering state from [`Network::peek`]
+    pub struct Peeked<'a, T> {
+        // TODO include metadata for which node the item came from
+        items: Vec<&'a T>,
+        root_order: Root,
+        effort_count: u64,
+    }
+    impl<'a, T> Peeked<'a, T> {
+        /// Returns an the peeked items
+        #[must_use]
+        pub fn items(&self) -> &[&'a T] {
+            &self.items
+        }
+        /// Cancels the peek operation and returns the referenced items
+        #[must_use]
+        pub fn cancel_into_items(self) -> Vec<&'a T> {
+            self.items
+        }
+        /// Accepts the peeked items, discarding them to allow updating the original network
+        pub fn accept_into_inner(self) -> PeekAccepted {
+            PeekAccepted {
+                new_root_order: self.root_order,
             }
         }
-
-        Ok(Peeked {
-            items: chosen_elems,
-            root_order: Root(root_order),
-            effort_count,
-        })
-    }
-    /// Finalizes the specified [`Peeked`], advancing the network state (if any)
-    pub fn finalize_peeked(&mut self, peeked: PeekAccepted) {
-        let PeekAccepted { new_root_order } = peeked;
-        self.root_order = new_root_order;
-    }
-}
-
-fn peek_inner<'a, R, T, U>(
-    rng: &mut R,
-    current: &'a ChildVec<Child<T, U>>,
-    order_node: &mut OrderNode,
-    current_remaining: &mut CountsRemaining,
-) -> RandResult<(Option<&'a T>, u64)>
-where
-    R: rand::Rng + ?Sized,
-{
-    let order_current = &mut order_node.order;
-    let order_children = &mut order_node.children;
-
-    let mut effort_count = 0;
-
-    while !current_remaining.is_fully_exhausted() {
-        assert_eq!(current.len(), order_children.len());
-        assert_eq!(current.len(), current_remaining.child_count_if_nonempty());
-
-        let child_index = order_current
-            .next_in(rng, current)
-            .expect("current should not be empty")?;
-
-        let remaining_slot = current_remaining.child_mut(child_index);
-        if remaining_slot.is_none() {
-            // chosen child is known to to be exhausted
-            continue;
+        #[allow(unused)]
+        /// For tests only, return the amount of effort required for this peek result
+        pub(crate) fn get_effort_count(&self) -> u64 {
+            self.effort_count
         }
-
-        #[allow(clippy::panic)]
-        let Some(child_node) = current.children().get(child_index) else {
-            panic!("valid current.children index ({child_index}) from order")
-        };
-        #[allow(clippy::panic)]
-        let Some(child_order) = order_children.get_mut(child_index) else {
-            panic!("valid order_children index ({child_index}) from order")
-        };
-
-        // effort: lookup child_node and child_order
-        effort_count += 1;
-
-        let elem = match child_node {
-            Child::Bucket(bucket) => {
-                let bucket_items = &bucket.items;
-                if bucket_items.is_empty() {
-                    None
-                } else {
-                    let elem_index = Rc::make_mut(child_order)
-                        .order
-                        .next_in_equal(rng, bucket_items)
-                        .expect("bucket should not be empty")?;
-                    #[allow(clippy::panic)]
-                    let Some(elem) = bucket_items.get(elem_index) else {
-                        panic!("valid bucket_items index ({elem_index}) from order")
-                    };
-
-                    // effort: lookup bucket element
-                    effort_count += 1;
-
-                    Some(elem)
-                }
-            }
-            Child::Joint(joint) => {
-                if joint.next.is_empty() {
-                    None
-                } else if let Some(remaining) = remaining_slot {
-                    let (elem, child_effort_count) = peek_inner(
-                        rng,
-                        &joint.next,
-                        Rc::make_mut(child_order),
-                        remaining.as_mut_or_init(|| CountsRemaining::new(joint.next.len())),
-                    )?;
-
-                    // effort: recursion effort
-                    effort_count += child_effort_count;
-
-                    elem
-                } else {
-                    None
-                }
-            }
-        };
-        if let Some(elem) = elem {
-            return Ok((Some(elem), effort_count));
-        }
-        current_remaining.set_empty(child_index);
     }
-    Ok((None, effort_count))
-}
-
-/// Resulting items and tentative ordering state from [`Network::peek`]
-pub struct Peeked<'a, T> {
-    // TODO include metadata for which node the item came from
-    items: Vec<&'a T>,
-    root_order: Root,
-    effort_count: u64,
-}
-impl<'a, T> Peeked<'a, T> {
-    /// Returns an the peeked items
+    /// Resulting tentative ordering state from [`Network::peek`] to apply in
+    /// [`Network::finalize_peeked`]
     #[must_use]
-    pub fn items(&self) -> &[&'a T] {
-        &self.items
+    #[allow(clippy::module_name_repetitions)]
+    pub struct PeekAccepted {
+        new_root_order: Root,
     }
-    /// Cancels the peek operation and returns the referenced items
-    #[must_use]
-    pub fn cancel_into_items(self) -> Vec<&'a T> {
-        self.items
-    }
-    /// Accepts the peeked items, discarding them to allow updating the original network
-    pub fn accept_into_inner(self) -> PeekAccepted {
-        PeekAccepted {
-            new_root_order: self.root_order,
-        }
-    }
-    #[allow(unused)]
-    /// For tests only, return the amount of effort required for this peek result
-    pub(crate) fn get_effort_count(&self) -> u64 {
-        self.effort_count
-    }
-}
-/// Resulting tentative ordering state from [`Network::peek`] to apply in
-/// [`Network::finalize_peeked`]
-#[must_use]
-pub struct PeekAccepted {
-    new_root_order: Root,
 }
 
-use counts_remaining::CountsRemaining;
 mod counts_remaining {
     // `Option<Lazy<T>>` seems cleaner and more meaningful than `Option<Option<T>>`
     // (heeding advice from the pedantic lint `clippy::option_option`)
@@ -246,32 +254,6 @@ mod counts_remaining {
     }
 }
 
-trait OrderSource<R: rand::Rng + ?Sized> {
-    /// Returns the next index in the order, within the range `0..=max_index`
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize>;
-    /// Returns the next index in the order to index the specified target slice
-    /// or `None` if the specified `target` is empty.
-    fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<RandResult<usize>> {
-        let weights = Weights::new_equal(target.len())?;
-        let next = self.next(rng, weights);
-        Some(next)
-    }
-    /// Returns the next index in the order to index the specified target [`ChildVec`],
-    /// or `None` if the specified `target` is empty.
-    fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<RandResult<usize>> {
-        let weights = if target.weights().is_empty() {
-            // returns `None` if length is zero
-            Weights::new_equal(target.len())?
-        } else {
-            // returns `None` if weights are all zero
-            Weights::new_custom(target.weights())?
-        };
-        let next = self.next(rng, weights);
-        Some(next)
-    }
-}
-
-use weights::Weights;
 mod weights {
     /// Non-empty weights (length non-zero, and contents non-zero)
     #[derive(Clone, Copy, Debug)]
@@ -334,8 +316,6 @@ mod weights {
     }
 }
 
-use node::Node as OrderNode;
-pub(crate) use node::{Root, UnknownOrderPath};
 mod node {
     //! Tree structure for [`Order`], meant to mirror the
     //! [`Network`](`crate::Network`) topology.
@@ -348,8 +328,8 @@ mod node {
     pub(crate) struct Root(pub(super) Node);
     #[derive(Clone, Debug, Default)]
     pub struct Node {
-        pub(super) order: Order,
-        pub(super) children: Vec<Rc<Node>>,
+        pub(crate) order: Order,
+        pub(crate) children: Vec<Rc<Node>>,
     }
 
     impl Root {
@@ -379,194 +359,226 @@ mod node {
     pub struct UnknownOrderPath(pub(crate) Path);
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-enum OrderType {
-    #[default]
-    InOrder,
-    #[allow(unused)]
-    Shuffle, // TODO add OrderType control to nodes (joints and buckets)
-}
-impl std::fmt::Display for OrderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OrderType::InOrder => write!(f, "InOrder"),
-            OrderType::Shuffle => write!(f, "Shuffle"),
+mod source {
+    use super::{RandResult, Weights};
+    use crate::ChildVec;
+    use arbitrary::Unstructured;
+
+    pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
+        /// Returns the next index in the order, within the range `0..=max_index`
+        fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize>;
+        /// Returns the next index in the order to index the specified target slice
+        /// or `None` if the specified `target` is empty.
+        fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<RandResult<usize>> {
+            let weights = Weights::new_equal(target.len())?;
+            let next = self.next(rng, weights);
+            Some(next)
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-enum Order {
-    InOrder(InOrder),
-    Shuffle(Shuffle),
-}
-impl Default for Order {
-    fn default() -> Self {
-        Self::new(OrderType::default())
-    }
-}
-impl Order {
-    fn new(ty: OrderType) -> Self {
-        match ty {
-            OrderType::InOrder => Self::InOrder(InOrder::default()),
-            OrderType::Shuffle => Self::Shuffle(Shuffle::default()),
-        }
-    }
-    // TODO remove if unused Order::get_ty
-    // fn get_ty(&self) -> OrderType {
-    //     match self {
-    //         Order::InOrder(_) => OrderType::InOrder,
-    //     }
-    // }
-}
-impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
-        match self {
-            Order::InOrder(inner) => inner.next(rng, weights),
-            Order::Shuffle(inner) => inner.next(rng, weights),
-        }
-    }
-}
-
-fn arbitrary_bytes<'a, R: rand::Rng + ?Sized>(
-    rng: &mut R,
-    buf: &'a mut Vec<u8>,
-    count: usize,
-) -> RandResult<Unstructured<'a>> {
-    buf.resize(count, 0);
-    rng.try_fill(&mut buf[..])?;
-    Ok(Unstructured::new(buf))
-}
-
-#[derive(Clone, Debug, Default)]
-struct InOrder {
-    next_index: usize,
-    count: usize,
-}
-impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
-    fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
-        // PRECONDITION: There exists an index where weights.get_as_usize(index) > 0,
-        //               by the definition of `Weights<'_>`
-        loop {
-            if self.next_index > weights.get_max_index() {
-                // wrap index back to beginning
-                self.next_index = 0;
-                self.count = 0;
-            }
-            let current = self.next_index;
-            let new_count = self.count + 1;
-
-            let goal_weight = weights.get_as_usize(current);
-            if self.count >= goal_weight {
-                // increment index
-                self.next_index = current.wrapping_add(1);
-                self.count = 0;
+        /// Returns the next index in the order to index the specified target [`ChildVec`],
+        /// or `None` if the specified `target` is empty.
+        fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<RandResult<usize>> {
+            let weights = if target.weights().is_empty() {
+                // returns `None` if length is zero
+                Weights::new_equal(target.len())?
             } else {
-                self.count = new_count;
-            }
-            // count ranges 1..max(weights), so there exists at least one
-            // `index` where `count <= weights.get_as_usize(index)`
-            if new_count <= goal_weight {
-                break Ok(current);
-            }
+                // returns `None` if weights are all zero
+                Weights::new_custom(target.weights())?
+            };
+            let next = self.next(rng, weights);
+            Some(next)
         }
     }
-}
 
-#[derive(Clone, Debug, Default)]
-struct Shuffle {
-    prev_items_count: usize,
-    indices: Vec<usize>,
-}
-impl Shuffle {
-    fn retain(&mut self, keep_fn: impl Fn(usize) -> bool) {
-        let mut search_position = 0;
-        while let Some(&value) = self.indices.get(search_position) {
-            if keep_fn(value) {
-                // valid value (in bounds), continue
-                search_position += 1;
-
-                // HOW "closer to the end":
-                //   increased search_position
-            } else {
-                // invalid value, remove
-                self.indices.swap_remove(search_position);
-
-                // HOW "closer to the end":
-                //   shortened Vec length
-                // (no change to search_position, to eval swapped on next iteration)
+    #[derive(Clone, Copy, Debug, Default)]
+    pub(super) enum OrderType {
+        #[default]
+        InOrder,
+        #[allow(unused)]
+        Shuffle, // TODO add OrderType control to nodes (joints and buckets)
+    }
+    impl std::fmt::Display for OrderType {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                OrderType::InOrder => write!(f, "InOrder"),
+                OrderType::Shuffle => write!(f, "Shuffle"),
             }
         }
     }
-    fn extend_to_items_count(
-        &mut self,
-        mut u: Unstructured,
-        new_elems: impl Iterator<Item = usize>,
-    ) -> arbitrary::Result<()> {
-        let prev_len = self.indices.len();
 
-        self.indices.extend(new_elems);
-        let new_len = self.indices.len();
-
-        for insert_from in prev_len..new_len {
-            let dest = u.choose_index(insert_from + 1)?;
-            self.indices.swap(insert_from, dest);
-        }
-
-        let remaining = u.take_rest();
-        assert!(
-            remaining.is_empty(),
-            "excess entropy in Unstructured: {remaining:?}"
-        );
-
-        Ok(())
+    #[derive(Clone, Debug)]
+    pub(super) enum Order {
+        InOrder(InOrder),
+        Shuffle(Shuffle),
     }
-}
-impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
-        // NOTE: Take care to only use 'index' to name the class of return values
-
-        let items_count = weights.get_max_index() + 1;
-        if items_count < self.prev_items_count {
-            // remove indices that are out of bounds
-            self.retain(|value| value < items_count);
+    impl Default for Order {
+        fn default() -> Self {
+            Self::new(OrderType::default())
         }
-
-        if self.indices.is_empty() {
-            // empty `indices` is equivalent to initial filling
-            self.prev_items_count = 0;
-        }
-
-        if items_count > self.prev_items_count {
-            // add new indices
-            let new_elems = (self.prev_items_count..items_count)
-                .flat_map(|index| std::iter::repeat(index).take(weights.get_as_usize(index)));
-            let count = new_elems.clone().count();
-
-            let mut buf = vec![];
-            let u = arbitrary_bytes(rng, &mut buf, count.saturating_sub(1))?;
-            self.extend_to_items_count(u, new_elems)
-                .expect("sufficient Unstructured for extend_to_items_count");
-        }
-        self.prev_items_count = items_count;
-
-        let popped = self
-            .indices
-            .pop()
-            .expect("should have an element after refilling");
-        Ok(popped)
     }
-}
+    impl Order {
+        pub(super) fn new(ty: OrderType) -> Self {
+            match ty {
+                OrderType::InOrder => Self::InOrder(InOrder::default()),
+                OrderType::Shuffle => Self::Shuffle(Shuffle::default()),
+            }
+        }
+        // TODO remove if unused Order::get_ty
+        // fn get_ty(&self) -> OrderType {
+        //     match self {
+        //         Order::InOrder(_) => OrderType::InOrder,
+        //     }
+        // }
+    }
+    impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
+        fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+            match self {
+                Order::InOrder(inner) => inner.next(rng, weights),
+                Order::Shuffle(inner) => inner.next(rng, weights),
+            }
+        }
+    }
 
-// TODO add Random (selection of the next item is random, independent from prior selections)
-//      ^^ for Random, main assertion is that weights vaguely affect the outcome (with huge margin, stats are weird)
+    fn arbitrary_bytes<'a, R: rand::Rng + ?Sized>(
+        rng: &mut R,
+        buf: &'a mut Vec<u8>,
+        count: usize,
+    ) -> RandResult<Unstructured<'a>> {
+        buf.resize(count, 0);
+        rng.try_fill(&mut buf[..])?;
+        Ok(Unstructured::new(buf))
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub(super) struct InOrder {
+        next_index: usize,
+        count: usize,
+    }
+    impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
+        fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+            // PRECONDITION: There exists an index where weights.get_as_usize(index) > 0,
+            //               by the definition of `Weights<'_>`
+            loop {
+                if self.next_index > weights.get_max_index() {
+                    // wrap index back to beginning
+                    self.next_index = 0;
+                    self.count = 0;
+                }
+                let current = self.next_index;
+                let new_count = self.count + 1;
+
+                let goal_weight = weights.get_as_usize(current);
+                if self.count >= goal_weight {
+                    // increment index
+                    self.next_index = current.wrapping_add(1);
+                    self.count = 0;
+                } else {
+                    self.count = new_count;
+                }
+                // count ranges 1..max(weights), so there exists at least one
+                // `index` where `count <= weights.get_as_usize(index)`
+                if new_count <= goal_weight {
+                    break Ok(current);
+                }
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    pub(super) struct Shuffle {
+        prev_items_count: usize,
+        indices: Vec<usize>,
+    }
+    impl Shuffle {
+        fn retain(&mut self, keep_fn: impl Fn(usize) -> bool) {
+            let mut search_position = 0;
+            while let Some(&value) = self.indices.get(search_position) {
+                if keep_fn(value) {
+                    // valid value (in bounds), continue
+                    search_position += 1;
+
+                    // HOW "closer to the end":
+                    //   increased search_position
+                } else {
+                    // invalid value, remove
+                    self.indices.swap_remove(search_position);
+
+                    // HOW "closer to the end":
+                    //   shortened Vec length
+                    // (no change to search_position, to eval swapped on next iteration)
+                }
+            }
+        }
+        fn extend_to_items_count(
+            &mut self,
+            mut u: Unstructured,
+            new_elems: impl Iterator<Item = usize>,
+        ) -> arbitrary::Result<()> {
+            let prev_len = self.indices.len();
+
+            self.indices.extend(new_elems);
+            let new_len = self.indices.len();
+
+            for insert_from in prev_len..new_len {
+                let dest = u.choose_index(insert_from + 1)?;
+                self.indices.swap(insert_from, dest);
+            }
+
+            let remaining = u.take_rest();
+            assert!(
+                remaining.is_empty(),
+                "excess entropy in Unstructured: {remaining:?}"
+            );
+
+            Ok(())
+        }
+    }
+    impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
+        fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+            // NOTE: Take care to only use 'index' to name the class of return values
+
+            let items_count = weights.get_max_index() + 1;
+            if items_count < self.prev_items_count {
+                // remove indices that are out of bounds
+                self.retain(|value| value < items_count);
+            }
+
+            if self.indices.is_empty() {
+                // empty `indices` is equivalent to initial filling
+                self.prev_items_count = 0;
+            }
+
+            if items_count > self.prev_items_count {
+                // add new indices
+                let new_elems = (self.prev_items_count..items_count)
+                    .flat_map(|index| std::iter::repeat(index).take(weights.get_as_usize(index)));
+                let count = new_elems.clone().count();
+
+                let mut buf = vec![];
+                let u = arbitrary_bytes(rng, &mut buf, count.saturating_sub(1))?;
+                self.extend_to_items_count(u, new_elems)
+                    .expect("sufficient Unstructured for extend_to_items_count");
+            }
+            self.prev_items_count = items_count;
+
+            let popped = self
+                .indices
+                .pop()
+                .expect("should have an element after refilling");
+            Ok(popped)
+        }
+    }
+
+    // TODO add Random (selection of the next item is random, independent from prior selections)
+    //      ^^ for Random, main assertion is that weights vaguely affect the outcome (with huge margin, stats are weird)
+}
 
 // TODO extract modules (test, and modules above) into separate files in src/order/
 #[cfg(test)]
 mod tests {
     #![allow(clippy::panic)]
 
-    use super::*;
+    use super::source::{InOrder, Order, OrderSource as _, OrderType};
+    use super::{RandResult, Weights};
     use crate::tests::{assert_arb_error, fake_rng, run_with_timeout};
     use arbtest::arbitrary::Unstructured;
     use std::time::Duration;
