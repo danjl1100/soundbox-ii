@@ -25,7 +25,28 @@ use std::collections::HashSet;
 pub mod clap;
 pub mod path;
 
-pub mod order;
+pub mod order {
+    //! Ordering for selecting child nodes and child items throughout the
+    //! [`Network`](`crate::Network`)
+
+    type RandResult<T> = Result<T, rand::Error>;
+
+    use counts_remaining::CountsRemaining;
+    use node::Node as OrderNode;
+    pub(crate) use node::{Root, UnknownOrderPath};
+    pub use peek::Peeked;
+    use source::Order;
+    use weights::Weights;
+
+    mod counts_remaining;
+    mod node;
+    mod peek;
+    mod source;
+    mod weights;
+
+    #[cfg(test)]
+    mod tests;
+}
 
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug, Default)]
