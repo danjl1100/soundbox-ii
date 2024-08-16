@@ -40,6 +40,12 @@ impl<'a> Weights<'a> {
             Inner::Custom { weights } => weights.len() - 1,
         }
     }
+    pub fn is_unity(self) -> bool {
+        match self.0 {
+            Inner::Unity { .. } => true,
+            Inner::Custom { .. } => false,
+        }
+    }
     pub fn get(self, index: usize) -> u32 {
         let Self(inner) = self;
         match inner {

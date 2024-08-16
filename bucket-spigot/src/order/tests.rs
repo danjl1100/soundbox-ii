@@ -2,7 +2,7 @@
 
 #![allow(clippy::panic)]
 
-use super::source::{InOrder, Order, OrderSource as _, OrderType};
+use super::source::{InOrder, Order, OrderSource as _, OrderType, Random};
 use super::{RandResult, Weights};
 use crate::tests::{assert_arb_error, fake_rng, run_with_timeout};
 use arbtest::arbitrary::Unstructured;
@@ -80,6 +80,9 @@ impl<'a> Validator<'a> {
                 (OrderType::InOrder, Some(prev)) => {
                     self.validate_next_in_order(prev, next);
                 }
+                (OrderType::Random, _) => {
+                    self.validate_next_random(next);
+                }
                 (OrderType::Shuffle, _) => {
                     self.validate_next_shuffle(next);
                 }
@@ -100,7 +103,7 @@ impl<'a> Validator<'a> {
 
             if !self.uut_changed_weights && self.step_count == self.weights_sum {
                 match self.order_type {
-                    OrderType::InOrder => {}
+                    OrderType::InOrder | OrderType::Random => {}
                     OrderType::Shuffle => self.validate_end_shuffle(),
                 }
             }
@@ -154,6 +157,14 @@ impl<'a> Validator<'a> {
         }
 
         panic!("prev {prev} -> next {next} should be a sane step")
+    }
+
+    fn validate_next_random(&self, next: usize) {
+        let weight = self.weights.get(next);
+        assert!(
+            weight != 0,
+            "should not select {next}, which has weight {weight}"
+        );
     }
 
     fn validate_next_shuffle(&self, next: usize) {
@@ -214,6 +225,10 @@ fn arb_weights_equal_in_order() {
     arb_weights_equal(OrderType::InOrder);
 }
 #[test]
+fn arb_weights_equal_random() {
+    arb_weights_equal(OrderType::Random);
+}
+#[test]
 fn arb_weights_equal_shuffle() {
     arb_weights_equal(OrderType::Shuffle);
 }
@@ -229,8 +244,17 @@ fn arb_weights_equal(
 
         // Repeat, to bridge UUT over several weights
         for i in 0..2 {
-            let equal_len_u32: u32 = u.int_in_range(1..=1_000)?;
-            let equal_len: usize = equal_len_u32.try_into().expect("u32 should fit in usize");
+            // let equal_len_u32: u32 = u.int_in_range(1..=1_000)?;
+            // let equal_len: usize = equal_len_u32.try_into().expect("u32 should fit in usize");
+            let equal_len = u.arbitrary_len::<u32>()?;
+            let equal_len_u32: u32 = equal_len
+                .try_into()
+                .expect("usize for remaining entropy should fit in u32");
+
+            if equal_len == 0 {
+                return Ok(());
+            }
+
             let weights = Weights::new_equal(equal_len).expect("test len should be nonzero");
 
             let uut_changed_weights = i > 0;
@@ -254,6 +278,10 @@ fn arb_weights_equal(
 #[test]
 fn arb_weights_custom_in_order() {
     arb_weights_custom(OrderType::InOrder);
+}
+#[test]
+fn arb_weights_custom_random() {
+    arb_weights_custom(OrderType::Random);
 }
 #[test]
 fn arb_weights_custom_shuffle() {
@@ -348,4 +376,75 @@ fn in_order_decrease_weights() {
     assert_eq!(uut.next(rng, weights).unwrap(), 0);
     assert_eq!(uut.next(rng, weights).unwrap(), 0);
     assert_eq!(uut.next(rng, weights_reduced).unwrap(), 1);
+}
+
+#[test]
+fn random_looks_decent() {
+    fn chunks<R: rand::Rng + ?Sized>(uut: &mut Random, weights: &[u32], rng: &mut R) -> String {
+        use std::fmt::Write as _;
+        let weights = Weights::new_custom(weights).expect(NONEMPTY_WEIGHTS);
+        let mut iter = std::iter::repeat_with(|| uut.next(rng, weights).expect("should not fail"));
+
+        // NOTE: assert_debug_snapshot is too verbose (line endings from `:#?`)
+        let mut output = String::new();
+        for _line in 0..5 {
+            for elem in 0..30 {
+                let space = if elem == 0 { "" } else { " " };
+                write!(&mut output, "{space}{}", iter.next().expect("infinite"))
+                    .expect("infallible");
+            }
+            writeln!(&mut output).expect("infallible");
+        }
+        output
+    }
+
+    let determined = decode_hex(&[
+        // chosen by fair dice roll, then paintsakingly trimmed to length
+        // (`head --bytes=? /dev/urandom | sha256sum`)
+        "650ef28d459cd670558cc769820c0e6b09d41388667068cb0c73390604149f68",
+        "568d8549e361fe905d928bf3d0f862c046f5c4cdb5cad04f8ef8b956341483e6",
+        "f2d88bf0fcf77f2a2f56ed81c94479e395133348f3958374050b9cc06eb5b129",
+        "aa5b814f53abe186cfacbbfdabe2f90ab8c071dc4ed50dcf1d4362a46f0e6348",
+        "0ada9fbdc9962e02271c7f93fa2cbe5389cdebf13e8f",
+    ])
+    .expect("valid hex strings");
+
+    let weights = &[10, 2, 1]; // 0 - 2
+
+    let mut uut = Random::default();
+
+    let mut u = Unstructured::new(&determined);
+    let rng = &mut crate::tests::fake_rng(&mut u);
+    insta::assert_snapshot!(chunks(&mut uut, weights, rng), @r###"
+    1 0 0 1 0 0 0 0 0 1 0 0 0 2 0 0 0 0 0 0 1 0 0 0 2 1 0 0 0 0
+    0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 1 0 1 2 0 0 0 2 0 0 0
+    0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 2 0 0 0 0 0 0 2 0 0 0 0 2 0 1
+    0 1 0 2 0 0 0 0 2 0 0 0 0 0 2 0 0 0 0 0 0 1 0 1 0 2 0 0 0 2
+    0 0 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 1 0 0 1 0
+    "###);
+    assert_eq!(u.len(), 0);
+
+    let weights = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 2, 1]; // 10-12
+
+    let mut u = Unstructured::new(&determined);
+    let rng = &mut crate::tests::fake_rng(&mut u);
+    insta::assert_snapshot!(chunks(&mut uut, weights, rng), @r###"
+    11 10 10 11 10 10 10 10 10 11 10 10 10 12 10 10 10 10 10 10 11 10 10 10 12 11 10 10 10 10
+    10 10 10 11 10 10 10 10 10 10 10 10 10 10 10 10 10 11 10 11 10 11 12 10 10 10 12 10 10 10
+    10 10 10 10 10 10 10 10 10 10 11 10 10 10 10 12 10 10 10 10 10 10 12 10 10 10 10 12 10 11
+    10 11 10 12 10 10 10 10 12 10 10 10 10 10 12 10 10 10 10 10 10 11 10 11 10 12 10 10 10 12
+    10 10 10 10 10 10 10 10 11 11 10 10 10 10 10 10 10 10 11 10 10 10 10 10 10 11 10 10 11 10
+    "###);
+    assert_eq!(u.len(), 0);
+}
+
+fn decode_hex(strs: &[&str]) -> Result<Vec<u8>, std::num::ParseIntError> {
+    strs.iter()
+        .flat_map(|s| {
+            assert!(s.len() % 2 == 0, "hex str should have even length");
+            (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+        })
+        .collect()
 }

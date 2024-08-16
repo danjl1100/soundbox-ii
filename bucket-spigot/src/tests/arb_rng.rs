@@ -16,6 +16,10 @@ impl<'a, 'b> rand::RngCore for ArbitraryRng<'a, 'b> {
     }
     fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
         for dest in dest {
+            if self.0.is_empty() {
+                // notify the test harness that entropy is empty
+                return Err(rand::Error::new(arbtest::arbitrary::Error::NotEnoughData));
+            }
             *dest = self.0.arbitrary().map_err(rand::Error::new)?;
         }
         Ok(())

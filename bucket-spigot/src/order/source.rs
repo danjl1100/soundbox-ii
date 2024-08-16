@@ -30,24 +30,28 @@ pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
+#[allow(unused)] // TODO add OrderType control to nodes (joints and buckets)
 pub(super) enum OrderType {
     #[default]
     InOrder,
-    #[allow(unused)]
-    Shuffle, // TODO add OrderType control to nodes (joints and buckets)
+    Random,
+    Shuffle,
 }
 impl std::fmt::Display for OrderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OrderType::InOrder => write!(f, "InOrder"),
+            OrderType::Random => write!(f, "Random"),
             OrderType::Shuffle => write!(f, "Shuffle"),
         }
     }
 }
 
 #[derive(Clone, Debug)]
+#[allow(clippy::enum_variant_names)]
 pub(super) enum Order {
     InOrder(InOrder),
+    Random(Random),
     Shuffle(Shuffle),
 }
 impl Default for Order {
@@ -59,6 +63,7 @@ impl Order {
     pub(super) fn new(ty: OrderType) -> Self {
         match ty {
             OrderType::InOrder => Self::InOrder(InOrder::default()),
+            OrderType::Random => Self::Random(Random::default()),
             OrderType::Shuffle => Self::Shuffle(Shuffle::default()),
         }
     }
@@ -73,6 +78,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
     fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
         match self {
             Order::InOrder(inner) => inner.next(rng, weights),
+            Order::Random(inner) => inner.next(rng, weights),
             Order::Shuffle(inner) => inner.next(rng, weights),
         }
     }
@@ -208,5 +214,64 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
     }
 }
 
-// TODO add Random (selection of the next item is random, independent from prior selections)
-//      ^^ for Random, main assertion is that weights vaguely affect the outcome (with huge margin, stats are weird)
+#[derive(Clone, Debug, Default)]
+pub(super) struct Random {
+    // NOTE: Cache is only to reuse allocation, since the effort to
+    // validate the cache is similar to just rebuilding from scratch
+    choices_buf: Vec<Choice>,
+}
+#[derive(Clone, Copy, Debug)]
+struct Choice {
+    index: usize,
+    weight_range_max: usize,
+}
+impl<R: rand::Rng + ?Sized> OrderSource<R> for Random {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+        let max_index = weights.get_max_index();
+        let (breakpoints, max_choice) = if weights.is_unity() {
+            (None, max_index)
+        } else {
+            // calculate breakpoints
+            self.choices_buf.clear();
+
+            let mut weight_range_max = 0;
+            for index in 0..=max_index {
+                let weight = weights.get_as_usize(index);
+                if weight == 0 {
+                    continue;
+                }
+                weight_range_max += weight;
+                self.choices_buf.push(Choice {
+                    index,
+                    weight_range_max,
+                });
+            }
+
+            let max_choice = weight_range_max
+                .checked_sub(1)
+                .expect("Weights should be non-empty");
+            (Some(&self.choices_buf), max_choice)
+        };
+
+        let mut buf = vec![];
+        let mut u = arbitrary_bytes(rng, &mut buf, 1)?;
+        let chosen = u
+            .int_in_range(0..=max_choice)
+            .expect("sufficient Unstructred for int_in_range");
+
+        if let Some(breakpoints) = breakpoints {
+            let choice_index = breakpoints
+                .binary_search_by(|c| {
+                    use std::cmp::Ordering as O;
+                    match c.weight_range_max.cmp(&chosen) {
+                        O::Less | O::Equal => O::Less,
+                        O::Greater => O::Greater,
+                    }
+                })
+                .unwrap_or_else(|x| x);
+            Ok(breakpoints[choice_index].index)
+        } else {
+            Ok(chosen)
+        }
+    }
+}
