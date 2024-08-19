@@ -319,3 +319,68 @@ fn empty() {
     ])
     "###);
 }
+
+#[test]
+fn sets_order_type_non_strict() {
+    let log = Network::new_strings_run_script(
+        "
+        enable-rng 0dfb8b701d6e8d57c83b0c9c6a92a16424fe44
+
+        modify add-bucket .
+        modify fill-bucket .0 a b c d
+
+        modify set-order-type .0 in-order
+        peek 10
+
+        modify set-order-type .0 shuffle
+        peek 10
+
+        modify set-order-type .0 random
+        peek 10
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0",
+      ]),
+      BucketsNeedingFill("modify fill-bucket .0 a b c d"),
+      Peek([
+        "a",
+        "b",
+        "c",
+        "d",
+        "a",
+        "b",
+        "c",
+        "d",
+        "a",
+        "b",
+      ]),
+      Peek([
+        "d",
+        "c",
+        "b",
+        "a",
+        "c",
+        "d",
+        "a",
+        "b",
+        "c",
+        "a",
+      ]),
+      Peek([
+        "d",
+        "a",
+        "a",
+        "c",
+        "c",
+        "b",
+        "a",
+        "a",
+        "c",
+        "a",
+      ]),
+    ])
+    "###);
+}

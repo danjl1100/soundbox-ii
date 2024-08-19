@@ -3,7 +3,7 @@
 //! Tree structure for [`Order`], meant to mirror the
 //! [`Network`](`crate::Network`) topology.
 
-use super::Order;
+use super::{Order, OrderType};
 use crate::path::{Path, PathRef};
 use std::rc::Rc;
 
@@ -20,20 +20,41 @@ impl Root {
     ///
     /// Returns the index of the new child on success.
     pub(crate) fn add(&mut self, path: PathRef<'_>) -> Result<usize, UnknownOrderPath> {
-        let mut current_children = &mut self.0.children;
+        let parent = self.0.make_mut(path)?;
+        let dest_children = &mut parent.children;
 
-        for next_index in path {
-            let Some(next_child) = current_children.get_mut(next_index) else {
-                return Err(UnknownOrderPath(path.clone_inner()));
-            };
-            current_children = &mut Rc::make_mut(next_child).children;
-        }
+        let new_index = dest_children.len();
 
-        let new_index = current_children.len();
-
-        current_children.push(Rc::new(Node::default()));
+        dest_children.push(Rc::new(Node::default()));
 
         Ok(new_index)
+    }
+    pub(crate) fn set_order_type(
+        &mut self,
+        new_order_type: OrderType,
+        path: PathRef<'_>,
+    ) -> Result<(), UnknownOrderPath> {
+        let dest = self.0.make_mut(path)?;
+
+        if dest.order.get_ty() != new_order_type {
+            dest.order = Order::new(new_order_type);
+        }
+
+        Ok(())
+    }
+}
+impl Node {
+    fn make_mut(&mut self, path: PathRef<'_>) -> Result<&mut Self, UnknownOrderPath> {
+        let mut current = self;
+
+        for next_index in path {
+            let Some(next) = current.children.get_mut(next_index) else {
+                return Err(UnknownOrderPath(path.clone_inner()));
+            };
+            current = Rc::make_mut(next);
+        }
+
+        Ok(current)
     }
 }
 

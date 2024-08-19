@@ -36,6 +36,8 @@ pub mod order {
     pub(crate) use node::{Root, UnknownOrderPath};
     pub use peek::Peeked;
     use source::Order;
+    #[allow(clippy::module_name_repetitions)]
+    pub use source::OrderType;
     use weights::Weights;
 
     mod counts_remaining;
@@ -78,6 +80,12 @@ impl<T, U> Network<T, U> {
             } => self.set_bucket_items(new_contents, bucket),
             ModifyCmd::SetFilters { path, new_filters } => self.set_filters(new_filters, path),
             ModifyCmd::SetWeight { path, new_weight } => self.set_weight(new_weight, path),
+            ModifyCmd::SetOrderType {
+                path,
+                new_order_type,
+            } => Ok(self
+                .root_order
+                .set_order_type(new_order_type, path.as_ref())?),
         }
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
@@ -458,6 +466,13 @@ pub enum ModifyCmd<T, U> {
         /// Weight value (relative to other weights on sibling nodes)
         new_weight: u32,
     },
+    /// Set the ordering type for the joint or bucket
+    SetOrderType {
+        /// Path for the existing joint or bucket
+        path: Path,
+        /// Order type (how to select from immediate child nodes or items)
+        new_order_type: order::OrderType,
+    },
 }
 
 /// Error modifying the [`Network`]
@@ -546,7 +561,7 @@ pub(crate) struct CannotDeleteNonempty(Path);
 #[allow(clippy::panic)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    pub(crate) use arb_rng::{assert_arb_error, fake_rng, PanicRng};
+    pub(crate) use arb_rng::{assert_arb_error, decode_hex, fake_rng, PanicRng};
     pub(crate) use sync::run_with_timeout;
 
     // utils

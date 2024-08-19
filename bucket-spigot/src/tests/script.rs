@@ -1,8 +1,13 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::arb_rng::PanicRng;
+use super::{
+    arb_rng::{PanicRng, RngHolder},
+    fake_rng,
+};
 use crate::{clap::ModifyCmd as ClapModifyCmd, path::Path, ModifyCmd, ModifyError, Network};
 use ::clap::Parser as _;
+use arbitrary::Unstructured;
+use std::fmt::Write as _;
 
 #[derive(serde::Serialize)]
 pub(super) struct Log<T, U>(Vec<Entry<T, U>>);
@@ -33,6 +38,7 @@ pub(super) enum Entry<T, U> {
         Vec<T>,
     ),
     Topology(Topology<usize>),
+    RngRemaining(String),
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -72,6 +78,9 @@ where
     Topology {
         kind: Option<TopologyKind>,
     },
+    EnableRng {
+        bytes_hex: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
@@ -105,6 +114,7 @@ where
 {
     pub(super) fn run_script(&mut self, commands: &str) -> Log<T, U> {
         let mut entries = vec![];
+        let mut rng_holder = RngHolder::Empty;
 
         let mut expect_error = None;
         for (index, cmd) in commands.lines().enumerate() {
@@ -122,7 +132,7 @@ where
                 continue;
             }
 
-            let result = self.run_script_command(cmd);
+            let result = self.run_script_command(cmd, &mut rng_holder);
 
             let entry = if let Some(expect_error_why) = expect_error.take() {
                 // expect error
@@ -142,11 +152,21 @@ where
             panic!("expect_err annotation should be followed by a command: {expect_why}");
         };
 
+        let rng_remaining = rng_holder.get_bytes();
+        if !rng_remaining.is_empty() {
+            let mut s = String::new();
+            for remaining in rng_remaining {
+                write!(&mut s, "{remaining:02x}").expect("infallible");
+            }
+            entries.push(Entry::RngRemaining(s));
+        }
+
         Log(entries)
     }
     pub(super) fn run_script_command(
         &mut self,
         command_str: &str,
+        rng_holder: &mut RngHolder,
     ) -> Result<Option<Entry<T, U>>, Box<dyn std::error::Error>> {
         let cmd = Command::<T, U>::try_parse_from(command_str.split_whitespace())?;
         match cmd {
@@ -181,7 +201,7 @@ where
                 Ok(Some(Entry::Filters(path, filters)))
             }
             Command::Peek { flags, count } => {
-                let (effort, peeked) = self.run_peek(count, flags);
+                let (effort, peeked) = self.run_peek(count, flags, rng_holder);
                 let entry = if flags.apply {
                     Entry::Pop(effort, peeked)
                 } else {
@@ -191,7 +211,7 @@ where
             }
             Command::PeekAssert { flags, expected } => {
                 let count = expected.len();
-                let (effort, peeked) = self.run_peek(count, flags);
+                let (effort, peeked) = self.run_peek(count, flags, rng_holder);
                 assert_eq!(peeked, expected);
 
                 let entry = flags
@@ -213,10 +233,20 @@ where
                 };
                 Ok(Some(Entry::Topology(topology)))
             }
+            Command::EnableRng { bytes_hex } => match rng_holder.set_bytes(&bytes_hex) {
+                Ok(()) => Ok(None),
+                Err(Some(err)) => Err(err.into()),
+                Err(None) => Err(DuplicateRngInitError.into()),
+            },
         }
     }
-    fn run_peek(&mut self, count: usize, flags: PeekFlags) -> (Option<u64>, Vec<T>) {
-        let peeked = self.peek(&mut PanicRng, count).unwrap();
+    fn run_peek(
+        &mut self,
+        count: usize,
+        flags: PeekFlags,
+        rng_holder: &mut RngHolder,
+    ) -> (Option<u64>, Vec<T>) {
+        let peeked = self.peek_test_rng(count, rng_holder).unwrap();
         let items = peeked
             .items()
             .iter()
@@ -224,9 +254,31 @@ where
             .collect::<Vec<_>>();
         let effort = flags.show_effort.then_some(peeked.get_effort_count());
         if flags.apply {
-            self.finalize_peeked(peeked.accept_into_inner());
+            let accepted = peeked.accept_into_inner();
+            self.finalize_peeked(accepted);
         }
         (effort, items)
+    }
+    fn peek_test_rng(
+        &mut self,
+        count: usize,
+        rng_holder: &mut RngHolder,
+    ) -> Result<crate::order::Peeked<'_, T>, rand::Error> {
+        let bytes = rng_holder.get_bytes();
+        if bytes.is_empty() {
+            self.peek(&mut PanicRng, count)
+        } else {
+            let mut u = Unstructured::new(bytes);
+            let mut rng = fake_rng(&mut u);
+
+            let result = self.peek(&mut rng, count);
+
+            // clear used bytes from `rng_holder`
+            let remaining = u.len();
+            rng_holder.truncate_from_left(remaining);
+
+            result
+        }
     }
 }
 
@@ -266,3 +318,12 @@ impl Topology<usize> {
         Self::NodeMap(map)
     }
 }
+
+#[derive(Debug)]
+struct DuplicateRngInitError;
+impl std::fmt::Display for DuplicateRngInitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RNG can only be enabled once")
+    }
+}
+impl std::error::Error for DuplicateRngInitError {}

@@ -71,6 +71,27 @@ where
         /// Weight value (relative to other weights on sibling nodes)
         new_weight: u32,
     },
+    /// Set the ordering type for the joint or bucket
+    SetOrderType {
+        /// Path for the existing joint or bucket
+        path: Path,
+        /// Order type (how to select from immediate child nodes or items)
+        new_order_type: OrderType,
+    },
+}
+/// Ordering scheme for child nodes of a joint, or child items of a bucket
+///
+/// NOTE: Separate from [`crate::order::OrderType`] to emphasize `clap` as a public (string) interface
+#[derive(Clone, clap::ValueEnum, Debug, serde::Serialize, serde::Deserialize)]
+pub enum OrderType {
+    /// Selects each child in turn, repeating each according to the weights
+    InOrder,
+    /// Selects a random (weighted) child
+    Random,
+    /// Selects from a randomized order of the children
+    /// NOTE: For N total child-weight choices, the result is the shuffled version of
+    /// [`InOrder`](`Self::InOrder`)
+    Shuffle,
 }
 impl<T, U> From<ModifyCmd<T, U>> for crate::ModifyCmd<T, U>
 where
@@ -91,6 +112,22 @@ where
             },
             ModifyCmd::SetFilters { path, new_filters } => Self::SetFilters { path, new_filters },
             ModifyCmd::SetWeight { path, new_weight } => Self::SetWeight { path, new_weight },
+            ModifyCmd::SetOrderType {
+                path,
+                new_order_type,
+            } => Self::SetOrderType {
+                path,
+                new_order_type: new_order_type.into(),
+            },
+        }
+    }
+}
+impl From<OrderType> for crate::order::OrderType {
+    fn from(value: OrderType) -> Self {
+        match value {
+            OrderType::InOrder => Self::InOrder,
+            OrderType::Shuffle => Self::Shuffle,
+            OrderType::Random => Self::Random,
         }
     }
 }

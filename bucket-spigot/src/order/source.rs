@@ -29,12 +29,17 @@ pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-#[allow(unused)] // TODO add OrderType control to nodes (joints and buckets)
-pub(super) enum OrderType {
+/// Ordering scheme for child nodes of a joint, or child items of a bucket
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum OrderType {
+    /// Selects each child in turn, repeating each according to the weights
     #[default]
     InOrder,
+    /// Selects a random (weighted) child
     Random,
+    /// Selects from a randomized order of the children
+    /// NOTE: For N total child-weight choices, the result is the shuffled version of
+    /// [`InOrder`](`Self::InOrder`)
     Shuffle,
 }
 impl std::fmt::Display for OrderType {
@@ -67,12 +72,13 @@ impl Order {
             OrderType::Shuffle => Self::Shuffle(Shuffle::default()),
         }
     }
-    // TODO remove if unused Order::get_ty
-    // fn get_ty(&self) -> OrderType {
-    //     match self {
-    //         Order::InOrder(_) => OrderType::InOrder,
-    //     }
-    // }
+    pub(super) fn get_ty(&self) -> OrderType {
+        match self {
+            Order::InOrder(_) => OrderType::InOrder,
+            Order::Random(_) => OrderType::Random,
+            Order::Shuffle(_) => OrderType::Shuffle,
+        }
+    }
 }
 impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
     fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
