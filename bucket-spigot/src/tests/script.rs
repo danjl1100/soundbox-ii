@@ -114,7 +114,7 @@ where
 {
     pub(super) fn run_script(&mut self, commands: &str) -> Log<T, U> {
         let mut entries = vec![];
-        let mut rng_holder = RngHolder::Empty;
+        let mut rng_holder = RngHolder::default();
 
         let mut expect_error = None;
         for (index, cmd) in commands.lines().enumerate() {

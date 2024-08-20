@@ -82,41 +82,39 @@ pub(crate) fn decode_hex(strs: &[impl AsRef<str>]) -> Result<Vec<u8>, std::num::
         .collect()
 }
 
-pub(super) enum RngHolder {
-    Empty,
-    Enabled { bytes: VecDeque<u8> },
-}
+#[derive(Default)]
+pub(super) struct RngHolder(Option<VecDeque<u8>>);
+
 impl RngHolder {
     /// Returns an Error if the bytes are already set, or the input is not valid hex
     pub fn set_bytes(
         &mut self,
         bytes_hex: &[impl AsRef<str>],
     ) -> Result<(), Option<std::num::ParseIntError>> {
-        if !matches!(self, Self::Empty) {
+        if self.0.is_some() {
             return Err(None);
         }
 
         let mut bytes = VecDeque::from(decode_hex(bytes_hex)?);
         bytes.make_contiguous();
-        *self = Self::Enabled { bytes };
+        self.0 = Some(bytes);
 
         Ok(())
     }
     pub fn get_bytes(&self) -> &[u8] {
-        match self {
-            RngHolder::Empty => &[],
-            RngHolder::Enabled { bytes } => {
-                let (bytes_contiguous, empty) = bytes.as_slices();
-                assert!(
-                    empty.is_empty(),
-                    "second slice should be empty after VecDeque::make_contiguous"
-                );
-                bytes_contiguous
-            }
+        if let Some(bytes) = &self.0 {
+            let (bytes_contiguous, empty) = bytes.as_slices();
+            assert!(
+                empty.is_empty(),
+                "second slice should be empty after VecDeque::make_contiguous"
+            );
+            bytes_contiguous
+        } else {
+            &[]
         }
     }
     pub fn truncate_from_left(&mut self, len_new: usize) {
-        let Self::Enabled { bytes } = self else {
+        let Some(bytes) = self.0.as_mut() else {
             panic!("truncate should act on Enabled RngHolder");
         };
 
