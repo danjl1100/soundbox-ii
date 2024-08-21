@@ -57,6 +57,7 @@ pub struct Network<T, U> {
     buckets_needing_fill: HashSet<Path>,
     /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
     root_order: order::Root,
+    bucket_id_counter: u64,
 }
 impl<T, U> Network<T, U> {
     /// Modify the network topology
@@ -66,7 +67,8 @@ impl<T, U> Network<T, U> {
     pub fn modify(&mut self, cmd: ModifyCmd<T, U>) -> Result<(), ModifyError> {
         match cmd {
             ModifyCmd::AddBucket { parent } => {
-                let _path = self.add_child(Child::Bucket(Bucket::default()), parent)?;
+                let bucket = Child::Bucket(self.new_bucket());
+                let _path = self.add_child(bucket, parent)?;
                 Ok(())
             }
             ModifyCmd::AddJoint { parent } => {
@@ -87,6 +89,11 @@ impl<T, U> Network<T, U> {
                 .root_order
                 .set_order_type(new_order_type, path.as_ref())?),
         }
+    }
+    fn new_bucket(&mut self) -> Bucket<T, U> {
+        let id = self.bucket_id_counter;
+        self.bucket_id_counter += 1;
+        Bucket::new(BucketId(id))
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
     pub fn get_buckets_needing_fill(&self) -> impl Iterator<Item = &'_ Path> {
@@ -337,6 +344,7 @@ enum Child<T, U> {
 struct Bucket<T, U> {
     items: Vec<T>,
     filters: Vec<U>,
+    id: BucketId,
 }
 #[derive(Clone, Debug)]
 struct Joint<T, U> {
@@ -344,11 +352,16 @@ struct Joint<T, U> {
     filters: Vec<U>,
 }
 
-impl<T, U> Default for Bucket<T, U> {
-    fn default() -> Self {
+/// Identifier for a specific bucket
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BucketId(pub u64);
+
+impl<T, U> Bucket<T, U> {
+    fn new(id: BucketId) -> Self {
         Self {
             items: vec![],
             filters: vec![],
+            id,
         }
     }
 }

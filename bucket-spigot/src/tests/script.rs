@@ -4,7 +4,9 @@ use super::{
     arb_rng::{PanicRng, RngHolder},
     fake_rng,
 };
-use crate::{clap::ModifyCmd as ClapModifyCmd, path::Path, ModifyCmd, ModifyError, Network};
+use crate::{
+    clap::ModifyCmd as ClapModifyCmd, path::Path, BucketId, ModifyCmd, ModifyError, Network,
+};
 use ::clap::Parser as _;
 use arbitrary::Unstructured;
 use std::fmt::Write as _;
@@ -36,6 +38,14 @@ pub(super) enum Entry<T, U> {
         )]
         Option<u64>,
         Vec<T>,
+    ),
+    PopFrom(
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            with = "::serde_with::rust::unwrap_or_skip"
+        )]
+        Option<u64>,
+        Vec<BucketId>,
     ),
     Topology(Topology<usize>),
     RngRemaining(String),
@@ -96,6 +106,8 @@ struct PeekFlags {
     apply: bool,
     #[clap(long)]
     show_effort: bool,
+    #[clap(long)]
+    show_bucket_ids: bool,
 }
 
 impl Network<String, String> {
@@ -138,7 +150,7 @@ where
                 // expect error
                 let error_str = result.expect_err(&expect_error_why).to_string();
                 // log error value
-                Some(Entry::ExpectError(cmd.to_owned(), error_str))
+                vec![Entry::ExpectError(cmd.to_owned(), error_str)]
             } else {
                 // expect success
                 result.unwrap_or_else(|err| {
@@ -167,7 +179,7 @@ where
         &mut self,
         command_str: &str,
         rng_holder: &mut RngHolder,
-    ) -> Result<Option<Entry<T, U>>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Entry<T, U>>, Box<dyn std::error::Error>> {
         let cmd = Command::<T, U>::try_parse_from(command_str.split_whitespace())?;
         match cmd {
             Command::Modify { cmd } => {
@@ -190,7 +202,7 @@ where
                 } else {
                     None
                 };
-                Ok(entry)
+                Ok(Vec::from_iter(entry))
             }
             Command::GetFilters { path } => {
                 let filters = self.get_filters(path.clone()).map_err(ModifyError::from)?;
@@ -198,23 +210,23 @@ where
                     .iter()
                     .map(|&filter_set| filter_set.to_owned())
                     .collect();
-                Ok(Some(Entry::Filters(path, filters)))
+                Ok(vec![Entry::Filters(path, filters)])
             }
             Command::Peek { flags, count } => {
-                let (effort, peeked) = self.run_peek(count, flags, rng_holder);
+                let (effort, peeked, bucket_ids) = self.run_peek(count, flags, rng_holder);
                 let entry = if flags.apply {
                     Entry::Pop(effort, peeked)
                 } else {
                     Entry::Peek(effort, peeked)
                 };
-                Ok(Some(entry))
+                Ok(Some(entry).into_iter().chain(bucket_ids).collect())
             }
             Command::PeekAssert { flags, expected } => {
                 let count = expected.len();
-                let (effort, peeked) = self.run_peek(count, flags, rng_holder);
+                let (effort, peeked, bucket_ids) = self.run_peek(count, flags, rng_holder);
                 assert_eq!(peeked, expected);
 
-                let entry = flags
+                let entry_items = flags
                     .apply
                     .then_some(
                         // show `Pop` in log, even when redundant with an assert
@@ -224,17 +236,17 @@ where
                         // log the effort (if present, e.g. when requested)
                         effort.map(Entry::PeekEffort),
                     );
-                Ok(entry)
+                Ok(entry_items.into_iter().chain(bucket_ids).collect())
             }
             Command::Topology { kind } => {
                 let topology = match kind.unwrap_or_default() {
                     TopologyKind::ItemCount => Topology::new_from_nodes(&self.root),
                     TopologyKind::Weights => Topology::new_from_weights(&self.root),
                 };
-                Ok(Some(Entry::Topology(topology)))
+                Ok(vec![Entry::Topology(topology)])
             }
             Command::EnableRng { bytes_hex } => match rng_holder.set_bytes(&bytes_hex) {
-                Ok(()) => Ok(None),
+                Ok(()) => Ok(vec![]),
                 Err(Some(err)) => Err(err.into()),
                 Err(None) => Err(DuplicateRngInitError.into()),
             },
@@ -245,19 +257,28 @@ where
         count: usize,
         flags: PeekFlags,
         rng_holder: &mut RngHolder,
-    ) -> (Option<u64>, Vec<T>) {
+    ) -> (Option<u64>, Vec<T>, Option<Entry<T, U>>) {
         let peeked = self.peek_test_rng(count, rng_holder).unwrap();
+
         let items = peeked
             .items()
             .iter()
             .map(|&x| x.clone())
             .collect::<Vec<_>>();
+
         let effort = flags.show_effort.then_some(peeked.get_effort_count());
+
+        let entry_bucket_ids = flags.show_bucket_ids.then(|| {
+            let bucket_ids = peeked.source_buckets().to_owned();
+            Entry::PopFrom(effort, bucket_ids)
+        });
+
         if flags.apply {
             let accepted = peeked.accept_into_inner();
             self.finalize_peeked(accepted);
         }
-        (effort, items)
+
+        (effort, items, entry_bucket_ids)
     }
     fn peek_test_rng(
         &mut self,

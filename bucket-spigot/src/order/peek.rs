@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{source::OrderSource as _, CountsRemaining, OrderNode, RandResult, Root};
-use crate::{child_vec::ChildVec, Child, Network};
+use crate::{child_vec::ChildVec, BucketId, Child, Network};
 use std::rc::Rc;
 impl<T, U> Network<T, U> {
     /// Returns a proposed sequence of items leaving the spigot.
@@ -25,19 +25,24 @@ impl<T, U> Network<T, U> {
 
         let mut effort_count = 0;
 
-        let mut chosen_elems = Vec::with_capacity(peek_len.min(64));
+        let capacity = peek_len.min(64); // TODO remove premature optimization? (no benchmarks?)
+        let mut items = Vec::with_capacity(capacity);
+        let mut source_buckets = Vec::with_capacity(capacity);
         for _ in 0..peek_len {
-            let (elem, effort) = peek_inner(rng, root, &mut root_order, &mut root_remaining)?;
+            let (elem_bucket_id, effort) =
+                peek_inner(rng, root, &mut root_order, &mut root_remaining)?;
             effort_count += effort;
-            if let Some(elem) = elem {
-                chosen_elems.push(elem);
+            if let Some((elem, bucket_id)) = elem_bucket_id {
+                items.push(elem);
+                source_buckets.push(bucket_id);
             } else {
                 break;
             }
         }
 
         Ok(Peeked {
-            items: chosen_elems,
+            items,
+            source_buckets,
             root_order: Root(root_order),
             effort_count,
         })
@@ -54,7 +59,7 @@ fn peek_inner<'a, R, T, U>(
     current: &'a ChildVec<Child<T, U>>,
     order_node: &mut OrderNode,
     current_remaining: &mut CountsRemaining,
-) -> RandResult<(Option<&'a T>, u64)>
+) -> RandResult<(Option<(&'a T, BucketId)>, u64)>
 where
     R: rand::Rng + ?Sized,
 {
@@ -107,14 +112,14 @@ where
                     // effort: lookup bucket element
                     effort_count += 1;
 
-                    Some(elem)
+                    Some((elem, bucket.id))
                 }
             }
             Child::Joint(joint) => {
                 if joint.next.is_empty() {
                     None
                 } else if let Some(remaining) = remaining_slot {
-                    let (elem, child_effort_count) = peek_inner(
+                    let (elem_bucket_id, child_effort_count) = peek_inner(
                         rng,
                         &joint.next,
                         Rc::make_mut(child_order),
@@ -124,7 +129,7 @@ where
                     // effort: recursion effort
                     effort_count += child_effort_count;
 
-                    elem
+                    elem_bucket_id
                 } else {
                     None
                 }
@@ -140,16 +145,21 @@ where
 
 /// Resulting items and tentative ordering state from [`Network::peek`]
 pub struct Peeked<'a, T> {
-    // TODO include metadata for which node the item came from
     items: Vec<&'a T>,
+    source_buckets: Vec<BucketId>,
     root_order: Root,
     effort_count: u64,
 }
 impl<'a, T> Peeked<'a, T> {
-    /// Returns an the peeked items
+    /// Returns the peeked items
     #[must_use]
     pub fn items(&self) -> &[&'a T] {
         &self.items
+    }
+    /// Returns the source buckets for the peeked items
+    #[must_use]
+    pub fn source_buckets(&self) -> &[BucketId] {
+        &self.source_buckets
     }
     /// Cancels the peek operation and returns the referenced items
     #[must_use]

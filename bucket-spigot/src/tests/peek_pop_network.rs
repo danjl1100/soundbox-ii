@@ -59,7 +59,7 @@ fn weighted_in_order() {
         topology
         topology weights
 
-        peek 20
+        peek --show-bucket-ids 20
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -116,6 +116,28 @@ fn weighted_in_order() {
         "nested-inner-2",
         "base-1",
       ]),
+      PopFrom([
+        BucketId(0),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(2),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(0),
+        BucketId(2),
+        BucketId(1),
+        BucketId(0),
+        BucketId(0),
+        BucketId(1),
+        BucketId(2),
+        BucketId(0),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(2),
+      ]),
     ])
     "###);
 }
@@ -128,8 +150,8 @@ fn two_alternating() {
         modify fill-bucket .0 zero
         modify add-bucket .
         modify fill-bucket .1 one
-        peek --apply 5
-        peek --apply 5
+        peek --apply --show-bucket-ids 5
+        peek --apply --show-bucket-ids 5
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -149,12 +171,26 @@ fn two_alternating() {
         "one",
         "zero",
       ]),
+      PopFrom([
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+      ]),
       Pop([
         "one",
         "zero",
         "one",
         "zero",
         "one",
+      ]),
+      PopFrom([
+        BucketId(1),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(1),
       ]),
     ])
     "###);
@@ -178,9 +214,9 @@ fn depth_2() {
         peek 4
 
         # peek with apply
-        peek --apply 11
+        peek --apply --show-bucket-ids 11
 
-        peek --apply 5
+        peek --apply --show-bucket-ids 5
 
         peek 0
         ",
@@ -225,12 +261,32 @@ fn depth_2() {
         "bot-1.0-a",
         "top-0-c",
       ]),
+      PopFrom([
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(2),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(2),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+      ]),
       Pop([
         "bot-1.1-a",
         "top-0-a",
         "bot-1.0-b",
         "top-0-b",
         "bot-1.1-b",
+      ]),
+      PopFrom([
+        BucketId(2),
+        BucketId(0),
+        BucketId(1),
+        BucketId(0),
+        BucketId(2),
       ]),
       Peek([]),
     ])
@@ -249,7 +305,7 @@ fn continue_if_first_is_empty() {
         modify add-bucket .
         modify fill-bucket .1 a b c
 
-        peek 3
+        peek --show-bucket-ids 3
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -267,6 +323,11 @@ fn continue_if_first_is_empty() {
         "b",
         "c",
       ]),
+      PopFrom([
+        BucketId(1),
+        BucketId(1),
+        BucketId(1),
+      ]),
     ])
     "###);
 }
@@ -283,7 +344,7 @@ fn skips_empty_weight() {
         modify set-weight .0 0
         topology weights
 
-        peek 4
+        peek --show-bucket-ids 4
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -305,6 +366,12 @@ fn skips_empty_weight() {
         "item-2",
         "item-2",
         "item-2",
+      ]),
+      PopFrom([
+        BucketId(1),
+        BucketId(1),
+        BucketId(1),
+        BucketId(1),
       ]),
     ])
     "###);
