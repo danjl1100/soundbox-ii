@@ -25,6 +25,10 @@ pub struct Path(
 pub struct PathRef<'a>(&'a [usize]);
 
 impl Path {
+    /// Constructs an empty [`Path`]
+    pub fn empty() -> Self {
+        vec![].into()
+    }
     /// Borrows the path
     pub fn as_ref(&self) -> PathRef<'_> {
         let Self(elems) = self;
@@ -135,6 +139,11 @@ impl std::fmt::Display for PathRef<'_> {
 impl std::fmt::Debug for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Path({self})")
+    }
+}
+impl std::fmt::Debug for PathRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PathRef({self})")
     }
 }
 

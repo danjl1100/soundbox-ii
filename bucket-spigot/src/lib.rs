@@ -18,12 +18,14 @@
 //! walking from the spigot (root node) to the bucket.
 //!
 
-use child_vec::ChildVec;
+use child_vec::{ChildVec, Weights};
 use path::Path;
 use std::collections::HashSet;
 
+mod child_vec;
 pub mod clap;
 pub mod path;
+mod view;
 
 pub mod order {
     //! Ordering for selecting child nodes and child items throughout the
@@ -32,19 +34,17 @@ pub mod order {
     type RandResult<T> = Result<T, rand::Error>;
 
     use counts_remaining::CountsRemaining;
-    use node::Node as OrderNode;
+    pub(crate) use node::Node as OrderNode;
     pub(crate) use node::{Root, UnknownOrderPath};
     pub use peek::Peeked;
     use source::Order;
     #[allow(clippy::module_name_repetitions)]
     pub use source::OrderType;
-    use weights::Weights;
 
     mod counts_remaining;
     mod node;
     mod peek;
     mod source;
-    mod weights;
 
     #[cfg(test)]
     mod tests;
@@ -95,6 +95,10 @@ impl<T, U> Network<T, U> {
         self.bucket_id_counter += 1;
         Bucket::new(BucketId(id))
     }
+    // /// Returns the [`Path`] to the specified [`BucketId`], if any exists
+    // pub fn find_bucket_path(&self, id: BucketId) -> Option<Path> { // TODO
+    //     todo!()
+    // }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
     pub fn get_buckets_needing_fill(&self) -> impl Iterator<Item = &'_ Path> {
         self.buckets_needing_fill.iter()
@@ -374,69 +378,6 @@ impl<T, U> Default for Joint<T, U> {
     }
 }
 
-mod child_vec {
-    #[derive(Clone, Debug)]
-    pub(crate) struct ChildVec<T> {
-        children: Vec<T>,
-        /// Weights for each child (may be empty if all are weighted equally)
-        weights: Vec<u32>,
-    }
-    impl<T> From<Vec<T>> for ChildVec<T> {
-        fn from(children: Vec<T>) -> Self {
-            Self {
-                children,
-                weights: vec![],
-            }
-        }
-    }
-    impl<T> Default for ChildVec<T> {
-        fn default() -> Self {
-            vec![].into()
-        }
-    }
-    impl<T> ChildVec<T> {
-        pub fn children(&self) -> &[T] {
-            &self.children
-        }
-        pub fn weights(&self) -> &[u32] {
-            &self.weights
-        }
-        pub fn children_mut(&mut self) -> &mut [T] {
-            &mut self.children
-        }
-        pub fn set_weight(&mut self, index: usize, value: u32) {
-            if self.weights.is_empty() {
-                self.weights = vec![1; self.len()];
-            }
-            self.weights[index] = value;
-        }
-        pub fn len(&self) -> usize {
-            self.children.len()
-        }
-        pub fn is_empty(&self) -> bool {
-            self.children.is_empty()
-        }
-        pub fn push(&mut self, child: T) {
-            // update to unity weight (if needed)
-            if !self.weights.is_empty() {
-                self.weights.push(1);
-            }
-
-            self.children.push(child);
-        }
-        pub fn remove(&mut self, index: usize) -> (u32, T) {
-            let child = self.children.remove(index);
-
-            let weight = if self.weights.is_empty() {
-                1
-            } else {
-                self.weights.remove(index)
-            };
-            (weight, child)
-        }
-    }
-}
-
 /// Command to modify a network
 #[derive(serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -486,6 +427,8 @@ pub enum ModifyCmd<T, U> {
         /// Order type (how to select from immediate child nodes or items)
         new_order_type: order::OrderType,
     },
+    // TODO MoveBucket
+    // TODO MoveJoint (unless this destroys the BucketId -> Path logic) MoveEmptyJoint?
 }
 
 /// Error modifying the [`Network`]
@@ -528,8 +471,8 @@ impl std::fmt::Display for ModifyError {
         let Self(inner) = self;
         match inner {
             ModifyErr::UnknownPath(err) => write!(f, "{err}"),
-            ModifyErr::UnknownOrderPath(order::UnknownOrderPath(path)) => {
-                write!(f, "unknown order path: {path:?}")
+            ModifyErr::UnknownOrderPath(err) => {
+                write!(f, "{err}")
             }
             ModifyErr::AddToBucket(CannotAddToBucket(path)) => {
                 write!(f, "cannot add to bucket: {path:?}")
@@ -586,4 +529,5 @@ mod tests {
     mod modify_network;
     mod peek_effort;
     mod peek_pop_network;
+    mod view_table;
 }

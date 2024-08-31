@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{RandResult, Weights};
-use crate::ChildVec;
+use super::RandResult;
+use crate::{ChildVec, Weights};
 use arbitrary::Unstructured;
 
 pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
@@ -17,13 +17,7 @@ pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
     /// Returns the next index in the order to index the specified target [`ChildVec`],
     /// or `None` if the specified `target` is empty.
     fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<RandResult<usize>> {
-        let weights = if target.weights().is_empty() {
-            // returns `None` if length is zero
-            Weights::new_equal(target.len())?
-        } else {
-            // returns `None` if weights are all zero
-            Weights::new_custom(target.weights())?
-        };
+        let weights = target.weights()?;
         let next = self.next(rng, weights);
         Some(next)
     }
@@ -44,11 +38,12 @@ pub enum OrderType {
 }
 impl std::fmt::Display for OrderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OrderType::InOrder => write!(f, "InOrder"),
-            OrderType::Random => write!(f, "Random"),
-            OrderType::Shuffle => write!(f, "Shuffle"),
-        }
+        let name = match self {
+            OrderType::InOrder => "in order",
+            OrderType::Random => "random",
+            OrderType::Shuffle => "shuffle",
+        };
+        write!(f, "{name}")
     }
 }
 

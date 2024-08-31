@@ -11,8 +11,8 @@ use std::rc::Rc;
 pub(crate) struct Root(pub(super) Node);
 #[derive(Clone, Debug, Default)]
 pub struct Node {
-    pub(crate) order: Order,
-    pub(crate) children: Vec<Rc<Node>>,
+    pub(super) order: Order,
+    pub(super) children: Vec<Rc<Node>>,
 }
 
 impl Root {
@@ -42,8 +42,17 @@ impl Root {
 
         Ok(())
     }
+    pub(crate) fn node(&self) -> &Node {
+        &self.0
+    }
 }
 impl Node {
+    pub(crate) fn get_order_type(&self) -> OrderType {
+        self.order.get_ty()
+    }
+    pub(crate) fn get_children(&self) -> &[Rc<Node>] {
+        &self.children
+    }
     fn make_mut(&mut self, path: PathRef<'_>) -> Result<&mut Self, UnknownOrderPath> {
         let mut current = self;
 
@@ -61,3 +70,10 @@ impl Node {
 /// The specified path does not match an order-node
 #[derive(Debug)]
 pub struct UnknownOrderPath(pub(crate) Path);
+
+impl std::fmt::Display for UnknownOrderPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(path) = self;
+        write!(f, "unknown order path: {path:?}")
+    }
+}

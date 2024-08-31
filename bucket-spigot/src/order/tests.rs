@@ -3,8 +3,9 @@
 #![allow(clippy::panic)]
 
 use super::source::{InOrder, Order, OrderSource as _, OrderType, Random};
-use super::{RandResult, Weights};
+use super::RandResult;
 use crate::tests::{assert_arb_error, decode_hex, fake_rng, run_with_timeout};
+use crate::Weights;
 use arbtest::arbitrary::Unstructured;
 use std::time::Duration;
 

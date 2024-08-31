@@ -13,6 +13,11 @@ use std::fmt::Write as _;
 
 #[derive(serde::Serialize)]
 pub(super) struct Log<T, U>(Vec<Entry<T, U>>);
+impl<T, U> Log<T, U> {
+    pub fn items(&self) -> &[Entry<T, U>] {
+        &self.0
+    }
+}
 #[derive(Debug, serde::Serialize)]
 pub(super) enum Entry<T, U> {
     BucketsNeedingFill(
@@ -322,13 +327,7 @@ impl Topology<usize> {
             .iter()
             .enumerate()
             .map(|(index, node)| {
-                let weight = if weights.is_empty() {
-                    1
-                } else {
-                    weights[index]
-                        .try_into()
-                        .expect("weight should fit in platform's usize")
-                };
+                let weight = weights.map_or(0, |weights| weights.get_as_usize(index));
                 let target = match node {
                     crate::Child::Bucket(_) => Self::LeafEmpty,
                     crate::Child::Joint(joint) => Self::new_from_weights(&joint.next),
