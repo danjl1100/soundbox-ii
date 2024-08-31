@@ -17,14 +17,14 @@ pub struct TableView {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-// TODO for ease of serialized use, change to struct with display_width and optional Path, NodeDetails
-pub enum Cell {
-    Empty { gap_width: u32 },
-    Node(Path, NodeDetails),
+pub struct Cell {
+    display_width: u32,
+    node: Option<NodeDetails>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct NodeDetails {
+    path: Path,
     /// True if the node is reachable from the spigot root
     active: bool,
     /// Weight of the node relative to siblings (or `None` if all equal)
@@ -137,11 +137,14 @@ impl TableParamsRef<'_> {
 
         {
             let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
-            let assumed_start = dest_column.iter().map(Cell::get_display_width).sum();
+            let assumed_start = dest_column.iter().map(|cell| cell.display_width).sum();
             assert!(assumed_start <= start_position);
             match start_position.checked_sub(assumed_start) {
                 Some(gap_width) if gap_width > 0 => {
-                    dest_column.push(Cell::Empty { gap_width });
+                    dest_column.push(Cell {
+                        display_width: gap_width,
+                        node: None,
+                    });
                 }
                 _ => {}
             }
@@ -201,20 +204,17 @@ impl TableParamsRef<'_> {
             total_width += display_width;
 
             let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
-            // let display_position = dest_column.last().map_or(start_position, |node| {
-            //     node.display_position + node.display_width
-            // });
-            dest_column.push(Cell::Node(
-                path_buf.clone(),
-                NodeDetails {
+            dest_column.push(Cell {
+                display_width,
+                node: Some(NodeDetails {
+                    path: path_buf.clone(),
                     active,
                     weight,
                     display_width,
-                    // display_position,
                     kind,
                     order_type,
-                },
-            ));
+                }),
+            });
             display_position += display_width;
 
             path_buf.pop();
@@ -267,30 +267,12 @@ impl<'a> TableParamsRef<'a> {
     }
 }
 
-// TODO delete if unused, NodeDetails::get_display_width
-// impl NodeDetails {
-//     fn get_display_width(&self) -> usize {
-//         match self.kind {
-//             NodeKind::Bucket { .. } | NodeKind::JointHasContinuation { .. } => 1,
-//             NodeKind::Joint { child_count } => {
-//                 usize::try_from(child_count).expect("joint child count fits in usize")
-//             }
-//         }
-//     }
-// }
-impl Cell {
-    fn get_display_width(&self) -> u32 {
-        match self {
-            Cell::Empty { gap_width } => *gap_width,
-            Cell::Node(_, node) => node.display_width,
-        }
-    }
-}
 impl std::fmt::Display for NodeDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use std::borrow::Cow;
 
         let Self {
+            path,
             active,
             weight,
             display_width: _,
@@ -317,6 +299,7 @@ impl std::fmt::Display for NodeDetails {
             } => Cow::Owned(format!("joint ({c} children hidden)")),
         };
         //
+        write!(f, "{path} ")?;
         if let Some(weight) = weight {
             write!(f, "x{weight} ")?;
         }
@@ -331,59 +314,29 @@ impl std::fmt::Display for NodeDetails {
 impl std::fmt::Display for TableView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_width = usize::try_from(self.total_width).expect("u32 fits in usize");
-        // for row in &self.cells {
-        //     for cell in row {
-        //         match cell {
-        //             Cell::Empty { gap_width } => {
-        //                 eprintln!("[{gap_width}] empty");
-        //             }
-        //             Cell::Node(path, node) => {
-        //                 let NodeDetails {
-        //                     weight,
-        //                     display_width,
-        //                     // display_position,
-        //                     kind,
-        //                     order_type,
-        //                 } = node;
-        //                 eprintln!("[+{display_width}] {path} x{weight} {kind:?} {order_type:?}");
-        //             }
-        //         }
-        //     }
-        //     eprintln!("---------");
-        // }
 
         writeln!(f, "Table {{")?;
         // format as one cell per line, and use symbols to represent the nodes
         // e.g. "XXXXXXX <------- description"
         for row in &self.cells {
             let mut position = 0;
-            for cell in row {
-                match cell {
-                    Cell::Empty { gap_width } => {
-                        position += usize::try_from(*gap_width).expect("u32 fits in usize");
-                    }
-                    Cell::Node(path, node) => {
-                        let width = usize::try_from(node.display_width).expect("u32 fits in usize");
-                        // let position = usize::try_from(*display_position).expect("u32 fits in usize");
-                        let remainder_width = total_width - width - position;
-                        // writeln!(
-                        //     f,
-                        //     "{:<position$}{:X<width$} <{:-<remainder_width$}--- {path} {node}",
-                        //     "", "", ""
-                        // )?;
-                        let marker_char = if node.active { 'X' } else { 'o' };
-                        let marker: String = std::iter::repeat(marker_char).take(width).collect();
-                        writeln!(
-                            f,
-                            "{:<position$}{marker} <{:-<remainder_width$}--- {path} {node}",
-                            "", "",
-                        )?;
 
-                        position += width;
-                    }
+            for cell in row {
+                let width = usize::try_from(cell.display_width).expect("u32 fits in usize");
+
+                if let Some(node) = &cell.node {
+                    let remainder_width = total_width - width - position;
+                    let marker_char = if node.active { 'X' } else { 'o' };
+                    let marker: String = std::iter::repeat(marker_char).take(width).collect();
+                    writeln!(
+                        f,
+                        "{:<position$}{marker} <{:-<remainder_width$}--- {node}",
+                        "", "",
+                    )?;
                 }
+
+                position += width;
             }
-            // writeln!(f, "{:=<50}", "")?;
         }
         writeln!(f, "}}")
     }
