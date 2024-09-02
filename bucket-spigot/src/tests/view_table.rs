@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use crate::{path::Path, view::TableParams, Network};
+use crate::{path::Path, view::TableParamsOwned, Network};
 use std::str::FromStr as _;
 
 #[test]
@@ -37,7 +37,11 @@ fn table_weights() {
       ],
     ])
     "###);
-    let table = network.view_table(TableParams::default().as_ref()).unwrap();
+
+    let params = TableParamsOwned::default();
+    let params = params.as_ref();
+
+    let table = network.view_table(params).unwrap();
     insta::assert_snapshot!(table, @r###"
     Table {
     X <------- .0 bucket (4 items) in order
@@ -55,7 +59,7 @@ fn table_weights() {
         modify set-weight .1.1 0
         ",
     );
-    let table = network.view_table(TableParams::default().as_ref()).unwrap();
+    let table = network.view_table(params).unwrap();
     insta::assert_snapshot!(table, @r###"
     Table {
     X <------- .0 bucket (4 items) in order
@@ -72,7 +76,7 @@ fn table_weights() {
         modify set-weight .1.0 0
         ",
     );
-    let table = network.view_table(TableParams::default().as_ref()).unwrap();
+    let table = network.view_table(params).unwrap();
     insta::assert_snapshot!(table, @r###"
     Table {
     X <------- .0 bucket (4 items) in order
@@ -122,16 +126,13 @@ fn arbitrary_pattern() -> Network<String, String> {
 fn table_depth_root() {
     let network = arbitrary_pattern();
 
-    let root_max = network.view_table(TableParams::default().as_ref()).unwrap();
-    let root_depth_2 = network
-        .view_table(TableParams::default().max_depth(2).as_ref())
-        .unwrap();
-    let root_depth_1 = network
-        .view_table(TableParams::default().max_depth(1).as_ref())
-        .unwrap();
-    let root_depth_0 = network
-        .view_table(TableParams::default().max_depth(0).as_ref())
-        .unwrap();
+    let params = TableParamsOwned::default();
+    let params = params.as_ref();
+
+    let root_max = network.view_table(params).unwrap();
+    let root_depth_2 = network.view_table(params.max_depth(2)).unwrap();
+    let root_depth_1 = network.view_table(params.max_depth(1)).unwrap();
+    let root_depth_0 = network.view_table(params.max_depth(0)).unwrap();
     assert_eq!(root_max, root_depth_2);
     insta::assert_snapshot!(root_depth_2, @r###"
     Table {
@@ -180,8 +181,10 @@ fn table_depth_root() {
 fn table_depth_child_right() {
     let network = arbitrary_pattern();
 
-    let params = TableParams::default().base_path(Path::from_str(".4").unwrap());
-    let params = params.as_ref();
+    let params = TableParamsOwned::default();
+    let path = Path::from_str(".4").unwrap();
+    let params = params.as_ref().base_path(path.as_ref());
+
     let right_max = network.view_table(params).unwrap();
     let right_depth_2 = network.view_table(params.max_depth(2)).unwrap();
     let right_depth_1 = network.view_table(params.max_depth(1)).unwrap();

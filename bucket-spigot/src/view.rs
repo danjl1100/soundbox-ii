@@ -58,7 +58,7 @@ where
     ///
     /// # Errors
     /// Returns an error if the specified path is incorrect, or the view dimensions are too large
-    pub fn view_table(&self, table_params: TableParamsRef<'_>) -> Result<TableView, ViewError> {
+    pub fn view_table(&self, table_params: TableParams<'_>) -> Result<TableView, ViewError> {
         let mut cells = vec![];
         let mut path = Path::empty();
 
@@ -100,7 +100,7 @@ struct State {
     start_position: u32,
     parent_active: bool,
 }
-impl TableParamsRef<'_> {
+impl TableParams<'_> {
     fn find_child_nodes<T, U>(
         self,
         item_nodes: &ChildVec<Child<T, U>>,
@@ -225,38 +225,32 @@ impl TableParamsRef<'_> {
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-/// Owned version of [`TableParamsRef`] for use in serializing view requests
-pub struct TableParams {
+/// Owned version of [`TableParams`] for use in serializing view requests
+pub struct TableParamsOwned {
     max_depth: Option<u32>,
     base_path: Option<Path>,
     // TODO add a max_width...
     // TODO add a max node count... to autodetect the depth based on how many total cells are seen
 }
 #[derive(Clone, Copy, Debug, Default)]
-pub struct TableParamsRef<'a> {
+pub struct TableParams<'a> {
     max_depth: Option<u32>,
     base_path: Option<PathRef<'a>>,
 }
-// TODO remove all modification functions on TableParams, modify through TableParamsRef instead,
-// and only use this type for "Owned" serialize/deserialize
 #[allow(unused)]
-impl TableParams {
-    pub fn max_depth(mut self, max_depth: u32) -> Self {
-        self.max_depth.replace(max_depth);
-        self
-    }
-    pub fn base_path(mut self, base_path: Path) -> Self {
-        self.base_path.replace(base_path);
-        self
-    }
-    pub fn as_ref(&self) -> TableParamsRef<'_> {
-        TableParamsRef {
+impl TableParamsOwned {
+    pub fn as_ref(&self) -> TableParams<'_> {
+        TableParams {
             max_depth: self.max_depth,
-            base_path: self.base_path.as_ref().map(|path| path.as_ref()),
+            base_path: self.base_path.as_ref().map(Path::as_ref),
         }
     }
+    // Modify functions for non-`Copy` types only
+    pub fn base_path(&mut self, base_path: Path) {
+        self.base_path.replace(base_path);
+    }
 }
-impl<'a> TableParamsRef<'a> {
+impl<'a> TableParams<'a> {
     pub fn max_depth(mut self, max_depth: u32) -> Self {
         self.max_depth.replace(max_depth);
         self
@@ -264,6 +258,16 @@ impl<'a> TableParamsRef<'a> {
     pub fn base_path(mut self, base_path: PathRef<'a>) -> Self {
         self.base_path.replace(base_path);
         self
+    }
+    pub fn to_owned(self) -> TableParamsOwned {
+        let Self {
+            max_depth,
+            base_path,
+        } = self;
+        TableParamsOwned {
+            max_depth,
+            base_path: base_path.map(PathRef::clone_inner),
+        }
     }
 }
 
