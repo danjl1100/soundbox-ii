@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
-    child_vec::ChildVec,
+    child_vec::{ChildVec, Weights},
     order::{OrderNode, OrderType, UnknownOrderPath},
     path::{Path, PathRef},
     Child, Network, UnknownPath,
@@ -16,6 +16,12 @@ pub struct TableView {
     total_width: u32,
 }
 
+/// There are three kinds of `Cell`:
+///
+///    1. Node, when: `display_width > 0`, `node = Some(_)`
+///    2. Spacer, when: `display_width > 0`, `node = None`
+///    3. Horizontal continuation marker (column width-wise), when: `display_width = 0`, `node = None`
+///
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Cell {
     display_width: u32,
@@ -29,9 +35,6 @@ pub struct NodeDetails {
     active: bool,
     /// Weight of the node relative to siblings (or `None` if all equal)
     weight: Option<u32>,
-    // Sum of the child nodes count
-    display_width: u32,
-    // display_position: u32,
     kind: NodeKind,
     order_type: OrderType,
     // NOTE: exclude Filters list as it is relatively unbounded
@@ -43,15 +46,12 @@ enum NodeKind {
     Bucket { item_count: u32 },
     /// Joint node
     Joint { child_count: u32 },
-    /// Joint node with children that are hidden by `max_depth`
+    /// Vertical continuation marker (row depth-wise) - joint node with
+    /// children are hidden by `max_depth`
     JointAbbrev { child_count: u32 },
 }
 
-impl<T, U> Network<T, U>
-where
-    T: std::fmt::Debug,
-    U: std::fmt::Debug,
-{
+impl<T, U> Network<T, U> {
     /// Returns a tabular view
     ///
     /// NOTE: each resulting node is either {Path/Id, Kind} or # omitted child nodes
@@ -64,13 +64,24 @@ where
 
         let mut item_node = &self.root;
         let mut order_node = self.root_order.node().get_children();
+        let mut parent_active = true;
+        let mut only_child_index = None;
         if let Some(base_path) = table_params.base_path {
-            for index in base_path {
+            let parent_path = if let Some((child, parent)) = base_path.split_last() {
+                only_child_index = Some(child);
+                parent
+            } else {
+                base_path
+            };
+            for index in parent_path {
                 path.push(index);
+                parent_active =
+                    parent_active && item_node.weights().map_or(false, |w| w.get(index) != 0);
                 item_node = match item_node.children().get(index) {
-                    Some(Child::Bucket(_)) => todo!(),
                     Some(Child::Joint(joint)) => Ok(&joint.next),
-                    None => Err(crate::UnknownPath(base_path.clone_inner())),
+                    Some(Child::Bucket(_)) | None => {
+                        Err(crate::UnknownPath(base_path.clone_inner()))
+                    }
                 }?;
                 order_node = match order_node.get(index) {
                     Some(node) => Ok(node.get_children()),
@@ -87,8 +98,9 @@ where
             State {
                 depth: 0,
                 start_position: 0,
-                parent_active: true,
+                parent_active,
             },
+            only_child_index,
         )?;
 
         Ok(TableView { cells, total_width })
@@ -107,28 +119,19 @@ impl TableParams<'_> {
         order_nodes: &[Rc<OrderNode>],
         dest_cells: &mut Vec<Vec<Cell>>,
         path_buf: &mut Path,
-        State {
-            depth,
-            start_position,
-            parent_active,
-        }: State,
+        state: State,
+        only_child_index: Option<usize>,
     ) -> Result<u32, ViewError> {
-        fn count(label: &'static str, count: usize) -> Result<u32, ExcessiveViewDimensions> {
-            count
-                .try_into()
-                .map_err(|_| ExcessiveViewDimensions { label, count })
-        }
-
         let Some(item_nodes_max_index) = item_nodes.len().checked_sub(1) else {
             return Ok(1);
         };
 
-        assert!(dest_cells.len() >= depth);
-        if dest_cells.len() == depth {
+        assert!(dest_cells.len() >= state.depth);
+        if dest_cells.len() == state.depth {
             // add column for this depth
             dest_cells.push(vec![]);
         }
-        assert!(dest_cells.len() > depth);
+        assert!(dest_cells.len() > state.depth);
 
         let weights = item_nodes.weights();
         if let Some(weights) = &weights {
@@ -136,10 +139,12 @@ impl TableParams<'_> {
         }
 
         {
-            let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
+            let dest_column = dest_cells
+                .get_mut(state.depth)
+                .expect("column pushed above");
             let assumed_start = dest_column.iter().map(|cell| cell.display_width).sum();
-            assert!(assumed_start <= start_position);
-            match start_position.checked_sub(assumed_start) {
+            assert!(assumed_start <= state.start_position);
+            match state.start_position.checked_sub(assumed_start) {
                 Some(gap_width) if gap_width > 0 => {
                     dest_column.push(Cell {
                         display_width: gap_width,
@@ -151,10 +156,47 @@ impl TableParams<'_> {
         }
 
         let item_nodes = item_nodes.children();
-        assert_eq!(item_nodes.len(), order_nodes.len());
-        let mut total_width = 0;
+
+        let item_and_order = {
+            assert_eq!(item_nodes.len(), order_nodes.len());
+            item_nodes.iter().enumerate().zip(order_nodes)
+        };
+
+        if let Some(only_child_index) = only_child_index {
+            let item_and_order = item_and_order.skip(only_child_index).take(1);
+            self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
+        } else {
+            self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
+        }
+    }
+    fn add_child_nodes<'a, T, U>(
+        self,
+        dest_cells: &mut Vec<Vec<Cell>>,
+        path_buf: &mut Path,
+        State {
+            depth,
+            start_position,
+            parent_active,
+        }: State,
+        weights: Option<Weights<'_>>,
+        item_and_order: impl Iterator<Item = ((usize, &'a Child<T, U>), &'a Rc<OrderNode>)>,
+    ) -> Result<u32, ViewError>
+    where
+        T: 'a,
+        U: 'a,
+    {
         let mut display_position = start_position;
-        for ((index, child), order) in item_nodes.iter().enumerate().zip(order_nodes) {
+        for ((index, child), order) in item_and_order {
+            if matches!(self.max_width, Some(max_width) if display_position >= max_width) {
+                let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
+                dest_column.push(Cell {
+                    display_width: 0,
+                    node: None,
+                });
+                break;
+            }
+
+            // START - push index
             path_buf.push(index);
 
             let weight = match weights {
@@ -182,66 +224,72 @@ impl TableParams<'_> {
                     }
                 }
             };
-            let order_type = order.get_order_type();
             let active = parent_active && weight.map_or(true, |w| w != 0);
 
             let child_width = if let Some((item_nodes, order_nodes)) = recurse {
-                self.find_child_nodes(
-                    item_nodes,
-                    order_nodes,
-                    dest_cells,
-                    path_buf,
-                    State {
-                        depth: depth + 1,
-                        start_position: display_position,
-                        parent_active: active,
-                    },
-                )?
+                let state = State {
+                    depth: depth + 1,
+                    start_position: display_position,
+                    parent_active: active,
+                };
+                self.find_child_nodes(item_nodes, order_nodes, dest_cells, path_buf, state, None)?
             } else {
                 1
             };
-            let display_width = child_width;
-            total_width += display_width;
 
             let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
+            let node_details = NodeDetails {
+                path: path_buf.clone(),
+                active,
+                weight,
+                kind,
+                order_type: order.get_order_type(),
+            };
+            let display_width = child_width;
             dest_column.push(Cell {
                 display_width,
-                node: Some(NodeDetails {
-                    path: path_buf.clone(),
-                    active,
-                    weight,
-                    display_width,
-                    kind,
-                    order_type,
-                }),
+                node: Some(node_details),
             });
             display_position += display_width;
 
+            // END - pop index
             path_buf.pop();
         }
-
+        let total_width = display_position - start_position;
         Ok(total_width)
     }
+}
+fn count(label: &'static str, count: usize) -> Result<u32, ExcessiveViewDimensions> {
+    count
+        .try_into()
+        .map_err(|_| ExcessiveViewDimensions { label, count })
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 /// Owned version of [`TableParams`] for use in serializing view requests
 pub struct TableParamsOwned {
     max_depth: Option<u32>,
+    max_width: Option<u32>,
     base_path: Option<Path>,
-    // TODO add a max_width...
     // TODO add a max node count... to autodetect the depth based on how many total cells are seen
 }
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TableParams<'a> {
     max_depth: Option<u32>,
+    max_width: Option<u32>,
     base_path: Option<PathRef<'a>>,
 }
 #[allow(unused)]
 impl TableParamsOwned {
     pub fn as_ref(&self) -> TableParams<'_> {
+        let Self {
+            max_depth,
+            max_width,
+            ref base_path,
+        } = *self;
         TableParams {
-            max_depth: self.max_depth,
+            max_depth,
+            max_width,
             base_path: self.base_path.as_ref().map(Path::as_ref),
         }
     }
@@ -255,6 +303,10 @@ impl<'a> TableParams<'a> {
         self.max_depth.replace(max_depth);
         self
     }
+    pub fn max_width(mut self, max_width: u32) -> Self {
+        self.max_width.replace(max_width);
+        self
+    }
     pub fn base_path(mut self, base_path: PathRef<'a>) -> Self {
         self.base_path.replace(base_path);
         self
@@ -262,10 +314,12 @@ impl<'a> TableParams<'a> {
     pub fn to_owned(self) -> TableParamsOwned {
         let Self {
             max_depth,
+            max_width,
             base_path,
         } = self;
         TableParamsOwned {
             max_depth,
+            max_width,
             base_path: base_path.map(PathRef::clone_inner),
         }
     }
@@ -279,7 +333,6 @@ impl std::fmt::Display for NodeDetails {
             path,
             active,
             weight,
-            display_width: _,
             kind,
             order_type,
         } = self;
@@ -327,9 +380,9 @@ impl std::fmt::Display for TableView {
 
             for cell in row {
                 let width = usize::try_from(cell.display_width).expect("u32 fits in usize");
+                let remainder_width = total_width - width - position;
 
                 if let Some(node) = &cell.node {
-                    let remainder_width = total_width - width - position;
                     let marker_char = if node.active { 'X' } else { 'o' };
                     let marker: String = std::iter::repeat(marker_char).take(width).collect();
                     writeln!(
@@ -337,6 +390,12 @@ impl std::fmt::Display for TableView {
                         "{:<position$}{marker} <{:-<remainder_width$}--- {node}",
                         "", "",
                     )?;
+                } else if cell.display_width == 0 {
+                    let marker = "?";
+                    writeln!(
+                        f,
+                        "{:<position$}{marker} <{:-<remainder_width$}--- (one or more nodes omitted...)",
+                        "", "")?;
                 }
 
                 position += width;
