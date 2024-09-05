@@ -227,27 +227,30 @@ fn unique_weights() {
     );
     insta::assert_snapshot!(view_path(&network, ".0"), @r###"
     Table {
-    XXXXX <--- .0 x1 joint (5 children) in order
-    X <------- .0.0 x6 joint (empty) in order
-     X <------ .0.1 x7 joint (empty) in order
-      X <----- .0.2 x8 joint (empty) in order
-       X <---- .0.3 x9 joint (empty) in order
-        X <--- .0.4 x10 joint (empty) in order
+    XXXXX <------- .0 x1 joint (5 children) in order
+         X <------ .1 x2 joint (empty) in order
+          X <----- .2 x3 joint (empty) in order
+           X <---- .3 x4 joint (empty) in order
+            X <--- .4 x5 joint (empty) in order
+    X <----------- .0.0 x6 joint (empty) in order
+     X <---------- .0.1 x7 joint (empty) in order
+      X <--------- .0.2 x8 joint (empty) in order
+       X <-------- .0.3 x9 joint (empty) in order
+        X <------- .0.4 x10 joint (empty) in order
     }
     "###);
     insta::assert_snapshot!(view_path(&network, ".1"), @r###"
     Table {
-    X <--- .1 x2 joint (empty) in order
-    }
-    "###);
-    insta::assert_snapshot!(view_path(&network, ".2"), @r###"
-    Table {
-    X <--- .2 x3 joint (empty) in order
+    X <------ .1 x2 joint (empty) in order
+     X <----- .2 x3 joint (empty) in order
+      X <---- .3 x4 joint (empty) in order
+       X <--- .4 x5 joint (empty) in order
     }
     "###);
     insta::assert_snapshot!(view_path(&network, ".3"), @r###"
     Table {
-    X <--- .3 x4 joint (empty) in order
+    X <---- .3 x4 joint (empty) in order
+     X <--- .4 x5 joint (empty) in order
     }
     "###);
     insta::assert_snapshot!(view_path(&network, ".4"), @r###"
@@ -257,22 +260,25 @@ fn unique_weights() {
     "###);
     insta::assert_snapshot!(view_path(&network, ".0.0"), @r###"
     Table {
-    X <--- .0.0 x6 joint (empty) in order
+    X <------- .0.0 x6 joint (empty) in order
+     X <------ .0.1 x7 joint (empty) in order
+      X <----- .0.2 x8 joint (empty) in order
+       X <---- .0.3 x9 joint (empty) in order
+        X <--- .0.4 x10 joint (empty) in order
     }
     "###);
     insta::assert_snapshot!(view_path(&network, ".0.1"), @r###"
     Table {
-    X <--- .0.1 x7 joint (empty) in order
-    }
-    "###);
-    insta::assert_snapshot!(view_path(&network, ".0.2"), @r###"
-    Table {
-    X <--- .0.2 x8 joint (empty) in order
+    X <------ .0.1 x7 joint (empty) in order
+     X <----- .0.2 x8 joint (empty) in order
+      X <---- .0.3 x9 joint (empty) in order
+       X <--- .0.4 x10 joint (empty) in order
     }
     "###);
     insta::assert_snapshot!(view_path(&network, ".0.3"), @r###"
     Table {
-    X <--- .0.3 x9 joint (empty) in order
+    X <---- .0.3 x9 joint (empty) in order
+     X <--- .0.4 x10 joint (empty) in order
     }
     "###);
     insta::assert_snapshot!(view_path(&network, ".0.4"), @r###"
@@ -408,6 +414,17 @@ fn limit_width_root() {
       ? <--- (one or more nodes omitted...)
     X <---- .0.0 joint (1 child) in order
     X <---- .0.0.0 joint (1 child hidden) in order
+    }
+    "###);
+
+    let offset = Path::from_str(".2").unwrap();
+    let width_2 = network
+        .view_table(params_width_2.base_path(offset.as_ref()))
+        .unwrap();
+    insta::assert_snapshot!(width_2, @r###"
+    Table {
+    X <---- .2 joint (empty) in order
+     X <--- .3 joint (empty) in order
     }
     "###);
 }

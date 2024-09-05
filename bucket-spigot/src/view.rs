@@ -65,10 +65,10 @@ impl<T, U> Network<T, U> {
         let mut item_node = &self.root;
         let mut order_node = self.root_order.node().get_children();
         let mut parent_active = true;
-        let mut only_child_index = None;
+        let mut child_start_index = None;
         if let Some(base_path) = table_params.base_path {
             let parent_path = if let Some((child, parent)) = base_path.split_last() {
-                only_child_index = Some(child);
+                child_start_index = Some(child);
                 parent
             } else {
                 base_path
@@ -100,7 +100,7 @@ impl<T, U> Network<T, U> {
                 start_position: 0,
                 parent_active,
             },
-            only_child_index,
+            child_start_index,
         )?;
 
         Ok(TableView { cells, total_width })
@@ -120,7 +120,7 @@ impl TableParams<'_> {
         dest_cells: &mut Vec<Vec<Cell>>,
         path_buf: &mut Path,
         state: State,
-        only_child_index: Option<usize>,
+        child_start_index: Option<usize>,
     ) -> Result<u32, ViewError> {
         let Some(item_nodes_max_index) = item_nodes.len().checked_sub(1) else {
             return Ok(1);
@@ -162,9 +162,17 @@ impl TableParams<'_> {
             item_nodes.iter().enumerate().zip(order_nodes)
         };
 
-        if let Some(only_child_index) = only_child_index {
-            let item_and_order = item_and_order.skip(only_child_index).take(1);
-            self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
+        if let Some(child_start_index) = child_start_index {
+            // skip to start
+            let item_and_order = item_and_order.skip(child_start_index);
+            if let Some(max_width) = self.max_width.and_then(|w| usize::try_from(w).ok()) {
+                // only take `max_width`
+                let item_and_order = item_and_order.take(max_width);
+                self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
+            } else {
+                // no limit, run to the end
+                self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
+            }
         } else {
             self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
         }
@@ -188,7 +196,9 @@ impl TableParams<'_> {
         let mut display_position = start_position;
         for ((index, child), order) in item_and_order {
             if matches!(self.max_width, Some(max_width) if display_position >= max_width) {
-                let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
+                let dest_column = dest_cells
+                    .get_mut(depth)
+                    .expect("column pushed by caller, above");
                 dest_column.push(Cell {
                     display_width: 0,
                     node: None,
