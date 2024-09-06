@@ -97,7 +97,7 @@ impl<T, U> Network<T, U> {
             &mut path,
             State {
                 depth: 0,
-                start_position: 0,
+                position: 0,
                 parent_active,
             },
             child_start_index,
@@ -109,7 +109,7 @@ impl<T, U> Network<T, U> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct State {
     depth: usize,
-    start_position: u32,
+    position: u32,
     parent_active: bool,
 }
 impl TableParams<'_> {
@@ -143,8 +143,8 @@ impl TableParams<'_> {
                 .get_mut(state.depth)
                 .expect("column pushed above");
             let assumed_start = dest_column.iter().map(|cell| cell.display_width).sum();
-            assert!(assumed_start <= state.start_position);
-            match state.start_position.checked_sub(assumed_start) {
+            assert!(assumed_start <= state.position);
+            match state.position.checked_sub(assumed_start) {
                 Some(gap_width) if gap_width > 0 => {
                     dest_column.push(Cell {
                         display_width: gap_width,
@@ -157,47 +157,31 @@ impl TableParams<'_> {
 
         let item_nodes = item_nodes.children();
 
+        let (skip, take) = if let Some(child_start_index) = child_start_index {
+            // skip to start
+            let skip = child_start_index;
+            // only take `max_width`
+            let take = self.max_width.and_then(|v| usize::try_from(v).ok());
+            (skip, take)
+        } else {
+            (0, None)
+        };
         let item_and_order = {
             assert_eq!(item_nodes.len(), order_nodes.len());
-            item_nodes.iter().enumerate().zip(order_nodes)
+            item_nodes
+                .iter()
+                .enumerate()
+                .zip(order_nodes)
+                .skip(skip)
+                .take(take.unwrap_or(usize::MAX))
         };
 
-        if let Some(child_start_index) = child_start_index {
-            // skip to start
-            let item_and_order = item_and_order.skip(child_start_index);
-            if let Some(max_width) = self.max_width.and_then(|w| usize::try_from(w).ok()) {
-                // only take `max_width`
-                let item_and_order = item_and_order.take(max_width);
-                self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
-            } else {
-                // no limit, run to the end
-                self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
-            }
-        } else {
-            self.add_child_nodes(dest_cells, path_buf, state, weights, item_and_order)
-        }
-    }
-    fn add_child_nodes<'a, T, U>(
-        self,
-        dest_cells: &mut Vec<Vec<Cell>>,
-        path_buf: &mut Path,
-        State {
-            depth,
-            start_position,
-            parent_active,
-        }: State,
-        weights: Option<Weights<'_>>,
-        item_and_order: impl Iterator<Item = ((usize, &'a Child<T, U>), &'a Rc<OrderNode>)>,
-    ) -> Result<u32, ViewError>
-    where
-        T: 'a,
-        U: 'a,
-    {
-        let mut display_position = start_position;
+        let start_position = state.position;
+        let mut state = state;
         for ((index, child), order) in item_and_order {
-            if matches!(self.max_width, Some(max_width) if display_position >= max_width) {
+            if matches!(self.max_width, Some(max_width) if state.position >= max_width) {
                 let dest_column = dest_cells
-                    .get_mut(depth)
+                    .get_mut(state.depth)
                     .expect("column pushed by caller, above");
                 dest_column.push(Cell {
                     display_width: 0,
@@ -209,64 +193,90 @@ impl TableParams<'_> {
             // START - push index
             path_buf.push(index);
 
-            let weight = match weights {
-                Some(weights) if weights.is_unity() => None,
-                Some(weights) => Some(weights.get(index)),
-                // no weights available means "all zero" weights
-                None => Some(0),
-            };
-            let (kind, recurse) = match child {
-                Child::Bucket(bucket) => {
-                    let item_count = count("bucket items length", bucket.items.len())?;
-                    (NodeKind::Bucket { item_count }, None)
-                }
-                Child::Joint(joint) => {
-                    let child_count = count("joint children length", joint.next.len())?;
-                    let children = &joint.next;
-                    match self.max_depth {
-                        Some(max_depth) if count("depth", depth)? >= max_depth => {
-                            (NodeKind::JointAbbrev { child_count }, None)
-                        }
-                        _ => (
-                            NodeKind::Joint { child_count },
-                            Some((children, order.get_children())),
-                        ),
-                    }
-                }
-            };
-            let active = parent_active && weight.map_or(true, |w| w != 0);
+            let display_width = self.add_child_nodes(
+                dest_cells,
+                path_buf,
+                state,
+                weights,
+                ((index, child), order),
+            )?;
 
-            let child_width = if let Some((item_nodes, order_nodes)) = recurse {
-                let state = State {
-                    depth: depth + 1,
-                    start_position: display_position,
-                    parent_active: active,
-                };
-                self.find_child_nodes(item_nodes, order_nodes, dest_cells, path_buf, state, None)?
-            } else {
-                1
-            };
-
-            let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
-            let node_details = NodeDetails {
-                path: path_buf.clone(),
-                active,
-                weight,
-                kind,
-                order_type: order.get_order_type(),
-            };
-            let display_width = child_width;
-            dest_column.push(Cell {
-                display_width,
-                node: Some(node_details),
-            });
-            display_position += display_width;
+            state.position += display_width;
 
             // END - pop index
             path_buf.pop();
         }
-        let total_width = display_position - start_position;
+        let total_width = state.position - start_position;
         Ok(total_width)
+    }
+    fn add_child_nodes<'a, T, U>(
+        self,
+        dest_cells: &mut Vec<Vec<Cell>>,
+        path_buf: &mut Path,
+        State {
+            depth,
+            position,
+            parent_active,
+        }: State,
+        weights: Option<Weights<'_>>,
+        ((index, child), order): ((usize, &'a Child<T, U>), &'a Rc<OrderNode>),
+    ) -> Result<u32, ViewError>
+    where
+        T: 'a,
+        U: 'a,
+    {
+        let weight = match weights {
+            Some(weights) if weights.is_unity() => None,
+            Some(weights) => Some(weights.get(index)),
+            // no weights available means "all zero" weights
+            None => Some(0),
+        };
+        let (kind, recurse) = match child {
+            Child::Bucket(bucket) => {
+                let item_count = count("bucket items length", bucket.items.len())?;
+                (NodeKind::Bucket { item_count }, None)
+            }
+            Child::Joint(joint) => {
+                let child_count = count("joint children length", joint.next.len())?;
+                let children = &joint.next;
+                match self.max_depth {
+                    Some(max_depth) if count("depth", depth)? >= max_depth => {
+                        (NodeKind::JointAbbrev { child_count }, None)
+                    }
+                    _ => (
+                        NodeKind::Joint { child_count },
+                        Some((children, order.get_children())),
+                    ),
+                }
+            }
+        };
+        let active = parent_active && weight.map_or(true, |w| w != 0);
+
+        let display_width = if let Some((item_nodes, order_nodes)) = recurse {
+            let state = State {
+                depth: depth + 1,
+                position,
+                parent_active: active,
+            };
+            self.find_child_nodes(item_nodes, order_nodes, dest_cells, path_buf, state, None)?
+        } else {
+            1
+        };
+
+        let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
+        let node_details = NodeDetails {
+            path: path_buf.clone(),
+            active,
+            weight,
+            kind,
+            order_type: order.get_order_type(),
+        };
+        dest_column.push(Cell {
+            display_width,
+            node: Some(node_details),
+        });
+
+        Ok(display_width)
     }
 }
 fn count(label: &'static str, count: usize) -> Result<u32, ExcessiveViewDimensions> {
