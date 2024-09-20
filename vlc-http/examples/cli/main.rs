@@ -81,7 +81,7 @@ enum Query {
 
 struct Shutdown;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> eyre::Result<()> {
     let GlobalArgs {
         auth,
         print_responses_http,
@@ -137,7 +137,7 @@ struct Client {
     client_state: vlc_http::ClientState,
 }
 impl Client {
-    fn run_action(&mut self, action: CliAction) -> anyhow::Result<Option<Shutdown>> {
+    fn run_action(&mut self, action: CliAction) -> eyre::Result<Option<Shutdown>> {
         match action {
             CliAction::Command { command } => {
                 let endpoint = vlc_http::Command::try_from(command)?.into_endpoint();
@@ -190,7 +190,7 @@ impl Client {
     fn exhaust_pollable<T: vlc_http::Pollable>(
         &mut self,
         mut source: T,
-    ) -> anyhow::Result<T::Output<'_>> {
+    ) -> eyre::Result<T::Output<'_>> {
         const MAX_ITER_COUNT: usize = 100;
         for _ in 0..MAX_ITER_COUNT {
             let Poll::Need(endpoint) = source.next(&self.client_state)? else {
@@ -201,7 +201,7 @@ impl Client {
         }
         match source.next(&self.client_state)? {
             Poll::Done(output) => Ok(output),
-            Poll::Need(endpoint) => anyhow::bail!(
+            Poll::Need(endpoint) => eyre::bail!(
                 "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}, next endpoint {endpoint:?}"
             ),
         }
@@ -214,7 +214,7 @@ struct HttpRunner {
     print_responses: bool,
 }
 impl HttpRunner {
-    fn call_endpoint(&self, endpoint: vlc_http::Endpoint) -> anyhow::Result<vlc_http::Response> {
+    fn call_endpoint(&self, endpoint: vlc_http::Endpoint) -> eyre::Result<vlc_http::Response> {
         let request = endpoint.with_auth(&self.auth).build_http_request();
 
         let request = {

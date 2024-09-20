@@ -2280,23 +2280,16 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "clap 4.5.4",
+ "eyre",
  "http 1.1.0",
  "insta",
  "serde",
  "serde_json",
  "test-log",
  "tracing",
+ "ureq",
  "url",
  "urlencoding",
-]
-
-[[package]]
-name = "vlc-http-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ureq",
- "vlc-http",
 ]
 
 [[package]]

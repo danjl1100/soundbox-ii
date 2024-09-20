@@ -9,7 +9,6 @@ license = "GPL-3.0-or-later"
 members = [
   "q-filter-tree",
   "vlc-http",
-  "vlc-http-cli",
   "vlc-http_old",
   "frontend",
   "sequencer",

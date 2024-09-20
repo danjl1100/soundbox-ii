@@ -1,9 +1,0 @@
-[package]
-name = "vlc-http-cli"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-anyhow = "1.0.82"
-ureq = { version = "2.9.7", features = ["http-crate"], default-features = false }
-vlc-http = { version = "0.1.0", path = "../vlc-http", features = ["clap"] }
