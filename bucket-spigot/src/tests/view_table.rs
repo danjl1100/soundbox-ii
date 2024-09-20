@@ -132,9 +132,9 @@ fn table_depth_root() {
     let params = TableParams::default();
 
     let root_max = network.view_table(params).unwrap();
-    let root_depth_2 = network.view_table(params.max_depth(2)).unwrap();
-    let root_depth_1 = network.view_table(params.max_depth(1)).unwrap();
-    let root_depth_0 = network.view_table(params.max_depth(0)).unwrap();
+    let root_depth_2 = network.view_table(params.set_max_depth(2)).unwrap();
+    let root_depth_1 = network.view_table(params.set_max_depth(1)).unwrap();
+    let root_depth_0 = network.view_table(params.set_max_depth(0)).unwrap();
     assert_eq!(root_max, root_depth_2);
     insta::assert_snapshot!(root_depth_2, @r###"
     Table {
@@ -192,7 +192,7 @@ fn table_depth_root() {
 
 fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
     let path = Path::from_str(path_str).unwrap();
-    let params = TableParams::default().base_path(path.as_ref());
+    let params = TableParams::default().set_base_path(path.as_ref());
     network.view_table(params).unwrap().to_string()
 }
 
@@ -294,12 +294,12 @@ fn table_depth_child_right() {
 
     let params = TableParams::default();
     let path = Path::from_str(".4").unwrap();
-    let params = params.base_path(path.as_ref());
+    let params = params.set_base_path(path.as_ref());
 
     let right_max = network.view_table(params).unwrap();
-    let right_depth_2 = network.view_table(params.max_depth(2)).unwrap();
-    let right_depth_1 = network.view_table(params.max_depth(1)).unwrap();
-    let right_depth_0 = network.view_table(params.max_depth(0)).unwrap();
+    let right_depth_2 = network.view_table(params.set_max_depth(2)).unwrap();
+    let right_depth_1 = network.view_table(params.set_max_depth(1)).unwrap();
+    let right_depth_0 = network.view_table(params.set_max_depth(0)).unwrap();
     assert_eq!(right_max, right_depth_2);
     insta::assert_snapshot!(right_depth_2, @r###"
     Table {
@@ -336,8 +336,8 @@ fn table_view_bucket() {
     );
     let path_1 = Path::from_str(".1").unwrap();
     let path_2 = Path::from_str(".0.0").unwrap();
-    let params_1 = TableParams::default().base_path(path_1.as_ref());
-    let params_2 = TableParams::default().base_path(path_2.as_ref());
+    let params_1 = TableParams::default().set_base_path(path_1.as_ref());
+    let params_2 = TableParams::default().set_base_path(path_2.as_ref());
     insta::assert_snapshot!(network.view_table(params_1).unwrap(), @r###"
     Table {
     X <--- .1 bucket (empty) in order
@@ -405,7 +405,7 @@ fn limit_width_root() {
     insta::assert_snapshot!(full);
 
     // Assert shortened view
-    let params_width_2 = params.max_depth(2).max_width(2);
+    let params_width_2 = params.set_max_depth(2).set_max_width(2);
     let width_2 = network.view_table(params_width_2).unwrap();
     insta::assert_snapshot!(width_2, @r###"
     Table {
@@ -419,7 +419,7 @@ fn limit_width_root() {
 
     let offset = Path::from_str(".2").unwrap();
     let width_2 = network
-        .view_table(params_width_2.base_path(offset.as_ref()))
+        .view_table(params_width_2.set_base_path(offset.as_ref()))
         .unwrap();
     insta::assert_snapshot!(width_2, @r###"
     Table {
@@ -445,12 +445,12 @@ fn limit_width_child() {
     fill_width_and_depth(&mut network, base.clone(), N);
 
     // full view is LONG
-    let params = TableParams::default().base_path(base.as_ref());
+    let params = TableParams::default().set_base_path(base.as_ref());
     let full = network.view_table(params).unwrap();
     insta::assert_snapshot!(full);
 
     // shortened view, from beginning column
-    let params_width_2 = params.max_depth(2).max_width(2);
+    let params_width_2 = params.set_max_depth(2).set_max_width(2);
     let width_2 = network.view_table(params_width_2).unwrap();
     insta::assert_snapshot!(width_2, @r###"
     Table {
@@ -464,7 +464,7 @@ fn limit_width_child() {
 
     // shortened view, from second column
     let offset_path = Path::from_str(".1.0").unwrap();
-    let params_width_2_offset = params_width_2.base_path(offset_path.as_ref());
+    let params_width_2_offset = params_width_2.set_base_path(offset_path.as_ref());
     let width_2_offset = network.view_table(params_width_2_offset).unwrap();
     insta::assert_snapshot!(width_2_offset, @r###"
     Table {

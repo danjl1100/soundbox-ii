@@ -1,0 +1,27 @@
+td {
+  /* display: flex; */
+}
+div.cell {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(0deg, transparent 49%, #000 50%, transparent 51%);
+}
+div.cell > div {
+  border: 1pt solid black;
+  background: white;
+}
+
+.arrow {
+  border: solid black;
+  border-width: 0 2pt 2pt 0;
+  padding: 2px;
+  display: inline-block;
+}
+
+.arrow.start {
+  transform: rotate(-180deg);
+}
+.arrow.end {
+  transform: rotate(-90deg);
+}

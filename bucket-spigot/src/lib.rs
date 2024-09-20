@@ -25,7 +25,7 @@ use std::collections::HashSet;
 mod child_vec;
 pub mod clap;
 pub mod path;
-mod view;
+pub mod view;
 
 pub mod order {
     //! Ordering for selecting child nodes and child items throughout the
@@ -51,13 +51,23 @@ pub mod order {
 }
 
 /// Group of buckets with a central spigot
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Network<T, U> {
     root: ChildVec<Child<T, U>>,
     buckets_needing_fill: HashSet<Path>,
     /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
     root_order: order::Root,
     bucket_id_counter: u64,
+}
+impl<T, U> Default for Network<T, U> {
+    fn default() -> Self {
+        Self {
+            root: ChildVec::default(),
+            buckets_needing_fill: HashSet::default(),
+            root_order: order::Root::default(),
+            bucket_id_counter: 0,
+        }
+    }
 }
 impl<T, U> Network<T, U> {
     /// Modify the network topology

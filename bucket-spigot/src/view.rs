@@ -1,5 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+//! Views for a [`Network`]
+
 use crate::{
     child_vec::{ChildVec, Weights},
     order::{OrderNode, OrderType, UnknownOrderPath},
@@ -8,13 +10,17 @@ use crate::{
 };
 use std::rc::Rc;
 
+/// Tabular view of a [`Network`]
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[allow(clippy::module_name_repetitions)]
 #[must_use]
 pub struct TableView {
-    cells: Vec<Vec<Cell>>,
+    rows: Vec<Row>,
     total_width: u32,
 }
+/// Sequence of [`Cell`]s at the same depth
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Row(Vec<Cell>);
 
 /// There are three kinds of `Cell`:
 ///
@@ -28,6 +34,84 @@ pub struct Cell {
     node: Option<NodeDetails>,
 }
 
+impl TableView {
+    /// Returns the [`Row`]s in the table
+    #[must_use]
+    pub fn get_rows(&self) -> &[Row] {
+        &self.rows
+    }
+}
+impl Row {
+    /// Returns the [`Cell`]s in the row
+    #[must_use]
+    pub fn get_cells(&self) -> &[Cell] {
+        &self.0
+    }
+    fn push(&mut self, cell: Cell) {
+        self.0.push(cell);
+    }
+}
+impl Cell {
+    /// Returns the width for displaying the [`Cell`]
+    #[must_use]
+    pub fn get_display_width(&self) -> u32 {
+        self.display_width
+    }
+    /// Returns the node at the [`Cell`] (if any, otherwise it is only a spacer)
+    #[must_use]
+    pub fn get_node(&self) -> Option<&NodeDetails> {
+        self.node.as_ref()
+    }
+}
+impl NodeDetails {
+    /// Returns the path of the node
+    pub fn get_path(&self) -> PathRef<'_> {
+        self.path.as_ref()
+    }
+    /// Returns `true` if the node is reachable from the spigot root
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+    /// Returns the weight of the node (or `None` if all siblings are equal)
+    #[must_use]
+    pub fn get_weight(&self) -> Option<u32> {
+        self.weight
+    }
+    /// Returns the ordering for the node's children
+    #[must_use]
+    pub fn get_order_type(&self) -> OrderType {
+        self.order_type
+    }
+}
+// OrderKind accessors
+impl NodeDetails {
+    /// If the node is a bucket, returns the number of items in the bucket
+    #[must_use]
+    pub fn get_bucket_item_count(&self) -> Option<u32> {
+        match self.kind {
+            NodeKind::Bucket { item_count } => Some(item_count),
+            NodeKind::Joint { .. } | NodeKind::JointAbbrev { .. } => None,
+        }
+    }
+    /// If the node is a joint, returns the number of child nodes in the joint
+    #[must_use]
+    pub fn get_joint_child_count(&self) -> Option<u32> {
+        match self.kind {
+            NodeKind::Joint { child_count } | NodeKind::JointAbbrev { child_count } => {
+                Some(child_count)
+            }
+            NodeKind::Bucket { .. } => None,
+        }
+    }
+    /// Returns whether the node is a joint with children hidden in the view
+    #[must_use]
+    pub fn is_joint_children_hidden(&self) -> bool {
+        matches!(self.kind, NodeKind::JointAbbrev { .. })
+    }
+}
+
+/// Details for a node
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct NodeDetails {
     path: Path,
@@ -52,14 +136,14 @@ enum NodeKind {
 }
 
 impl<T, U> Network<T, U> {
-    /// Returns a tabular view
+    /// Creates a [`TableView`]
     ///
     /// NOTE: each resulting node is either {Path/Id, Kind} or # omitted child nodes
     ///
     /// # Errors
     /// Returns an error if the specified path is incorrect, or the view dimensions are too large
     pub fn view_table(&self, table_params: TableParams<'_>) -> Result<TableView, ViewError> {
-        let mut cells = vec![];
+        let mut rows = vec![];
         let mut path = Path::empty();
 
         let mut item_node = &self.root;
@@ -93,7 +177,7 @@ impl<T, U> Network<T, U> {
         let total_width = table_params.find_child_nodes(
             item_node,
             order_node,
-            &mut cells,
+            &mut rows,
             &mut path,
             State {
                 depth: 0,
@@ -103,7 +187,7 @@ impl<T, U> Network<T, U> {
             child_start_index,
         )?;
 
-        Ok(TableView { cells, total_width })
+        Ok(TableView { rows, total_width })
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,7 +201,7 @@ impl TableParams<'_> {
         self,
         item_nodes: &ChildVec<Child<T, U>>,
         order_nodes: &[Rc<OrderNode>],
-        dest_cells: &mut Vec<Vec<Cell>>,
+        dest_cells: &mut Vec<Row>,
         path_buf: &mut Path,
         state: State,
         child_start_index: Option<usize>,
@@ -128,8 +212,8 @@ impl TableParams<'_> {
 
         assert!(dest_cells.len() >= state.depth);
         if dest_cells.len() == state.depth {
-            // add column for this depth
-            dest_cells.push(vec![]);
+            // add row for this depth
+            dest_cells.push(Row(vec![]));
         }
         assert!(dest_cells.len() > state.depth);
 
@@ -139,14 +223,16 @@ impl TableParams<'_> {
         }
 
         {
-            let dest_column = dest_cells
-                .get_mut(state.depth)
-                .expect("column pushed above");
-            let assumed_start = dest_column.iter().map(|cell| cell.display_width).sum();
+            let dest_row = dest_cells.get_mut(state.depth).expect("row pushed above");
+            let assumed_start = dest_row
+                .get_cells()
+                .iter()
+                .map(|cell| cell.display_width)
+                .sum();
             assert!(assumed_start <= state.position);
             match state.position.checked_sub(assumed_start) {
                 Some(gap_width) if gap_width > 0 => {
-                    dest_column.push(Cell {
+                    dest_row.push(Cell {
                         display_width: gap_width,
                         node: None,
                     });
@@ -180,10 +266,10 @@ impl TableParams<'_> {
         let mut state = state;
         for ((index, child), order) in item_and_order {
             if matches!(self.max_width, Some(max_width) if state.position >= max_width) {
-                let dest_column = dest_cells
+                let dest_row = dest_cells
                     .get_mut(state.depth)
-                    .expect("column pushed by caller, above");
-                dest_column.push(Cell {
+                    .expect("row pushed by caller, above");
+                dest_row.push(Cell {
                     display_width: 0,
                     node: None,
                 });
@@ -211,7 +297,7 @@ impl TableParams<'_> {
     }
     fn add_child_nodes<'a, T, U>(
         self,
-        dest_cells: &mut Vec<Vec<Cell>>,
+        dest_cells: &mut Vec<Row>,
         path_buf: &mut Path,
         State {
             depth,
@@ -263,7 +349,7 @@ impl TableParams<'_> {
             1
         };
 
-        let dest_column = dest_cells.get_mut(depth).expect("column pushed above");
+        let dest_row = dest_cells.get_mut(depth).expect("row pushed above");
         let node_details = NodeDetails {
             path: path_buf.clone(),
             active,
@@ -271,7 +357,7 @@ impl TableParams<'_> {
             kind,
             order_type: order.get_order_type(),
         };
-        dest_column.push(Cell {
+        dest_row.push(Cell {
             display_width,
             node: Some(node_details),
         });
@@ -293,7 +379,9 @@ pub struct TableParamsOwned {
     base_path: Option<Path>,
     // TODO add a max node count... to autodetect the depth based on how many total cells are seen
 }
+/// Parameters for constructing a table view
 #[derive(Clone, Copy, Debug, Default)]
+#[must_use]
 pub struct TableParams<'a> {
     max_depth: Option<u32>,
     max_width: Option<u32>,
@@ -301,6 +389,7 @@ pub struct TableParams<'a> {
 }
 #[allow(unused)]
 impl TableParamsOwned {
+    /// Returns a reference version of the owned fields
     pub fn as_ref(&self) -> TableParams<'_> {
         let Self {
             max_depth,
@@ -314,23 +403,28 @@ impl TableParamsOwned {
         }
     }
     // Modify functions for non-`Copy` types only
-    pub fn base_path(&mut self, base_path: Path) {
+    /// Replaces the owned base [`Path`]
+    pub fn set_base_path(&mut self, base_path: Path) {
         self.base_path.replace(base_path);
     }
 }
 impl<'a> TableParams<'a> {
-    pub fn max_depth(mut self, max_depth: u32) -> Self {
+    /// Sets the maximum depth
+    pub fn set_max_depth(mut self, max_depth: u32) -> Self {
         self.max_depth.replace(max_depth);
         self
     }
-    pub fn max_width(mut self, max_width: u32) -> Self {
+    /// Sets the maximum width
+    pub fn set_max_width(mut self, max_width: u32) -> Self {
         self.max_width.replace(max_width);
         self
     }
-    pub fn base_path(mut self, base_path: PathRef<'a>) -> Self {
+    /// Sets base [`Path`]
+    pub fn set_base_path(mut self, base_path: PathRef<'a>) -> Self {
         self.base_path.replace(base_path);
         self
     }
+    /// Returns an owned version of the fields (cloning [`PathRef`] if any is set)
     pub fn to_owned(self) -> TableParamsOwned {
         let Self {
             max_depth,
@@ -395,10 +489,10 @@ impl std::fmt::Display for TableView {
         writeln!(f, "Table {{")?;
         // format as one cell per line, and use symbols to represent the nodes
         // e.g. "XXXXXXX <------- description"
-        for row in &self.cells {
+        for row in self.get_rows() {
             let mut position = 0;
 
-            for cell in row {
+            for cell in row.get_cells() {
                 let width = usize::try_from(cell.display_width).expect("u32 fits in usize");
                 let remainder_width = total_width - width - position;
 
