@@ -184,6 +184,7 @@
             packages = [
               pkgs.alejandra
               pkgs.bacon
+              pkgs.cargo-deny
               pkgs.cargo-insta
               pkgs.cargo-mutants
               pkgs.cargo-outdated
