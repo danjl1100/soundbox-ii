@@ -7,16 +7,25 @@ div.cell {
   align-items: center;
   background: linear-gradient(0deg, transparent 49%, #000 50%, transparent 51%);
 }
-div.cell > div {
+div.cell > div.node {
   border: 1pt solid black;
   background: white;
 }
+div.cell.bucket > div.node {
+  background: lightblue;
+}
+div.cell.joint > div.node {
+  background: lightyellow;
+}
 
-.arrow {
+div.cell .arrow {
   border: solid black;
   border-width: 0 2pt 2pt 0;
   padding: 2px;
   display: inline-block;
+}
+div.cell.bucket .arrow {
+  display: none;
 }
 
 .arrow.start {

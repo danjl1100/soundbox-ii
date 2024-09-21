@@ -94,7 +94,7 @@ where
     fn write_view_html(table: &TableView, w: &mut impl std::fmt::Write) -> eyre::Result<()> {
         writeln!(
             w,
-            "<html><head><link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\" /></head>
+            "<html><head><link rel=\"stylesheet\" type=\"text/css\" href=\"examples/simple-html/style.css\" /></head>
              <body><table>"
         )?;
         for row in table.get_rows() {
@@ -102,11 +102,14 @@ where
             for cell in row.get_cells() {
                 let colspan = cell.get_display_width();
                 if let Some(node) = cell.get_node() {
-                    writeln!(w, "\t\t<td colspan=\"{colspan}\"><div class=\"cell\">")?;
-                    writeln!(w, "\t\t\t<span><i class=\"arrow start\"></i></span>")?;
-                    writeln!(w, "\t\t\t<div>{node}</div>")?;
-                    writeln!(w, "\t\t\t<span><i class=\"arrow end\"></i></span>")?;
-                    writeln!(w, "\t\t</div></td>")?;
+                    let node_class = if node.is_bucket() { "bucket" } else { "joint" };
+                    writeln!(w, "\t\t<td colspan=\"{colspan}\">")?;
+                    writeln!(w, "\t\t\t<div class=\"cell {node_class}\">")?;
+                    writeln!(w, "\t\t\t\t<span><i class=\"arrow start\"></i></span>")?;
+                    writeln!(w, "\t\t\t\t<div class=\"node\">{node}</div>")?;
+                    writeln!(w, "\t\t\t\t<span><i class=\"arrow end\"></i></span>")?;
+                    writeln!(w, "\t\t\t</div>")?;
+                    writeln!(w, "\t\t</div>")?;
                 } else {
                     writeln!(w, "\t\t<td colspan=\"{colspan}\"></td>")?;
                 }

@@ -84,8 +84,13 @@ impl NodeDetails {
         self.order_type
     }
 }
-// OrderKind accessors
+// NodeKind accessors
 impl NodeDetails {
+    /// Returns true if the node is a bucket
+    #[must_use]
+    pub fn is_bucket(&self) -> bool {
+        self.get_bucket_item_count().is_some()
+    }
     /// If the node is a bucket, returns the number of items in the bucket
     #[must_use]
     pub fn get_bucket_item_count(&self) -> Option<u32> {
