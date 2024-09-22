@@ -250,6 +250,7 @@ impl TableParams<'_> {
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[allow(clippy::module_name_repetitions)]
 /// Owned version of [`TableParams`] for use in serializing view requests
 pub struct TableParamsOwned {
     max_depth: Option<u32>,
@@ -259,6 +260,7 @@ pub struct TableParamsOwned {
 }
 /// Parameters for constructing a table view
 #[derive(Clone, Copy, Debug, Default)]
+#[allow(clippy::module_name_repetitions)]
 #[must_use]
 pub struct TableParams<'a> {
     max_depth: Option<u32>,
