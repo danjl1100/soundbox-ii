@@ -1,144 +1,13 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-//! Views for a [`Network`]
-
+use super::{error::count, error::ViewError, Cell, NodeDetails, NodeKind, Row, TableView};
 use crate::{
     child_vec::{ChildVec, Weights},
-    order::{OrderNode, OrderType, UnknownOrderPath},
+    order::OrderNode,
     path::{Path, PathRef},
-    Child, Network, UnknownPath,
+    Child, Network,
 };
 use std::rc::Rc;
-
-/// Tabular view of a [`Network`]
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-#[allow(clippy::module_name_repetitions)]
-#[must_use]
-pub struct TableView {
-    rows: Vec<Row>,
-    total_width: u32,
-}
-/// Sequence of [`Cell`]s at the same depth
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct Row(Vec<Cell>);
-
-/// There are three kinds of `Cell`:
-///
-///    1. Node, when: `display_width > 0`, `node = Some(_)`
-///    2. Spacer, when: `display_width > 0`, `node = None`
-///    3. Horizontal continuation marker (column width-wise), when: `display_width = 0`, `node = None`
-///
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct Cell {
-    display_width: u32,
-    node: Option<NodeDetails>,
-}
-
-impl TableView {
-    /// Returns the [`Row`]s in the table
-    #[must_use]
-    pub fn get_rows(&self) -> &[Row] {
-        &self.rows
-    }
-}
-impl Row {
-    /// Returns the [`Cell`]s in the row
-    #[must_use]
-    pub fn get_cells(&self) -> &[Cell] {
-        &self.0
-    }
-    fn push(&mut self, cell: Cell) {
-        self.0.push(cell);
-    }
-}
-impl Cell {
-    /// Returns the width for displaying the [`Cell`]
-    #[must_use]
-    pub fn get_display_width(&self) -> u32 {
-        self.display_width
-    }
-    /// Returns the node at the [`Cell`] (if any, otherwise it is only a spacer)
-    #[must_use]
-    pub fn get_node(&self) -> Option<&NodeDetails> {
-        self.node.as_ref()
-    }
-}
-impl NodeDetails {
-    /// Returns the path of the node
-    pub fn get_path(&self) -> PathRef<'_> {
-        self.path.as_ref()
-    }
-    /// Returns `true` if the node is reachable from the spigot root
-    #[must_use]
-    pub fn is_active(&self) -> bool {
-        self.active
-    }
-    /// Returns the weight of the node (or `None` if all siblings are equal)
-    #[must_use]
-    pub fn get_weight(&self) -> Option<u32> {
-        self.weight
-    }
-    /// Returns the ordering for the node's children
-    #[must_use]
-    pub fn get_order_type(&self) -> OrderType {
-        self.order_type
-    }
-}
-// NodeKind accessors
-impl NodeDetails {
-    /// Returns true if the node is a bucket
-    #[must_use]
-    pub fn is_bucket(&self) -> bool {
-        self.get_bucket_item_count().is_some()
-    }
-    /// If the node is a bucket, returns the number of items in the bucket
-    #[must_use]
-    pub fn get_bucket_item_count(&self) -> Option<u32> {
-        match self.kind {
-            NodeKind::Bucket { item_count } => Some(item_count),
-            NodeKind::Joint { .. } | NodeKind::JointAbbrev { .. } => None,
-        }
-    }
-    /// If the node is a joint, returns the number of child nodes in the joint
-    #[must_use]
-    pub fn get_joint_child_count(&self) -> Option<u32> {
-        match self.kind {
-            NodeKind::Joint { child_count } | NodeKind::JointAbbrev { child_count } => {
-                Some(child_count)
-            }
-            NodeKind::Bucket { .. } => None,
-        }
-    }
-    /// Returns whether the node is a joint with children hidden in the view
-    #[must_use]
-    pub fn is_joint_children_hidden(&self) -> bool {
-        matches!(self.kind, NodeKind::JointAbbrev { .. })
-    }
-}
-
-/// Details for a node
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct NodeDetails {
-    path: Path,
-    /// True if the node is reachable from the spigot root
-    active: bool,
-    /// Weight of the node relative to siblings (or `None` if all equal)
-    weight: Option<u32>,
-    kind: NodeKind,
-    order_type: OrderType,
-    // NOTE: exclude Filters list as it is relatively unbounded
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-enum NodeKind {
-    /// Bucket node
-    Bucket { item_count: u32 },
-    /// Joint node
-    Joint { child_count: u32 },
-    /// Vertical continuation marker (row depth-wise) - joint node with
-    /// children are hidden by `max_depth`
-    JointAbbrev { child_count: u32 },
-}
 
 impl<T, U> Network<T, U> {
     /// Creates a [`TableView`]
@@ -192,9 +61,10 @@ impl<T, U> Network<T, U> {
             child_start_index,
         )?;
 
-        Ok(TableView { rows, total_width })
+        Ok(TableView::new(rows, total_width))
     }
 }
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct State {
     depth: usize,
@@ -227,18 +97,21 @@ impl TableParams<'_> {
             assert_eq!(weights.get_max_index(), item_nodes_max_index);
         }
 
+        let parent_position = state.position;
         {
             let dest_row = dest_cells.get_mut(state.depth).expect("row pushed above");
             let assumed_start = dest_row
                 .get_cells()
                 .iter()
-                .map(|cell| cell.display_width)
+                .map(Cell::get_display_width)
                 .sum();
             assert!(assumed_start <= state.position);
             match state.position.checked_sub(assumed_start) {
                 Some(gap_width) if gap_width > 0 => {
                     dest_row.push(Cell {
                         display_width: gap_width,
+                        position: assumed_start,
+                        parent_position: assumed_start,
                         node: None,
                     });
                 }
@@ -267,7 +140,6 @@ impl TableParams<'_> {
                 .take(take.unwrap_or(usize::MAX))
         };
 
-        let start_position = state.position;
         let mut state = state;
         for ((index, child), order) in item_and_order {
             if matches!(self.max_width, Some(max_width) if state.position >= max_width) {
@@ -276,6 +148,8 @@ impl TableParams<'_> {
                     .expect("row pushed by caller, above");
                 dest_row.push(Cell {
                     display_width: 0,
+                    position: state.position,
+                    parent_position,
                     node: None,
                 });
                 break;
@@ -284,10 +158,11 @@ impl TableParams<'_> {
             // START - push index
             path_buf.push(index);
 
-            let display_width = self.add_child_nodes(
+            let display_width = self.add_child_node(
                 dest_cells,
                 path_buf,
                 state,
+                parent_position,
                 weights,
                 ((index, child), order),
             )?;
@@ -297,10 +172,10 @@ impl TableParams<'_> {
             // END - pop index
             path_buf.pop();
         }
-        let total_width = state.position - start_position;
+        let total_width = state.position - parent_position;
         Ok(total_width)
     }
-    fn add_child_nodes<'a, T, U>(
+    fn add_child_node<'a, T, U>(
         self,
         dest_cells: &mut Vec<Row>,
         path_buf: &mut Path,
@@ -309,6 +184,7 @@ impl TableParams<'_> {
             position,
             parent_active,
         }: State,
+        parent_position: u32,
         weights: Option<Weights<'_>>,
         ((index, child), order): ((usize, &'a Child<T, U>), &'a Rc<OrderNode>),
     ) -> Result<u32, ViewError>
@@ -364,16 +240,13 @@ impl TableParams<'_> {
         };
         dest_row.push(Cell {
             display_width,
+            position,
+            parent_position,
             node: Some(node_details),
         });
 
         Ok(display_width)
     }
-}
-fn count(label: &'static str, count: usize) -> Result<u32, ExcessiveViewDimensions> {
-    count
-        .try_into()
-        .map_err(|_| ExcessiveViewDimensions { label, count })
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -441,144 +314,5 @@ impl<'a> TableParams<'a> {
             max_width,
             base_path: base_path.map(PathRef::clone_inner),
         }
-    }
-}
-
-impl std::fmt::Display for NodeDetails {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::borrow::Cow;
-
-        let Self {
-            path,
-            active,
-            weight,
-            kind,
-            order_type,
-        } = self;
-        let kind_description = match kind {
-            NodeKind::Bucket { item_count: 0 } => Cow::Borrowed("bucket (empty)"),
-            NodeKind::Bucket { item_count: 1 } => Cow::Borrowed("bucket (1 item)"),
-            NodeKind::Bucket {
-                item_count: c @ 2..,
-            } => Cow::Owned(format!("bucket ({c} items)")),
-            //
-            NodeKind::Joint { child_count: 0 } | NodeKind::JointAbbrev { child_count: 0 } => {
-                Cow::Borrowed("joint (empty)")
-            }
-            NodeKind::Joint { child_count: 1 } => Cow::Borrowed("joint (1 child)"),
-            NodeKind::JointAbbrev { child_count: 1 } => Cow::Borrowed("joint (1 child hidden)"),
-            NodeKind::Joint {
-                child_count: c @ 2..,
-            } => Cow::Owned(format!("joint ({c} children)")),
-            NodeKind::JointAbbrev {
-                child_count: c @ 2..,
-            } => Cow::Owned(format!("joint ({c} children hidden)")),
-        };
-        //
-        write!(f, "{path} ")?;
-        if let Some(weight) = weight {
-            write!(f, "x{weight} ")?;
-        }
-        write!(f, "{kind_description} {order_type}")?;
-        if !active {
-            write!(f, " (inactive)")?;
-        }
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for TableView {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let total_width = usize::try_from(self.total_width).expect("u32 fits in usize");
-
-        writeln!(f, "Table {{")?;
-        // format as one cell per line, and use symbols to represent the nodes
-        // e.g. "XXXXXXX <------- description"
-        for row in self.get_rows() {
-            let mut position = 0;
-
-            for cell in row.get_cells() {
-                let width = usize::try_from(cell.display_width).expect("u32 fits in usize");
-                let remainder_width = total_width - width - position;
-
-                if let Some(node) = &cell.node {
-                    let marker_char = if node.active { 'X' } else { 'o' };
-                    let marker: String = std::iter::repeat(marker_char).take(width).collect();
-                    writeln!(
-                        f,
-                        "{:<position$}{marker} <{:-<remainder_width$}--- {node}",
-                        "", "",
-                    )?;
-                } else if cell.display_width == 0 {
-                    let marker = "?";
-                    writeln!(
-                        f,
-                        "{:<position$}{marker} <{:-<remainder_width$}--- (one or more nodes omitted...)",
-                        "", "")?;
-                }
-
-                position += width;
-            }
-        }
-        writeln!(f, "}}")
-    }
-}
-
-/// Error modifying the [`Network`]
-#[allow(clippy::module_name_repetitions)]
-pub struct ViewError(ViewErr);
-enum ViewErr {
-    UnknownPath(UnknownPath),
-    UnknownOrderPath(UnknownOrderPath),
-    ExcessiveViewDimensions(ExcessiveViewDimensions),
-}
-impl From<UnknownPath> for ViewError {
-    fn from(value: UnknownPath) -> Self {
-        Self(ViewErr::UnknownPath(value))
-    }
-}
-impl From<UnknownOrderPath> for ViewError {
-    fn from(value: UnknownOrderPath) -> Self {
-        Self(ViewErr::UnknownOrderPath(value))
-    }
-}
-impl From<ExcessiveViewDimensions> for ViewError {
-    fn from(value: ExcessiveViewDimensions) -> Self {
-        Self(ViewErr::ExcessiveViewDimensions(value))
-    }
-}
-impl From<ViewErr> for ViewError {
-    fn from(value: ViewErr) -> Self {
-        Self(value)
-    }
-}
-
-struct ExcessiveViewDimensions {
-    label: &'static str,
-    count: usize,
-}
-impl std::fmt::Display for ExcessiveViewDimensions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self { label, count } = self;
-        write!(f, "excessive view dimensions ({label} {count})")
-    }
-}
-
-impl std::error::Error for ViewError {}
-impl std::fmt::Display for ViewError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(inner) = self;
-        match inner {
-            ViewErr::UnknownPath(err) => write!(f, "{err}"),
-            ViewErr::UnknownOrderPath(err) => {
-                write!(f, "{err}")
-            }
-            ViewErr::ExcessiveViewDimensions(err) => write!(f, "{err}"),
-        }
-    }
-}
-impl std::fmt::Debug for ViewError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ViewError({self})")
     }
 }

@@ -36,6 +36,7 @@
         ".*sequencer/test_script.*\\.txt"
         ".*vlc-http/tests/input.*\\.txt"
         ".*\\.snap"
+        ".*\\.css"
       ];
     licenseOrCargo = path: type: (licenseFilter path type) || (craneLib.filterCargoSources path type);
     licenseOrCargoOrWeb = path: type: (licenseOrCargo path type) || (webFilter path type);

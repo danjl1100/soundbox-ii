@@ -25,7 +25,6 @@ use std::collections::HashSet;
 mod child_vec;
 pub mod clap;
 pub mod path;
-pub mod view;
 
 pub mod order {
     //! Ordering for selecting child nodes and child items throughout the
@@ -48,6 +47,21 @@ pub mod order {
 
     #[cfg(test)]
     mod tests;
+}
+
+pub mod view {
+    //! Views for a [`Network`](`crate::Network`)
+
+    use table_model::NodeKind;
+    #[allow(clippy::module_name_repetitions)]
+    pub use table_model::TableView;
+    pub use table_model::{Cell, NodeDetails, Row};
+    mod table_model;
+
+    pub use table::{TableParams, TableParamsOwned};
+    mod table;
+
+    mod error;
 }
 
 /// Group of buckets with a central spigot
