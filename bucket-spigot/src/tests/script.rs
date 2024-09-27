@@ -327,7 +327,7 @@ impl Topology<usize> {
             .iter()
             .enumerate()
             .map(|(index, node)| {
-                let weight = weights.map_or(0, |weights| weights.get_as_usize(index));
+                let weight = weights.map_or(0, |weights| weights.index_as_usize(index));
                 let target = match node {
                     crate::Child::Bucket(_) => Self::LeafEmpty,
                     crate::Child::Joint(joint) => Self::new_from_weights(&joint.next),

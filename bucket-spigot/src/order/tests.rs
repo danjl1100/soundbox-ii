@@ -43,7 +43,7 @@ struct Validator<'a> {
 impl<'a> Validator<'a> {
     fn new(order_type: OrderType, weights: Weights<'a>, uut_changed_weights: bool) -> Self {
         let weights_sum: usize = (0..=weights.get_max_index())
-            .map(|index| weights.get_as_usize(index))
+            .map(|index| weights.index_as_usize(index))
             .sum();
         Self {
             step_count: 0,
@@ -137,7 +137,7 @@ impl<'a> Validator<'a> {
 
         // increased, skipping zero-weight entries
         let idx_to_check = || prev_plus_one..next;
-        if prev_plus_one < next && idx_to_check().map(|i| self.weights.get(i)).all(|w| w == 0) {
+        if prev_plus_one < next && idx_to_check().map(|i| self.weights[i]).all(|w| w == 0) {
             let checked_count = idx_to_check().count();
             assert!(
                 checked_count > 0,
@@ -148,7 +148,7 @@ impl<'a> Validator<'a> {
 
         // wrapped around, skipping zero-weight entries
         let idx_to_check = || ((prev + 1)..=max_index).chain(0..next);
-        if idx_to_check().map(|i| self.weights.get(i)).all(|w| w == 0) {
+        if idx_to_check().map(|i| self.weights[i]).all(|w| w == 0) {
             let checked_count = idx_to_check().count();
             assert!(
                 checked_count > 0,
@@ -161,7 +161,7 @@ impl<'a> Validator<'a> {
     }
 
     fn validate_next_random(&self, next: usize) {
-        let weight = self.weights.get(next);
+        let weight = self.weights[next];
         assert!(
             weight != 0,
             "should not select {next}, which has weight {weight}"
@@ -172,7 +172,7 @@ impl<'a> Validator<'a> {
         let len = self.weights.get_max_index() + 1;
         if (1..len).contains(&self.step_count) && !self.uut_changed_weights {
             let seen = self.seen[next];
-            let target_weight = self.weights.get(next);
+            let target_weight = self.weights[next];
             assert!(
                 seen < target_weight,
                 "already seen: {next} (seen {seen} >= target_weight {target_weight})"
@@ -187,7 +187,7 @@ impl<'a> Validator<'a> {
                 .iter()
                 .enumerate()
                 .map(|(index, &seen)| {
-                    let weight = self.weights.get(index);
+                    let weight = self.weights[index];
                     if weight == 0 {
                         Err(seen)
                     } else {

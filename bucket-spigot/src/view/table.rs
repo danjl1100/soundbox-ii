@@ -33,8 +33,7 @@ impl<T, U> Network<T, U> {
             };
             for index in parent_path {
                 path.push(index);
-                parent_active =
-                    parent_active && item_node.weights().map_or(false, |w| w.get(index) != 0);
+                let weights = item_node.weights();
                 item_node = match item_node.children().get(index) {
                     Some(Child::Joint(joint)) => Ok(&joint.next),
                     Some(Child::Bucket(_)) | None => {
@@ -45,6 +44,7 @@ impl<T, U> Network<T, U> {
                     Some(node) => Ok(node.get_children()),
                     None => Err(crate::order::UnknownOrderPath(base_path.clone_inner())),
                 }?;
+                parent_active = parent_active && weights.map_or(false, |w| w[index] != 0);
             }
         }
 
@@ -194,7 +194,7 @@ impl TableParams<'_> {
     {
         let weight = match weights {
             Some(weights) if weights.is_unity() => None,
-            Some(weights) => Some(weights.get(index)),
+            Some(weights) => Some(weights[index]),
             // no weights available means "all zero" weights
             None => Some(0),
         };

@@ -120,22 +120,12 @@ mod weights {
             }
         }
         /// Gets the weight at the specified index
-        ///
-        /// # Panics
-        /// Panics if the specified index is out of bounds
-        pub fn get(self, index: usize) -> u32 {
-            const EXPECT_IN_BOUNDS: &str = "index should be in bounds for Weights::get";
-
+        pub fn get(self, index: usize) -> Option<u32> {
             let Self(inner) = self;
             match inner {
-                Inner::Unity { max_index } => {
-                    assert!(index <= max_index, "{EXPECT_IN_BOUNDS}");
-                    1
-                }
-                Inner::Custom { weights } => {
-                    assert!(index < weights.len(), "{EXPECT_IN_BOUNDS}");
-                    weights[index]
-                }
+                Inner::Unity { max_index } if index <= max_index => Some(1),
+                Inner::Unity { .. } => None,
+                Inner::Custom { weights } => weights.get(index).copied(),
             }
         }
         /// Gets the weight at the specified index, as type `usize`
@@ -146,10 +136,34 @@ mod weights {
         ///
         /// Note that the latter is unlikely for the use-case: when would you want to weight a node
         /// more heavily than there are addresses on the system? (e.g. system where `usize` is `u16`)
-        pub fn get_as_usize(self, index: usize) -> usize {
-            self.get(index)
+        pub fn index_as_usize(self, index: usize) -> usize {
+            self[index]
                 .try_into()
                 .expect("weight should fit in platform's usize")
+        }
+    }
+    impl<'a> std::ops::Index<usize> for Weights<'a> {
+        type Output = u32;
+
+        fn index(&self, index: usize) -> &Self::Output {
+            const EXPECT_IN_BOUNDS: &str =
+                "index should be in bounds for <Weights as Index>::index";
+
+            let Self(inner) = *self;
+            match inner {
+                Inner::Unity { max_index } => {
+                    assert!(
+                        index <= max_index,
+                        "{EXPECT_IN_BOUNDS} (index={index}, max_index={max_index})"
+                    );
+                    &1
+                }
+                Inner::Custom { weights } => {
+                    let len = weights.len();
+                    assert!(index < len, "{EXPECT_IN_BOUNDS} (index={index}, len={len})");
+                    &weights[index]
+                }
+            }
         }
     }
 }

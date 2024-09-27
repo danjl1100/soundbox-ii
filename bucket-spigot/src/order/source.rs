@@ -113,7 +113,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
             let current = self.next_index;
             let new_count = self.count + 1;
 
-            let goal_weight = weights.get_as_usize(current);
+            let goal_weight = weights.index_as_usize(current);
             if self.count >= goal_weight {
                 // increment index
                 self.next_index = current.wrapping_add(1);
@@ -197,7 +197,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
         if items_count > self.prev_items_count {
             // add new indices
             let new_elems = (self.prev_items_count..items_count)
-                .flat_map(|index| std::iter::repeat(index).take(weights.get_as_usize(index)));
+                .flat_map(|index| std::iter::repeat(index).take(weights.index_as_usize(index)));
             let count = new_elems.clone().count();
 
             let mut buf = vec![];
@@ -237,7 +237,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Random {
 
             let mut weight_range_max = 0;
             for index in 0..=max_index {
-                let weight = weights.get_as_usize(index);
+                let weight = weights.index_as_usize(index);
                 if weight == 0 {
                     continue;
                 }
