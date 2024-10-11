@@ -372,7 +372,7 @@ fn fill_width_at<T, U>(network: &mut Network<T, U>, parent: PathRef<'_>, count: 
     for _ in 0..count {
         network
             .modify(crate::ModifyCmd::AddJoint {
-                parent: parent.clone_inner(),
+                parent: parent.to_owned(),
             })
             .unwrap();
     }
@@ -485,4 +485,13 @@ fn limit_width_child() {
     X <---- .1.0.0.0 joint (1 child hidden) in order
     }
     "###);
+}
+
+#[test]
+fn view_arbitrary_network() {
+    arbtest::arbtest(|u| {
+        let network: Network<String, String> = Network::arbitrary(u)?;
+        println!("{}", network.view_table_default());
+        Ok(())
+    });
 }

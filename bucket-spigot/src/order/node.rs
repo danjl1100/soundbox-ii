@@ -58,7 +58,7 @@ impl Node {
 
         for next_index in path {
             let Some(next) = current.children.get_mut(next_index) else {
-                return Err(UnknownOrderPath(path.clone_inner()));
+                return Err(UnknownOrderPath(path.to_owned()));
             };
             current = Rc::make_mut(next);
         }

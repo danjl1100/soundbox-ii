@@ -44,13 +44,11 @@ impl<T, U> Network<T, U> {
                 let weights = item_node.weights();
                 item_node = match item_node.children().get(index) {
                     Some(Child::Joint(joint)) => Ok(&joint.next),
-                    Some(Child::Bucket(_)) | None => {
-                        Err(crate::UnknownPath(base_path.clone_inner()))
-                    }
+                    Some(Child::Bucket(_)) | None => Err(crate::UnknownPath(base_path.to_owned())),
                 }?;
                 order_node = match order_node.get(index) {
                     Some(node) => Ok(node.get_children()),
-                    None => Err(crate::order::UnknownOrderPath(base_path.clone_inner())),
+                    None => Err(crate::order::UnknownOrderPath(base_path.to_owned())),
                 }?;
                 parent_active = parent_active && weights.map_or(false, |w| w[index] != 0);
             }
@@ -327,7 +325,7 @@ impl<'a> TableParams<'a> {
         TableParamsOwned {
             max_depth,
             max_width,
-            base_path: base_path.map(PathRef::clone_inner),
+            base_path: base_path.map(PathRef::to_owned),
         }
     }
 }

@@ -47,9 +47,6 @@ fn parse_cli(args: &[&'static str]) -> Result<crate::ModifyCmd<String, String>, 
         .map_err(|err| err.to_string())
 }
 
-// TODO test_exhaustive for `parse_cli` tests
-
-#[test]
 fn add_bucket() {
     insta::assert_ron_snapshot!(parse_cli(&["add-bucket", "."]), @r###"
     Ok(AddBucket(
@@ -62,7 +59,6 @@ fn add_bucket() {
     ))
     "###);
 }
-#[test]
 fn add_joint() {
     insta::assert_ron_snapshot!(parse_cli(&["add-joint", "."]), @r###"
     Ok(AddJoint(
@@ -75,7 +71,13 @@ fn add_joint() {
     ))
     "###);
 }
-#[test]
+fn delete_empty() {
+    insta::assert_ron_snapshot!(parse_cli(&["delete-empty", ".5.6.7.8"]), @r###"
+    Ok(DeleteEmpty(
+      path: ".5.6.7.8",
+    ))
+    "###);
+}
 fn fill_bucket() {
     insta::assert_ron_snapshot!(parse_cli(&["fill-bucket", ".1.2.3.4", "a", "b", "foo"]), @r###"
     Ok(FillBucket(
@@ -88,7 +90,6 @@ fn fill_bucket() {
     ))
     "###);
 }
-#[test]
 fn set_filters() {
     insta::assert_ron_snapshot!(parse_cli(&["set-filters", ".1.2", "a", "b", "foo"]), @r###"
     Ok(SetFilters(
@@ -101,7 +102,6 @@ fn set_filters() {
     ))
     "###);
 }
-#[test]
 fn set_weight() {
     insta::assert_ron_snapshot!(parse_cli(&["set-weight", ".1.2.3.4", "50"]), @r###"
     Ok(SetWeight(
@@ -109,6 +109,39 @@ fn set_weight() {
       new_weight: 50,
     ))
     "###);
+}
+fn set_order_type() {
+    insta::assert_ron_snapshot!(parse_cli(&["set-order-type", ".5.6.7.8", "in-order"]), @r###"
+    Ok(SetOrderType(
+      path: ".5.6.7.8",
+      new_order_type: InOrder,
+    ))
+    "###);
+    insta::assert_ron_snapshot!(parse_cli(&["set-order-type", ".5.6.7.8", "random"]), @r###"
+    Ok(SetOrderType(
+      path: ".5.6.7.8",
+      new_order_type: Random,
+    ))
+    "###);
+    insta::assert_ron_snapshot!(parse_cli(&["set-order-type", ".5.6.7.8", "shuffle"]),@r###"
+    Ok(SetOrderType(
+      path: ".5.6.7.8",
+      new_order_type: Shuffle,
+    ))
+    "###);
+}
+#[test]
+fn parse_cli_exhaustive() {
+    test_exhaustive! {
+        for ModifyCmd<String, String>,
+        ModifyCmd::AddBucket { .. } => { add_bucket(); }
+        ModifyCmd::AddJoint { .. } => { add_joint(); }
+        ModifyCmd::DeleteEmpty { .. } => { delete_empty(); }
+        ModifyCmd::FillBucket { .. } => { fill_bucket(); }
+        ModifyCmd::SetFilters { .. } => { set_filters(); }
+        ModifyCmd::SetWeight { .. } => { set_weight(); }
+        ModifyCmd::SetOrderType { .. } => { set_order_type(); }
+    }
 }
 
 impl<T, U> crate::ModifyCmd<T, U>

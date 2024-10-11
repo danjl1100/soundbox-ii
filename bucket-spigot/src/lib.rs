@@ -84,6 +84,11 @@ impl<T, U> Default for Network<T, U> {
         }
     }
 }
+
+type OptChildrenRef<'a, T, U> = Option<&'a ChildVec<Child<T, U>>>;
+type OptChildRef<'a, T, U> = Option<&'a Child<T, U>>;
+type OptChildrenAndChildRef<'a, T, U> = (OptChildrenRef<'a, T, U>, OptChildRef<'a, T, U>);
+
 impl<T, U> Network<T, U> {
     /// Modify the network topology
     ///
@@ -135,43 +140,39 @@ impl<T, U> Network<T, U> {
     /// # Errors
     ///
     /// Returns an error if the path is unknown
-    pub fn get_filters(&self, path: Path) -> Result<Vec<&[U]>, UnknownPath> {
+    pub fn get_filters(&self, path: path::PathRef<'_>) -> Result<Vec<&[U]>, UnknownPath> {
         let mut filter_groups = Vec::new();
 
-        let mut current = Some(&self.root);
-
-        // TODO [1/5] find common pattern to simplify similar indexing logic...?
-        for next_index in &path {
-            let Some(next_child) = current.and_then(|c| c.children().get(next_index)) else {
-                return Err(UnknownPath(path));
-            };
-
-            let filters = match next_child {
+        self.for_each_child(path, |child| {
+            let filters = match child {
                 Child::Bucket(bucket) => &bucket.filters,
                 Child::Joint(joint) => &joint.filters,
             };
             if !filters.is_empty() {
                 filter_groups.push(&filters[..]);
             }
-
-            current = match next_child {
-                Child::Bucket(_) => None,
-                Child::Joint(joint) => Some(&joint.next),
-            };
-        }
+        })
+        .map_err(UnknownPathRef::to_owned)?;
 
         Ok(filter_groups)
     }
 
-    #[cfg(test)]
-    fn count_child_nodes_of(&self, path: Path) -> Result<Option<usize>, UnknownPath> {
+    /// Returns the children at the path (if any) and the matched node (if not root)
+    fn for_each_child<'a, 'b>(
+        &'a self,
+        path: path::PathRef<'b>,
+        mut process_child_fn: impl FnMut(&'a Child<T, U>),
+    ) -> Result<OptChildrenAndChildRef<'a, T, U>, UnknownPathRef<'b>> {
         let mut current = Some(&self.root);
+        let mut found = None;
 
-        // TODO [6/6] find common pattern... etc.
-        for next_index in &path {
+        for next_index in path {
             let Some(next_child) = current.and_then(|c| c.children().get(next_index)) else {
-                return Err(UnknownPath(path));
+                return Err(UnknownPathRef(path));
             };
+
+            process_child_fn(next_child);
+            found = Some(next_child);
 
             current = match next_child {
                 Child::Bucket(_) => None,
@@ -179,10 +180,19 @@ impl<T, U> Network<T, U> {
             };
         }
 
-        let child_node_count = current.map(|c| c.children().len());
+        Ok((current, found))
+    }
+
+    #[cfg(test)]
+    fn count_child_nodes_of<'a>(
+        &self,
+        path: path::PathRef<'a>,
+    ) -> Result<Option<usize>, UnknownPathRef<'a>> {
+        let (children, _found) = self.for_each_child(path, |_| {})?;
+
+        let child_node_count = children.map(child_vec::ChildVec::len);
         Ok(child_node_count)
     }
-    // TODO add `get_child_paths_of(&self, path: Path) -> Result<Vec<Path>, UnknownPath>`
 
     fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
         let mut current = &mut self.root;
@@ -547,10 +557,32 @@ impl std::fmt::Debug for ModifyError {
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
 #[derive(Debug)]
 pub struct UnknownPath(Path);
+impl UnknownPath {
+    /// Returns an error with a reference to the inner [`Path`]
+    #[must_use]
+    pub fn as_ref(&self) -> UnknownPathRef<'_> {
+        UnknownPathRef(self.0.as_ref())
+    }
+}
 impl std::fmt::Display for UnknownPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+/// The specified path does not match a node (any of the joints, buckets, or root spigot)
+#[derive(Clone, Copy, Debug)]
+pub struct UnknownPathRef<'a>(path::PathRef<'a>);
+impl UnknownPathRef<'_> {
+    /// Clones to create an owned version of the error
+    fn to_owned(self) -> UnknownPath {
+        UnknownPath(self.0.to_owned())
+    }
+}
+impl std::fmt::Display for UnknownPathRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(path) = self;
-        write!(f, "unknown path: {path:?}")
+        write!(f, "unknown path: {path}")
     }
 }
 
@@ -567,6 +599,7 @@ mod tests {
     pub(crate) use sync::run_with_timeout;
 
     // utils
+    mod arb_network;
     mod arb_rng;
     mod script;
     mod sync;

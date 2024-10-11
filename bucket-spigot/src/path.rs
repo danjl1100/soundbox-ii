@@ -61,7 +61,7 @@ impl PathRef<'_> {
         Some((last, Self(rest)))
     }
     /// Clones the inner [`Path`]
-    pub fn clone_inner(self) -> Path {
+    pub fn to_owned(self) -> Path {
         Path(self.0.to_vec())
     }
 }

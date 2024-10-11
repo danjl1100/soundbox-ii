@@ -417,7 +417,7 @@ fn fill_path_past_bucket() {
       BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      ExpectError("modify fill-bucket .0.0", "unknown path: Path(.0.0)"),
+      ExpectError("modify fill-bucket .0.0", "unknown path: .0.0"),
     ])
     "###);
 }
@@ -436,7 +436,7 @@ fn set_filter_past_bucket() {
       BucketsNeedingFill("modify add-bucket .", [
         ".0",
       ]),
-      ExpectError("modify set-filters .0.0", "unknown path: Path(.0.0)"),
+      ExpectError("modify set-filters .0.0", "unknown path: .0.0"),
     ])
     "###);
 }

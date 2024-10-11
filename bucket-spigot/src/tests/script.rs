@@ -216,7 +216,7 @@ where
                 Ok(Vec::from_iter(entry))
             }
             Command::GetFilters { path } => {
-                let filters = self.get_filters(path.clone()).map_err(ModifyError::from)?;
+                let filters = self.get_filters(path.as_ref()).map_err(ModifyError::from)?;
                 let filters = filters
                     .iter()
                     .map(|&filter_set| filter_set.to_owned())
