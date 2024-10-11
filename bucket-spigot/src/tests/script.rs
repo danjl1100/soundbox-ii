@@ -119,8 +119,14 @@ impl Network<String, String> {
     pub(super) fn new_strings() -> Self {
         Self::default()
     }
+    pub(super) fn new_strings_build_from_script(commands: &str) -> (Self, Log<String, String>) {
+        let mut network = Self::new_strings();
+        let log = network.run_script(commands);
+        (network, log)
+    }
     pub(super) fn new_strings_run_script(commands: &str) -> Log<String, String> {
-        Self::new_strings().run_script(commands)
+        let (_, log) = Self::new_strings_build_from_script(commands);
+        log
     }
 }
 

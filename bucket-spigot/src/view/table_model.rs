@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// Tabular view of a [`Network`](`crate::Network`)
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize)]
 #[must_use]
 pub struct TableView {
     rows: Vec<Row>,
@@ -300,5 +300,10 @@ impl std::fmt::Display for TableView {
             }
         }
         writeln!(f, "}}")
+    }
+}
+impl std::fmt::Debug for TableView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
     }
 }

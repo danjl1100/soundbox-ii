@@ -36,6 +36,16 @@ pub enum OrderType {
     /// [`InOrder`](`Self::InOrder`)
     Shuffle,
 }
+impl OrderType {
+    #[cfg(test)]
+    pub(crate) fn iter_all() -> impl Iterator<Item = Self> {
+        let _ = |value: Self| match value {
+            // MUST match the array below
+            Self::InOrder | Self::Random | Self::Shuffle => {}
+        };
+        [Self::InOrder, Self::Random, Self::Shuffle].into_iter()
+    }
+}
 impl std::fmt::Display for OrderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {

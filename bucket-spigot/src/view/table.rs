@@ -10,6 +10,14 @@ use crate::{
 use std::rc::Rc;
 
 impl<T, U> Network<T, U> {
+    /// Creates a [`TableView`] with default parameters
+    ///
+    /// See [`Self::view_table`] for details
+    #[allow(clippy::missing_panics_doc)]
+    pub fn view_table_default(&self) -> TableView {
+        self.view_table(TableParams::default())
+            .expect("table_view with default params should succeed")
+    }
     /// Creates a [`TableView`]
     ///
     /// NOTE: each resulting node is either {Path/Id, Kind} or # omitted child nodes
@@ -48,18 +56,23 @@ impl<T, U> Network<T, U> {
             }
         }
 
-        let total_width = table_params.find_child_nodes(
-            item_node,
-            order_node,
-            &mut rows,
-            &mut path,
-            State {
-                depth: 0,
-                position: 0,
-                parent_active,
-            },
-            child_start_index,
-        )?;
+        let total_width = if item_node.is_empty() {
+            // TODO why does this need to be a special case?  maybe adjust empty definition?
+            0
+        } else {
+            table_params.find_child_nodes(
+                item_node,
+                order_node,
+                &mut rows,
+                &mut path,
+                State {
+                    depth: 0,
+                    position: 0,
+                    parent_active,
+                },
+                child_start_index,
+            )?
+        };
 
         Ok(TableView::new(rows, total_width))
     }

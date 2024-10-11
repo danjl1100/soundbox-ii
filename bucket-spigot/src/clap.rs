@@ -25,7 +25,7 @@ where
 {
 }
 
-/// Low-level Control commands for VLC (correspond to a single API call)
+/// Command to modify a network, from the command-line
 #[derive(Clone, clap::Subcommand, Debug, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ModifyCmd<T, U>
@@ -82,7 +82,7 @@ where
 /// Ordering scheme for child nodes of a joint, or child items of a bucket
 ///
 /// NOTE: Separate from [`crate::order::OrderType`] to emphasize `clap` as a public (string) interface
-#[derive(Clone, clap::ValueEnum, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, clap::ValueEnum, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OrderType {
     /// Selects each child in turn, repeating each according to the weights
     InOrder,
@@ -93,122 +93,146 @@ pub enum OrderType {
     /// [`InOrder`](`Self::InOrder`)
     Shuffle,
 }
-impl<T, U> From<ModifyCmd<T, U>> for crate::ModifyCmd<T, U>
-where
-    T: ArgBounds,
-    U: ArgBounds,
-{
-    fn from(value: ModifyCmd<T, U>) -> Self {
-        match value {
-            ModifyCmd::AddBucket { parent } => Self::AddBucket { parent },
-            ModifyCmd::AddJoint { parent } => Self::AddJoint { parent },
-            ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty { path },
-            ModifyCmd::FillBucket {
-                bucket,
-                new_contents,
-            } => Self::FillBucket {
-                bucket,
-                new_contents,
-            },
-            ModifyCmd::SetFilters { path, new_filters } => Self::SetFilters { path, new_filters },
-            ModifyCmd::SetWeight { path, new_weight } => Self::SetWeight { path, new_weight },
-            ModifyCmd::SetOrderType {
-                path,
-                new_order_type,
-            } => Self::SetOrderType {
-                path,
-                new_order_type: new_order_type.into(),
-            },
+
+macro_rules! mirror_impl {
+
+    // Simple structs (no generics)
+    (impl From $order_ty_a:ty, $order_ty_b:ty {
+        $($variant:ident),* $(,)?
+    }) => {
+        mirror_impl!(impl @one $order_ty_a, $order_ty_b { $($variant),* });
+        mirror_impl!(impl @one $order_ty_b, $order_ty_a { $($variant),* });
+    };
+    (impl @one $ty_from:ty, $ty_to:ty {$($tt:tt)*}) => {
+        impl From<$ty_from> for $ty_to {
+            mirror_impl!{
+                @fn from $ty_from = $ty_from, $ty_to {
+                    $($tt)*
+                }
+            }
+        }
+    };
+
+    // ModifyCmd specific generics
+    (impl From ModifyCmd $modify_path_a:path = $modify_ty_a:ty, $modify_path_b:path = $modify_ty_b:ty {
+        $($variant:ident {
+            $($field:ident),* $(,)?
+        }),* $(,)?
+    }) => {
+        mirror_impl!(impl @one $modify_path_a = $modify_ty_a, $modify_ty_b { $($variant { $($field),* },)* });
+        mirror_impl!(impl @one $modify_path_b = $modify_ty_b, $modify_ty_a { $($variant { $($field),* },)* });
+    };
+    (impl @one $path_from:path = $ty_from:ty, $ty_to:ty { $($tt:tt)* }) => {
+        impl<T, U> From<$ty_from> for $ty_to
+        where
+            T: ArgBounds,
+            U: ArgBounds,
+        {
+            mirror_impl!( @fn from $path_from = $ty_from, $ty_to { $($tt)* } );
+        }
+    };
+
+    // common `fn from`, uses `Into::into` for every field
+    (@fn from $path_from:path = $ty_from:ty, $ty_to:ty {
+        $($variant:ident
+            $({
+                $($field:ident),* $(,)?
+            })?
+        ),* $(,)?
+    }) => {
+        fn from(value: $ty_from) -> Self {
+            use $path_from as Other;
+            match value {
+                $(
+                    Other::$variant $({
+                        $($field),*
+                    })? => Self::$variant $({
+                        $($field : $field.into()),*
+                    })?
+                ),*
+            }
         }
     }
+
 }
-impl From<OrderType> for crate::order::OrderType {
-    fn from(value: OrderType) -> Self {
-        match value {
-            OrderType::InOrder => Self::InOrder,
-            OrderType::Shuffle => Self::Shuffle,
-            OrderType::Random => Self::Random,
-        }
+
+mirror_impl! {
+    impl From crate::order::OrderType, self::OrderType {
+        InOrder,
+        Shuffle,
+        Random,
+    }
+}
+mirror_impl! {
+    impl From ModifyCmd crate::ModifyCmd = crate::ModifyCmd<T, U>, self::ModifyCmd = self::ModifyCmd<T, U> {
+        AddBucket { parent },
+        AddJoint { parent },
+        DeleteEmpty { path },
+        FillBucket { bucket, new_contents },
+        SetFilters { path, new_filters },
+        SetWeight { path, new_weight },
+        SetOrderType { path, new_order_type },
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::ModifyCmd;
-    use clap::Parser as _;
+impl<T, U> crate::ModifyCmd<T, U>
+where
+    T: ArgBounds,
+    U: ArgBounds,
+{
+    pub(crate) fn display_as_cmd(&self) -> impl std::fmt::Display + '_ {
+        use crate::ModifyCmd as Other;
+        use clap_crate::ValueEnum as _;
 
-    #[derive(clap::Parser, serde::Serialize)]
-    struct TestCli {
-        #[clap(subcommand)]
-        modify_cmd: ModifyCmd<String, String>,
-    }
+        struct Ret<'a, T, U>(&'a Other<T, U>)
+        where
+            T: ArgBounds,
+            U: ArgBounds;
+        impl<T, U> std::fmt::Display for Ret<'_, T, U>
+        where
+            T: ArgBounds,
+            U: ArgBounds,
+        {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.0 {
+                    Other::AddBucket { parent } => write!(f, "add-bucket {parent}"),
+                    Other::AddJoint { parent } => write!(f, "add-joint {parent}"),
+                    Other::DeleteEmpty { path } => write!(f, "delete-empty {path}"),
+                    Other::FillBucket {
+                        bucket,
+                        new_contents,
+                    } => {
+                        write!(f, "fill-bucket {bucket}")?;
+                        for item in new_contents {
+                            write!(f, " {item:?}")?;
+                        }
+                        Ok(())
+                    }
+                    Other::SetFilters { path, new_filters } => {
+                        write!(f, "set-filters {path}")?;
+                        for filter in new_filters {
+                            write!(f, " {filter:?}")?;
+                        }
+                        Ok(())
+                    }
+                    Other::SetWeight { path, new_weight } => {
+                        write!(f, "set-weight {path} {new_weight}")
+                    }
+                    Other::SetOrderType {
+                        path,
+                        new_order_type,
+                    } => {
+                        let new_order_type = OrderType::from(*new_order_type)
+                            .to_possible_value()
+                            .expect("no clap-skipped OrderTypes");
+                        let new_order_type = new_order_type.get_name();
 
-    fn parse_cli(args: &[&'static str]) -> Result<crate::ModifyCmd<String, String>, String> {
-        let args = std::iter::once("_").chain(args.iter().copied());
-        TestCli::try_parse_from(args)
-            .map(|TestCli { modify_cmd }| modify_cmd.into())
-            .map_err(|err| err.to_string())
-    }
-
-    #[test]
-    fn add_bucket() {
-        insta::assert_ron_snapshot!(parse_cli(&["add-bucket", "."]), @r###"
-        Ok(AddBucket(
-          parent: ".",
-        ))
-        "###);
-        insta::assert_ron_snapshot!(parse_cli(&["add-bucket", ".1.2.3.4"]), @r###"
-        Ok(AddBucket(
-          parent: ".1.2.3.4",
-        ))
-        "###);
-    }
-    #[test]
-    fn add_joint() {
-        insta::assert_ron_snapshot!(parse_cli(&["add-joint", "."]), @r###"
-        Ok(AddJoint(
-          parent: ".",
-        ))
-        "###);
-        insta::assert_ron_snapshot!(parse_cli(&["add-joint", ".1.2.3.4"]), @r###"
-        Ok(AddJoint(
-          parent: ".1.2.3.4",
-        ))
-        "###);
-    }
-    #[test]
-    fn fill_bucket() {
-        insta::assert_ron_snapshot!(parse_cli(&["fill-bucket", ".1.2.3.4", "a", "b", "foo"]), @r###"
-        Ok(FillBucket(
-          bucket: ".1.2.3.4",
-          new_contents: [
-            "a",
-            "b",
-            "foo",
-          ],
-        ))
-        "###);
-    }
-    #[test]
-    fn set_filters() {
-        insta::assert_ron_snapshot!(parse_cli(&["set-filters", ".1.2", "a", "b", "foo"]), @r###"
-        Ok(SetFilters(
-          path: ".1.2",
-          new_filters: [
-            "a",
-            "b",
-            "foo",
-          ],
-        ))
-        "###);
-    }
-    #[test]
-    fn set_weight() {
-        insta::assert_ron_snapshot!(parse_cli(&["set-weight", ".1.2.3.4", "50"]), @r###"
-        Ok(SetWeight(
-          path: ".1.2.3.4",
-          new_weight: 50,
-        ))
-        "###);
+                        write!(f, "set-order-type {path} {new_order_type}")
+                    }
+                }
+            }
+        }
+        Ret(self)
     }
 }

@@ -8,6 +8,16 @@ use crate::{
 use std::str::FromStr as _;
 
 #[test]
+fn empty() {
+    let network = Network::new_strings();
+    let table = network.view_table_default();
+    insta::assert_snapshot!(table, @r###"
+    Table {
+    }
+    "###);
+}
+
+#[test]
 fn table_weights() {
     let mut network = Network::new_strings();
     let log = network.run_script(
@@ -93,7 +103,7 @@ fn table_weights() {
     "###);
 }
 
-fn arbitrary_pattern() -> Network<String, String> {
+fn arbitrary_pattern1() -> Network<String, String> {
     let mut network = Network::new_strings();
     network.run_script(
         "
@@ -127,7 +137,7 @@ fn arbitrary_pattern() -> Network<String, String> {
 
 #[test]
 fn table_depth_root() {
-    let network = arbitrary_pattern();
+    let network = arbitrary_pattern1();
 
     let params = TableParams::default();
 
@@ -290,7 +300,7 @@ fn unique_weights() {
 
 #[test]
 fn table_depth_child_right() {
-    let network = arbitrary_pattern();
+    let network = arbitrary_pattern1();
 
     let params = TableParams::default();
     let path = Path::from_str(".4").unwrap();

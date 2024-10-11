@@ -25,6 +25,7 @@ use std::collections::HashSet;
 mod child_vec;
 pub mod clap;
 pub mod path;
+mod ser;
 
 pub mod order {
     //! Ordering for selecting child nodes and child items throughout the
@@ -161,6 +162,27 @@ impl<T, U> Network<T, U> {
 
         Ok(filter_groups)
     }
+
+    #[cfg(test)]
+    fn count_child_nodes_of(&self, path: Path) -> Result<Option<usize>, UnknownPath> {
+        let mut current = Some(&self.root);
+
+        // TODO [6/6] find common pattern... etc.
+        for next_index in &path {
+            let Some(next_child) = current.and_then(|c| c.children().get(next_index)) else {
+                return Err(UnknownPath(path));
+            };
+
+            current = match next_child {
+                Child::Bucket(_) => None,
+                Child::Joint(joint) => Some(&joint.next),
+            };
+        }
+
+        let child_node_count = current.map(|c| c.children().len());
+        Ok(child_node_count)
+    }
+    // TODO add `get_child_paths_of(&self, path: Path) -> Result<Vec<Path>, UnknownPath>`
 
     fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
         let mut current = &mut self.root;
@@ -403,7 +425,7 @@ impl<T, U> Default for Joint<T, U> {
 }
 
 /// Command to modify a network
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ModifyCmd<T, U> {
     /// Add a new bucket
@@ -550,8 +572,10 @@ mod tests {
     mod sync;
 
     // test cases
+    mod clap;
     mod modify_network;
     mod peek_effort;
     mod peek_pop_network;
+    mod ser;
     mod view_table;
 }
