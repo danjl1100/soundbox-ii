@@ -5,7 +5,9 @@ use super::{
     fake_rng,
 };
 use crate::{
-    clap::ModifyCmd as ClapModifyCmd, path::Path, BucketId, ModifyCmd, ModifyError, Network,
+    clap::ModifyCmd as ClapModifyCmd,
+    path::{Path, PathRef},
+    BucketId, ModifyCmd, ModifyError, Network,
 };
 use ::clap::Parser as _;
 use arbitrary::Unstructured;
@@ -206,7 +208,7 @@ where
                 let entry = if output_buckets {
                     let mut buckets: Vec<_> = self
                         .get_buckets_needing_fill()
-                        .map(Path::to_owned)
+                        .map(PathRef::to_owned)
                         .collect();
                     buckets.sort();
                     Some(Entry::BucketsNeedingFill(command_str.to_owned(), buckets))

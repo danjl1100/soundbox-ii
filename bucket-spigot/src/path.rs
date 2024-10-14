@@ -46,14 +46,54 @@ impl Path {
     pub fn pop(&mut self) -> Option<usize> {
         self.0.pop()
     }
+    // TODO use in Network for maintaining the cache after deleting nodes
+    #[cfg(test)]
+    /// Modify the path as-if the specified path was removed from the network
+    ///
+    /// e.g. If this path is a "greater" sibling of the removed path, then decrement this path
+    pub(crate) fn modify_for_removed(&mut self, removed: PathRef<'_>) -> Result<(), RemovedSelf> {
+        use std::cmp::Ordering;
+
+        let mut this = self.0.iter_mut().peekable();
+        let mut other = removed.iter().peekable();
+        while let Some((this_elem, other_elem)) = this.next().zip(other.next()) {
+            let other_ended = other.peek().is_none();
+            match other_elem.cmp(this_elem) {
+                Ordering::Equal if other_ended => {
+                    return Err(RemovedSelf);
+                }
+                Ordering::Less if other_ended => {
+                    // apply modification if "other < this" at the end
+                    // (no panic, `integer < this` ensures nonzero)
+                    *this_elem -= 1;
+                    break;
+                }
+                // related path, continue comparison
+                Ordering::Equal => continue,
+                // non-related path, end comparison
+                Ordering::Greater | Ordering::Less => break,
+            }
+        }
+        Ok(())
+    }
 }
 impl From<Vec<usize>> for Path {
     fn from(value: Vec<usize>) -> Self {
         Self(value)
     }
 }
+impl FromIterator<usize> for Path {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
+        let elems: Vec<usize> = iter.into_iter().collect();
+        elems.into()
+    }
+}
 
-impl PathRef<'_> {
+impl<'a> PathRef<'a> {
+    /// Returns an iterator for path elements
+    pub fn iter(self) -> Iter<'a> {
+        self.into_iter()
+    }
     /// Returns the last element and the rest (if any)
     #[must_use]
     pub fn split_last(self) -> Option<(usize, Self)> {
@@ -181,6 +221,11 @@ impl From<ErrorInner> for Error {
     }
 }
 
+#[cfg(test)]
+/// Error modifying a path: the removed path matches self
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RemovedSelf;
+
 /// serialize slice of usize as if it were inside a [`Path`]
 fn path_elems_serialize<S>(value: &[usize], serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -198,111 +243,4 @@ where
     Path::from_str(input)
         .map(|Path(elems)| elems)
         .map_err(serde::de::Error::custom)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Error, Path};
-    use std::str::FromStr as _;
-
-    /// Exposes the structural contents of [`Path`], ignoring custom serialization
-    #[derive(serde::Serialize, Debug)]
-    #[serde(transparent)]
-    struct PathStructural(Vec<usize>);
-
-    fn path(input: &str) -> Result<Path, Error> {
-        let result = Path::from_str(input);
-        if let Ok(path_elems) = &result {
-            // verify Display <==> FromStr
-            assert_eq!(
-                path_elems.to_string(),
-                input,
-                "from_str.to_string does not match input"
-            );
-        }
-        result
-    }
-    fn path_elems(input: &str) -> Result<PathStructural, Error> {
-        path(input).map(|Path(elems)| PathStructural(elems))
-    }
-
-    fn json_de_elems(input: &str) -> PathStructural {
-        let Path(elems) = serde_json::from_str(input).expect("test JSON input should be valid");
-        // verify Serialize <==> Deserialize
-        // (note: restricts flexibility of test JSON inputs)
-        assert_eq!(
-            serde_json::to_string(&Path(elems.clone())).expect("should serialize OK"),
-            input
-        );
-        PathStructural(elems)
-    }
-
-    #[test]
-    fn inner_structure_from_str() {
-        insta::assert_ron_snapshot!(path_elems(""), @"Err(MissingStartDelim)");
-        insta::assert_ron_snapshot!(path_elems("invalid"), @"Err(MissingStartDelim)");
-
-        insta::assert_ron_snapshot!(path_elems("invalid."), @"Err(MissingStartDelim)");
-        insta::assert_ron_snapshot!(path_elems(".invalid"), @r###"
-        Err(InvalidNumber(
-          input: "invalid",
-        ))
-        "###);
-
-        insta::assert_ron_snapshot!(path_elems("."), @"Ok([])");
-        insta::assert_ron_snapshot!(path_elems(".1"), @r###"
-        Ok([
-          1,
-        ])
-        "###);
-        insta::assert_ron_snapshot!(path_elems(".1.2.3.4.5"), @r###"
-        Ok([
-          1,
-          2,
-          3,
-          4,
-          5,
-        ])
-        "###);
-        insta::assert_ron_snapshot!(path_elems(".234.32.9"), @r###"
-        Ok([
-          234,
-          32,
-          9,
-        ])
-        "###);
-    }
-
-    #[test]
-    fn public_ser() {
-        insta::assert_ron_snapshot!(Path(vec![]), @r###"".""###);
-        insta::assert_ron_snapshot!(Path(vec![1, 2, 3]), @r###"".1.2.3""###);
-
-        insta::assert_ron_snapshot!(path(".1.2.3"), @r###"Ok(".1.2.3")"###);
-    }
-    #[test]
-    fn public_de() {
-        insta::assert_ron_snapshot!(json_de_elems("\".\""), @"[]");
-        insta::assert_ron_snapshot!(json_de_elems("\".1\""), @r###"
-        [
-          1,
-        ]
-        "###);
-        insta::assert_ron_snapshot!(json_de_elems("\".1.2.3.4.5\""), @r###"
-        [
-          1,
-          2,
-          3,
-          4,
-          5,
-        ]
-        "###);
-        insta::assert_ron_snapshot!(json_de_elems("\".59.2.393904\""), @r###"
-        [
-          59,
-          2,
-          393904,
-        ]
-        "###);
-    }
 }

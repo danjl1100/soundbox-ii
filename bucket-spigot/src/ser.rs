@@ -2,7 +2,9 @@
 
 //! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmd`]s
 
-use crate::{order::OrderType, path::Path, ModifyCmd, ModifyError, Network};
+use crate::{
+    order::OrderType, path::Path, traversal::TraversalElem, ModifyCmd, ModifyError, Network,
+};
 
 /// Visitor for [`ModifyCmd`] elements to serialize a [`Network`]
 ///
@@ -76,21 +78,21 @@ where
 
 // TODO is this macro complexity with it? (removes some `clones`). This may become more complex with `if`, etc.
 // NOTE add optimizations **after** the test passes
-// macro_rules! reuse_path {
-//     ($dest:ident . $method:ident ( &ModifyCmd:: $variant:ident {
-//         $path:ident ,
-//         $($field:ident : $value:expr),* $(,)?
-//     })?;) => {
-//         let cmd = ModifyCmd::$variant {
-//             path: $path,
-//             $($field : $value),*
-//         };
-//         $dest.$method(&cmd)?;
-//         let ModifyCmd::$variant { path: $path, .. } = cmd else {
-//             unreachable!()
-//         };
-//     }
-// }
+macro_rules! reuse_path {
+    ($dest:ident . $method:ident ( &ModifyCmd:: $variant:ident {
+        $path:ident $(,)?
+        $($field:ident : $value:expr),* $(,)?
+    })?;) => {
+        let cmd = ModifyCmd::$variant {
+            $path,
+            $($field : $value),*
+        };
+        $dest.$method(&cmd)?;
+        let ModifyCmd::$variant { $path, .. } = cmd else {
+            unreachable!()
+        };
+    }
+}
 
 impl<T, U> Network<T, U> {
     /// Serialize into a vector
@@ -103,100 +105,111 @@ impl<T, U> Network<T, U> {
         self.serialize(vec_visitor::VecVisitor::default())
             .unwrap_or_else(|never| match never {})
     }
+    // TODO is there any use-case for serializing from a specific node? like, for (non-tablurar) views?
     fn serialize<V>(&self, mut dest: V) -> Result<V::Ok, V::Error>
     where
         V: Visitor<T, U>,
     {
         let root_order_node = self.root_order.node();
-        let mut path = Path::empty();
         {
             let root_order_type = root_order_node.get_order_type();
             if root_order_type != OrderType::default() {
                 dest.visit(&ModifyCmd::SetOrderType {
-                    path: path.clone(),
+                    path: Path::empty(),
                     new_order_type: root_order_type,
                 })?;
             }
         }
 
-        // depth-first traversal
-        let mut stack = {
-            let child_items = &self.root;
-            let child_order = root_order_node.get_children();
-            vec![(0, child_items, child_order)]
-        };
-        while let Some(last) = stack.last() {
-            let (index, child_items, child_order) = *last;
-            let child_weights = child_items.weights();
+        let child_items = &self.root;
+        let child_order = root_order_node.get_children();
 
-            let node_item = child_items.children().get(index);
-            let node_weight = child_weights.map_or(Some(0), |w| w.get(index));
-            let node_order = child_order.get(index);
-            let Some(((node_item, node_weight), node_order)) =
-                node_item.zip(node_weight).zip(node_order)
-            else {
-                path.pop();
-                stack.pop();
-                continue;
-            };
-            let parent = path.clone();
-            path.push(index);
+        Self::depth_first_traversal_items_order(
+            &mut Path::empty(),
+            child_items,
+            child_order,
+            |elem| {
+                let TraversalElem {
+                    node_path,
+                    parent_weights,
+                    node_weight,
+                    node_item,
+                    node_order,
+                } = elem;
 
-            let creation_cmd = match node_item {
-                crate::Child::Bucket(_) => ModifyCmd::AddBucket { parent },
-                crate::Child::Joint(_) => ModifyCmd::AddJoint { parent },
-            };
-            dest.visit(&creation_cmd)?;
+                // TODO with ModifyCmd accepting PathRef, this would be a lot simpler
+                //      (e.g. remove the move dances below, which are there to only clone once)
+                //
+                // let (_last, parent) = node_path
+                //     .split_last()
+                //     .expect("node should not be pathless root");
+                // let parent = parent.to_owned();
+                // let creation_cmd = match node_item {
+                //     crate::Child::Bucket(_) => ModifyCmd::AddBucket { parent },
+                //     crate::Child::Joint(_) => ModifyCmd::AddJoint { parent },
+                // };
+                // dest.visit(&creation_cmd)?;
 
-            {
-                let order_type = node_order.get_order_type();
-                if order_type != OrderType::default() {
-                    dest.visit(&ModifyCmd::SetOrderType {
-                        path: path.clone(),
-                        new_order_type: order_type,
-                    })?;
-                }
-            }
+                let path = {
+                    // split last, parent
+                    let (last, parent) = node_path
+                        .split_last()
+                        .expect("node should not be pathless root");
+                    let parent = parent.to_owned();
+                    let parent = match node_item {
+                        crate::Child::Bucket(_) => {
+                            reuse_path! {
+                                dest.visit(&ModifyCmd::AddBucket { parent })?;
+                            }
+                            parent
+                        }
+                        crate::Child::Joint(_) => {
+                            reuse_path! {
+                                dest.visit(&ModifyCmd::AddJoint { parent })?;
+                            }
+                            parent
+                        }
+                    };
+                    // joint last, parent
+                    let mut path = parent;
+                    path.push(last);
+                    path
+                };
 
-            {
-                if child_weights.map_or(true, |w| !w.is_unity()) {
-                    dest.visit(&ModifyCmd::SetWeight {
-                        path: path.clone(),
-                        new_weight: node_weight,
-                    })?;
-                }
-            }
-
-            // dbg!((index, &path, node_weight, node_order.get_order_type()));
-
-            let inner_child = match (node_item, node_order.get_children()) {
-                (crate::Child::Bucket(_), order_children) => {
-                    debug_assert!(
-                        order_children.is_empty(),
-                        "bucket order-children should be empty"
-                    );
-                    None
-                }
-                (crate::Child::Joint(joint), order_children) => {
-                    if joint.next.is_empty() {
-                        None
+                let path = {
+                    let order_type = node_order.get_order_type();
+                    if order_type == OrderType::default() {
+                        path
                     } else {
-                        Some((0, &joint.next, order_children))
+                        reuse_path! {
+                            dest.visit(&ModifyCmd::SetOrderType {
+                                path,
+                                new_order_type: order_type,
+                            })?;
+                        }
+                        path
                     }
-                }
-            };
+                };
 
-            let last = stack
-                .last_mut()
-                .expect("last should be available within the loop");
-            last.0 += 1;
+                let path = {
+                    if parent_weights.map_or(true, |w| !w.is_unity()) {
+                        reuse_path! {
+                            dest.visit(&ModifyCmd::SetWeight {
+                                path,
+                                new_weight: node_weight,
+                            })?;
+                        }
+                        path
+                    } else {
+                        path
+                    }
+                };
 
-            if let Some(inner_child) = inner_child {
-                stack.push(inner_child);
-            } else {
-                path.pop();
-            }
-        }
+                drop(path);
+
+                Ok(())
+            },
+        )?;
 
         dest.finish()
     }

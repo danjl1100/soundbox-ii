@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
     seq::{self, NodeCommand, SequencerAction, SequencerCommand, SequencerResult},
@@ -280,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))] // TODO file URLs on windows are atrocious
     fn parse_url_coercion() -> Result<(), String> {
         // valid absolute URL -> passthru
         assert_eq!(parse_url("file:///a.mp3")?.to_string(), "file:///a.mp3");

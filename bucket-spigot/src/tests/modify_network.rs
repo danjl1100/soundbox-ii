@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::arb_rng::{assert_arb_error, fake_rng};
-use crate::Network;
+use crate::{path::RemovedSelf, ModifyErr, ModifyError, Network};
 
 #[test]
 fn empty() {
@@ -481,4 +481,95 @@ fn set_weights() {
       ]),
     ])
     "###);
+}
+
+#[test]
+fn delete_bucket_before_fill() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+        modify add-joint .
+        modify add-bucket .1
+
+        modify delete-empty .0
+
+        modify add-bucket .
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0",
+      ]),
+      BucketsNeedingFill("modify add-bucket .1", [
+        ".0",
+        ".1.0",
+      ]),
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0.0",
+        ".1",
+      ]),
+    ])
+    "###);
+}
+
+#[test]
+fn delete_then_view() {
+    let (network, _log) = Network::new_strings_build_from_script(
+        "
+        modify add-joint .
+        modify add-joint .
+        modify delete-empty .0
+        ",
+    );
+    let view = network.view_table_default();
+    println!("{view}");
+}
+
+#[test]
+fn delete_from_arbitrary_network() {
+    arbtest::arbtest(|u| {
+        let mut network = Network::<String, String>::arbitrary(u)?;
+
+        let view = network.view_table_default();
+        let mut paths: Vec<_> = view
+            .get_rows()
+            .iter()
+            .flat_map(|row| {
+                row.get_cells()
+                    .iter()
+                    .filter_map(|cell| cell.get_node().map(|cell| cell.get_path().to_owned()))
+            })
+            .collect();
+
+        let iter_count = u.arbitrary_len::<usize>()?.max(paths.len());
+
+        for _ in 0..iter_count {
+            let path = paths.swap_remove(u.choose_index(paths.len())?);
+            let cmd = crate::ModifyCmd::DeleteEmpty { path: path.clone() };
+            let cmd_str = cmd.display_as_cmd_verified();
+            println!("-> {cmd_str}");
+            let result = network.modify(cmd);
+            match result {
+                Ok(()) => {
+                    // shift down the affected entries
+                    for p in &mut paths {
+                        p.modify_for_removed(path.as_ref())
+                            .unwrap_or_else(|_: RemovedSelf| {
+                                panic!("removed path {path} should already be removed from paths")
+                            });
+                    }
+                }
+                Err(ModifyError(
+                    ModifyErr::DeleteNonemptyBucket(_) | ModifyErr::DeleteNonemptyJoint(_),
+                )) => {}
+                Err(e) => {
+                    let view = network.view_table_default();
+                    println!("{view}");
+                    panic!("unexpected error for {path} node removal: {e}")
+                }
+            }
+        }
+        Ok(())
+    });
 }

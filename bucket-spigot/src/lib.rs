@@ -18,14 +18,15 @@
 //! walking from the spigot (root node) to the bucket.
 //!
 
+use bucket_paths_map::BucketPathsMap;
 use child_vec::{ChildVec, Weights};
-use path::Path;
-use std::collections::HashSet;
+use path::{Path, PathRef};
 
 mod child_vec;
 pub mod clap;
 pub mod path;
 mod ser;
+mod traversal;
 
 pub mod order {
     //! Ordering for selecting child nodes and child items throughout the
@@ -69,25 +70,24 @@ pub mod view {
 #[derive(Clone, Debug)]
 pub struct Network<T, U> {
     root: ChildVec<Child<T, U>>,
-    buckets_needing_fill: HashSet<Path>,
+    bucket_paths: BucketPathsMap,
     /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
     root_order: order::Root,
     bucket_id_counter: u64,
 }
+// TODO refactor, move `root_items` and `root_order` to new Tree type,
+//      to facilitate cleaner "Depth first from root" function, while borrowing other Network fields
+// struct NetworkTree<T, U> {}
 impl<T, U> Default for Network<T, U> {
     fn default() -> Self {
         Self {
             root: ChildVec::default(),
-            buckets_needing_fill: HashSet::default(),
+            bucket_paths: BucketPathsMap::default(),
             root_order: order::Root::default(),
             bucket_id_counter: 0,
         }
     }
 }
-
-type OptChildrenRef<'a, T, U> = Option<&'a ChildVec<Child<T, U>>>;
-type OptChildRef<'a, T, U> = Option<&'a Child<T, U>>;
-type OptChildrenAndChildRef<'a, T, U> = (OptChildrenRef<'a, T, U>, OptChildRef<'a, T, U>);
 
 impl<T, U> Network<T, U> {
     /// Modify the network topology
@@ -95,7 +95,7 @@ impl<T, U> Network<T, U> {
     /// # Errors
     /// Returns an error if the command does not match the current network state
     pub fn modify(&mut self, cmd: ModifyCmd<T, U>) -> Result<(), ModifyError> {
-        match cmd {
+        let result = match cmd {
             ModifyCmd::AddBucket { parent } => {
                 let bucket = Child::Bucket(self.new_bucket());
                 let _path = self.add_child(bucket, parent)?;
@@ -109,7 +109,7 @@ impl<T, U> Network<T, U> {
             ModifyCmd::FillBucket {
                 bucket,
                 new_contents,
-            } => self.set_bucket_items(new_contents, bucket),
+            } => self.set_bucket_items(new_contents, bucket.as_ref()),
             ModifyCmd::SetFilters { path, new_filters } => self.set_filters(new_filters, path),
             ModifyCmd::SetWeight { path, new_weight } => self.set_weight(new_weight, path),
             ModifyCmd::SetOrderType {
@@ -118,20 +118,55 @@ impl<T, U> Network<T, U> {
             } => Ok(self
                 .root_order
                 .set_order_type(new_order_type, path.as_ref())?),
-        }
+        };
+
+        #[cfg(test)]
+        self.assert_tree_topologies_match();
+
+        result
     }
     fn new_bucket(&mut self) -> Bucket<T, U> {
         let id = self.bucket_id_counter;
         self.bucket_id_counter += 1;
         Bucket::new(BucketId(id))
     }
+    // TODO implement and test
     // /// Returns the [`Path`] to the specified [`BucketId`], if any exists
-    // pub fn find_bucket_path(&self, id: BucketId) -> Option<Path> { // TODO
+    // #[must_use]
+    // pub fn find_bucket_path(&mut self, id: BucketId) -> Option<PathRef<'_>> {
+    //     if let Some(path) = self.bucket_paths.get_cached(id) {
+    //         return Some(path);
+    //     }
     //     todo!()
     // }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
-    pub fn get_buckets_needing_fill(&self) -> impl Iterator<Item = &'_ Path> {
-        self.buckets_needing_fill.iter()
+    pub fn get_buckets_needing_fill(&mut self) -> impl Iterator<Item = PathRef<'_>> {
+        enum Never {}
+
+        // pre-populate cache
+        if self.bucket_paths.is_cache_missing_any_need_fill() {
+            // effort to cache 1 item is not significantly different from refreshing entire cache
+            let child_items = &self.root;
+            let child_order = self.root_order.node().get_children();
+            Self::depth_first_traversal_items_order(
+                &mut Path::empty(),
+                child_items,
+                child_order,
+                |elem| {
+                    if let Child::Bucket(bucket) = elem.node_item {
+                        self.bucket_paths.add_cached(bucket.id, elem.node_path);
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap_or_else(|n: Never| match n {});
+        }
+
+        self.bucket_paths.iter_needs_fill().map(|id| {
+            self.bucket_paths.get_cached(id).unwrap_or_else(|| {
+                unreachable!("bucket ids needing fill should be in cache from tree traversal");
+            })
+        })
     }
     /// Returns the filters for the specified path
     ///
@@ -140,7 +175,7 @@ impl<T, U> Network<T, U> {
     /// # Errors
     ///
     /// Returns an error if the path is unknown
-    pub fn get_filters(&self, path: path::PathRef<'_>) -> Result<Vec<&[U]>, UnknownPath> {
+    pub fn get_filters(&self, path: PathRef<'_>) -> Result<Vec<&[U]>, UnknownPath> {
         let mut filter_groups = Vec::new();
 
         self.for_each_child(path, |child| {
@@ -157,36 +192,10 @@ impl<T, U> Network<T, U> {
         Ok(filter_groups)
     }
 
-    /// Returns the children at the path (if any) and the matched node (if not root)
-    fn for_each_child<'a, 'b>(
-        &'a self,
-        path: path::PathRef<'b>,
-        mut process_child_fn: impl FnMut(&'a Child<T, U>),
-    ) -> Result<OptChildrenAndChildRef<'a, T, U>, UnknownPathRef<'b>> {
-        let mut current = Some(&self.root);
-        let mut found = None;
-
-        for next_index in path {
-            let Some(next_child) = current.and_then(|c| c.children().get(next_index)) else {
-                return Err(UnknownPathRef(path));
-            };
-
-            process_child_fn(next_child);
-            found = Some(next_child);
-
-            current = match next_child {
-                Child::Bucket(_) => None,
-                Child::Joint(joint) => Some(&joint.next),
-            };
-        }
-
-        Ok((current, found))
-    }
-
     #[cfg(test)]
     fn count_child_nodes_of<'a>(
         &self,
-        path: path::PathRef<'a>,
+        path: PathRef<'a>,
     ) -> Result<Option<usize>, UnknownPathRef<'a>> {
         let (children, _found) = self.for_each_child(path, |_| {})?;
 
@@ -219,7 +228,11 @@ impl<T, U> Network<T, U> {
             "order nodes should match item nodes"
         );
 
-        let is_bucket = matches!(child, Child::Bucket(_));
+        let bucket_id = if let Child::Bucket(bucket) = &child {
+            Some(bucket.id)
+        } else {
+            None
+        };
 
         // add child
         current.push(child);
@@ -232,14 +245,15 @@ impl<T, U> Network<T, U> {
         };
 
         // queue for refilling new bucket
-        if is_bucket {
-            self.buckets_needing_fill.insert(child_path.clone());
+        if let Some(bucket_id) = bucket_id {
+            self.bucket_paths
+                .add_needs_fill(bucket_id, child_path.as_ref());
         }
 
         Ok(child_path)
     }
     fn delete_empty(&mut self, path: Path) -> Result<(), ModifyError> {
-        let mut current = &mut self.root;
+        let mut current_items = &mut self.root;
 
         let Some((final_index, parent_path)) = path.as_ref().split_last() else {
             return Err(ModifyErr::DeleteRoot.into());
@@ -247,10 +261,10 @@ impl<T, U> Network<T, U> {
 
         // TODO [3/5] find common pattern to simplify similar indexing logic...?
         for next_index in parent_path {
-            let Some(next_child) = current.children_mut().get_mut(next_index) else {
+            let Some(next_child_items) = current_items.children_mut().get_mut(next_index) else {
                 return Err(UnknownPath(path).into());
             };
-            current = match next_child {
+            current_items = match next_child_items {
                 Child::Bucket(_) => {
                     return Err(UnknownPath(path).into());
                 }
@@ -258,69 +272,75 @@ impl<T, U> Network<T, U> {
             };
         }
 
-        let Some(target_elem) = current.children().get(final_index) else {
+        let Some(target_elem_items) = current_items.children().get(final_index) else {
             return Err(UnknownPath(path).into());
         };
 
-        match target_elem {
+        match target_elem_items {
             Child::Bucket(bucket) if !bucket.items.is_empty() => {
-                Err(ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)).into())
+                return Err(ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)).into());
             }
             Child::Joint(joint) if !joint.next.is_empty() => {
-                Err(ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)).into())
+                return Err(ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)).into());
             }
-            Child::Bucket(_) | Child::Joint(_) => {
-                current.remove(final_index);
-                Ok(())
+            Child::Bucket(bucket) => {
+                self.bucket_paths.remove_needs_fill(bucket.id);
             }
+            Child::Joint(_) => {}
         }
+
+        // remove order first, in case it errors
+        self.root_order.remove(path.as_ref()).map_err(|err| {
+            err.unwrap_or_else(|| {
+                unreachable!(
+                    "DeleteRoot error from order should be detected when checking item nodes"
+                )
+            })
+        })?;
+
+        current_items.remove(final_index);
+
+        // sibling paths may change, invalidate the cache (out of caution)
+        self.bucket_paths.clear_cache();
+        // TODO use Path::modify_for_removed to update the cache, lean heavily on tests!
+
+        Ok(())
     }
     fn set_bucket_items(
         &mut self,
         new_contents: Vec<T>,
-        bucket_path: Path,
+        bucket_path: PathRef<'_>,
     ) -> Result<(), ModifyError> {
-        let mut current = &mut self.root;
-
-        let mut bucket_path_iter = bucket_path.iter();
-        let dest_contents = loop {
-            let Some(next_index) = bucket_path_iter.next() else {
-                return Err(ModifyErr::FillJoint.into());
-            };
-            let Some(next_child) = current.children_mut().get_mut(next_index) else {
-                return Err(UnknownPath(bucket_path).into());
-            };
-            current = match next_child {
-                Child::Bucket(bucket) => break bucket,
-                Child::Joint(joint) => &mut joint.next,
-            };
+        let dest_bucket = match Self::find_bucket_mut(&mut self.root, bucket_path) {
+            Ok(Some(bucket)) => bucket,
+            Ok(None) => Err(ModifyErr::FillJoint)?,
+            Err(unknown) => Err(unknown.to_owned())?,
         };
-        if bucket_path_iter.next().is_some() {
-            return Err(UnknownPath(bucket_path).into());
-        }
 
-        self.buckets_needing_fill.remove(&bucket_path);
+        dest_bucket.items = new_contents;
+        self.bucket_paths.remove_needs_fill(dest_bucket.id);
 
-        dest_contents.items = new_contents;
         Ok(())
     }
     fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
-        let mut current = Some(&mut self.root);
+        let mut current = Ok(&mut self.root);
         let mut dest_filters = None;
         // TODO [4/5] find common pattern to simplify similar indexing logic...?
         for next_index in &path {
-            let Some(next_child) = current.and_then(|c| c.children_mut().get_mut(next_index))
+            let Some(next_child) = current
+                .ok()
+                .and_then(|c| c.children_mut().get_mut(next_index))
             else {
                 return Err(UnknownPath(path).into());
             };
             current = match next_child {
                 Child::Bucket(bucket) => {
                     dest_filters = Some(&mut bucket.filters);
-                    None
+                    Err(bucket.id)
                 }
                 Child::Joint(joint) => {
                     dest_filters = Some(&mut joint.filters);
-                    Some(&mut joint.next)
+                    Ok(&mut joint.next)
                 }
             };
         }
@@ -328,18 +348,21 @@ impl<T, U> Network<T, U> {
         if let Some(dest_filters) = dest_filters {
             *dest_filters = new_filters;
 
-            if let Some(joint_children) = current {
-                // target is joint, search for all child buckets
+            match current {
+                Ok(joint_children) => {
+                    // target is joint, search for all child buckets
 
-                let mut joint_path_buf = path;
-                Self::add_buckets_need_fill_under(
-                    &mut joint_path_buf,
-                    &mut self.buckets_needing_fill,
-                    joint_children.children(),
-                );
-            } else {
-                // target is bucket
-                self.buckets_needing_fill.insert(path);
+                    let mut joint_path_buf = path;
+                    Self::add_buckets_need_fill_under(
+                        &mut joint_path_buf,
+                        &mut self.bucket_paths,
+                        joint_children,
+                    );
+                }
+                Err(bucket_id) => {
+                    // target is bucket
+                    self.bucket_paths.add_needs_fill(bucket_id, path.as_ref());
+                }
             }
 
             Ok(())
@@ -373,24 +396,75 @@ impl<T, U> Network<T, U> {
     }
     fn add_buckets_need_fill_under(
         path: &mut Path,
-        buckets_needing_fill: &mut HashSet<Path>,
-        child_nodes: &[Child<T, U>],
+        bucket_paths: &mut BucketPathsMap,
+        child_nodes: &ChildVec<Child<T, U>>,
     ) {
-        for (index, child) in child_nodes.iter().enumerate() {
-            path.push(index);
-            match child {
-                Child::Bucket(_) => {
-                    buckets_needing_fill.insert(path.clone());
-                }
-                Child::Joint(joint) => {
-                    Self::add_buckets_need_fill_under(
-                        path,
-                        buckets_needing_fill,
-                        joint.next.children(),
-                    );
+        enum Never {}
+        Self::depth_first_traversal_items(path, child_nodes, |elem| {
+            match elem.node_item {
+                Child::Bucket(bucket) => bucket_paths.add_needs_fill(bucket.id, elem.node_path),
+                Child::Joint(_) => {}
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|n: Never| match n {});
+    }
+}
+
+mod bucket_paths_map {
+    use crate::{
+        path::{Path, PathRef},
+        BucketId,
+    };
+    use std::collections::{HashMap, HashSet};
+
+    #[derive(Clone, Debug, Default)]
+    pub(super) struct BucketPathsMap {
+        /// Index into `cached_bucket_paths` for buckets needing fill
+        ids_needing_fill: HashSet<BucketId>,
+        /// Cache of `Paths` for buckets (may be empty at any time)
+        cached_paths: HashMap<BucketId, Path>,
+    }
+    impl BucketPathsMap {
+        pub(super) fn is_cache_missing_any_need_fill(&self) -> bool {
+            self.ids_needing_fill
+                .iter()
+                .any(|id| !self.cached_paths.contains_key(id))
+        }
+        pub(super) fn iter_needs_fill(&self) -> impl Iterator<Item = BucketId> + '_ {
+            self.ids_needing_fill.iter().copied()
+        }
+        pub(super) fn add_needs_fill(&mut self, id: BucketId, path: PathRef<'_>) {
+            self.ids_needing_fill.insert(id);
+            self.add_cached(id, path);
+        }
+        pub(super) fn remove_needs_fill(&mut self, id: BucketId) {
+            self.ids_needing_fill.remove(&id);
+        }
+        #[allow(unused)] // TODO add tests and then use (cache can be filled up! e.g. memory leak-ish)
+        pub(super) fn remove_cached(&mut self, id: BucketId) {
+            let Self {
+                ids_needing_fill,
+                cached_paths,
+            } = self;
+            ids_needing_fill.remove(&id);
+            cached_paths.remove(&id);
+        }
+        pub(super) fn add_cached(&mut self, id: BucketId, path: PathRef<'_>) {
+            match self.cached_paths.get(&id) {
+                Some(existing) if existing.as_ref() == path => {}
+                _ => {
+                    self.cached_paths.insert(id, path.to_owned());
                 }
             }
-            assert_eq!(path.pop(), Some(index), "should contain the pushed index");
+        }
+        pub(super) fn get_cached(&self, id: BucketId) -> Option<PathRef<'_>> {
+            self.cached_paths.get(&id).map(Path::as_ref)
+        }
+        // TODO deprecate this (remove usages)
+        // #[deprecated]
+        pub(super) fn clear_cache(&mut self) {
+            self.cached_paths.clear();
         }
     }
 }
@@ -413,7 +487,7 @@ struct Joint<T, U> {
 }
 
 /// Identifier for a specific bucket
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct BucketId(pub u64);
 
 impl<T, U> Bucket<T, U> {
@@ -572,7 +646,7 @@ impl std::fmt::Display for UnknownPath {
 
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
 #[derive(Clone, Copy, Debug)]
-pub struct UnknownPathRef<'a>(path::PathRef<'a>);
+pub struct UnknownPathRef<'a>(PathRef<'a>);
 impl UnknownPathRef<'_> {
     /// Clones to create an owned version of the error
     fn to_owned(self) -> UnknownPath {
@@ -607,6 +681,7 @@ mod tests {
     // test cases
     mod clap;
     mod modify_network;
+    mod path;
     mod peek_effort;
     mod peek_pop_network;
     mod ser;

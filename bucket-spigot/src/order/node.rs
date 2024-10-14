@@ -29,6 +29,19 @@ impl Root {
 
         Ok(new_index)
     }
+    pub(crate) fn remove(&mut self, path: PathRef<'_>) -> Result<(), Option<UnknownOrderPath>> {
+        let (child_index, parent_path) = path.split_last().ok_or(None)?;
+        let parent = self.0.make_mut(parent_path)?;
+        let dest_children = &mut parent.children;
+
+        if child_index >= dest_children.len() {
+            return Err(Some(UnknownOrderPath(path.to_owned())));
+        }
+
+        dest_children.remove(child_index);
+
+        Ok(())
+    }
     pub(crate) fn set_order_type(
         &mut self,
         new_order_type: OrderType,
@@ -47,6 +60,8 @@ impl Root {
     }
 }
 impl Node {
+    // NOTE: ONLY allow allow shared-ref functions to crate.
+    //       Mutation functions need to route through `make_mut`
     pub(crate) fn get_order_type(&self) -> OrderType {
         self.order.get_ty()
     }

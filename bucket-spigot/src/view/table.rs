@@ -151,6 +151,8 @@ impl TableParams<'_> {
                 .take(take.unwrap_or(usize::MAX))
         };
 
+        // TODO - this currently performs depth-first traversal (keeping track of which depth to
+        // modify)... so use the common depth-first function? does that need extending?
         let mut state = state;
         for ((index, child), order) in item_and_order {
             if matches!(self.max_width, Some(max_width) if state.position >= max_width) {
