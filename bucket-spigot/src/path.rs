@@ -46,8 +46,6 @@ impl Path {
     pub fn pop(&mut self) -> Option<usize> {
         self.0.pop()
     }
-    // TODO use in Network for maintaining the cache after deleting nodes
-    #[cfg(test)]
     /// Modify the path as-if the specified path was removed from the network
     ///
     /// e.g. If this path is a "greater" sibling of the removed path, then decrement this path
@@ -89,6 +87,14 @@ impl FromIterator<usize> for Path {
     }
 }
 
+impl PathRef<'static> {
+    /// Constructs an immutable reference to the root path
+    ///
+    /// NOTE: Must [convert to owned](`PathRef::to_owned`) to append elements
+    pub fn empty() -> Self {
+        Self(&[])
+    }
+}
 impl<'a> PathRef<'a> {
     /// Returns an iterator for path elements
     pub fn iter(self) -> Iter<'a> {
@@ -221,7 +227,6 @@ impl From<ErrorInner> for Error {
     }
 }
 
-#[cfg(test)]
 /// Error modifying a path: the removed path matches self
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct RemovedSelf;

@@ -214,6 +214,8 @@ fn joint_filter_invalidates_buckets() {
 
         modify fill-bucket .0.0 item-modified
         modify fill-bucket .0.1.0.0 item-modified2
+
+        stats bucket-paths-map
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -234,6 +236,13 @@ fn joint_filter_invalidates_buckets() {
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1.0.0 item-modified2"),
+      InternalStats(BucketPathsMap(
+        ids_needing_fill: [],
+        cached_paths: [
+          (BucketId(0), ".0.0"),
+          (BucketId(1), ".0.1.0.0"),
+        ],
+      )),
     ])
     "###);
 }
@@ -257,6 +266,8 @@ fn bucket_filter_invalidates_only_bucket() {
 
         modify set-filters .0.1.0.0 filter-1 filter-2
         modify fill-bucket .0.1.0.0 item-modified2
+
+        stats bucket-paths-map
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -287,6 +298,13 @@ fn bucket_filter_invalidates_only_bucket() {
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1.0.0 item-modified2"),
+      InternalStats(BucketPathsMap(
+        ids_needing_fill: [],
+        cached_paths: [
+          (BucketId(0), ".0.0"),
+          (BucketId(1), ".0.1.0.0"),
+        ],
+      )),
     ])
     "###);
 }
@@ -324,6 +342,9 @@ fn delete_empty_bucket() {
 
         modify fill-bucket .0
         modify delete-empty .0
+
+        topology
+        stats bucket-paths-map
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -334,6 +355,11 @@ fn delete_empty_bucket() {
       BucketsNeedingFill("modify fill-bucket .0 abc def"),
       ExpectError("modify delete-empty .0", "cannot delete non-empty bucket: Path(.0)"),
       BucketsNeedingFill("modify fill-bucket .0"),
+      Topology([]),
+      InternalStats(BucketPathsMap(
+        ids_needing_fill: [],
+        cached_paths: [],
+      )),
     ])
     "###);
 }
@@ -376,6 +402,8 @@ fn delete_updates_weights() {
         modify delete-empty .0.0
 
         topology weights
+
+        stats bucket-paths-map
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -399,6 +427,14 @@ fn delete_updates_weights() {
           (1, ()),
         ]),
       ]),
+      InternalStats(BucketPathsMap(
+        ids_needing_fill: [
+          BucketId(1),
+        ],
+        cached_paths: [
+          (BucketId(1), ".0.0"),
+        ],
+      )),
     ])
     "###);
 }
@@ -494,6 +530,8 @@ fn delete_bucket_before_fill() {
         modify delete-empty .0
 
         modify add-bucket .
+
+        stats bucket-paths-map
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -509,6 +547,16 @@ fn delete_bucket_before_fill() {
         ".0.0",
         ".1",
       ]),
+      InternalStats(BucketPathsMap(
+        ids_needing_fill: [
+          BucketId(1),
+          BucketId(2),
+        ],
+        cached_paths: [
+          (BucketId(1), ".0.0"),
+          (BucketId(2), ".1"),
+        ],
+      )),
     ])
     "###);
 }
@@ -530,6 +578,15 @@ fn delete_then_view() {
 fn delete_from_arbitrary_network() {
     arbtest::arbtest(|u| {
         let mut network = Network::<String, String>::arbitrary(u)?;
+
+        {
+            let buckets = network.bucket_paths.expose_cache_for_test().count();
+            let total = network.count_all_nodes();
+            assert!(
+                buckets <= total,
+                "cached bucket count ({buckets}) should be <= total node count ({total})"
+            );
+        }
 
         let view = network.view_table_default();
         let mut paths: Vec<_> = view

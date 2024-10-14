@@ -371,7 +371,7 @@ where
             let path = u.choose(path_options)?;
 
             let len_of_dest = network
-                .count_child_nodes_of(path.as_ref())
+                .count_direct_child_nodes_of(path.as_ref())
                 .expect("current path should be valid");
 
             let get_new_path = || {
@@ -404,7 +404,7 @@ where
                             if last == 0 {
                                 // verify no siblings remain
                                 let new_child_count = network
-                                    .count_child_nodes_of(parent)
+                                    .count_direct_child_nodes_of(parent)
                                     .expect("parent should be valid path")
                                     .expect("parent should be a joint");
                                 (new_child_count == 0).then_some(parent.to_owned())

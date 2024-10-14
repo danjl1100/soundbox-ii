@@ -5,6 +5,7 @@ use super::{
     fake_rng,
 };
 use crate::{
+    bucket_paths_map::BucketPathsMap,
     clap::ModifyCmd as ClapModifyCmd,
     path::{Path, PathRef},
     BucketId, ModifyCmd, ModifyError, Network,
@@ -54,8 +55,18 @@ pub(super) enum Entry<T, U> {
         Option<u64>,
         Vec<BucketId>,
     ),
+    InternalStats(Stats),
     Topology(Topology<usize>),
     RngRemaining(String),
+}
+
+#[derive(Debug, serde::Serialize)]
+pub(super) enum Stats {
+    BucketPathsMap {
+        ids_needing_fill: Vec<BucketId>,
+        // NOTE: "Map", but still need to maintain insertion order
+        cached_paths: Vec<(BucketId, Path)>,
+    },
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -92,12 +103,20 @@ where
         flags: PeekFlags,
         expected: Vec<T>,
     },
+    Stats {
+        kind: StatsKind,
+    },
     Topology {
         kind: Option<TopologyKind>,
     },
     EnableRng {
         bytes_hex: Vec<String>,
     },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum StatsKind {
+    BucketPathsMap,
 }
 
 #[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
@@ -251,6 +270,12 @@ where
                     );
                 Ok(entry_items.into_iter().chain(bucket_ids).collect())
             }
+            Command::Stats { kind } => {
+                let stats = match kind {
+                    StatsKind::BucketPathsMap => Stats::new_bucket_paths_map(&self.bucket_paths),
+                };
+                Ok(vec![Entry::InternalStats(stats)])
+            }
             Command::Topology { kind } => {
                 let topology = match kind.unwrap_or_default() {
                     TopologyKind::ItemCount => Topology::new_from_nodes(&self.root),
@@ -312,6 +337,24 @@ where
             rng_holder.truncate_from_left(remaining);
 
             result
+        }
+    }
+}
+
+impl Stats {
+    fn new_bucket_paths_map(bucket_paths: &BucketPathsMap) -> Self {
+        let mut ids_needing_fill: Vec<_> = bucket_paths.iter_needs_fill().collect();
+        ids_needing_fill.sort_by_key(|&BucketId(id)| id);
+
+        let mut cached_paths: Vec<_> = bucket_paths
+            .expose_cache_for_test()
+            .map(|(id, path)| (*id, path.to_owned()))
+            .collect();
+        cached_paths.sort_by_key(|&(BucketId(id), _)| id);
+
+        Self::BucketPathsMap {
+            ids_needing_fill,
+            cached_paths,
         }
     }
 }

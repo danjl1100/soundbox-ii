@@ -193,7 +193,11 @@ impl<T, U> Network<T, U> {
     }
 
     #[cfg(test)]
-    fn count_child_nodes_of<'a>(
+    /// Counts the direct children of the specified joint node (`None` for bucket)
+    ///
+    /// # Errors
+    /// Returns an error if the specified path is invalid
+    fn count_direct_child_nodes_of<'a>(
         &self,
         path: PathRef<'a>,
     ) -> Result<Option<usize>, UnknownPathRef<'a>> {
@@ -201,6 +205,20 @@ impl<T, U> Network<T, U> {
 
         let child_node_count = children.map(child_vec::ChildVec::len);
         Ok(child_node_count)
+    }
+    #[cfg(test)]
+    /// Counts the all nodes in the network
+    fn count_all_nodes(&self) -> usize {
+        enum Never {}
+
+        let mut total_count = 0;
+        Self::depth_first_traversal_items(&mut Path::empty(), &self.root, |_| {
+            total_count += 1;
+            Ok(())
+        })
+        .unwrap_or_else(|n: Never| match n {});
+
+        total_count
     }
 
     fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
@@ -283,10 +301,7 @@ impl<T, U> Network<T, U> {
             Child::Joint(joint) if !joint.next.is_empty() => {
                 return Err(ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)).into());
             }
-            Child::Bucket(bucket) => {
-                self.bucket_paths.remove_needs_fill(bucket.id);
-            }
-            Child::Joint(_) => {}
+            Child::Bucket(_) | Child::Joint(_) => {}
         }
 
         // remove order first, in case it errors
@@ -298,11 +313,16 @@ impl<T, U> Network<T, U> {
             })
         })?;
 
+        let bucket_id = match target_elem_items {
+            Child::Bucket(bucket) => Some(bucket.id),
+            Child::Joint(_) => None,
+        };
+
         current_items.remove(final_index);
 
-        // sibling paths may change, invalidate the cache (out of caution)
-        self.bucket_paths.clear_cache();
-        // TODO use Path::modify_for_removed to update the cache, lean heavily on tests!
+        // update the cache for the removed node path
+        self.bucket_paths
+            .update_for_removed_path(path.as_ref(), bucket_id);
 
         Ok(())
     }
@@ -441,14 +461,23 @@ mod bucket_paths_map {
         pub(super) fn remove_needs_fill(&mut self, id: BucketId) {
             self.ids_needing_fill.remove(&id);
         }
-        #[allow(unused)] // TODO add tests and then use (cache can be filled up! e.g. memory leak-ish)
-        pub(super) fn remove_cached(&mut self, id: BucketId) {
+        pub(super) fn update_for_removed_path(
+            &mut self,
+            removed_path: PathRef<'_>,
+            removed_bucket_id: Option<BucketId>,
+        ) {
             let Self {
                 ids_needing_fill,
                 cached_paths,
             } = self;
-            ids_needing_fill.remove(&id);
-            cached_paths.remove(&id);
+            if let Some(id) = removed_bucket_id {
+                ids_needing_fill.remove(&id);
+                cached_paths.remove(&id);
+            }
+            for path in self.cached_paths.values_mut() {
+                path.modify_for_removed(removed_path)
+                    .expect("removed bucket path should already be removed from the path cache");
+            }
         }
         pub(super) fn add_cached(&mut self, id: BucketId, path: PathRef<'_>) {
             match self.cached_paths.get(&id) {
@@ -461,10 +490,10 @@ mod bucket_paths_map {
         pub(super) fn get_cached(&self, id: BucketId) -> Option<PathRef<'_>> {
             self.cached_paths.get(&id).map(Path::as_ref)
         }
-        // TODO deprecate this (remove usages)
-        // #[deprecated]
-        pub(super) fn clear_cache(&mut self) {
-            self.cached_paths.clear();
+
+        #[cfg(test)]
+        pub(super) fn expose_cache_for_test(&self) -> impl Iterator<Item = (&BucketId, &Path)> {
+            self.cached_paths.iter()
         }
     }
 }
