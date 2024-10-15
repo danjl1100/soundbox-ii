@@ -76,7 +76,7 @@ where
     }
 }
 
-// TODO is this macro complexity with it? (removes some `clones`). This may become more complex with `if`, etc.
+// TODO is this macro complexity worth it? (removes some `clones`). This may become more complex with `if`, etc.
 // NOTE add optimizations **after** the test passes
 macro_rules! reuse_path {
     ($dest:ident . $method:ident ( &ModifyCmd:: $variant:ident {

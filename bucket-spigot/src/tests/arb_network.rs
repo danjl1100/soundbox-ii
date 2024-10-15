@@ -202,14 +202,13 @@ mod never {
     impl std::error::Error for NeverErr {}
 }
 
-#[allow(clippy::struct_field_names)] // TODO rename? the lint has a point... --> ScratchPaths
-struct Scratch {
-    node_paths: Vec<Path>,
-    bucket_paths: Vec<Path>,
-    joint_paths: Vec<Path>,
-    empty_paths: Vec<Path>,
+struct ScratchPaths {
+    nodes: Vec<Path>,
+    buckets: Vec<Path>,
+    joints: Vec<Path>,
+    emptys: Vec<Path>,
 }
-impl Scratch {
+impl ScratchPaths {
     fn assert_not_contains(&self, path: &Path) {
         self.all(|label, paths| {
             assert!(
@@ -221,40 +220,40 @@ impl Scratch {
     fn add_bucket(&mut self, (parent, bucket): (&Path, Path)) {
         eprintln!("add bucket ({parent}, {bucket})");
         let Self {
-            node_paths,
-            bucket_paths,
-            joint_paths: _, // bucket does not affect joints
-            empty_paths,
+            nodes,
+            buckets,
+            joints: _, // bucket does not affect joints
+            emptys,
         } = self;
 
         // bucket membership
-        bucket_paths.push(bucket.clone());
+        buckets.push(bucket.clone());
         // node membership
-        node_paths.push(bucket.clone());
+        nodes.push(bucket.clone());
 
         // new empty
-        empty_paths.push(bucket);
+        emptys.push(bucket);
         // parent no longer empty
-        empty_paths.retain(|p| p != parent);
+        emptys.retain(|p| p != parent);
     }
     fn add_joint(&mut self, (parent, joint): (&Path, Path)) {
         eprintln!("add joint ({parent}, {joint})");
         let Self {
-            node_paths,
-            bucket_paths: _, // joint does not affect buckets
-            joint_paths,
-            empty_paths,
+            nodes,
+            buckets: _, // joint does not affect buckets
+            joints,
+            emptys,
         } = self;
 
         // joint membership
-        joint_paths.push(joint.clone());
+        joints.push(joint.clone());
         // node membership
-        node_paths.push(joint.clone());
+        nodes.push(joint.clone());
 
         // new empty
-        empty_paths.push(joint);
+        emptys.push(joint);
         // parent no longer empty
-        empty_paths.retain(|p| p != parent);
+        emptys.retain(|p| p != parent);
     }
     fn delete(&mut self, node: &Path, parent_now_empty: Option<Path>) {
         self.all_mut(|_label, paths| {
@@ -268,19 +267,19 @@ impl Scratch {
         });
 
         if let Some(parent) = parent_now_empty {
-            self.empty_paths.push(parent);
+            self.emptys.push(parent);
         }
     }
     fn fill_bucket(&mut self, bucket: &Path, empty: bool) {
         let Self {
-            node_paths: _, // fill does not affect any node membership
-            bucket_paths: _,
-            joint_paths: _,
-            empty_paths,
+            nodes: _, // fill does not affect any node membership
+            buckets: _,
+            joints: _,
+            emptys,
         } = self;
-        empty_paths.retain(|p| p != bucket);
+        emptys.retain(|p| p != bucket);
         if empty {
-            empty_paths.push(bucket.clone());
+            emptys.push(bucket.clone());
         }
     }
     fn all(&self, mut f: impl FnMut(&str, &[Path])) {
@@ -293,33 +292,33 @@ impl Scratch {
     }
     fn try_all<E>(&self, mut f: impl FnMut(&str, &[Path]) -> Result<(), E>) -> Result<(), E> {
         let Self {
-            node_paths,
-            bucket_paths,
-            joint_paths,
-            empty_paths,
+            nodes,
+            buckets,
+            joints,
+            emptys,
         } = self;
-        f("node", node_paths)?;
-        f("bucket", bucket_paths)?;
-        f("joint", joint_paths)?;
-        f("empty", empty_paths)?;
+        f("nodes", nodes)?;
+        f("buckets", buckets)?;
+        f("joints", joints)?;
+        f("emptys", emptys)?;
         Ok(())
     }
     fn all_mut(&mut self, f: impl Fn(&str, &mut Vec<Path>)) {
         let Self {
-            node_paths,
-            bucket_paths,
-            joint_paths,
-            empty_paths,
+            nodes,
+            buckets,
+            joints,
+            emptys,
         } = self;
-        f("node", node_paths);
-        f("bucket", bucket_paths);
-        f("joint", joint_paths);
-        f("empty", empty_paths);
+        f("nodes", nodes);
+        f("buckets", buckets);
+        f("joints", joints);
+        f("emptys", emptys);
     }
 }
-impl std::fmt::Debug for Scratch {
+impl std::fmt::Debug for ScratchPaths {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Scratch {{")?;
+        writeln!(f, "ScratchPaths {{")?;
         self.try_all(|label, paths| {
             write!(f, "\t{label}: [ ")?;
             for path in paths {
@@ -342,11 +341,11 @@ where
 
         let mut network = Network::default();
 
-        let mut scratch = Scratch {
-            node_paths: vec![Path::empty()],
-            bucket_paths: vec![],
-            joint_paths: vec![Path::empty()],
-            empty_paths: vec![],
+        let mut scratch = ScratchPaths {
+            nodes: vec![Path::empty()],
+            buckets: vec![],
+            joints: vec![Path::empty()],
+            emptys: vec![],
         };
 
         for _ in 0..u.arbitrary_len::<S>()? {
@@ -354,15 +353,15 @@ where
             let seed = seed.into();
             let path_options = match &seed {
                 // only joints
-                Seed::AddBucket | Seed::AddJoint => &scratch.joint_paths,
+                Seed::AddBucket | Seed::AddJoint => &scratch.joints,
                 // only buckets
-                Seed::FillBucket { .. } => &scratch.bucket_paths,
+                Seed::FillBucket { .. } => &scratch.buckets,
                 // any node
-                Seed::SetOrderType { .. } => &scratch.node_paths,
+                Seed::SetOrderType { .. } => &scratch.nodes,
                 // exclude root
-                Seed::SetFilters { .. } | Seed::SetWeight { .. } => &scratch.node_paths[1..],
+                Seed::SetFilters { .. } | Seed::SetWeight { .. } => &scratch.nodes[1..],
                 // only empty nodes
-                Seed::DeleteEmpty => &scratch.empty_paths,
+                Seed::DeleteEmpty => &scratch.emptys,
             };
             if path_options.is_empty() {
                 // no paths for the chosen seed, retry for the next seed
