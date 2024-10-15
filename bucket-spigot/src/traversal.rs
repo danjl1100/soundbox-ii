@@ -4,7 +4,7 @@ use crate::{
     child_vec::{ChildVec, Weights},
     order,
     path::{Path, PathRef},
-    Bucket, Child, Network, UnknownPathRef,
+    Bucket, Child, Trees, UnknownPathRef,
 };
 
 #[derive(Clone, Copy)]
@@ -62,47 +62,63 @@ impl OrderNodeImpl<()> for () {
     }
 }
 
-impl<T, U> Network<T, U> {
+impl<T, U> Trees<T, U> {
     #[cfg(test)]
-    pub(crate) fn assert_tree_topologies_match(&self) {
-        enum Never {}
-
+    pub(crate) fn assert_topologies_match(&self) {
         // traversing the tree checks the topologies match
+        self.visit_depth_first(|_| {});
+    }
 
-        Self::depth_first_traversal(
-            &mut Path::empty(),
-            &self.root,
-            self.root_order.node().get_children(),
-            |_| Ok(()),
-        )
-        .unwrap_or_else(|n: Never| match n {});
+    #[cfg(test)]
+    pub(crate) fn visit_depth_first_items(
+        &self,
+        visit_fn: impl for<'a> FnMut(TraversalElem<'a, (), T, U>),
+    ) {
+        let path = &mut Path::empty();
+        let child_items = &self.item;
+        Self::visit_depth_first_at(path, child_items, &(), visit_fn);
     }
-    pub(crate) fn depth_first_traversal_items<E>(
-        path: &mut Path,
-        child_items: &ChildVec<Child<T, U>>,
-        visit_fn: impl for<'a> FnMut(TraversalElem<'a, (), T, U>) -> Result<(), E>,
-    ) -> Result<(), E> {
-        Self::depth_first_traversal(path, child_items, &(), visit_fn)
+    pub(crate) fn visit_depth_first(
+        &self,
+        visit_fn: impl for<'a> FnMut(TraversalElem<'a, order::OrderNode, T, U>),
+    ) {
+        let path = &mut Path::empty();
+        let child_items = &self.item;
+        let child_order = self.order.node().get_children();
+        Self::visit_depth_first_at(path, child_items, child_order, visit_fn);
     }
-    // TODO when Network refactored into sub-field Tree, we can borrow entire `&mut self` and iterate from root
-    // pub(crate) fn depth_first_traversal_items_order_root<E>(
-    //     &self,
-    //     visit_fn: impl for<'a> FnMut(TraversalElem<'a, order::OrderNode, T, U>) -> Result<(), E>,
-    // ) -> Result<(), E> {
-    //     let path = &mut Path::empty();
-    //     let child_items = &self.root;
-    //     let child_order = self.root_order.node().get_children();
-    //     Self::depth_first_traversal(path, child_items, child_order, visit_fn)
-    // }
-    pub(crate) fn depth_first_traversal_items_order<E>(
-        path: &mut Path,
-        child_items: &ChildVec<Child<T, U>>,
-        child_order: &OrderNodeSlice,
+    pub(crate) fn try_visit_depth_first<E>(
+        &self,
         visit_fn: impl for<'a> FnMut(TraversalElem<'a, order::OrderNode, T, U>) -> Result<(), E>,
     ) -> Result<(), E> {
-        Self::depth_first_traversal(path, child_items, child_order, visit_fn)
+        let path = &mut Path::empty();
+        let child_items = &self.item;
+        let child_order = self.order.node().get_children();
+        Self::try_visit_depth_first_at(path, child_items, child_order, visit_fn)
     }
-    fn depth_first_traversal<E, S>(
+    pub(crate) fn visit_depth_first_items_at(
+        path: &mut Path,
+        child_items: &ChildVec<Child<T, U>>,
+        visit_fn: impl for<'a> FnMut(TraversalElem<'a, (), T, U>),
+    ) {
+        Self::visit_depth_first_at(path, child_items, &(), visit_fn);
+    }
+    fn visit_depth_first_at<S>(
+        path: &mut Path,
+        child_items: &ChildVec<Child<T, U>>,
+        child_order: &S,
+        mut visit_fn: impl for<'a> FnMut(TraversalElem<'a, S::Node, T, U>),
+    ) where
+        S: OrderNodeSliceImpl + ?Sized,
+    {
+        enum Never {}
+        Self::try_visit_depth_first_at(path, child_items, child_order, |elem| {
+            visit_fn(elem);
+            Ok(())
+        })
+        .unwrap_or_else(|n: Never| match n {});
+    }
+    fn try_visit_depth_first_at<E, S>(
         path: &mut Path,
         child_items: &ChildVec<Child<T, U>>,
         child_order: &S,
@@ -179,14 +195,14 @@ type OptChildrenRef<'a, T, U> = Option<&'a ChildVec<Child<T, U>>>;
 type OptChildRef<'a, T, U> = Option<&'a Child<T, U>>;
 type OptChildrenAndChildRef<'a, T, U> = (OptChildrenRef<'a, T, U>, OptChildRef<'a, T, U>);
 
-impl<T, U> Network<T, U> {
+impl<T, U> Trees<T, U> {
     /// Returns the children at the path (if any) and the matched node (if not root)
-    pub(crate) fn for_each_child<'a, 'b>(
+    pub(crate) fn for_each_direct_child<'a, 'b>(
         &'a self,
         path: PathRef<'b>,
         mut process_child_fn: impl FnMut(&'a Child<T, U>),
     ) -> Result<OptChildrenAndChildRef<'a, T, U>, UnknownPathRef<'b>> {
-        let mut current = Some(&self.root);
+        let mut current = Some(&self.item);
         let mut found = None;
 
         for next_index in path {
@@ -207,10 +223,10 @@ impl<T, U> Network<T, U> {
     }
 
     pub(crate) fn find_bucket_mut<'a, 'b>(
-        root_items: &'a mut ChildVec<Child<T, U>>,
+        &'a mut self,
         bucket_path: PathRef<'b>,
     ) -> Result<Option<&'a mut Bucket<T, U>>, UnknownPathRef<'b>> {
-        let mut current = root_items;
+        let mut current = &mut self.item;
 
         let mut bucket_path_iter = bucket_path.into_iter();
         let dest_bucket = loop {

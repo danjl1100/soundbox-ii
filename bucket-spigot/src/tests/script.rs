@@ -278,8 +278,8 @@ where
             }
             Command::Topology { kind } => {
                 let topology = match kind.unwrap_or_default() {
-                    TopologyKind::ItemCount => Topology::new_from_nodes(&self.root),
-                    TopologyKind::Weights => Topology::new_from_weights(&self.root),
+                    TopologyKind::ItemCount => Topology::new_from_nodes(&self.trees.item),
+                    TopologyKind::Weights => Topology::new_from_weights(&self.trees.item),
                 };
                 Ok(vec![Entry::Topology(topology)])
             }

@@ -69,21 +69,26 @@ pub mod view {
 /// Group of buckets with a central spigot
 #[derive(Clone, Debug)]
 pub struct Network<T, U> {
-    root: ChildVec<Child<T, U>>,
+    trees: Trees<T, U>,
     bucket_paths: BucketPathsMap,
-    /// Order stored separately for ease of mutation/cloning in [`Self::peek`]
-    root_order: order::Root,
     bucket_id_counter: u64,
 }
-// TODO refactor, move `root_items` and `root_order` to new Tree type,
-//      to facilitate cleaner "Depth first from root" function, while borrowing other Network fields
-// struct NetworkTree<T, U> {}
+/// Node-tree portions of a network
+#[derive(Clone, Debug)]
+struct Trees<T, U> {
+    /// Nodes containing the joints/buckets and items
+    item: ChildVec<Child<T, U>>,
+    /// Order stored separately for ease of mutation/cloning in [`Network::peek`]
+    order: order::Root,
+}
 impl<T, U> Default for Network<T, U> {
     fn default() -> Self {
         Self {
-            root: ChildVec::default(),
+            trees: Trees {
+                item: ChildVec::default(),
+                order: order::Root::default(),
+            },
             bucket_paths: BucketPathsMap::default(),
-            root_order: order::Root::default(),
             bucket_id_counter: 0,
         }
     }
@@ -116,12 +121,13 @@ impl<T, U> Network<T, U> {
                 path,
                 new_order_type,
             } => Ok(self
-                .root_order
+                .trees
+                .order
                 .set_order_type(new_order_type, path.as_ref())?),
         };
 
         #[cfg(test)]
-        self.assert_tree_topologies_match();
+        self.trees.assert_topologies_match();
 
         result
     }
@@ -141,25 +147,14 @@ impl<T, U> Network<T, U> {
     // }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
     pub fn get_buckets_needing_fill(&mut self) -> impl Iterator<Item = PathRef<'_>> {
-        enum Never {}
-
         // pre-populate cache
         if self.bucket_paths.is_cache_missing_any_need_fill() {
             // effort to cache 1 item is not significantly different from refreshing entire cache
-            let child_items = &self.root;
-            let child_order = self.root_order.node().get_children();
-            Self::depth_first_traversal_items_order(
-                &mut Path::empty(),
-                child_items,
-                child_order,
-                |elem| {
-                    if let Child::Bucket(bucket) = elem.node_item {
-                        self.bucket_paths.add_cached(bucket.id, elem.node_path);
-                    }
-                    Ok(())
-                },
-            )
-            .unwrap_or_else(|n: Never| match n {});
+            self.trees.visit_depth_first(|elem| {
+                if let Child::Bucket(bucket) = elem.node_item {
+                    self.bucket_paths.add_cached(bucket.id, elem.node_path);
+                }
+            });
         }
 
         self.bucket_paths.iter_needs_fill().map(|id| {
@@ -178,16 +173,17 @@ impl<T, U> Network<T, U> {
     pub fn get_filters(&self, path: PathRef<'_>) -> Result<Vec<&[U]>, UnknownPath> {
         let mut filter_groups = Vec::new();
 
-        self.for_each_child(path, |child| {
-            let filters = match child {
-                Child::Bucket(bucket) => &bucket.filters,
-                Child::Joint(joint) => &joint.filters,
-            };
-            if !filters.is_empty() {
-                filter_groups.push(&filters[..]);
-            }
-        })
-        .map_err(UnknownPathRef::to_owned)?;
+        self.trees
+            .for_each_direct_child(path, |child| {
+                let filters = match child {
+                    Child::Bucket(bucket) => &bucket.filters,
+                    Child::Joint(joint) => &joint.filters,
+                };
+                if !filters.is_empty() {
+                    filter_groups.push(&filters[..]);
+                }
+            })
+            .map_err(UnknownPathRef::to_owned)?;
 
         Ok(filter_groups)
     }
@@ -201,7 +197,7 @@ impl<T, U> Network<T, U> {
         &self,
         path: PathRef<'a>,
     ) -> Result<Option<usize>, UnknownPathRef<'a>> {
-        let (children, _found) = self.for_each_child(path, |_| {})?;
+        let (children, _found) = self.trees.for_each_direct_child(path, |_| {})?;
 
         let child_node_count = children.map(child_vec::ChildVec::len);
         Ok(child_node_count)
@@ -209,20 +205,16 @@ impl<T, U> Network<T, U> {
     #[cfg(test)]
     /// Counts the all nodes in the network
     fn count_all_nodes(&self) -> usize {
-        enum Never {}
-
         let mut total_count = 0;
-        Self::depth_first_traversal_items(&mut Path::empty(), &self.root, |_| {
+        self.trees.visit_depth_first_items(|_| {
             total_count += 1;
-            Ok(())
-        })
-        .unwrap_or_else(|n: Never| match n {});
+        });
 
         total_count
     }
 
     fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
-        let mut current = &mut self.root;
+        let mut current = &mut self.trees.item;
 
         // TODO [2/5] find common pattern to simplify similar indexing logic...?
         for next_index in &parent_path {
@@ -238,7 +230,7 @@ impl<T, U> Network<T, U> {
         }
 
         // add order for child (fails if node/order structures are not identical)
-        let child_index = self.root_order.add(parent_path.as_ref())?;
+        let child_index = self.trees.order.add(parent_path.as_ref())?;
 
         let child_index_expected = current.len();
         assert_eq!(
@@ -271,7 +263,7 @@ impl<T, U> Network<T, U> {
         Ok(child_path)
     }
     fn delete_empty(&mut self, path: Path) -> Result<(), ModifyError> {
-        let mut current_items = &mut self.root;
+        let mut current_items = &mut self.trees.item;
 
         let Some((final_index, parent_path)) = path.as_ref().split_last() else {
             return Err(ModifyErr::DeleteRoot.into());
@@ -305,7 +297,7 @@ impl<T, U> Network<T, U> {
         }
 
         // remove order first, in case it errors
-        self.root_order.remove(path.as_ref()).map_err(|err| {
+        self.trees.order.remove(path.as_ref()).map_err(|err| {
             err.unwrap_or_else(|| {
                 unreachable!(
                     "DeleteRoot error from order should be detected when checking item nodes"
@@ -331,7 +323,7 @@ impl<T, U> Network<T, U> {
         new_contents: Vec<T>,
         bucket_path: PathRef<'_>,
     ) -> Result<(), ModifyError> {
-        let dest_bucket = match Self::find_bucket_mut(&mut self.root, bucket_path) {
+        let dest_bucket = match self.trees.find_bucket_mut(bucket_path) {
             Ok(Some(bucket)) => bucket,
             Ok(None) => Err(ModifyErr::FillJoint)?,
             Err(unknown) => Err(unknown.to_owned())?,
@@ -343,7 +335,7 @@ impl<T, U> Network<T, U> {
         Ok(())
     }
     fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
-        let mut current = Ok(&mut self.root);
+        let mut current = Ok(&mut self.trees.item);
         let mut dest_filters = None;
         // TODO [4/5] find common pattern to simplify similar indexing logic...?
         for next_index in &path {
@@ -391,7 +383,7 @@ impl<T, U> Network<T, U> {
         }
     }
     fn set_weight(&mut self, new_weight: u32, path: Path) -> Result<(), ModifyError> {
-        let mut current = &mut self.root;
+        let mut current = &mut self.trees.item;
         let Some((last_index, parent_path)) = path.as_ref().split_last() else {
             return Err(ModifyErr::WeightRoot.into());
         };
@@ -419,15 +411,10 @@ impl<T, U> Network<T, U> {
         bucket_paths: &mut BucketPathsMap,
         child_nodes: &ChildVec<Child<T, U>>,
     ) {
-        enum Never {}
-        Self::depth_first_traversal_items(path, child_nodes, |elem| {
-            match elem.node_item {
-                Child::Bucket(bucket) => bucket_paths.add_needs_fill(bucket.id, elem.node_path),
-                Child::Joint(_) => {}
-            }
-            Ok(())
-        })
-        .unwrap_or_else(|n: Never| match n {});
+        Trees::visit_depth_first_items_at(path, child_nodes, |elem| match elem.node_item {
+            Child::Bucket(bucket) => bucket_paths.add_needs_fill(bucket.id, elem.node_path),
+            Child::Joint(_) => {}
+        });
     }
 }
 

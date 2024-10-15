@@ -19,8 +19,8 @@ impl<T, U> Network<T, U> {
         rng: &mut R,
         peek_len: usize,
     ) -> RandResult<Peeked<'a, T>> {
-        let root = &self.root;
-        let mut root_order = self.root_order.0.clone();
+        let root = &self.trees.item;
+        let mut root_order = self.trees.order.0.clone();
         let mut root_remaining = CountsRemaining::new(root.len());
 
         let mut effort_count = 0;
@@ -50,7 +50,7 @@ impl<T, U> Network<T, U> {
     /// Finalizes the specified [`Peeked`], advancing the network state (if any)
     pub fn finalize_peeked(&mut self, peeked: PeekAccepted) {
         let PeekAccepted { new_root_order } = peeked;
-        self.root_order = new_root_order;
+        self.trees.order = new_root_order;
     }
 }
 

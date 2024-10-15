@@ -28,8 +28,8 @@ impl<T, U> Network<T, U> {
         let mut rows = vec![];
         let mut path = Path::empty();
 
-        let mut item_node = &self.root;
-        let mut order_node = self.root_order.node().get_children();
+        let mut item_node = &self.trees.item;
+        let mut order_node = self.trees.order.node().get_children();
         let mut parent_active = true;
         let mut child_start_index = None;
         if let Some(base_path) = table_params.base_path {

@@ -110,9 +110,8 @@ impl<T, U> Network<T, U> {
     where
         V: Visitor<T, U>,
     {
-        let root_order_node = self.root_order.node();
         {
-            let root_order_type = root_order_node.get_order_type();
+            let root_order_type = self.trees.order.node().get_order_type();
             if root_order_type != OrderType::default() {
                 dest.visit(&ModifyCmd::SetOrderType {
                     path: Path::empty(),
@@ -121,95 +120,87 @@ impl<T, U> Network<T, U> {
             }
         }
 
-        let child_items = &self.root;
-        let child_order = root_order_node.get_children();
+        self.trees.try_visit_depth_first(|elem| {
+            let TraversalElem {
+                node_path,
+                parent_weights,
+                node_weight,
+                node_item,
+                node_order,
+            } = elem;
 
-        Self::depth_first_traversal_items_order(
-            &mut Path::empty(),
-            child_items,
-            child_order,
-            |elem| {
-                let TraversalElem {
-                    node_path,
-                    parent_weights,
-                    node_weight,
-                    node_item,
-                    node_order,
-                } = elem;
+            // TODO with ModifyCmd accepting PathRef, this would be a lot simpler
+            //      (e.g. remove the move dances below, which are there to only clone once)
+            //
+            // let (_last, parent) = node_path
+            //     .split_last()
+            //     .expect("node should not be pathless root");
+            // let parent = parent.to_owned();
+            // let creation_cmd = match node_item {
+            //     crate::Child::Bucket(_) => ModifyCmd::AddBucket { parent },
+            //     crate::Child::Joint(_) => ModifyCmd::AddJoint { parent },
+            // };
+            // dest.visit(&creation_cmd)?;
 
-                // TODO with ModifyCmd accepting PathRef, this would be a lot simpler
-                //      (e.g. remove the move dances below, which are there to only clone once)
-                //
-                // let (_last, parent) = node_path
-                //     .split_last()
-                //     .expect("node should not be pathless root");
-                // let parent = parent.to_owned();
-                // let creation_cmd = match node_item {
-                //     crate::Child::Bucket(_) => ModifyCmd::AddBucket { parent },
-                //     crate::Child::Joint(_) => ModifyCmd::AddJoint { parent },
-                // };
-                // dest.visit(&creation_cmd)?;
-
-                let path = {
-                    // split last, parent
-                    let (last, parent) = node_path
-                        .split_last()
-                        .expect("node should not be pathless root");
-                    let parent = parent.to_owned();
-                    let parent = match node_item {
-                        crate::Child::Bucket(_) => {
-                            reuse_path! {
-                                dest.visit(&ModifyCmd::AddBucket { parent })?;
-                            }
-                            parent
+            let path = {
+                // split last, parent
+                let (last, parent) = node_path
+                    .split_last()
+                    .expect("node should not be pathless root");
+                let parent = parent.to_owned();
+                let parent = match node_item {
+                    crate::Child::Bucket(_) => {
+                        reuse_path! {
+                            dest.visit(&ModifyCmd::AddBucket { parent })?;
                         }
-                        crate::Child::Joint(_) => {
-                            reuse_path! {
-                                dest.visit(&ModifyCmd::AddJoint { parent })?;
-                            }
-                            parent
+                        parent
+                    }
+                    crate::Child::Joint(_) => {
+                        reuse_path! {
+                            dest.visit(&ModifyCmd::AddJoint { parent })?;
                         }
-                    };
-                    // joint last, parent
-                    let mut path = parent;
-                    path.push(last);
+                        parent
+                    }
+                };
+                // joint last, parent
+                let mut path = parent;
+                path.push(last);
+                path
+            };
+
+            let path = {
+                let order_type = node_order.get_order_type();
+                if order_type == OrderType::default() {
                     path
-                };
-
-                let path = {
-                    let order_type = node_order.get_order_type();
-                    if order_type == OrderType::default() {
-                        path
-                    } else {
-                        reuse_path! {
-                            dest.visit(&ModifyCmd::SetOrderType {
-                                path,
-                                new_order_type: order_type,
-                            })?;
-                        }
-                        path
+                } else {
+                    reuse_path! {
+                        dest.visit(&ModifyCmd::SetOrderType {
+                            path,
+                            new_order_type: order_type,
+                        })?;
                     }
-                };
+                    path
+                }
+            };
 
-                let path = {
-                    if parent_weights.map_or(true, |w| !w.is_unity()) {
-                        reuse_path! {
-                            dest.visit(&ModifyCmd::SetWeight {
-                                path,
-                                new_weight: node_weight,
-                            })?;
-                        }
-                        path
-                    } else {
-                        path
+            let path = {
+                if parent_weights.map_or(true, |w| !w.is_unity()) {
+                    reuse_path! {
+                        dest.visit(&ModifyCmd::SetWeight {
+                            path,
+                            new_weight: node_weight,
+                        })?;
                     }
-                };
+                    path
+                } else {
+                    path
+                }
+            };
 
-                drop(path);
+            drop(path);
 
-                Ok(())
-            },
-        )?;
+            Ok(())
+        })?;
 
         dest.finish()
     }
