@@ -18,6 +18,7 @@
 //! walking from the spigot (root node) to the bucket.
 //!
 
+use crate::traversal::ChildFound;
 use bucket_paths_map::BucketPathsMap;
 use child_vec::{ChildVec, Weights};
 use path::{Path, PathRef};
@@ -136,15 +137,13 @@ impl<T, U> Network<T, U> {
         self.bucket_id_counter += 1;
         Bucket::new(BucketId(id))
     }
-    // TODO implement and test
-    // /// Returns the [`Path`] to the specified [`BucketId`], if any exists
-    // #[must_use]
-    // pub fn find_bucket_path(&mut self, id: BucketId) -> Option<PathRef<'_>> {
-    //     if let Some(path) = self.bucket_paths.get_cached(id) {
-    //         return Some(path);
-    //     }
-    //     todo!()
-    // }
+    /// Returns the [`Path`] to the specified [`BucketId`], if any exists
+    ///
+    /// # Errors
+    /// Returns an error if the bucket id does not match any live bucket nodes
+    pub fn find_bucket_path(&mut self, id: BucketId) -> Result<PathRef<'_>, UnknownBucketId> {
+        self.bucket_paths.get_cached(id).ok_or(UnknownBucketId(id))
+    }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
     pub fn get_buckets_needing_fill(&mut self) -> impl Iterator<Item = PathRef<'_>> {
         // pre-populate cache
@@ -174,6 +173,7 @@ impl<T, U> Network<T, U> {
         let mut filter_groups = Vec::new();
 
         self.trees
+            .item
             .for_each_direct_child(path, |child| {
                 let filters = match child {
                     Child::Bucket(bucket) => &bucket.filters,
@@ -197,7 +197,7 @@ impl<T, U> Network<T, U> {
         &self,
         path: PathRef<'a>,
     ) -> Result<Option<usize>, UnknownPathRef<'a>> {
-        let (children, _found) = self.trees.for_each_direct_child(path, |_| {})?;
+        let (children, _found) = self.trees.item.for_each_direct_child(path, |_| {})?;
 
         let child_node_count = children.map(child_vec::ChildVec::len);
         Ok(child_node_count)
@@ -214,25 +214,18 @@ impl<T, U> Network<T, U> {
     }
 
     fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
-        let mut current = &mut self.trees.item;
-
-        // TODO [2/5] find common pattern to simplify similar indexing logic...?
-        for next_index in &parent_path {
-            let Some(next_child) = current.children_mut().get_mut(next_index) else {
-                return Err(UnknownPath(parent_path).into());
-            };
-            current = match next_child {
-                Child::Bucket(_) => {
-                    return Err(CannotAddToBucket(parent_path).into());
-                }
-                Child::Joint(joint) => &mut joint.next,
-            };
-        }
+        let dest = self.trees.item.find_child_mut(parent_path.as_ref());
+        let dest = match dest {
+            Ok(ChildFound::RootChildren(child_vec)) => child_vec,
+            Ok(ChildFound::Joint(joint)) => &mut joint.next,
+            Ok(ChildFound::Bucket(_)) => return Err(CannotAddToBucket(parent_path).into()),
+            Err(UnknownPathRef(_)) => return Err(UnknownPath(parent_path).into()),
+        };
 
         // add order for child (fails if node/order structures are not identical)
         let child_index = self.trees.order.add(parent_path.as_ref())?;
 
-        let child_index_expected = current.len();
+        let child_index_expected = dest.len();
         assert_eq!(
             child_index, child_index_expected,
             "order nodes should match item nodes"
@@ -245,7 +238,7 @@ impl<T, U> Network<T, U> {
         };
 
         // add child
-        current.push(child);
+        dest.push(child);
 
         // build child path
         let child_path = {
@@ -263,26 +256,20 @@ impl<T, U> Network<T, U> {
         Ok(child_path)
     }
     fn delete_empty(&mut self, path: Path) -> Result<(), ModifyError> {
-        let mut current_items = &mut self.trees.item;
-
         let Some((final_index, parent_path)) = path.as_ref().split_last() else {
             return Err(ModifyErr::DeleteRoot.into());
         };
 
-        // TODO [3/5] find common pattern to simplify similar indexing logic...?
-        for next_index in parent_path {
-            let Some(next_child_items) = current_items.children_mut().get_mut(next_index) else {
-                return Err(UnknownPath(path).into());
-            };
-            current_items = match next_child_items {
-                Child::Bucket(_) => {
-                    return Err(UnknownPath(path).into());
-                }
-                Child::Joint(joint) => &mut joint.next,
-            };
-        }
+        let dest = self.trees.item.find_child_mut(parent_path);
+        let dest = match dest {
+            Ok(ChildFound::RootChildren(child_vec)) => child_vec,
+            Ok(ChildFound::Joint(joint)) => &mut joint.next,
+            Ok(ChildFound::Bucket(_)) | Err(UnknownPathRef(_)) => {
+                return Err(UnknownPath(path).into())
+            }
+        };
 
-        let Some(target_elem_items) = current_items.children().get(final_index) else {
+        let Some(target_elem_items) = dest.children().get(final_index) else {
             return Err(UnknownPath(path).into());
         };
 
@@ -310,7 +297,7 @@ impl<T, U> Network<T, U> {
             Child::Joint(_) => None,
         };
 
-        current_items.remove(final_index);
+        dest.remove(final_index);
 
         // update the cache for the removed node path
         self.bucket_paths
@@ -323,7 +310,7 @@ impl<T, U> Network<T, U> {
         new_contents: Vec<T>,
         bucket_path: PathRef<'_>,
     ) -> Result<(), ModifyError> {
-        let dest_bucket = match self.trees.find_bucket_mut(bucket_path) {
+        let dest_bucket = match self.trees.item.find_bucket_mut(bucket_path) {
             Ok(Some(bucket)) => bucket,
             Ok(None) => Err(ModifyErr::FillJoint)?,
             Err(unknown) => Err(unknown.to_owned())?,
@@ -335,72 +322,50 @@ impl<T, U> Network<T, U> {
         Ok(())
     }
     fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
-        let mut current = Ok(&mut self.trees.item);
-        let mut dest_filters = None;
-        // TODO [4/5] find common pattern to simplify similar indexing logic...?
-        for next_index in &path {
-            let Some(next_child) = current
-                .ok()
-                .and_then(|c| c.children_mut().get_mut(next_index))
-            else {
-                return Err(UnknownPath(path).into());
-            };
-            current = match next_child {
-                Child::Bucket(bucket) => {
-                    dest_filters = Some(&mut bucket.filters);
-                    Err(bucket.id)
-                }
-                Child::Joint(joint) => {
-                    dest_filters = Some(&mut joint.filters);
-                    Ok(&mut joint.next)
-                }
-            };
-        }
+        let dest = self.trees.item.find_child_mut(path.as_ref());
+        let (dest_filters, buckets_info) = match dest {
+            Ok(ChildFound::RootChildren(_)) => Err(ModifyErr::FilterRoot)?,
+            Ok(ChildFound::Joint(joint)) => (&mut joint.filters, Ok(&mut joint.next)),
+            Ok(ChildFound::Bucket(bucket)) => (&mut bucket.filters, Err(bucket.id)),
+            Err(UnknownPathRef(_)) => return Err(UnknownPath(path).into()),
+        };
 
-        if let Some(dest_filters) = dest_filters {
-            *dest_filters = new_filters;
+        *dest_filters = new_filters;
 
-            match current {
-                Ok(joint_children) => {
-                    // target is joint, search for all child buckets
+        match buckets_info {
+            Ok(joint_children) => {
+                // target is joint, search for all child buckets
 
-                    let mut joint_path_buf = path;
-                    Self::add_buckets_need_fill_under(
-                        &mut joint_path_buf,
-                        &mut self.bucket_paths,
-                        joint_children,
-                    );
-                }
-                Err(bucket_id) => {
-                    // target is bucket
-                    self.bucket_paths.add_needs_fill(bucket_id, path.as_ref());
-                }
+                let mut joint_path_buf = path;
+                Self::add_buckets_need_fill_under(
+                    &mut joint_path_buf,
+                    &mut self.bucket_paths,
+                    joint_children,
+                );
             }
-
-            Ok(())
-        } else {
-            Err(ModifyErr::FilterRoot)?
+            Err(bucket_id) => {
+                // target is bucket
+                self.bucket_paths.add_needs_fill(bucket_id, path.as_ref());
+            }
         }
+
+        Ok(())
     }
     fn set_weight(&mut self, new_weight: u32, path: Path) -> Result<(), ModifyError> {
-        let mut current = &mut self.trees.item;
         let Some((last_index, parent_path)) = path.as_ref().split_last() else {
             return Err(ModifyErr::WeightRoot.into());
         };
-        // TODO [5/5] find common pattern to simplify similar indexing logic...?
-        for next_index in parent_path {
-            let next_child = current.children_mut().get_mut(next_index);
-            current = match next_child {
-                None | Some(Child::Bucket(_)) => {
-                    return Err(UnknownPath(path).into());
-                }
-                Some(Child::Joint(joint)) => &mut joint.next,
-            };
-        }
+        let dest = self.trees.item.find_child_mut(parent_path);
+        let dest = match dest {
+            Ok(ChildFound::RootChildren(child_vec)) => child_vec,
+            Ok(ChildFound::Joint(joint)) => &mut joint.next,
+            Ok(ChildFound::Bucket(_)) | Err(UnknownPathRef(_)) => {
+                return Err(UnknownPath(path).into())
+            }
+        };
 
-        let target_parent = current;
-        if last_index < target_parent.len() {
-            target_parent.set_weight(last_index, new_weight);
+        if last_index < dest.len() {
+            dest.set_weight(last_index, new_weight);
             Ok(())
         } else {
             Err(UnknownPath(path).into())
@@ -582,6 +547,7 @@ pub struct ModifyError(ModifyErr);
 enum ModifyErr {
     UnknownPath(UnknownPath),
     UnknownOrderPath(order::UnknownOrderPath),
+    UnknownBucketId(UnknownBucketId),
     AddToBucket(CannotAddToBucket),
     DeleteRoot,
     DeleteNonemptyBucket(CannotDeleteNonempty),
@@ -598,6 +564,11 @@ impl From<UnknownPath> for ModifyError {
 impl From<order::UnknownOrderPath> for ModifyError {
     fn from(value: order::UnknownOrderPath) -> Self {
         Self(ModifyErr::UnknownOrderPath(value))
+    }
+}
+impl From<UnknownBucketId> for ModifyError {
+    fn from(value: UnknownBucketId) -> Self {
+        Self(ModifyErr::UnknownBucketId(value))
     }
 }
 impl From<CannotAddToBucket> for ModifyError {
@@ -618,6 +589,9 @@ impl std::fmt::Display for ModifyError {
         match inner {
             ModifyErr::UnknownPath(err) => write!(f, "{err}"),
             ModifyErr::UnknownOrderPath(err) => {
+                write!(f, "{err}")
+            }
+            ModifyErr::UnknownBucketId(err) => {
                 write!(f, "{err}")
             }
             ModifyErr::AddToBucket(CannotAddToBucket(path)) => {
@@ -673,6 +647,16 @@ impl std::fmt::Display for UnknownPathRef<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(path) = self;
         write!(f, "unknown path: {path}")
+    }
+}
+
+/// The specified bucket id does not match any bucket
+#[derive(Clone, Copy, Debug)]
+pub struct UnknownBucketId(BucketId);
+impl std::fmt::Display for UnknownBucketId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(BucketId(id)) = self;
+        write!(f, "unknown bucket id: {id}")
     }
 }
 

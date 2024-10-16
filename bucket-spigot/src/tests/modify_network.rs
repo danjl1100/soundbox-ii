@@ -216,6 +216,8 @@ fn joint_filter_invalidates_buckets() {
         modify fill-bucket .0.1.0.0 item-modified2
 
         stats bucket-paths-map
+        get-bucket-path 0
+        get-bucket-path 1
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -243,6 +245,8 @@ fn joint_filter_invalidates_buckets() {
           (BucketId(1), ".0.1.0.0"),
         ],
       )),
+      BucketPath(BucketId(0), ".0.0"),
+      BucketPath(BucketId(1), ".0.1.0.0"),
     ])
     "###);
 }
@@ -268,6 +272,8 @@ fn bucket_filter_invalidates_only_bucket() {
         modify fill-bucket .0.1.0.0 item-modified2
 
         stats bucket-paths-map
+        get-bucket-path 0
+        get-bucket-path 1
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -305,6 +311,8 @@ fn bucket_filter_invalidates_only_bucket() {
           (BucketId(1), ".0.1.0.0"),
         ],
       )),
+      BucketPath(BucketId(0), ".0.0"),
+      BucketPath(BucketId(1), ".0.1.0.0"),
     ])
     "###);
 }
@@ -345,6 +353,8 @@ fn delete_empty_bucket() {
 
         topology
         stats bucket-paths-map
+        !!expect_error unknown bucket id
+        get-bucket-path 1234567890
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -360,6 +370,7 @@ fn delete_empty_bucket() {
         ids_needing_fill: [],
         cached_paths: [],
       )),
+      ExpectError("get-bucket-path 1234567890", "unknown bucket id: 1234567890"),
     ])
     "###);
 }
@@ -404,6 +415,9 @@ fn delete_updates_weights() {
         topology weights
 
         stats bucket-paths-map
+        get-bucket-path 1
+        !!expect_error unknown bucket id
+        get-bucket-path 0
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -435,6 +449,8 @@ fn delete_updates_weights() {
           (BucketId(1), ".0.0"),
         ],
       )),
+      BucketPath(BucketId(1), ".0.0"),
+      ExpectError("get-bucket-path 0", "unknown bucket id: 0"),
     ])
     "###);
 }
@@ -532,6 +548,8 @@ fn delete_bucket_before_fill() {
         modify add-bucket .
 
         stats bucket-paths-map
+        get-bucket-path 1
+        get-bucket-path 2
         ",
     );
     insta::assert_ron_snapshot!(log, @r###"
@@ -557,6 +575,8 @@ fn delete_bucket_before_fill() {
           (BucketId(2), ".1"),
         ],
       )),
+      BucketPath(BucketId(1), ".0.0"),
+      BucketPath(BucketId(2), ".1"),
     ])
     "###);
 }
@@ -572,6 +592,45 @@ fn delete_then_view() {
     );
     let view = network.view_table_default();
     println!("{view}");
+}
+
+#[test]
+fn delete_child_of_bucket() {
+    let log = Network::new_strings_run_script(
+        "
+        modify add-bucket .
+
+        !!expect_error
+        modify delete-empty .0.0
+
+        !!expect_error
+        modify delete-empty .5.6.7.8.9.10
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      BucketsNeedingFill("modify add-bucket .", [
+        ".0",
+      ]),
+      ExpectError("modify delete-empty .0.0", "unknown path: .0.0"),
+      ExpectError("modify delete-empty .5.6.7.8.9.10", "unknown path: .5.6.7.8.9.10"),
+    ])
+    "###);
+}
+
+#[test]
+fn set_weight_error() {
+    let log = Network::new_strings_run_script(
+        "
+        !!expect_error
+        modify set-weight .4.5.6.7 1
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      ExpectError("modify set-weight .4.5.6.7 1", "unknown path: .4.5.6.7"),
+    ])
+    "###);
 }
 
 #[test]

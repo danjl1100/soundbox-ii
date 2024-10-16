@@ -4,7 +4,7 @@ use crate::{
     child_vec::{ChildVec, Weights},
     order,
     path::{Path, PathRef},
-    Bucket, Child, Trees, UnknownPathRef,
+    Bucket, Child, Joint, Trees, UnknownPathRef,
 };
 
 #[derive(Clone, Copy)]
@@ -195,14 +195,14 @@ type OptChildrenRef<'a, T, U> = Option<&'a ChildVec<Child<T, U>>>;
 type OptChildRef<'a, T, U> = Option<&'a Child<T, U>>;
 type OptChildrenAndChildRef<'a, T, U> = (OptChildrenRef<'a, T, U>, OptChildRef<'a, T, U>);
 
-impl<T, U> Trees<T, U> {
+impl<T, U> ChildVec<Child<T, U>> {
     /// Returns the children at the path (if any) and the matched node (if not root)
     pub(crate) fn for_each_direct_child<'a, 'b>(
         &'a self,
         path: PathRef<'b>,
         mut process_child_fn: impl FnMut(&'a Child<T, U>),
     ) -> Result<OptChildrenAndChildRef<'a, T, U>, UnknownPathRef<'b>> {
-        let mut current = Some(&self.item);
+        let mut current = Some(self);
         let mut found = None;
 
         for next_index in path {
@@ -226,24 +226,47 @@ impl<T, U> Trees<T, U> {
         &'a mut self,
         bucket_path: PathRef<'b>,
     ) -> Result<Option<&'a mut Bucket<T, U>>, UnknownPathRef<'b>> {
-        let mut current = &mut self.item;
+        match self.find_child_mut(bucket_path)? {
+            ChildFound::Bucket(bucket) => Ok(Some(bucket)),
+            _ => Ok(None),
+        }
+    }
+    pub(crate) fn find_child_mut<'a, 'b>(
+        &'a mut self,
+        parent_path: PathRef<'b>,
+    ) -> Result<ChildFound<'a, T, U>, UnknownPathRef<'b>> {
+        let mut current = ChildFound::RootChildren(self);
 
-        let mut bucket_path_iter = bucket_path.into_iter();
-        let dest_bucket = loop {
-            let Some(next_index) = bucket_path_iter.next() else {
-                return Ok(None); // joint
-            };
-            let Some(next_child) = current.children_mut().get_mut(next_index) else {
-                return Err(UnknownPathRef(bucket_path));
+        for next_index in parent_path {
+            let Some(next_child) = current
+                .into_child_vec()
+                .and_then(|c| c.children_mut().get_mut(next_index))
+            else {
+                return Err(UnknownPathRef(parent_path));
             };
             current = match next_child {
-                Child::Bucket(bucket) => break bucket,
-                Child::Joint(joint) => &mut joint.next,
+                Child::Bucket(bucket) => ChildFound::Bucket(bucket),
+                Child::Joint(joint) => ChildFound::Joint(joint),
             };
-        };
-        if bucket_path_iter.next().is_some() {
-            return Err(UnknownPathRef(bucket_path));
         }
-        Ok(Some(dest_bucket))
+        Ok(current)
+    }
+}
+
+pub(crate) enum ChildFound<'a, T, U> {
+    /// Root is not a node, so only represent the [`ChildVec`]
+    RootChildren(&'a mut ChildVec<Child<T, U>>),
+    /// Joint node
+    Joint(&'a mut Joint<T, U>),
+    /// Bucket node
+    Bucket(&'a mut Bucket<T, U>),
+}
+impl<'a, T, U> ChildFound<'a, T, U> {
+    fn into_child_vec(self) -> Option<&'a mut ChildVec<Child<T, U>>> {
+        match self {
+            ChildFound::RootChildren(children) => Some(children),
+            ChildFound::Joint(joint) => Some(&mut joint.next),
+            ChildFound::Bucket(_) => None,
+        }
     }
 }

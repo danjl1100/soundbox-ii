@@ -235,6 +235,8 @@ impl ScratchPaths {
         emptys.push(bucket);
         // parent no longer empty
         emptys.retain(|p| p != parent);
+        // FIXME ^^ linear search on many operations using `retain`
+        // Only affects tests, but perhaps use BTreeSet to keep sorted output? (already have `Path: Ord`)
     }
     fn add_joint(&mut self, (parent, joint): (&Path, Path)) {
         eprintln!("add joint ({parent}, {joint})");

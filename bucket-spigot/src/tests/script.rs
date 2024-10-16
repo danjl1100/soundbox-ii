@@ -27,6 +27,7 @@ pub(super) enum Entry<T, U> {
         String,
         #[serde(skip_serializing_if = "Vec::is_empty")] Vec<Path>,
     ),
+    BucketPath(BucketId, Path),
     Filters(Path, Vec<Vec<U>>),
     ExpectError(String, String),
     Peek(
@@ -92,6 +93,9 @@ where
     },
     GetFilters {
         path: Path,
+    },
+    GetBucketPath {
+        bucket_id: u64,
     },
     Peek {
         #[command(flatten)]
@@ -243,6 +247,14 @@ where
                     .map(|&filter_set| filter_set.to_owned())
                     .collect();
                 Ok(vec![Entry::Filters(path, filters)])
+            }
+            Command::GetBucketPath { bucket_id } => {
+                let bucket_id = BucketId(bucket_id);
+                let path = self
+                    .find_bucket_path(bucket_id)
+                    .map_err(ModifyError::from)?
+                    .to_owned();
+                Ok(vec![Entry::BucketPath(bucket_id, path)])
             }
             Command::Peek { flags, count } => {
                 let (effort, peeked, bucket_ids) = self.run_peek(count, flags, rng_holder);
