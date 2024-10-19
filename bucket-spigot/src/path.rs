@@ -26,8 +26,8 @@ pub struct PathRef<'a>(&'a [usize]);
 
 impl Path {
     /// Constructs an empty [`Path`]
-    pub fn empty() -> Self {
-        vec![].into()
+    pub const fn empty() -> Self {
+        Self(vec![])
     }
     /// Borrows the path
     pub fn as_ref(&self) -> PathRef<'_> {
@@ -37,6 +37,16 @@ impl Path {
     /// Returns an iterator for path elements
     pub fn iter(&self) -> Iter<'_> {
         self.as_ref().into_iter()
+    }
+    /// Returns the length of the path
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    /// Returns whether the path is empty
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.as_ref().is_empty()
     }
     /// Appends a path element
     pub fn push(&mut self, elem: usize) {
@@ -91,7 +101,7 @@ impl PathRef<'static> {
     /// Constructs an immutable reference to the root path
     ///
     /// NOTE: Must [convert to owned](`PathRef::to_owned`) to append elements
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self(&[])
     }
 }
@@ -99,6 +109,16 @@ impl<'a> PathRef<'a> {
     /// Returns an iterator for path elements
     pub fn iter(self) -> Iter<'a> {
         self.into_iter()
+    }
+    /// Returns the length of the path
+    #[must_use]
+    pub fn len(self) -> usize {
+        self.0.len()
+    }
+    /// Returns whether the path is empty
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.0.is_empty()
     }
     /// Returns the last element and the rest (if any)
     #[must_use]

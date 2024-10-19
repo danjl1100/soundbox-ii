@@ -199,6 +199,46 @@ fn table_depth_root() {
     }
     "###);
 }
+#[test]
+fn table_depths_narrow_to_wider() {
+    let network = arbitrary_pattern1();
+
+    insta::assert_snapshot!(view_path(&network, ".4.1.1"), @r###"
+    Table {
+    X <--- .4.1.1 bucket (empty) in order
+    }
+    "###);
+    insta::assert_snapshot!(view_path(&network, ".4.1.0"), @r###"
+    Table {
+    X <---- .4.1.0 bucket (empty) in order
+     X <--- .4.1.1 bucket (empty) in order
+    }
+    "###);
+    insta::assert_snapshot!(view_path(&network, ".4.1"), @r###"
+    Table {
+    XX <--- .4.1 joint (2 children) in order
+    X <---- .4.1.0 bucket (empty) in order
+     X <--- .4.1.1 bucket (empty) in order
+    }
+    "###);
+    insta::assert_snapshot!(view_path(&network, ".4.0"), @r###"
+    Table {
+    X <----- .4.0 bucket (empty) in order
+     XX <--- .4.1 joint (2 children) in order
+     X <---- .4.1.0 bucket (empty) in order
+      X <--- .4.1.1 bucket (empty) in order
+    }
+    "###);
+    insta::assert_snapshot!(view_path(&network, ".4"), @r###"
+    Table {
+    XXX <--- .4 x1 joint (2 children) in order
+    X <----- .4.0 bucket (empty) in order
+     XX <--- .4.1 joint (2 children) in order
+     X <---- .4.1.0 bucket (empty) in order
+      X <--- .4.1.1 bucket (empty) in order
+    }
+    "###);
+}
 
 fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
     let path = Path::from_str(path_str).unwrap();

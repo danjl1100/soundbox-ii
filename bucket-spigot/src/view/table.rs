@@ -23,7 +23,7 @@ impl<T, U> Network<T, U> {
     /// NOTE: each resulting node is either {Path/Id, Kind} or # omitted child nodes
     ///
     /// # Errors
-    /// Returns an error if the specified path is incorrect, or the view dimensions are too large
+    /// Returns an error if the specified path is not found, or the view dimensions are too large
     pub fn view_table(&self, table_params: TableParams<'_>) -> Result<TableView, ViewError> {
         let mut rows = vec![];
         let mut path = Path::empty();
@@ -32,23 +32,22 @@ impl<T, U> Network<T, U> {
         let mut order_node = self.trees.order.node().get_children();
         let mut parent_active = true;
         let mut child_start_index = None;
-        if let Some(base_path) = table_params.base_path {
-            let parent_path = if let Some((child, parent)) = base_path.split_last() {
-                child_start_index = Some(child);
-                parent
-            } else {
-                base_path
-            };
+        if let Some((child, parent_path)) = table_params.base_path.split_last() {
+            child_start_index = Some(child);
             for index in parent_path {
                 path.push(index);
                 let weights = item_node.weights();
                 item_node = match item_node.children().get(index) {
                     Some(Child::Joint(joint)) => Ok(&joint.next),
-                    Some(Child::Bucket(_)) | None => Err(crate::UnknownPath(base_path.to_owned())),
+                    Some(Child::Bucket(_)) | None => {
+                        Err(crate::UnknownPath(table_params.base_path.to_owned()))
+                    }
                 }?;
                 order_node = match order_node.get(index) {
                     Some(node) => Ok(node.get_children()),
-                    None => Err(crate::order::UnknownOrderPath(base_path.to_owned())),
+                    None => Err(crate::order::UnknownOrderPath(
+                        table_params.base_path.to_owned(),
+                    )),
                 }?;
                 parent_active = parent_active && weights.map_or(false, |w| w[index] != 0);
             }
@@ -262,25 +261,24 @@ impl TableParams<'_> {
     }
 }
 
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[allow(clippy::module_name_repetitions)]
 /// Owned version of [`TableParams`] for use in serializing view requests
 pub struct TableParamsOwned {
     max_depth: Option<u32>,
     max_width: Option<u32>,
-    base_path: Option<Path>,
+    base_path: Path,
     // TODO add a max node count... to autodetect the depth based on how many total cells are seen
 }
 /// Parameters for constructing a table view
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 #[allow(clippy::module_name_repetitions)]
 #[must_use]
 pub struct TableParams<'a> {
     max_depth: Option<u32>,
     max_width: Option<u32>,
-    base_path: Option<PathRef<'a>>,
+    base_path: PathRef<'a>,
 }
-#[allow(unused)]
 impl TableParamsOwned {
     /// Returns a reference version of the owned fields
     pub fn as_ref(&self) -> TableParams<'_> {
@@ -292,13 +290,13 @@ impl TableParamsOwned {
         TableParams {
             max_depth,
             max_width,
-            base_path: self.base_path.as_ref().map(Path::as_ref),
+            base_path: base_path.as_ref(),
         }
     }
     // Modify functions for non-`Copy` types only
     /// Replaces the owned base [`Path`]
     pub fn set_base_path(&mut self, base_path: Path) {
-        self.base_path.replace(base_path);
+        self.base_path = base_path;
     }
 }
 impl<'a> TableParams<'a> {
@@ -314,10 +312,11 @@ impl<'a> TableParams<'a> {
     }
     /// Sets base [`Path`]
     pub fn set_base_path(mut self, base_path: PathRef<'a>) -> Self {
-        self.base_path.replace(base_path);
+        self.base_path = base_path;
         self
     }
     /// Returns an owned version of the fields (cloning [`PathRef`] if any is set)
+    #[must_use]
     pub fn to_owned(self) -> TableParamsOwned {
         let Self {
             max_depth,
@@ -327,7 +326,26 @@ impl<'a> TableParams<'a> {
         TableParamsOwned {
             max_depth,
             max_width,
-            base_path: base_path.map(PathRef::to_owned),
+            base_path: base_path.to_owned(),
+        }
+    }
+}
+
+impl Default for TableParamsOwned {
+    fn default() -> Self {
+        Self {
+            max_depth: None,
+            max_width: None,
+            base_path: Path::empty(),
+        }
+    }
+}
+impl Default for TableParams<'_> {
+    fn default() -> Self {
+        Self {
+            max_depth: None,
+            max_width: None,
+            base_path: PathRef::empty(),
         }
     }
 }

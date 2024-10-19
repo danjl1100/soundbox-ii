@@ -323,25 +323,26 @@ impl<T, U> Network<T, U> {
     }
     fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
         let dest = self.trees.item.find_child_mut(path.as_ref());
-        let (dest_filters, buckets_info) = match dest {
+        let (dest_filters, needs_fill_info) = match dest {
             Ok(ChildFound::RootChildren(_)) => Err(ModifyErr::FilterRoot)?,
-            Ok(ChildFound::Joint(joint)) => (&mut joint.filters, Ok(&mut joint.next)),
+            Ok(ChildFound::Joint(joint)) => (&mut joint.filters, Ok(&joint.next)),
             Ok(ChildFound::Bucket(bucket)) => (&mut bucket.filters, Err(bucket.id)),
             Err(UnknownPathRef(_)) => return Err(UnknownPath(path).into()),
         };
 
         *dest_filters = new_filters;
 
-        match buckets_info {
+        match needs_fill_info {
             Ok(joint_children) => {
                 // target is joint, search for all child buckets
-
-                let mut joint_path_buf = path;
-                Self::add_buckets_need_fill_under(
-                    &mut joint_path_buf,
-                    &mut self.bucket_paths,
-                    joint_children,
-                );
+                Trees::visit_depth_first_items_at(path, joint_children, |elem| {
+                    match elem.node_item {
+                        Child::Bucket(bucket) => {
+                            self.bucket_paths.add_needs_fill(bucket.id, elem.node_path);
+                        }
+                        Child::Joint(_) => {}
+                    }
+                });
             }
             Err(bucket_id) => {
                 // target is bucket
@@ -370,16 +371,6 @@ impl<T, U> Network<T, U> {
         } else {
             Err(UnknownPath(path).into())
         }
-    }
-    fn add_buckets_need_fill_under(
-        path: &mut Path,
-        bucket_paths: &mut BucketPathsMap,
-        child_nodes: &ChildVec<Child<T, U>>,
-    ) {
-        Trees::visit_depth_first_items_at(path, child_nodes, |elem| match elem.node_item {
-            Child::Bucket(bucket) => bucket_paths.add_needs_fill(bucket.id, elem.node_path),
-            Child::Joint(_) => {}
-        });
     }
 }
 
