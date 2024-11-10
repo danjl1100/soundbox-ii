@@ -13,8 +13,8 @@ pub struct TableView {
     total_width: u32,
 }
 /// Sequence of [`Cell`]s at the same depth
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-pub struct Row(pub(super) Vec<Cell>);
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Row(Vec<Cell>);
 
 /// There are three kinds of `Cell`:
 ///
@@ -28,6 +28,37 @@ pub struct Cell {
     pub(super) position: u32,
     pub(super) parent_position: u32,
     pub(super) node: Option<NodeDetails>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub(super) struct CellPartial {
+    pub(super) display_width: Option<u32>,
+    pub(super) position: u32,
+    pub(super) parent_position: u32,
+    pub(super) node: Option<NodeDetails>,
+}
+impl TryFrom<CellPartial> for Cell {
+    type Error = String;
+    fn try_from(value: CellPartial) -> Result<Self, Self::Error> {
+        let CellPartial {
+            display_width,
+            position,
+            parent_position,
+            node,
+        } = value;
+        let display_width = display_width.ok_or_else(|| {
+            let node = node
+                .as_ref()
+                .map_or(&"spacer" as &dyn std::fmt::Display, |node| node);
+            format!("display_width is None for {node}")
+        })?;
+        Ok(Self {
+            display_width,
+            position,
+            parent_position,
+            node,
+        })
+    }
 }
 
 /// Details for a node
@@ -67,6 +98,9 @@ impl TableView {
     }
 }
 impl Row {
+    pub(super) fn new(elems: Vec<Cell>) -> Self {
+        Self(elems)
+    }
     /// Returns the [`Cell`]s in the row
     #[must_use]
     pub fn get_cells(&self) -> &[Cell] {
@@ -74,6 +108,9 @@ impl Row {
     }
     pub(super) fn push(&mut self, cell: Cell) {
         self.0.push(cell);
+    }
+    pub(super) fn last_mut(&mut self) -> Option<&mut Cell> {
+        self.0.last_mut()
     }
 }
 impl Cell {
@@ -102,6 +139,7 @@ impl Cell {
 }
 impl NodeDetails {
     /// Returns the path of the node
+    #[must_use]
     pub fn get_path(&self) -> PathRef<'_> {
         self.path.as_ref()
     }
