@@ -8,7 +8,7 @@ use crate::{
     child_vec::{ChildVec, Weights},
     order,
     path::{Path, PathRef},
-    Bucket, Child, Joint, Trees, UnknownPathRef,
+    Bucket, Child, Joint, Trees, UnknownPath, UnknownPathRef,
 };
 
 #[derive(Clone, Copy)]
@@ -77,6 +77,65 @@ impl<T, U> Trees<T, U> {
         self.visit_depth_first(|_| {});
     }
 
+    /// Returns a traversal view for starting at the specified path and any later siblings
+    pub(crate) fn subtree_scoped_at(
+        &self,
+        path: Path,
+        mut visit_fn: impl for<'a> FnMut(TraversalElem<'a, order::OrderNode, T, U>),
+    ) -> Result<Subtrees<'_, OrderNodeSlice, T, U>, UnknownPath> {
+        let (mut current_items, mut current_orders) = {
+            let root = self.subtree_root();
+            (root.child_items, root.child_orders)
+        };
+
+        let parent_path = path
+            .as_ref()
+            .split_last()
+            .map_or_else(|| path.as_ref(), |(_, parent)| parent);
+
+        for next_index in parent_path {
+            assert_eq!(
+                current_items.len(),
+                current_orders.len(),
+                "lengths should match between child items and child order"
+            );
+            let Some((next_child_item, next_child_order)) = current_items
+                .children()
+                .get(next_index)
+                .zip(current_orders.get(next_index))
+            else {
+                return Err(UnknownPath(path));
+            };
+            current_items = match next_child_item {
+                Child::Bucket(_) => return Err(UnknownPath(path)),
+                Child::Joint(joint) => {
+                    let parent_weights = current_items.weights();
+                    visit_fn(TraversalElem {
+                        node_path: path.as_ref(),
+                        parent_weights,
+                        node_weight: parent_weights.and_then(|w| w.get(next_index)).unwrap_or(0),
+                        node_item: next_child_item,
+                        node_order: next_child_order,
+                    });
+                    &joint.next
+                }
+            };
+            current_orders = next_child_order.get_children();
+        }
+
+        let (child_start_index, path) = {
+            let mut path = path;
+            let child_index = path.pop().unwrap_or(0);
+            (child_index, path)
+        };
+
+        Ok(Subtrees {
+            path,
+            child_items: current_items,
+            child_orders: current_orders,
+            child_start_index,
+        })
+    }
     fn subtree_root(&self) -> Subtrees<'_, OrderNodeSlice, T, U> {
         Subtrees {
             path: Path::empty(),
@@ -129,15 +188,36 @@ impl<T, U> Trees<T, U> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ControlFlow {
+    SkipAnyChildren,
+    SkipAnyChildrenAndSiblings,
+}
+
 pub(crate) trait DepthFirstVisitor<T, U, E, S: ?Sized + OrderNodeSliceImpl = OrderNodeSlice> {
-    fn visit(&mut self, elem: TraversalElem<'_, S::Node, T, U>) -> Result<(), E>;
-    fn finalize_after_children(&mut self, _path: PathRef<'_>, child_sum: usize) -> usize {
-        child_sum
+    fn visit(
+        &mut self,
+        elem: TraversalElem<'_, S::Node, T, U>,
+    ) -> Result<Result<(), ControlFlow>, E>;
+    fn finalize_after_children(
+        &mut self,
+        _path: PathRef<'_>,
+        child_sum: usize,
+    ) -> Result<usize, E> {
+        Ok(child_sum)
     }
+
+    // // TODO is this mostly for debug? or is it possibly foot-gunny? Unclear what to name this...
+    // fn is_finalize_required() -> bool {
+    //     // false
+    //     true
+    // }
 }
 
 mod simple_visitor {
-    use super::{generic_order_opt::OrderNodeSliceImpl, DepthFirstVisitor, TraversalElem};
+    use super::{
+        generic_order_opt::OrderNodeSliceImpl, ControlFlow, DepthFirstVisitor, TraversalElem,
+    };
 
     pub(super) enum Never {}
     pub(super) struct SimpleVisitor<F>(pub F);
@@ -146,9 +226,12 @@ mod simple_visitor {
         S: OrderNodeSliceImpl,
         F: for<'b> FnMut(TraversalElem<'b, S::Node, T, U>),
     {
-        fn visit(&mut self, elem: TraversalElem<'_, S::Node, T, U>) -> Result<(), Never> {
+        fn visit(
+            &mut self,
+            elem: TraversalElem<'_, S::Node, T, U>,
+        ) -> Result<Result<(), ControlFlow>, Never> {
             (self.0)(elem);
-            Ok(())
+            Ok(Ok(()))
         }
     }
 }
@@ -158,9 +241,15 @@ where
     S: OrderNodeSliceImpl,
     F: for<'a> FnMut(TraversalElem<'a, S::Node, T, U>) -> Result<(), E>,
 {
-    fn visit(&mut self, elem: TraversalElem<'_, S::Node, T, U>) -> Result<(), E> {
-        self(elem)
+    fn visit(
+        &mut self,
+        elem: TraversalElem<'_, S::Node, T, U>,
+    ) -> Result<Result<(), ControlFlow>, E> {
+        self(elem).map(|()| Ok(()))
     }
+    // fn is_finalize_required() -> bool {
+    //     true
+    // }
 }
 
 pub(crate) struct Subtrees<'a, S: ?Sized, T, U> {
@@ -192,11 +281,9 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
         self.try_visit_depth_first(SimpleVisitor(visit_fn))
             .unwrap_or_else(|n| match n {});
     }
-    pub(crate) fn try_visit_depth_first<E>(
-        &mut self,
-        mut visitor: impl DepthFirstVisitor<T, U, E, S>,
-    ) -> Result<(), E>
+    pub(crate) fn try_visit_depth_first<V, E>(&mut self, mut visitor: V) -> Result<(), E>
     where
+        V: DepthFirstVisitor<T, U, E, S>,
         S: OrderNodeSliceImpl,
     {
         let Self {
@@ -208,6 +295,16 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
         let mut stack = vec![(child_start_index, child_items, child_orders, 0)];
         while let Some(last) = stack.last() {
             let (index, child_items, child_order, _prev_sum) = *last;
+
+            // {
+            //     // DEBUG
+            //     print!("Traversal stack:");
+            //     for (index, _, _, _) in &stack {
+            //         print!(" {index}");
+            //     }
+            //     println!();
+            // }
+
             child_order.assert_len(
                 child_items.len(),
                 "items children length should match order children length",
@@ -225,20 +322,40 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                 let (_, _, _, sum) = stack
                     .pop()
                     .expect("stack should not double pop when last existed");
-                visitor.finalize_after_children(path.as_ref(), sum);
+                if true {
+                    // if V::is_finalize_required() {
+                    let accepted_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
+                    if let Some(last) = stack.last_mut() {
+                        last.3 += accepted_sum;
+                    }
+                }
                 path.pop();
                 continue;
             };
 
             path.push(index);
 
-            visitor.visit(TraversalElem {
+            let visit_result = visitor.visit(TraversalElem {
                 node_path: path.as_ref(),
                 parent_weights: child_weights,
                 node_weight,
                 node_item,
                 node_order,
             })?;
+            let skip_chilren = match visit_result {
+                Ok(()) => false,
+                Err(ControlFlow::SkipAnyChildren) => true,
+                Err(ControlFlow::SkipAnyChildrenAndSiblings) => {
+                    path.pop().expect("path push should pop");
+                    let (_, _, _, sum) = stack.pop().expect("stack should have last to pop");
+                    if true {
+                        // if V::is_finalize_required() {
+                        // stack popped, nowhere to record the sum
+                        let _ignored_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
+                    }
+                    continue;
+                }
+            };
 
             let order_children = node_order.get_children();
 
@@ -260,12 +377,20 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                 .last_mut()
                 .expect("last should be available within the loop");
             last.0 += 1;
-            last.3 += 1;
 
-            if let Some(inner_child) = inner_child {
-                stack.push(inner_child);
-            } else {
-                path.pop();
+            match inner_child {
+                Some(inner_child) if !skip_chilren => {
+                    stack.push(inner_child);
+                }
+                _ => {
+                    if true {
+                        // if V::is_finalize_required() {
+                        let accepted_sum = visitor.finalize_after_children(path.as_ref(), 0)?;
+                        last.3 += accepted_sum;
+                    }
+
+                    path.pop();
+                }
             }
         }
 
@@ -313,28 +438,6 @@ impl<T, U> ChildVec<Child<T, U>> {
             _ => Ok(None),
         }
     }
-
-    // TODO deleteme, most shared-ref searching is for "Item and Order" case
-    // fn find_child<'a, 'b>(
-    //     &'a self,
-    //     path: PathRef<'b>,
-    // ) -> Result<ChildFound<'a, T, U>, UnknownPathRef<'b>> {
-    //     let mut current = ChildFound::RootChildren(self);
-
-    //     for next_index in path {
-    //         let Some(next_child) = current
-    //             .into_child_vec()
-    //             .and_then(|c| c.children().get(next_index))
-    //         else {
-    //             return Err(UnknownPathRef(path));
-    //         };
-    //         current = match next_child {
-    //             Child::Bucket(bucket) => ChildFound::Bucket(bucket),
-    //             Child::Joint(joint) => ChildFound::Joint(joint),
-    //         };
-    //     }
-    //     Ok(current)
-    // }
 
     pub(crate) fn find_child_mut<'a, 'b>(
         &'a mut self,

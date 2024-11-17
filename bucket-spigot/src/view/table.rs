@@ -9,6 +9,8 @@ use crate::{
 };
 use std::rc::Rc;
 
+mod experiment_non_recursive;
+
 impl<T, U> Network<T, U> {
     /// Creates a [`TableView`] with default parameters
     ///
@@ -71,6 +73,10 @@ impl<T, U> Network<T, U> {
             )?
         };
 
+        if false {
+            let _ = experiment_non_recursive::run(table_params, &self.trees, (&rows, total_width));
+        }
+
         Ok(TableView::new(rows, total_width))
     }
 }
@@ -81,6 +87,7 @@ struct State {
     position: u32,
     parent_active: bool,
 }
+
 impl TableParams<'_> {
     fn find_child_nodes<T, U>(
         self,
@@ -98,7 +105,7 @@ impl TableParams<'_> {
         assert!(dest_cells.len() >= state.depth);
         if dest_cells.len() == state.depth {
             // add row for this depth
-            dest_cells.push(Row(vec![]));
+            dest_cells.push(Row::default());
         }
         assert!(dest_cells.len() > state.depth);
 
@@ -135,7 +142,9 @@ impl TableParams<'_> {
             // skip to start
             let skip = child_start_index;
             // only take `max_width`
-            let take = self.max_width.and_then(|v| usize::try_from(v).ok());
+            let take = self
+                .max_width
+                .and_then(|v| usize::try_from(v).ok().map(|x| x + 1));
             (skip, take)
         } else {
             (0, None)

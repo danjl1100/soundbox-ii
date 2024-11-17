@@ -19,7 +19,6 @@ pub struct Path(
 );
 
 /// Borrow of a [`Path`]
-#[must_use]
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::module_name_repetitions)]
 pub struct PathRef<'a>(&'a [usize]);
@@ -30,6 +29,7 @@ impl Path {
         Self(vec![])
     }
     /// Borrows the path
+    #[must_use]
     pub fn as_ref(&self) -> PathRef<'_> {
         let Self(elems) = self;
         PathRef(elems)
@@ -101,6 +101,7 @@ impl PathRef<'static> {
     /// Constructs an immutable reference to the root path
     ///
     /// NOTE: Must [convert to owned](`PathRef::to_owned`) to append elements
+    #[allow(clippy::must_use_candidate)]
     pub const fn empty() -> Self {
         Self(&[])
     }

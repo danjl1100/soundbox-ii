@@ -208,6 +208,7 @@ fn table_depths_narrow_to_wider() {
     X <--- .4.1.1 bucket (empty) in order
     }
     "###);
+    println!("--------------------------------------------------");
     insta::assert_snapshot!(view_path(&network, ".4.1.0"), @r###"
     Table {
     X <---- .4.1.0 bucket (empty) in order
@@ -236,6 +237,91 @@ fn table_depths_narrow_to_wider() {
      XX <--- .4.1 joint (2 children) in order
      X <---- .4.1.0 bucket (empty) in order
       X <--- .4.1.1 bucket (empty) in order
+    }
+    "###);
+}
+#[test]
+fn simple_gap() {
+    let (network, log) = Network::new_strings_build_from_script(
+        "
+        modify add-joint .
+        modify add-joint .
+        modify add-joint .
+
+        modify add-joint .0
+        modify add-joint .2
+
+        topology
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      Topology([
+        [
+          [],
+        ],
+        [],
+        [
+          [],
+        ],
+      ]),
+    ])
+    "###);
+
+    insta::assert_snapshot!(view_path(&network, "."), @r###"
+    Table {
+    X <----- .0 joint (1 child) in order
+     X <---- .1 joint (empty) in order
+      X <--- .2 joint (1 child) in order
+    X <----- .0.0 joint (empty) in order
+      X <--- .2.0 joint (empty) in order
+    }
+    "###);
+}
+#[test]
+fn simple_max_depth() {
+    let (network, log) = Network::new_strings_build_from_script(
+        "
+        modify add-joint .
+        modify add-joint .0
+        modify add-joint .0.0
+
+        topology
+        ",
+    );
+    insta::assert_ron_snapshot!(log, @r###"
+    Log([
+      Topology([
+        [
+          [
+            [],
+          ],
+        ],
+      ]),
+    ])
+    "###);
+
+    let params = TableParams::default();
+
+    let root_depth_2 = network.view_table(params.set_max_depth(2)).unwrap();
+    insta::assert_snapshot!(root_depth_2, @r###"
+    Table {
+    X <--- .0 joint (1 child) in order
+    X <--- .0.0 joint (1 child) in order
+    X <--- .0.0.0 joint (empty) in order
+    }
+    "###);
+    let root_depth_1 = network.view_table(params.set_max_depth(1)).unwrap();
+    insta::assert_snapshot!(root_depth_1, @r###"
+    Table {
+    X <--- .0 joint (1 child) in order
+    X <--- .0.0 joint (1 child hidden) in order
+    }
+    "###);
+    let root_depth_0 = network.view_table(params.set_max_depth(0)).unwrap();
+    insta::assert_snapshot!(root_depth_0, @r###"
+    Table {
+    X <--- .0 joint (1 child hidden) in order
     }
     "###);
 }
@@ -475,6 +561,7 @@ fn limit_width_root() {
     Table {
     X <---- .2 joint (empty) in order
      X <--- .3 joint (empty) in order
+      ? <--- (one or more nodes omitted...)
     }
     "###);
 }
