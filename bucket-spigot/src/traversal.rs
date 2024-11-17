@@ -340,8 +340,7 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                     let (_, _, _, sum) = stack.pop().expect("stack should have last to pop");
                     if V::FINALIZE {
                         // stack popped, nowhere to record the sum
-                        let _ignored_sum =
-                            visitor.finalize_after_children(dbg!(path.as_ref()), sum)?;
+                        let _ignored_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
                     }
                     continue;
                 }
@@ -374,9 +373,7 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                 }
                 _ => {
                     if V::FINALIZE {
-                        dbg!(skip_chilren);
-                        let accepted_sum =
-                            visitor.finalize_after_children(dbg!(path.as_ref()), 0)?;
+                        let accepted_sum = visitor.finalize_after_children(path.as_ref(), 0)?;
                         last.3 += accepted_sum;
                     }
 

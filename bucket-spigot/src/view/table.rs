@@ -79,6 +79,9 @@ impl<T, U> Network<T, U> {
                 .build_rows(&self.trees)
                 .expect("multiple error sources could get complicated");
 
+            // let view = TableView::new(rows.clone(), total_width);
+            // let view_2 = TableView::new(rows_2.clone(), total_width_2);
+
             if true {
                 #[cfg(test)]
                 {
@@ -89,16 +92,17 @@ impl<T, U> Network<T, U> {
                         .zip(rows_2_json.lines())
                         .enumerate()
                         .find(|(_idx, (s1, s2))| s1 != s2);
-                    // let view = TableView::new(rows.clone(), total_width);
-                    // let view_2 = TableView::new(rows_2.clone(), total_width_2);
                     assert!(
                         rows_json == rows_2_json,
                         "Original: {rows_json}\nUpdated:{rows_2_json}\nFirst mismatched line {first_mismatch_line:?}"
                         // ... "\nOriginal {view}\nUpdated {view_2}"
                     );
                 }
-                assert_eq!(rows, rows_2);
-                assert_eq!(total_width, total_width_2);
+                assert_eq!(rows, rows_2, "rows should match old/new algorithms");
+                assert_eq!(
+                    total_width, total_width_2,
+                    "total_width should match between old/new algorithms" // ... "\nOriginal {view}\nUpdated {view_2}"
+                );
             }
         }
 
@@ -237,7 +241,7 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
 
         state.position = state.position.max(parent_position);
 
-        println!("{:#?}", self.dest_cells);
+        // println!("{:#?}", self.dest_cells);
 
         let dest_row = self
             .dest_cells
@@ -245,14 +249,14 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
             .expect("row should be pushed above");
 
         if let Some(prev_continuation_marker_needed) = self.prev_continuation_marker_needed.take() {
-            if dbg!(depth <= prev_continuation_marker_needed) {
+            if depth <= prev_continuation_marker_needed {
                 dest_row.push(CellPartial {
                     display_width: Some(0),
                     position: state.position,
                     parent_position,
                     node: None,
                 });
-                return dbg!(Ok(Err(ControlFlow::SkipAnyChildrenAndSiblings)));
+                return Ok(Err(ControlFlow::SkipAnyChildrenAndSiblings));
             }
         }
         if matches!(self.params.max_width, Some(max_width) if state.position >= max_width) {
@@ -268,8 +272,7 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
             // // TODO figure out how to only emit zero-width continuation cell if another sibling exists
             // return Ok(Err(ControlFlow::SkipAnyChildrenAndSiblings));
             self.prev_continuation_marker_needed = Some(depth);
-            dbg!(&node_path);
-            return dbg!(Ok(Ok(())));
+            return Ok(Ok(()));
         }
 
         {
@@ -285,10 +288,10 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
                 "assumed_start {assumed_start}, state {state:?}"
             );
             println!("@{node_path} assumed_start {assumed_start}, state {state:?}");
-            match dbg!(dbg!(state.position).checked_sub(dbg!(assumed_start))) {
+            match state.position.checked_sub(assumed_start) {
                 Some(gap_width) if gap_width > 0 => {
                     dest_row.push(CellPartial {
-                        display_width: dbg!(Some(gap_width)),
+                        display_width: Some(gap_width),
                         position: assumed_start,
                         parent_position: assumed_start,
                         node: None,
@@ -362,7 +365,7 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
                 }
             }
         };
-        let active = dbg!(dbg!(state.parent_active) && dbg!(weight.map_or(true, |w| w != 0)));
+        let active = state.parent_active && weight.map_or(true, |w| w != 0);
 
         let dest_row = self.dest_cells.get_mut(depth).expect("row pushed above");
         let node_details = NodeDetails {
@@ -406,16 +409,14 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
     ) -> Result<usize, ViewError> {
         dbg!(("finalize_after_children", path, child_sum));
         let display_width = if child_sum == 0 { 1 } else { child_sum };
-        if let Some(depth) = dbg!(self.get_depth(path)) {
+        if let Some(depth) = self.get_depth(path) {
             let display_width = count("display width", display_width)?;
             if self.prev_continuation_marker_needed.is_none() {
                 let state = self
                     .state_stack
                     .get_mut(depth)
                     .expect("visit should populate state_stack for finalize fn");
-                let prev_position = state.position;
                 state.position += display_width;
-                dbg!((path, display_width, (prev_position, state.position)));
             }
             if self.prev_continuation_marker_needed.is_none() {
                 let last_cell = self
