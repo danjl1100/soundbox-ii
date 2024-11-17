@@ -101,6 +101,7 @@ impl PathRef<'static> {
     /// Constructs an immutable reference to the root path
     ///
     /// NOTE: Must [convert to owned](`PathRef::to_owned`) to append elements
+    #[allow(clippy::must_use_candidate)]
     pub const fn empty() -> Self {
         Self(&[])
     }

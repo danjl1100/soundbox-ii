@@ -143,8 +143,8 @@ fn table_depth_root() {
 
     let root_max = network.view_table(params).unwrap();
     let root_depth_2 = network.view_table(params.set_max_depth(2)).unwrap();
-    // let root_depth_1 = network.view_table(params.set_max_depth(1)).unwrap();
-    // let root_depth_0 = network.view_table(params.set_max_depth(0)).unwrap();
+    let root_depth_1 = network.view_table(params.set_max_depth(1)).unwrap();
+    let root_depth_0 = network.view_table(params.set_max_depth(0)).unwrap();
     assert_eq!(root_max, root_depth_2);
     insta::assert_snapshot!(root_depth_2, @r###"
     Table {
@@ -164,29 +164,29 @@ fn table_depth_root() {
     }
     "###);
 
-    // insta::assert_snapshot!(root_depth_1, @r###"
-    // Table {
-    // oo <-------- .0 x0 joint (2 children) in order (inactive)
-    //   X <------- .1 x2 bucket (empty) in order
-    //    X <------ .2 x3 bucket (empty) in order
-    //     X <----- .3 x4 bucket (empty) in order
-    //      XX <--- .4 x1 joint (2 children) in order
-    // o <--------- .0.0 x1 joint (2 children hidden) in order (inactive)
-    //  o <-------- .0.1 x50 bucket (empty) in order (inactive)
-    //      X <---- .4.0 bucket (empty) in order
-    //       X <--- .4.1 joint (2 children hidden) in order
-    // }
-    // "###);
+    insta::assert_snapshot!(root_depth_1, @r###"
+    Table {
+    oo <-------- .0 x0 joint (2 children) in order (inactive)
+      X <------- .1 x2 bucket (empty) in order
+       X <------ .2 x3 bucket (empty) in order
+        X <----- .3 x4 bucket (empty) in order
+         XX <--- .4 x1 joint (2 children) in order
+    o <--------- .0.0 x1 joint (2 children hidden) in order (inactive)
+     o <-------- .0.1 x50 bucket (empty) in order (inactive)
+         X <---- .4.0 bucket (empty) in order
+          X <--- .4.1 joint (2 children hidden) in order
+    }
+    "###);
 
-    // insta::assert_snapshot!(root_depth_0, @r###"
-    // Table {
-    // o <------- .0 x0 joint (2 children hidden) in order (inactive)
-    //  X <------ .1 x2 bucket (empty) in order
-    //   X <----- .2 x3 bucket (empty) in order
-    //    X <---- .3 x4 bucket (empty) in order
-    //     X <--- .4 x1 joint (2 children hidden) in order
-    // }
-    // "###);
+    insta::assert_snapshot!(root_depth_0, @r###"
+    Table {
+    o <------- .0 x0 joint (2 children hidden) in order (inactive)
+     X <------ .1 x2 bucket (empty) in order
+      X <----- .2 x3 bucket (empty) in order
+       X <---- .3 x4 bucket (empty) in order
+        X <--- .4 x1 joint (2 children hidden) in order
+    }
+    "###);
 
     insta::assert_snapshot!(view_path(&network, ".0.1"), @r###"
     Table {
@@ -537,21 +537,21 @@ fn limit_width_root() {
 
     // Assert full view is LONG
     let params = TableParams::default();
-    // let full = network.view_table(params).unwrap();
-    // insta::assert_snapshot!(full);
+    let full = network.view_table(params).unwrap();
+    insta::assert_snapshot!(full);
 
     // Assert shortened view
     let params_width_2 = params.set_max_depth(2).set_max_width(2);
-    // let width_2 = network.view_table(params_width_2).unwrap();
-    // insta::assert_snapshot!(width_2, @r###"
-    // Table {
-    // X <---- .0 joint (1 child) in order
-    //  X <--- .1 joint (empty) in order
-    //   ? <--- (one or more nodes omitted...)
-    // X <---- .0.0 joint (1 child) in order
-    // X <---- .0.0.0 joint (1 child hidden) in order
-    // }
-    // "###);
+    let width_2 = network.view_table(params_width_2).unwrap();
+    insta::assert_snapshot!(width_2, @r###"
+    Table {
+    X <---- .0 joint (1 child) in order
+     X <--- .1 joint (empty) in order
+      ? <--- (one or more nodes omitted...)
+    X <---- .0.0 joint (1 child) in order
+    X <---- .0.0.0 joint (1 child hidden) in order
+    }
+    "###);
 
     let offset = Path::from_str(".2").unwrap();
     let width_2 = network

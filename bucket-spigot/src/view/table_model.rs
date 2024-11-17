@@ -109,6 +109,7 @@ impl Row {
     pub(super) fn push(&mut self, cell: Cell) {
         self.0.push(cell);
     }
+    #[allow(unused)] // TODO remove if removing `crate::view::table::experiment_non_recursive`
     pub(super) fn last_mut(&mut self) -> Option<&mut Cell> {
         self.0.last_mut()
     }

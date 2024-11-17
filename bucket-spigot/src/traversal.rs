@@ -94,7 +94,11 @@ impl<T, U> Trees<T, U> {
             .map_or_else(|| path.as_ref(), |(_, parent)| parent);
 
         for next_index in parent_path {
-            assert_eq!(current_items.len(), current_orders.len());
+            assert_eq!(
+                current_items.len(),
+                current_orders.len(),
+                "lengths should match between child items and child order"
+            );
             let Some((next_child_item, next_child_order)) = current_items
                 .children()
                 .get(next_index)
@@ -191,8 +195,6 @@ pub(crate) enum ControlFlow {
 }
 
 pub(crate) trait DepthFirstVisitor<T, U, E, S: ?Sized + OrderNodeSliceImpl = OrderNodeSlice> {
-    // TODO this is mostly for debug (supress unused `dbg!()` calls), but seem footgun-y in general
-    const FINALIZE: bool;
     fn visit(
         &mut self,
         elem: TraversalElem<'_, S::Node, T, U>,
@@ -204,6 +206,12 @@ pub(crate) trait DepthFirstVisitor<T, U, E, S: ?Sized + OrderNodeSliceImpl = Ord
     ) -> Result<usize, E> {
         Ok(child_sum)
     }
+
+    // // TODO is this mostly for debug? or is it possibly foot-gunny? Unclear what to name this...
+    // fn is_finalize_required() -> bool {
+    //     // false
+    //     true
+    // }
 }
 
 mod simple_visitor {
@@ -218,7 +226,6 @@ mod simple_visitor {
         S: OrderNodeSliceImpl,
         F: for<'b> FnMut(TraversalElem<'b, S::Node, T, U>),
     {
-        const FINALIZE: bool = false;
         fn visit(
             &mut self,
             elem: TraversalElem<'_, S::Node, T, U>,
@@ -234,13 +241,15 @@ where
     S: OrderNodeSliceImpl,
     F: for<'a> FnMut(TraversalElem<'a, S::Node, T, U>) -> Result<(), E>,
 {
-    const FINALIZE: bool = true;
     fn visit(
         &mut self,
         elem: TraversalElem<'_, S::Node, T, U>,
     ) -> Result<Result<(), ControlFlow>, E> {
         self(elem).map(|()| Ok(()))
     }
+    // fn is_finalize_required() -> bool {
+    //     true
+    // }
 }
 
 pub(crate) struct Subtrees<'a, S: ?Sized, T, U> {
@@ -313,8 +322,9 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                 let (_, _, _, sum) = stack
                     .pop()
                     .expect("stack should not double pop when last existed");
-                if V::FINALIZE {
-                    let accepted_sum = visitor.finalize_after_children(dbg!(path.as_ref()), sum)?;
+                if true {
+                    // if V::is_finalize_required() {
+                    let accepted_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
                     if let Some(last) = stack.last_mut() {
                         last.3 += accepted_sum;
                     }
@@ -338,7 +348,8 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                 Err(ControlFlow::SkipAnyChildrenAndSiblings) => {
                     path.pop().expect("path push should pop");
                     let (_, _, _, sum) = stack.pop().expect("stack should have last to pop");
-                    if V::FINALIZE {
+                    if true {
+                        // if V::is_finalize_required() {
                         // stack popped, nowhere to record the sum
                         let _ignored_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
                     }
@@ -372,7 +383,8 @@ impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
                     stack.push(inner_child);
                 }
                 _ => {
-                    if V::FINALIZE {
+                    if true {
+                        // if V::is_finalize_required() {
                         let accepted_sum = visitor.finalize_after_children(path.as_ref(), 0)?;
                         last.3 += accepted_sum;
                     }
