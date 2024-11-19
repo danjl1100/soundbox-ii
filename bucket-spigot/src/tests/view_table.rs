@@ -615,10 +615,241 @@ fn limit_width_child() {
 }
 
 #[test]
+fn node_count() {
+    let mut network = Network::new_strings();
+    network.run_script(
+        "
+        modify add-joint .
+        modify add-joint .
+        modify add-joint .0
+        modify add-joint .1
+        ",
+    );
+
+    let params = TableParams::default();
+    let limit_none = network.view_table(params).unwrap();
+    insta::assert_snapshot!(limit_none, @r###"
+    Table {
+    X <---- .0 joint (1 child) in order
+     X <--- .1 joint (1 child) in order
+    X <---- .0.0 joint (empty) in order
+     X <--- .1.0 joint (empty) in order
+    }
+    "###);
+    let limit_4 = network.view_table(params.set_max_node_count(4)).unwrap();
+    insta::assert_snapshot!(limit_4, @r###"
+    Table {
+    X <---- .0 joint (1 child) in order
+     X <--- .1 joint (1 child) in order
+    X <---- .0.0 joint (empty) in order
+     X <--- .1.0 joint (empty) in order
+    }
+    "###);
+    let limit_3 = network.view_table(params.set_max_node_count(3)).unwrap();
+    insta::assert_snapshot!(limit_3, @r###"
+    Table {
+    X <---- .0 joint (1 child) in order
+     X <--- .1 joint (1 child) in order
+    X <---- .0.0 joint (empty) in order
+     ? <---- (one or more nodes omitted...)
+    }
+    "###);
+    let limit_2 = network.view_table(params.set_max_node_count(2)).unwrap();
+    insta::assert_snapshot!(limit_2, @r###"
+    Table {
+    X <---- .0 joint (1 child) in order
+     X <--- .1 joint (1 child) in order
+    ? <----- (one or more nodes omitted...)
+    }
+    "###);
+    let limit_1 = network.view_table(params.set_max_node_count(1)).unwrap();
+    insta::assert_snapshot!(limit_1, @r###"
+    Table {
+    X <--- .0 joint (1 child hidden) in order
+     ? <--- (one or more nodes omitted...)
+    }
+    "###);
+    let limit_0 = network.view_table(params.set_max_node_count(0)).unwrap();
+    insta::assert_snapshot!(limit_0, @r###"
+    Table {
+    ? <--- (one or more nodes omitted...)
+    }
+    "###);
+}
+
+#[test]
 fn view_arbitrary_network() {
     arbtest::arbtest(|u| {
         let network: Network<String, String> = Network::arbitrary(u)?;
         println!("{}", network.view_table_default());
         Ok(())
     });
+}
+
+mod arbitrary_limit {
+    use crate::{
+        view::{NodeDetails, TableParams, TableView},
+        Network,
+    };
+
+    #[derive(Clone, Copy, Debug, arbitrary::Arbitrary)]
+    enum NonZeroLimits {
+        Depth,
+        Width,
+        Count,
+        DepthWidth,
+        DepthCount,
+        WidthCount,
+        DepthWidthCount,
+    }
+    #[derive(Clone, Copy, Debug, arbitrary::Arbitrary)]
+    enum NonZeroLimitsNoDepth {
+        Width,
+        Count,
+        WidthCount,
+    }
+    impl From<NonZeroLimitsNoDepth> for NonZeroLimits {
+        fn from(value: NonZeroLimitsNoDepth) -> Self {
+            use NonZeroLimitsNoDepth as V;
+            match value {
+                V::Width => Self::Width,
+                V::Count => Self::Count,
+                V::WidthCount => Self::WidthCount,
+            }
+        }
+    }
+    impl NonZeroLimits {
+        fn has_depth(self) -> bool {
+            match self {
+                Self::Depth | Self::DepthWidth | Self::DepthCount | Self::DepthWidthCount => true,
+                Self::Width | Self::Count | Self::WidthCount => false,
+            }
+        }
+        fn has_width(self) -> bool {
+            match self {
+                Self::Width | Self::DepthWidth | Self::WidthCount | Self::DepthWidthCount => true,
+                Self::Depth | Self::Count | Self::DepthCount => false,
+            }
+        }
+        fn has_count(self) -> bool {
+            match self {
+                Self::Count | Self::DepthCount | Self::WidthCount | Self::DepthWidthCount => true,
+                Self::Depth | Self::Width | Self::DepthWidth => false,
+            }
+        }
+    }
+
+    fn params_for_view(
+        full_view: &TableView,
+        u: &mut arbitrary::Unstructured<'_>,
+    ) -> arbitrary::Result<TableParams<'static>> {
+        let LimitMetrics {
+            depth,
+            width,
+            count,
+        } = LimitMetrics::new(full_view);
+
+        let limit = if depth.is_some() {
+            u.arbitrary::<NonZeroLimits>()?
+        } else {
+            u.arbitrary::<NonZeroLimitsNoDepth>()?.into()
+        };
+
+        let mut params = TableParams::default();
+        if limit.has_depth() {
+            let depth = depth.expect("limit with Depth should include depth");
+            params = params.set_max_depth(u.int_in_range(0..=depth)?);
+        }
+        if limit.has_width() {
+            params = params.set_max_width(u.int_in_range(0..=width)?);
+        }
+        if limit.has_count() {
+            params = params.set_max_node_count(u.int_in_range(0..=count)?);
+        }
+        Ok(params)
+    }
+
+    struct LimitMetrics {
+        depth: Option<u32>,
+        width: u32,
+        count: u32,
+    }
+    impl LimitMetrics {
+        fn new(full_view: &TableView) -> Self {
+            let depth = u32::try_from(full_view.get_rows().len())
+                .expect("full_view row count should be within u32::MAX")
+                .checked_sub(2);
+            let width = full_view.get_max_row_width().saturating_sub(1);
+            let count = count_nodes_u32(full_view)
+                .expect("full_view node count should be within u32::MAX")
+                .saturating_sub(1);
+            Self {
+                depth,
+                width,
+                count,
+            }
+        }
+    }
+
+    fn assert_has_abbreviations(view: &TableView, expect_abbreviations: bool, label: &str) {
+        if view.get_rows().is_empty() {
+            // empty result has no opportunity for tests
+            return;
+        }
+        let has_abbreviations = view.get_rows().iter().any(|row| {
+            row.get_cells().iter().any(|cell| {
+                let sibling_hidden = cell.get_display_width() == 0;
+                let child_hidden = cell
+                    .get_node()
+                    .map_or(false, NodeDetails::is_joint_children_hidden);
+                sibling_hidden || child_hidden
+            })
+        });
+        if expect_abbreviations {
+            assert!(has_abbreviations, "{label} should have abbreviations");
+        } else {
+            assert!(!has_abbreviations, "{label} should NOT have abbreviations");
+        }
+    }
+
+    fn count_nodes(view: &TableView) -> usize {
+        view.get_rows()
+            .iter()
+            .map(|row| {
+                row.get_cells()
+                    .iter()
+                    .filter(|cell| cell.get_node().is_some())
+                    .count()
+            })
+            .sum()
+    }
+    fn count_nodes_u32(view: &TableView) -> Option<u32> {
+        count_nodes(view).try_into().ok()
+    }
+
+    #[test]
+    fn view_params() {
+        arbtest::arbtest(|u| {
+            let network: Network<String, String> = Network::arbitrary(u)?;
+
+            let full_view = network.view_table_default();
+            println!("{full_view}");
+
+            assert_has_abbreviations(&full_view, false, "full_view");
+
+            let params = params_for_view(&full_view, u)?;
+            dbg!(&params);
+
+            let limited_view = network.view_table(params).unwrap();
+            println!("{limited_view}");
+
+            assert_has_abbreviations(&limited_view, true, "limited_view");
+            // TODO
+            // if let Some(max_node_count) = params.get_max_node_count() {
+            //     assert_eq!(count_nodes_u32(&limited_view), Some(max_node_count));
+            // }
+
+            Ok(())
+        });
+    }
 }

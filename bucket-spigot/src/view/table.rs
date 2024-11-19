@@ -59,7 +59,8 @@ impl<T, U> Network<T, U> {
             // TODO why does this need to be a special case?  maybe adjust empty definition?
             0
         } else {
-            table_params.find_child_nodes(
+            TableBuilder::default().find_child_nodes(
+                table_params,
                 item_node,
                 order_node,
                 &mut rows,
@@ -88,9 +89,21 @@ struct State {
     parent_active: bool,
 }
 
-impl TableParams<'_> {
+fn u32_limit(len: Option<u32>) -> u32 {
+    len.unwrap_or(u32::MAX)
+}
+
+#[derive(Default)]
+struct TableBuilder {
+    node_count: u32,
+}
+
+impl TableBuilder {
+    #[allow(clippy::too_many_lines)] // TODO yikes..
+    #[allow(clippy::too_many_arguments)] // TODO double yikes, arg..
     fn find_child_nodes<T, U>(
-        self,
+        &mut self,
+        mut params: TableParams<'_>,
         item_nodes: &ChildVec<Child<T, U>>,
         order_nodes: &[Rc<OrderNode>],
         dest_cells: &mut Vec<Row>,
@@ -98,9 +111,42 @@ impl TableParams<'_> {
         state: State,
         child_start_index: Option<usize>,
     ) -> Result<u32, ViewError> {
+        assert_eq!(
+            item_nodes.len(),
+            order_nodes.len(),
+            "lengths should match between child items and child order"
+        );
+        let child_len = u32::try_from(item_nodes.len()).unwrap_or(u32::MAX);
+
         let Some(item_nodes_max_index) = item_nodes.len().checked_sub(1) else {
             return Ok(1);
         };
+
+        self.node_count += child_len.min(u32_limit(params.max_width));
+        let trim_to_len = params.max_node_count.and_then(|max_node_count| {
+            if let Some(excess) = self.node_count.checked_sub(max_node_count) {
+                if excess == 0 {
+                    None
+                } else {
+                    Some(child_len.checked_sub(excess))
+                }
+            } else {
+                None
+            }
+        });
+
+        match trim_to_len {
+            Some(None) => return Ok(0),
+            Some(Some(trim_to_len)) => {
+                params.max_width = Some(trim_to_len);
+                params.max_depth = if trim_to_len == 0 {
+                    Some(0)
+                } else {
+                    Some(u32_limit(state.depth.try_into().ok()))
+                };
+            }
+            None => {}
+        }
 
         assert!(dest_cells.len() >= state.depth);
         if dest_cells.len() == state.depth {
@@ -142,7 +188,7 @@ impl TableParams<'_> {
             // skip to start
             let skip = child_start_index;
             // only take `max_width`
-            let take = self
+            let take = params
                 .max_width
                 .and_then(|v| usize::try_from(v).ok().map(|x| x + 1));
             (skip, take)
@@ -150,7 +196,6 @@ impl TableParams<'_> {
             (0, None)
         };
         let item_and_order = {
-            assert_eq!(item_nodes.len(), order_nodes.len());
             item_nodes
                 .iter()
                 .enumerate()
@@ -161,9 +206,10 @@ impl TableParams<'_> {
 
         // TODO - this currently performs depth-first traversal (keeping track of which depth to
         // modify)... so use the common depth-first function? does that need extending?
+        //  --> SEE module [`experiment_non_recursive`]
         let mut state = state;
         for ((index, child), order) in item_and_order {
-            if matches!(self.max_width, Some(max_width) if state.position >= max_width) {
+            if matches!(params.max_width, Some(max_width) if state.position >= max_width) {
                 let dest_row = dest_cells
                     .get_mut(state.depth)
                     .expect("row pushed by caller, above");
@@ -180,6 +226,7 @@ impl TableParams<'_> {
             path_buf.push(index);
 
             let display_width = self.add_child_node(
+                params,
                 dest_cells,
                 path_buf,
                 state,
@@ -196,8 +243,10 @@ impl TableParams<'_> {
         let total_width = state.position - parent_position;
         Ok(total_width)
     }
+    #[allow(clippy::too_many_arguments)] // TODO double yikes, arg..
     fn add_child_node<'a, T, U>(
-        self,
+        &mut self,
+        params: TableParams<'_>,
         dest_cells: &mut Vec<Row>,
         path_buf: &mut Path,
         State {
@@ -227,7 +276,7 @@ impl TableParams<'_> {
             Child::Joint(joint) => {
                 let child_count = count("joint children length", joint.next.len())?;
                 let children = &joint.next;
-                match self.max_depth {
+                match params.max_depth {
                     Some(max_depth) if count("depth", depth)? >= max_depth => {
                         (NodeKind::JointAbbrev { child_count }, None)
                     }
@@ -246,7 +295,16 @@ impl TableParams<'_> {
                 position,
                 parent_active: active,
             };
-            self.find_child_nodes(item_nodes, order_nodes, dest_cells, path_buf, state, None)?
+            self.find_child_nodes(
+                params,
+                item_nodes,
+                order_nodes,
+                dest_cells,
+                path_buf,
+                state,
+                None,
+            )?
+            .max(1)
         } else {
             1
         };
@@ -276,8 +334,8 @@ impl TableParams<'_> {
 pub struct TableParamsOwned {
     max_depth: Option<u32>,
     max_width: Option<u32>,
+    max_node_count: Option<u32>,
     base_path: Path,
-    // TODO add a max node count... to autodetect the depth based on how many total cells are seen
 }
 /// Parameters for constructing a table view
 #[derive(Clone, Copy, Debug)]
@@ -286,6 +344,7 @@ pub struct TableParamsOwned {
 pub struct TableParams<'a> {
     max_depth: Option<u32>,
     max_width: Option<u32>,
+    max_node_count: Option<u32>,
     base_path: PathRef<'a>,
 }
 impl TableParamsOwned {
@@ -294,11 +353,13 @@ impl TableParamsOwned {
         let Self {
             max_depth,
             max_width,
+            max_node_count,
             ref base_path,
         } = *self;
         TableParams {
             max_depth,
             max_width,
+            max_node_count,
             base_path: base_path.as_ref(),
         }
     }
@@ -319,6 +380,11 @@ impl<'a> TableParams<'a> {
         self.max_width.replace(max_width);
         self
     }
+    /// Sets the maximum node count
+    pub fn set_max_node_count(mut self, max_node_count: u32) -> Self {
+        self.max_node_count.replace(max_node_count);
+        self
+    }
     /// Sets base [`Path`]
     pub fn set_base_path(mut self, base_path: PathRef<'a>) -> Self {
         self.base_path = base_path;
@@ -330,13 +396,21 @@ impl<'a> TableParams<'a> {
         let Self {
             max_depth,
             max_width,
+            max_node_count,
             base_path,
         } = self;
         TableParamsOwned {
             max_depth,
             max_width,
+            max_node_count,
             base_path: base_path.to_owned(),
         }
+    }
+
+    /// Returns the maximum node count (if any is set)
+    #[must_use]
+    pub fn get_max_node_count(self) -> Option<u32> {
+        self.max_node_count
     }
 }
 
@@ -345,6 +419,7 @@ impl Default for TableParamsOwned {
         Self {
             max_depth: None,
             max_width: None,
+            max_node_count: None,
             base_path: Path::empty(),
         }
     }
@@ -354,6 +429,7 @@ impl Default for TableParams<'_> {
         Self {
             max_depth: None,
             max_width: None,
+            max_node_count: None,
             base_path: PathRef::empty(),
         }
     }
