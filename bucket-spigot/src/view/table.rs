@@ -116,21 +116,40 @@ impl TableBuilder {
             order_nodes.len(),
             "lengths should match between child items and child order"
         );
-        let child_len = u32::try_from(item_nodes.len()).unwrap_or(u32::MAX);
 
         let Some(item_nodes_max_index) = item_nodes.len().checked_sub(1) else {
             return Ok(1);
         };
 
-        self.node_count += child_len.min(u32_limit(params.max_width));
+        let display_len = {
+            let child_len = u32::try_from(item_nodes.len()).unwrap_or(u32::MAX);
+            child_len.min(u32_limit(params.max_width))
+        };
+        self.node_count += display_len;
         let trim_to_len = params.max_node_count.and_then(|max_node_count| {
             if let Some(excess) = self.node_count.checked_sub(max_node_count) {
                 if excess == 0 {
+                    // TODO debug
+                    // println!(
+                    //     "excess is 0, node_count {node_count}, max_node_count {max_node_count}",
+                    //     node_count = self.node_count
+                    // );
                     None
                 } else {
-                    Some(child_len.checked_sub(excess))
+                    // NOTE:
+                    // excess = node_count - max_node_count
+                    //
+                    // trim_to_len = display_len - excess
+                    // trim_to_len = display_len - (node_count - max_node_count)
+                    // trim_to_len = display_len - node_count + max_node_count
+                    Some(display_len.checked_sub(excess))
                 }
             } else {
+                // TODO debug
+                // println!(
+                //     "excess is negative, node_count {node_count}, max_node_count {max_node_count}",
+                //     node_count = self.node_count
+                // );
                 None
             }
         });
@@ -138,12 +157,14 @@ impl TableBuilder {
         match trim_to_len {
             Some(None) => return Ok(0),
             Some(Some(trim_to_len)) => {
+                // dbg!(("before", &params));
                 params.max_width = Some(trim_to_len);
                 params.max_depth = if trim_to_len == 0 {
                     Some(0)
                 } else {
                     Some(u32_limit(state.depth.try_into().ok()))
                 };
+                // dbg!(("after", trim_to_len, &params));
             }
             None => {}
         }
@@ -375,7 +396,7 @@ impl<'a> TableParams<'a> {
         self.max_depth.replace(max_depth);
         self
     }
-    /// Sets the maximum width
+    /// Sets the maximum display width
     pub fn set_max_width(mut self, max_width: u32) -> Self {
         self.max_width.replace(max_width);
         self
@@ -407,6 +428,16 @@ impl<'a> TableParams<'a> {
         }
     }
 
+    /// Returns the maximum depth
+    #[must_use]
+    pub fn get_max_depth(self) -> Option<u32> {
+        self.max_depth
+    }
+    /// Returns the maximum display width
+    #[must_use]
+    pub fn get_max_width(self) -> Option<u32> {
+        self.max_width
+    }
     /// Returns the maximum node count (if any is set)
     #[must_use]
     pub fn get_max_node_count(self) -> Option<u32> {

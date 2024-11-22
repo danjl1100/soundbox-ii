@@ -833,7 +833,7 @@ mod arbitrary_limit {
             let network: Network<String, String> = Network::arbitrary(u)?;
 
             let full_view = network.view_table_default();
-            println!("{full_view}");
+            println!("Full: {full_view}");
 
             assert_has_abbreviations(&full_view, false, "full_view");
 
@@ -841,15 +841,103 @@ mod arbitrary_limit {
             dbg!(&params);
 
             let limited_view = network.view_table(params).unwrap();
-            println!("{limited_view}");
+            println!("Limited: {limited_view}");
 
             assert_has_abbreviations(&limited_view, true, "limited_view");
-            // TODO
+
+            // TODO fix node-count behavior
             // if let Some(max_node_count) = params.get_max_node_count() {
-            //     assert_eq!(count_nodes_u32(&limited_view), Some(max_node_count));
+            //     let nodes_count = count_nodes_u32(&limited_view)
+            //         .expect("limit_view should have fewer nodes than u32::MAX");
+            //     if params.get_max_width().is_some() || params.get_max_depth().is_some() {
+            //         assert!(nodes_count <= max_node_count, "limit_view nodes should respect max, expected {nodes_count} <= {max_node_count}");
+            //     } else {
+            //         assert_eq!(nodes_count, max_node_count, "limit_view nodes should equal requested max");
+            //     }
             // }
 
             Ok(())
-        });
+        })
+        // TODO verify `view_specific_complex` case is fixed
+        // .seed(0xd4c9add400000868)
+        ;
     }
+}
+
+#[test]
+#[ignore = "need to fix node-count behavior"] // TODO
+fn view_specific_complex() {
+    let mut network = Network::new_strings();
+    network.run_script(
+        "
+        modify set-order-type . shuffle
+        modify add-bucket .
+        modify set-order-type .0 in-order
+        modify add-joint .
+        modify set-weight .1 1988479017
+        modify delete-empty .1
+        modify set-order-type . shuffle
+        modify set-weight .0 647436531
+        modify set-weight .0 3135499917
+        modify add-joint .
+        modify add-joint .1
+        modify add-joint .1.0
+        modify set-order-type .1 in-order
+        modify add-joint .1.0.0
+        modify set-weight .1 110430342
+        modify add-bucket .1.0.0.0
+        modify add-joint .1.0.0.0
+        modify add-joint .1
+        modify add-joint .1.1
+        modify add-joint .
+        modify set-weight .1.1.0 2412235562
+        modify add-joint .1.0
+        modify add-joint .1.0.1
+        modify add-bucket .1.0.0.0
+        modify add-bucket .2
+        modify set-weight .1.0.1 2297929128
+        modify set-order-type .2 in-order
+        modify add-joint .1.0
+        modify add-joint .1.1.0
+        modify set-order-type .1.0.0 in-order
+        ",
+    );
+    insta::assert_snapshot!(network.view_table_default(), @r###"
+    Table {
+    X <---------- .0 x3135499917 bucket (empty) in order
+     XXXXXX <---- .1 x110430342 joint (2 children) in order
+           X <--- .2 x1 joint (1 child) in order
+     XXXXX <----- .1.0 joint (3 children) in order
+          X <---- .1.1 joint (1 child) in order
+           X <--- .2.0 bucket (empty) in order
+     XXX <------- .1.0.0 x1 joint (1 child) in order
+        X <------ .1.0.1 x2297929128 joint (1 child) in order
+         X <----- .1.0.2 x1 joint (empty) in order
+          X <---- .1.1.0 x2412235562 joint (1 child) in order
+     XXX <------- .1.0.0.0 joint (3 children) in order
+        X <------ .1.0.1.0 joint (empty) in order
+          X <---- .1.1.0.0 joint (empty) in order
+     X <--------- .1.0.0.0.0 bucket (empty) in order
+      X <-------- .1.0.0.0.1 joint (empty) in order
+       X <------- .1.0.0.0.2 bucket (empty) in order
+    }
+    "###);
+
+    let params = TableParams::default().set_max_node_count(11);
+    insta::assert_snapshot!(network.view_table(params).unwrap(), @r###"
+    Table {
+    X <-------- .0 x3135499917 bucket (empty) in order
+     XXXX <---- .1 x110430342 joint (2 children) in order
+         X <--- .2 x1 joint (1 child) in order
+     XXX <----- .1.0 joint (3 children) in order
+        X <---- .1.1 joint (1 child) in order
+         X <--- .2.0 bucket (empty) in order
+     X <------- .1.0.0 x1 joint (1 child) in order
+      X <------ .1.0.1 x2297929128 joint (1 child) in order
+       X <----- .1.0.2 x1 joint (empty) in order
+        X <---- .1.1.0 x2412235562 joint (1 child) in order
+     X <------- .1.0.0.0 joint (3 children) in order
+      ? <------ (one or more nodes omitted...)
+    }
+    "###);
 }
