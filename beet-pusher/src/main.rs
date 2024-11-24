@@ -1,4 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+
+//! Pushes tracks from `beet` to VLC, with a minimal (read "nonexistent") user interface
+//!
 //! Proof of concept for pushing a simple beet query to VLC, with id tracking
 
 use clap::Parser;
@@ -45,7 +48,6 @@ fn main() -> eyre::Result<()> {
     // 4. Repeat from step 1, only peeking what is needed
     // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
     loop {
-        pusher.reset_determined_if_not_playing()?;
         pusher.fill_determined()?;
         pusher.push_playlist_update()?;
 
@@ -94,13 +96,14 @@ impl<R: rand::RngCore> BeetPusher<'_, R> {
 
         if let Some(peek_len) = peek_len {
             let peeked = self.spigot.peek(self.rng, peek_len)?;
-            // FIXME only render view in the error case
-            let view = self.spigot.view_table_default();
-            assert_eq!(
-                peeked.items().len(),
-                peek_len,
-                "insufficient items in spigot:\n{view}"
-            );
+            if peeked.items().len() != peek_len {
+                let view = self.spigot.view_table_default();
+                unreachable!(
+                    "insufficient items in spigot count = {found}, expected {expected}:\n{view}",
+                    found = peeked.items().len(),
+                    expected = peek_len,
+                );
+            }
             let () = self.determined.modify_gen_urls(gen_path_url, |dest| {
                 dest.extend(peeked.items().iter().map(|&item| item.clone()));
             })?;
@@ -116,26 +119,6 @@ impl<R: rand::RngCore> BeetPusher<'_, R> {
             1,
             "determine should be 1 item after peek"
         );
-        Ok(())
-    }
-    // TODO instead of resetting determined, need to "play" the desired item after set confirms it
-    // is present (and provides the VLC id, which is required to play it)
-    fn reset_determined_if_not_playing(&mut self) -> eyre::Result<()> {
-        // let query =
-        //     vlc_http::action::Action::query_playlist(self.client.get_state_ref_assume_cached());
-        // let playlist = self.exhaust_pollable(query)?;
-        // let playlist_empty = playlist.is_empty();
-
-        let query =
-            vlc_http::action::Action::query_playback(self.client.get_state_ref_assume_cached());
-        let playback = self.exhaust_pollable(query)?;
-
-        if playback.information.is_none() {
-            let () = self.determined.modify_gen_urls(gen_path_url, |list| {
-                list.clear();
-            })?;
-        }
-
         Ok(())
     }
     fn push_playlist_update(&mut self) -> eyre::Result<()> {
@@ -163,17 +146,6 @@ impl<R: rand::RngCore> BeetPusher<'_, R> {
             })?;
         }
         Ok(())
-    }
-}
-impl Client {
-    fn get_state_ref_assume_cached(&self) -> vlc_http::client_state::ClientStateRef<'_> {
-        let mut state_ref = self.state.get_ref();
-        if let Some(seq) = self.last_state_sequence {
-            state_ref = state_ref
-                .assume_cache_valid_since(seq)
-                .expect("last_state_sequence should be from same ClientState instance");
-        }
-        state_ref
     }
 }
 
