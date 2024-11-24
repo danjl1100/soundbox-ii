@@ -5,7 +5,7 @@ use super::{
     PollableConstructor,
 };
 use crate::{client_state::ClientStateSequence, Command};
-use tracing::debug;
+use tracing::{debug, trace};
 
 #[derive(Clone)]
 pub(crate) struct Set {
@@ -49,7 +49,7 @@ impl Pollable for Set {
             return Ok(Poll::Need(Command::ToggleRepeatOne.into()));
         }
 
-        debug!("no change for playback_mode");
+        trace!("no change for playback_mode");
 
         Ok(Poll::Done(()))
     }

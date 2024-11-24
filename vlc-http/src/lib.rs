@@ -61,3 +61,11 @@ pub mod client_state;
 
 #[cfg(feature = "clap")]
 pub mod clap;
+
+/// Helpers for specific HTTP client implementations
+pub mod http_runner {
+    #[cfg(feature = "ureq")]
+    pub mod ureq;
+}
+
+pub mod sync;

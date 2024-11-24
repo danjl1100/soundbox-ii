@@ -4,10 +4,10 @@
 //! For the experiment to succeed, this binary crate should be simple and tiny
 //! (e.g. main.rs ~200 lines, or so)
 
-use std::str::FromStr as _;
 use vlc_http::{
-    action::Poll,
     clap::clap_crate::{self as clap, Parser},
+    http_runner::ureq::HttpRunner,
+    sync::EndpointRequestor,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -89,14 +89,27 @@ fn main() -> eyre::Result<()> {
         oneshot_action,
     } = GlobalArgs::parse();
 
+    let auth = vlc_http::Auth::new(auth.into())?;
+
     let mut client = Client {
-        runner: HttpRunner {
-            auth: vlc_http::Auth::new(auth.into())?,
-            print_responses_http,
-            print_responses,
-        },
+        runner: HttpRunner::new(auth),
         client_state: vlc_http::ClientState::new(),
     };
+
+    if print_responses_http {
+        client
+            .runner
+            .set_observe_responses_str(Box::new(|response: &str| {
+                println!("{response}");
+            }));
+    }
+    if print_responses {
+        client
+            .runner
+            .set_observe_responses(Box::new(|response: &vlc_http::Response| {
+                println!("{response:#?}");
+            }));
+    }
 
     if let Some(action) = oneshot_action {
         client.run_action(action.into())?;
@@ -141,7 +154,7 @@ impl Client {
         match action {
             CliAction::Command { command } => {
                 let endpoint = vlc_http::Command::try_from(command)?.into_endpoint();
-                let _response = self.runner.call_endpoint(endpoint);
+                let _response = self.runner.request(endpoint);
                 Ok(None)
             }
             CliAction::Query {
@@ -187,54 +200,18 @@ impl Client {
         }
     }
 
-    fn exhaust_pollable<T: vlc_http::Pollable>(
-        &mut self,
-        mut source: T,
-    ) -> eyre::Result<T::Output<'_>> {
+    fn exhaust_pollable<T>(&mut self, source: T) -> eyre::Result<T::Output<'_>>
+    where
+        T: vlc_http::Pollable,
+        eyre::Report: From<vlc_http::sync::Error<T, vlc_http::http_runner::ureq::Error>>,
+    {
         const MAX_ITER_COUNT: usize = 100;
-        for _ in 0..MAX_ITER_COUNT {
-            let Poll::Need(endpoint) = source.next(&self.client_state)? else {
-                break; // final output borrow occurs below
-            };
-            let response = self.runner.call_endpoint(endpoint)?;
-            self.client_state.update(response);
-        }
-        match source.next(&self.client_state)? {
-            Poll::Done(output) => Ok(output),
-            Poll::Need(endpoint) => eyre::bail!(
-                "exceeded iteration count safety net ({MAX_ITER_COUNT}) for source {source:?}, next endpoint {endpoint:?}"
-            ),
-        }
-    }
-}
-
-struct HttpRunner {
-    auth: vlc_http::Auth,
-    print_responses_http: bool,
-    print_responses: bool,
-}
-impl HttpRunner {
-    fn call_endpoint(&self, endpoint: vlc_http::Endpoint) -> eyre::Result<vlc_http::Response> {
-        let request = endpoint.with_auth(&self.auth).build_http_request();
-
-        let request = {
-            let (parts, ()) = request.into_parts();
-            ureq::Request::from(parts)
-        };
-
-        let response = request.call()?;
-        let response_body = response.into_string()?;
-
-        if self.print_responses_http {
-            println!("{response_body}");
-        }
-
-        let response = vlc_http::Response::from_str(&response_body)?;
-
-        if self.print_responses {
-            println!("{response:#?}");
-        }
-
-        Ok(response)
+        let (output, _seq) = vlc_http::sync::exhaust_pollable(
+            source,
+            &mut self.client_state,
+            &mut self.runner,
+            MAX_ITER_COUNT,
+        )?;
+        Ok(output)
     }
 }

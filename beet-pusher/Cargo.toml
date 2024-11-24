@@ -1,0 +1,17 @@
+[package]
+name = "beet-pusher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bucket-spigot = { version = "0.1.0", path = "../bucket-spigot" }
+clap = { version = "4.5.4", features = ["derive"] }
+eyre = "0.6.12"
+rand = "0.8.5"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+url = "2.5.3"
+vlc-http = { version = "0.1.0", path = "../vlc-http" }
+
+[lints]
+workspace = true

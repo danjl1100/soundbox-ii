@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 /// Status of the current playback
 #[must_use]
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[non_exhaustive]
 pub struct Status {
     /// version of the VLC-HTTP interface api
     pub apiversion: u32,
@@ -48,6 +49,7 @@ pub enum Mode {
 /// Information about the current (playing/paused) item
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
 #[allow(missing_docs)]
+#[non_exhaustive]
 pub struct Info {
     pub title: String,
     pub artist: String,

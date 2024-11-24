@@ -63,9 +63,13 @@ impl ClientState {
         }
     }
 
+    /// NOTE: All access to state must flow through [`Action`](crate::Action) to ensure the user
+    /// considered the cache invalidation cases
     pub(crate) fn playlist_info(&self) -> &Sequenced<response::PlaylistInfo> {
         &self.playlist_info
     }
+    /// NOTE: All access to state must flow through [`Action`](crate::Action) to ensure the user
+    /// considered the cache invalidation cases
     pub(crate) fn playback_status(&self) -> &Sequenced<Option<response::PlaybackStatus>> {
         &self.playback_status
     }

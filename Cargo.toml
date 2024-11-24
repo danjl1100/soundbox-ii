@@ -13,7 +13,7 @@ members = [
   "frontend",
   "sequencer",
   "shared",
-  "arg_util", "bucket-spigot",
+  "arg_util", "bucket-spigot", "beet-pusher",
 ]
 resolver = "2"
 
