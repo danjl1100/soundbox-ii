@@ -73,14 +73,6 @@ impl EndpointRequestor for HttpRunner {
         Ok(response)
     }
 }
-// NOTE: Some uses require owned (above) but some require borrow (this one)
-impl EndpointRequestor for &mut HttpRunner {
-    type Error = Error;
-    fn request(&mut self, endpoint: Endpoint) -> Result<Response, Self::Error> {
-        // delegate to owned impl
-        <HttpRunner as EndpointRequestor>::request(self, endpoint)
-    }
-}
 
 /// Error calling an HTTP endpoint using `ureq` and parsing the result
 #[derive(Debug)]

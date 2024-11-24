@@ -41,8 +41,7 @@ where
 pub fn exhaust_pollable<'a, T, E, F>(
     mut source: T,
     client_state: &'a mut ClientState,
-    // TODO is passing in &mut F sufficient? or does that ruin the FnMut case somehow?
-    mut endpoint_caller: F,
+    endpoint_caller: &mut F,
     max_iter_count: usize,
 ) -> Result<(T::Output<'a>, Option<ClientStateSequence>), Error<T, E>>
 where
@@ -73,7 +72,7 @@ where
             }),
         }
     };
-    inner(&mut source, client_state, &mut endpoint_caller).map_err(|kind| Error { source, kind })
+    inner(&mut source, client_state, endpoint_caller).map_err(|kind| Error { source, kind })
 }
 
 /// Failure to exhaust a [`Pollable`] to the final output
