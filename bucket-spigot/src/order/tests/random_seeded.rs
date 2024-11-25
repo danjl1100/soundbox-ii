@@ -1,5 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+//! NOTE: "fair dice roll" is an homage to <https://xkcd.com/221/>
+
 use super::NONEMPTY_WEIGHTS;
 use crate::order::source::{OrderSource, Random, Shuffle};
 use crate::tests::decode_hex;
@@ -268,23 +270,70 @@ fn shuffle_looks_decent() {
         // longest, ensure we used all entropy (to not specify more than needed)
         assert_eq!(u.len(), 0);
     }
+}
 
-    {
-        let determined = decode_hex(&[
+fn calculate_shuffle_equal(length: usize, determined: &[&str]) -> String {
+    let determined = decode_hex(determined).expect("determined should be valid hex strings");
+    let mut uut = Shuffle::default();
+    let weights_sum = length;
+    let weights = Weights::new_equal(weights_sum).expect(NONEMPTY_WEIGHTS);
+    fake_rng! {
+        let (rng, u) = &determined;
+    }
+    let result = fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 1));
+
+    // ensure we used all entropy (to not specify more than needed)
+    assert_eq!(u.len(), 0);
+
+    result
+}
+
+#[test]
+fn shuffle_for_300_items() {
+    let result = calculate_shuffle_equal(
+        300,
+        &[
             // chosen by fair dice roll, then paintsakingly trimmed to length
             // (`head --bytes=? /dev/urandom | sha256sum`)
-            "fd9dd4649d4c460cfa9ec3e3c6b3fc4e7708361b9a01a567493af2b6a1e8855b2888eb00622a517d573b900c662fa732a08a36ca924987721e540a69bb150ec6513bb7449632c928cd23d0836f410294fbb9b76dafcd57c30540412dfbb3dae9dc0bd5386008293f6f05d2bf843afde9e01fc418ec63d5bdd9fd91f3dc1680730246a2bf921a012fb1ca144c0b52d1f995af252b17375ba72d4fe3a019cbdc3110a9301b3a8f9e799ab13e47e63f185116b2eb5c3e8ff1b072833a236b27f3ff78e3bcea1d60792a6ee50d53d956945fc83995d8ab1499f368c17dce00949080366aaf38485b3deb09773a05fa9fc878be1fcdfe0f63030358f8f24c467f36aff622ff51b9a3fd29f16561c2352b7cc9ab1460d8a692b26f77843537c2fdbcf7fc6dd6a6c0bc63439720e8",
-        ])
-        .expect("valid hex strings");
-        let mut uut = Shuffle::default();
-        let weights_sum = 300;
-        let weights = Weights::new_equal(weights_sum).expect(NONEMPTY_WEIGHTS);
-        fake_rng! {
-            let (rng, u) = &determined;
-        }
-        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 1)));
+            "fd9dd4649d4c460cfa9ec3e3c6b3fc4e7708361b9a01a567493af2b6a1e8855b",
+            "2888eb00622a517d573b900c662fa732a08a36ca924987721e540a69bb150ec6",
+            "513bb7449632c928cd23d0836f410294fbb9b76dafcd57c30540412dfbb3dae9",
+            "dc0bd5386008293f6f05d2bf843afde9e01fc418ec63d5bdd9fd91f3dc168073",
+            "0246a2bf921a012fb1ca144c0b52d1f995af252b17375ba72d4fe3a019cbdc31",
+            "10a9301b3a8f9e799ab13e47e63f185116b2eb5c3e8ff1b072833a236b27f3ff",
+            "78e3bcea1d60792a6ee50d53d956945fc83995d8ab1499f368c17dce00949080",
+            "366aaf38485b3deb09773a05fa9fc878be1fcdfe0f63030358f8f24c467f36af",
+            "f622ff51b9a3fd29f16561c2352b7cc9ab1460d8a692b26f77843537c2fdbcf7",
+            "fc6dd6a6c0bc63439720e8",
+        ],
+    );
+    insta::assert_snapshot!(result);
+}
 
-        // longest, ensure we used all entropy (to not specify more than needed)
-        assert_eq!(u.len(), 0);
-    }
+#[test]
+fn shuffle_for_500_items() {
+    let result = calculate_shuffle_equal(
+        500,
+        &[
+            // chosen by fair dice roll, then paintsakingly trimmed to length
+            // (`head --bytes=? /dev/urandom | sha256sum`)
+            "06b3bdbe82c88f8f10b88ebdb61a09190704eaa861ae302f446ba311cfbbc67f",
+            "9b3e334dc065215bcb3478a2fc613ef2371b37be8c4ee26d187078b602fbc164",
+            "463ae40d8623a31cc8739f470273ef004f656e70a216a877dd7bd5c6d600dd31",
+            "c7c048451878c528fad413a38888d56c43e72c528fafde7fa9029f1e978f23ed",
+            "6de0cc4c30e34a542d6be961803239f016152b5ea90c08096605ee6430aa6c2f",
+            "87212d817726e6366056590315569af001d361d333c4f945c1e3fe789b400d84",
+            "148886c45d5f788a8490e636ea01f607d6df13fb02a1cb956b3f1c40c7b62aa4",
+            "668b902cb07ccbd4a771bdb45200142c1fbdb1cec24e9f230c0b57d7c89c9fc8",
+            "f8d0b8bc28765694fd48298a8f34ceda70c47a209f8e280e86cc24728b7c2982",
+            "addb61a0fd9d3c0d9c398d2f3ad2c7aa93e79537299dbd121979408512ab662f",
+            "c1625ae4509eca88bf70f17ac49cd7d26db2c41b3990fd0d1f34e856f77dc6a8",
+            "e6b182daf1193547a189b8c3d0e22c9bba81f18478648c5ccb2da493b2b8cfa4",
+            "6d8d18f7acc904539b3818274db95b76b328c1eba8dc74a42f6f0fa57c05a45a",
+            "4873f692c6c5122af31dc8b70bbf2b5d6acf2c007d70b2245bc7f5459f8df70d",
+            "3bc7d323ed8e07a294c943f75f1cd2ae0e80b73195f9083f652a9d5db68c5f3f",
+            "90036bdbf5126914275802ed6c5fc79f46b8d8",
+        ],
+    );
+    insta::assert_snapshot!(result);
 }

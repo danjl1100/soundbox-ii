@@ -1,5 +1,5 @@
 ---
-source: bucket-spigot/src/order/tests.rs
+source: bucket-spigot/src/order/tests/random_seeded.rs
 expression: "fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 1))"
 ---
 298  	                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ><
