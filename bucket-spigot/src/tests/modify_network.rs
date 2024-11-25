@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::arb_rng::{assert_arb_error, fake_rng};
-use crate::{path::RemovedSelf, ModifyErr, ModifyError, Network};
+use crate::{path::RemovedSelf, tests::script::NetworkStrings, ModifyErr, ModifyError, Network};
 
 #[test]
 fn empty() {
@@ -582,16 +582,18 @@ fn delete_bucket_before_fill() {
 }
 
 #[test]
-fn delete_then_view() {
-    let (network, _log) = Network::new_strings_build_from_script(
+fn delete_then_view() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .
-        modify delete-empty .0
+        add-joint .
+        add-joint .
+        delete-empty .0
         ",
-    );
+    )?;
     let view = network.view_table_default();
     println!("{view}");
+
+    Ok(())
 }
 
 #[test]

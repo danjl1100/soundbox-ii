@@ -1,5 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+use super::script::NetworkStrings;
 use crate::{clap::ArgBounds, order::OrderType, path::Path, ModifyCmd, Network};
 
 fn into_cmds<T, U>(network: Network<T, U>) -> Vec<ModifyCmd<T, U>>
@@ -89,13 +90,18 @@ where
     assert_eq!(view_expected, view_rebuilt, "{cmds_summary}");
 }
 
-fn check_rebuilds_script(script: &str, extra_cmds: Vec<ModifyCmd<String, String>>) {
-    let (mut network, _log) = Network::new_strings_build_from_script(script);
+fn check_rebuilds_script(
+    script: &str,
+    extra_cmds: Vec<ModifyCmd<String, String>>,
+) -> Result<(), crate::clap::NetworkScriptError> {
+    let mut network = NetworkStrings::from_commands_str(script)?;
     for cmd in extra_cmds {
         network.modify(cmd).unwrap();
     }
 
     network.check_ser(|_| ());
+
+    Ok(())
 }
 impl<T, U> Network<T, U>
 where
@@ -111,21 +117,21 @@ where
 
 #[test]
 fn empty() {
-    Network::new_strings().check_ser(|cmds| {
+    NetworkStrings::default().check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @"");
     });
 }
 
 #[test]
-fn nodes_shallow() {
-    let (network, _log) = Network::new_strings_build_from_script(
+fn nodes_shallow() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify add-bucket .
-        modify add-bucket .
-        modify add-bucket .
-        modify add-bucket .
+        add-bucket .
+        add-bucket .
+        add-bucket .
+        add-bucket .
         ",
-    );
+    )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
         add-bucket .
@@ -134,17 +140,19 @@ fn nodes_shallow() {
         add-bucket .
         "###);
     });
+
+    Ok(())
 }
 
 #[test]
-fn nodes_narrow() {
-    let (network, _log) = Network::new_strings_build_from_script(
+fn nodes_narrow() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .0
-        modify add-joint .0.0
+        add-joint .
+        add-joint .0
+        add-joint .0.0
         ",
-    );
+    )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
         add-joint .
@@ -152,23 +160,25 @@ fn nodes_narrow() {
         add-joint .0.0
         "###);
     });
+
+    Ok(())
 }
 
 #[test]
-fn node_placement() {
-    let (network, _log) = Network::new_strings_build_from_script(
+fn node_placement() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify add-bucket .
-        modify add-joint .
+        add-bucket .
+        add-joint .
 
-        modify add-bucket .1
-        modify add-bucket .1
-        modify add-joint .1
-        modify add-bucket .1
+        add-bucket .1
+        add-bucket .1
+        add-joint .1
+        add-bucket .1
 
-        modify add-bucket .1.2
+        add-bucket .1.2
         ",
-    );
+    )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
         add-bucket .
@@ -180,28 +190,32 @@ fn node_placement() {
         add-bucket .1
         "###);
     });
+
+    Ok(())
 }
 
 #[test]
-fn node_order_type() {
+fn node_order_type() -> eyre::Result<()> {
     for new_order_type in OrderType::iter_all() {
         let set_order_type = ModifyCmd::SetOrderType {
             path: ".0".parse().unwrap(),
             new_order_type,
         };
-        check_rebuilds_script("modify add-joint .", vec![set_order_type]);
+        check_rebuilds_script("add-joint .", vec![set_order_type])?;
     }
+    Ok(())
 }
 
 #[test]
-fn node_weight() {
+fn node_weight() -> eyre::Result<()> {
     for new_weight in [1, 5, 10, 100] {
         let set_weight = ModifyCmd::SetWeight {
             path: ".0".parse().unwrap(),
             new_weight,
         };
-        check_rebuilds_script("modify add-joint .", vec![set_weight]);
+        check_rebuilds_script("add-joint .", vec![set_weight])?;
     }
+    Ok(())
 }
 
 // fuzz the input ModifyCmds

@@ -2,6 +2,7 @@
 
 use crate::{
     path::{Path, PathRef},
+    tests::script::NetworkStrings,
     view::TableParams,
     Network,
 };
@@ -9,7 +10,7 @@ use std::str::FromStr as _;
 
 #[test]
 fn empty() {
-    let network = Network::new_strings();
+    let network = NetworkStrings::default();
     let table = network.view_table_default();
     insta::assert_snapshot!(table, @r###"
     Table {
@@ -18,26 +19,24 @@ fn empty() {
 }
 
 #[test]
-fn table_weights() {
-    let mut network = Network::new_strings();
-    let log = network.run_script(
+fn table_weights() -> eyre::Result<()> {
+    let mut network = NetworkStrings::from_commands_str(
         "
-        modify add-bucket .
-        modify fill-bucket .0 abc def ghi jkl
-        modify add-joint .
-        modify add-joint .1
-        modify add-bucket .1
-        modify fill-bucket .1.1 qrs tuv wxyz
+        add-bucket .
+        fill-bucket .0 abc def ghi jkl
+        add-joint .
+        add-joint .1
+        add-bucket .1
+        fill-bucket .1.1 qrs tuv wxyz
 
-        modify add-joint .1.0
-        modify add-bucket .1.0
-        modify fill-bucket .1.0.1 1 2 3 4
-        modify add-bucket .1.0
-        modify fill-bucket .1.0.2 5 6 7 8 9
-
-        topology
+        add-joint .1.0
+        add-bucket .1.0
+        fill-bucket .1.0.1 1 2 3 4
+        add-bucket .1.0
+        fill-bucket .1.0.2 5 6 7 8 9
         ",
-    );
+    )?;
+    let log = network.run_script("topology");
     insta::assert_ron_snapshot!(log.items().last().unwrap(), @r###"
     Topology([
       4,
@@ -101,43 +100,43 @@ fn table_weights() {
        o <---- .1.0.2 bucket (5 items) in order (inactive)
     }
     "###);
+
+    Ok(())
 }
 
-fn arbitrary_pattern1() -> Network<String, String> {
-    let mut network = Network::new_strings();
-    network.run_script(
+fn arbitrary_pattern1() -> eyre::Result<NetworkStrings> {
+    Ok(NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-bucket .
-        modify add-bucket .
-        modify add-bucket .
-        modify add-joint .
+        add-joint .
+        add-bucket .
+        add-bucket .
+        add-bucket .
+        add-joint .
 
-        modify add-joint .0
-        modify add-bucket .0
+        add-joint .0
+        add-bucket .0
 
-        modify add-bucket .0.0
-        modify add-bucket .0.0
+        add-bucket .0.0
+        add-bucket .0.0
 
-        modify add-bucket .4
-        modify add-joint .4
+        add-bucket .4
+        add-joint .4
 
-        modify add-bucket .4.1
-        modify add-bucket .4.1
+        add-bucket .4.1
+        add-bucket .4.1
 
-        modify set-weight .0 0
-        modify set-weight .0.1 50
-        modify set-weight .1 2
-        modify set-weight .2 3
-        modify set-weight .3 4
+        set-weight .0 0
+        set-weight .0.1 50
+        set-weight .1 2
+        set-weight .2 3
+        set-weight .3 4
         ",
-    );
-    network
+    )?)
 }
 
 #[test]
-fn table_depth_root() {
-    let network = arbitrary_pattern1();
+fn table_depth_root() -> eyre::Result<()> {
+    let network = arbitrary_pattern1()?;
 
     let params = TableParams::default();
 
@@ -198,10 +197,12 @@ fn table_depth_root() {
     o <--- .0.0.1 bucket (empty) in order (inactive)
     }
     "###);
+
+    Ok(())
 }
 #[test]
-fn table_depths_narrow_to_wider() {
-    let network = arbitrary_pattern1();
+fn table_depths_narrow_to_wider() -> eyre::Result<()> {
+    let network = arbitrary_pattern1()?;
 
     insta::assert_snapshot!(view_path(&network, ".4.1.1"), @r###"
     Table {
@@ -239,21 +240,22 @@ fn table_depths_narrow_to_wider() {
       X <--- .4.1.1 bucket (empty) in order
     }
     "###);
+
+    Ok(())
 }
 #[test]
-fn simple_gap() {
-    let (network, log) = Network::new_strings_build_from_script(
+fn simple_gap() -> eyre::Result<()> {
+    let mut network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .
-        modify add-joint .
+        add-joint .
+        add-joint .
+        add-joint .
 
-        modify add-joint .0
-        modify add-joint .2
-
-        topology
+        add-joint .0
+        add-joint .2
         ",
-    );
+    )?;
+    let log = network.run_script("topology");
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       Topology([
@@ -277,18 +279,19 @@ fn simple_gap() {
       X <--- .2.0 joint (empty) in order
     }
     "###);
+
+    Ok(())
 }
 #[test]
-fn simple_max_depth() {
-    let (network, log) = Network::new_strings_build_from_script(
+fn simple_max_depth() -> eyre::Result<()> {
+    let mut network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .0
-        modify add-joint .0.0
-
-        topology
+        add-joint .
+        add-joint .0
+        add-joint .0.0
         ",
-    );
+    )?;
+    let log = network.run_script("topology");
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       Topology([
@@ -324,6 +327,8 @@ fn simple_max_depth() {
     X <--- .0 joint (1 child hidden) in order
     }
     "###);
+
+    Ok(())
 }
 
 fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
@@ -333,34 +338,33 @@ fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
 }
 
 #[test]
-fn unique_weights() {
-    let mut network = Network::new_strings();
-    network.run_script(
+fn unique_weights() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .
-        modify add-joint .
-        modify add-joint .
-        modify add-joint .
+        add-joint .
+        add-joint .
+        add-joint .
+        add-joint .
+        add-joint .
 
-        modify add-joint .0
-        modify add-joint .0
-        modify add-joint .0
-        modify add-joint .0
-        modify add-joint .0
+        add-joint .0
+        add-joint .0
+        add-joint .0
+        add-joint .0
+        add-joint .0
 
-        modify set-weight .0 1
-        modify set-weight .1 2
-        modify set-weight .2 3
-        modify set-weight .3 4
-        modify set-weight .4 5
-        modify set-weight .0.0 6
-        modify set-weight .0.1 7
-        modify set-weight .0.2 8
-        modify set-weight .0.3 9
-        modify set-weight .0.4 10
+        set-weight .0 1
+        set-weight .1 2
+        set-weight .2 3
+        set-weight .3 4
+        set-weight .4 5
+        set-weight .0.0 6
+        set-weight .0.1 7
+        set-weight .0.2 8
+        set-weight .0.3 9
+        set-weight .0.4 10
         ",
-    );
+    )?;
     insta::assert_snapshot!(view_path(&network, ".0"), @r###"
     Table {
     XXXXX <------- .0 x1 joint (5 children) in order
@@ -422,11 +426,13 @@ fn unique_weights() {
     X <--- .0.4 x10 joint (empty) in order
     }
     "###);
+
+    Ok(())
 }
 
 #[test]
-fn table_depth_child_right() {
-    let network = arbitrary_pattern1();
+fn table_depth_child_right() -> eyre::Result<()> {
+    let network = arbitrary_pattern1()?;
 
     let params = TableParams::default();
     let path = Path::from_str(".4").unwrap();
@@ -458,18 +464,19 @@ fn table_depth_child_right() {
     X <--- .4 x1 joint (2 children hidden) in order
     }
     "###);
+
+    Ok(())
 }
 
 #[test]
-fn table_view_bucket() {
-    let mut network = Network::new_strings();
-    network.run_script(
+fn table_view_bucket() -> eyre::Result<()> {
+    let mut network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-bucket .
-        modify add-bucket .0
+        add-joint .
+        add-bucket .
+        add-bucket .0
         ",
-    );
+    )?;
     let path_1 = Path::from_str(".1").unwrap();
     let path_2 = Path::from_str(".0.0").unwrap();
     let params_1 = TableParams::default().set_base_path(path_1.as_ref());
@@ -491,6 +498,7 @@ fn table_view_bucket() {
     o <--- .0.0 bucket (empty) in order (inactive)
     }
     "###);
+    Ok(())
 }
 
 /// Add `count` child joints to specified node
@@ -530,7 +538,7 @@ fn fill_width_and_depth<T, U>(network: &mut Network<T, U>, parent: Path, count: 
 #[test]
 fn limit_width_root() {
     const N: usize = 50;
-    let mut network = Network::new_strings();
+    let mut network = NetworkStrings::default();
 
     let root = Path::empty();
     fill_width_and_depth(&mut network, root, N);
@@ -567,16 +575,15 @@ fn limit_width_root() {
 }
 
 #[test]
-fn limit_width_child() {
+fn limit_width_child() -> eyre::Result<()> {
     const N: usize = 50;
-    let mut network = Network::new_strings();
-    network.run_script(
+    let mut network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .
-        modify add-joint .1
+        add-joint .
+        add-joint .
+        add-joint .1
         ",
-    );
+    )?;
 
     let base = Path::from_str(".1.0").unwrap();
     fill_width_and_depth(&mut network, base.clone(), N);
@@ -612,19 +619,20 @@ fn limit_width_child() {
     X <---- .1.0.0.0 joint (1 child hidden) in order
     }
     "###);
+
+    Ok(())
 }
 
 #[test]
-fn node_count() {
-    let mut network = Network::new_strings();
-    network.run_script(
+fn node_count() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify add-joint .
-        modify add-joint .
-        modify add-joint .0
-        modify add-joint .1
+        add-joint .
+        add-joint .
+        add-joint .0
+        add-joint .1
         ",
-    );
+    )?;
 
     let params = TableParams::default();
     let limit_none = network.view_table(params).unwrap();
@@ -675,6 +683,8 @@ fn node_count() {
     ? <--- (one or more nodes omitted...)
     }
     "###);
+
+    Ok(())
 }
 
 #[test]
@@ -866,42 +876,41 @@ mod arbitrary_limit {
 
 #[test]
 #[ignore = "need to fix node-count behavior"] // TODO
-fn view_specific_complex() {
-    let mut network = Network::new_strings();
-    network.run_script(
+fn view_specific_complex() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str(
         "
-        modify set-order-type . shuffle
-        modify add-bucket .
-        modify set-order-type .0 in-order
-        modify add-joint .
-        modify set-weight .1 1988479017
-        modify delete-empty .1
-        modify set-order-type . shuffle
-        modify set-weight .0 647436531
-        modify set-weight .0 3135499917
-        modify add-joint .
-        modify add-joint .1
-        modify add-joint .1.0
-        modify set-order-type .1 in-order
-        modify add-joint .1.0.0
-        modify set-weight .1 110430342
-        modify add-bucket .1.0.0.0
-        modify add-joint .1.0.0.0
-        modify add-joint .1
-        modify add-joint .1.1
-        modify add-joint .
-        modify set-weight .1.1.0 2412235562
-        modify add-joint .1.0
-        modify add-joint .1.0.1
-        modify add-bucket .1.0.0.0
-        modify add-bucket .2
-        modify set-weight .1.0.1 2297929128
-        modify set-order-type .2 in-order
-        modify add-joint .1.0
-        modify add-joint .1.1.0
-        modify set-order-type .1.0.0 in-order
+        set-order-type . shuffle
+        add-bucket .
+        set-order-type .0 in-order
+        add-joint .
+        set-weight .1 1988479017
+        delete-empty .1
+        set-order-type . shuffle
+        set-weight .0 647436531
+        set-weight .0 3135499917
+        add-joint .
+        add-joint .1
+        add-joint .1.0
+        set-order-type .1 in-order
+        add-joint .1.0.0
+        set-weight .1 110430342
+        add-bucket .1.0.0.0
+        add-joint .1.0.0.0
+        add-joint .1
+        add-joint .1.1
+        add-joint .
+        set-weight .1.1.0 2412235562
+        add-joint .1.0
+        add-joint .1.0.1
+        add-bucket .1.0.0.0
+        add-bucket .2
+        set-weight .1.0.1 2297929128
+        set-order-type .2 in-order
+        add-joint .1.0
+        add-joint .1.1.0
+        set-order-type .1.0.0 in-order
         ",
-    );
+    )?;
     insta::assert_snapshot!(network.view_table_default(), @r###"
     Table {
     X <---------- .0 x3135499917 bucket (empty) in order
@@ -940,4 +949,6 @@ fn view_specific_complex() {
       ? <------ (one or more nodes omitted...)
     }
     "###);
+
+    Ok(())
 }

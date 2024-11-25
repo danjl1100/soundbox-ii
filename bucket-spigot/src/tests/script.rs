@@ -140,18 +140,11 @@ struct PeekFlags {
     show_bucket_ids: bool,
 }
 
+pub type NetworkStrings = Network<String, String>;
 impl Network<String, String> {
-    pub(super) fn new_strings() -> Self {
-        Self::default()
-    }
-    pub(super) fn new_strings_build_from_script(commands: &str) -> (Self, Log<String, String>) {
-        let mut network = Self::new_strings();
-        let log = network.run_script(commands);
-        (network, log)
-    }
     pub(super) fn new_strings_run_script(commands: &str) -> Log<String, String> {
-        let (_, log) = Self::new_strings_build_from_script(commands);
-        log
+        let mut network = Self::default();
+        network.run_script(commands)
     }
 }
 

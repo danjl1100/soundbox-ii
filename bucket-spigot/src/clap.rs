@@ -236,3 +236,123 @@ where
         Ret(self)
     }
 }
+
+pub use network_cmd_lines::Error as NetworkScriptError;
+mod network_cmd_lines {
+    use super::ArgBounds;
+    use crate::Network;
+
+    impl<T, U> Network<T, U>
+    where
+        T: ArgBounds,
+        U: ArgBounds,
+    {
+        /// Convenience function for constructing from a string of [`crate::clap::ModifyCmd`] lines
+        ///
+        /// # Errors
+        /// Returns an error if parsing a command or applying the command fails
+        ///
+        /// # Example
+        /// ```
+        /// use bucket_spigot::{Network, path::Path};
+        /// let network: Network<String, String> = Network::from_commands_str(
+        ///     "
+        ///     add-joint .
+        ///     add-bucket .0
+        ///     set-filters .0.0 filter values
+        ///     fill-bucket .0.0 item1 item2 item3
+        ///     "
+        /// ).unwrap();
+        ///
+        /// let bucket_path: Path = ".0.0".parse().unwrap();
+        /// let bucket_path = bucket_path.as_ref();
+        ///
+        /// let expected_filters = vec!["filter".to_string(), "values".to_string()];
+        /// assert_eq!(network.get_filters(bucket_path).unwrap(), &[&expected_filters]);
+        /// ```
+        // NOTE: Separate from `std::string::FromStr`, because a "string of commands" is not a canonical representation
+        pub fn from_commands_str(commands: &str) -> Result<Self, Error> {
+            let mut network = Self::default();
+            network.modify_with_commands_str(commands)?;
+            Ok(network)
+        }
+        /// Modifies the network according to a string of [`crate::clap::ModifyCmd`] lines
+        ///
+        /// # Errors
+        /// Returns an error if parsing a command or applying the command fails
+        pub fn modify_with_commands_str(&mut self, commands: &str) -> Result<(), Error> {
+            use clap::Parser as _;
+
+            #[derive(clap::Parser)]
+            #[clap(no_binary_name = true)]
+            struct Command<T, U>
+            where
+                T: ArgBounds,
+                U: ArgBounds,
+            {
+                #[clap(subcommand)]
+                inner: super::ModifyCmd<T, U>,
+            }
+
+            for (index, line) in commands.lines().enumerate() {
+                let cmd = line.trim();
+                if cmd.is_empty() || cmd.starts_with('#') {
+                    continue;
+                }
+
+                let make_error = |kind| Error {
+                    line: cmd.to_owned(),
+                    line_number: index + 1,
+                    kind,
+                };
+
+                let cmd = Command::<T, U>::try_parse_from(cmd.split_whitespace())
+                    .map_err(ErrorKind::Parse)
+                    .map_err(make_error)?;
+
+                self.modify(cmd.inner.into())
+                    .map_err(ErrorKind::Modify)
+                    .map_err(make_error)?;
+            }
+            Ok(())
+        }
+    }
+
+    /// Failure to modify a [`Network`] by script commands
+    #[derive(Debug)]
+    pub struct Error {
+        line: String,
+        line_number: usize,
+        kind: ErrorKind,
+    }
+    #[derive(Debug)]
+    enum ErrorKind {
+        Parse(::clap::Error),
+        Modify(crate::ModifyError),
+    }
+    impl std::error::Error for Error {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match &self.kind {
+                ErrorKind::Parse(error) => Some(error),
+                ErrorKind::Modify(error) => Some(error),
+            }
+        }
+    }
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self {
+                line,
+                line_number,
+                kind,
+            } = self;
+            let description = match kind {
+                ErrorKind::Parse(_) => "parsing",
+                ErrorKind::Modify(_) => "modify",
+            };
+            write!(
+                f,
+                "{description} command failed on line {line_number}: {line:?}"
+            )
+        }
+    }
+}

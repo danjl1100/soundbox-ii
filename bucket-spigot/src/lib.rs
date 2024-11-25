@@ -657,7 +657,7 @@ pub(crate) struct CannotAddToBucket(Path);
 pub(crate) struct CannotDeleteNonempty(Path);
 
 #[cfg(test)]
-#[allow(clippy::panic)]
+#[allow(clippy::panic)] // TODO use actual error handling for tests, `eyre` prints good details!
 #[allow(clippy::unwrap_used)]
 mod tests {
     pub(crate) use arb_rng::{assert_arb_error, decode_hex, fake_rng, PanicRng};
