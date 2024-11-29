@@ -6,6 +6,8 @@ use crate::{
     ModifyCmd, Network,
 };
 
+const DEBUG: bool = false;
+
 impl<T, U> Network<T, U>
 where
     T: ArgBounds,
@@ -218,7 +220,9 @@ impl ScratchPaths {
         });
     }
     fn add_bucket(&mut self, (parent, bucket): (&Path, Path)) {
-        eprintln!("add bucket ({parent}, {bucket})");
+        if DEBUG {
+            eprintln!("add bucket ({parent}, {bucket})");
+        }
         let Self {
             nodes,
             buckets,
@@ -239,7 +243,9 @@ impl ScratchPaths {
         // Only affects tests, but perhaps use BTreeSet to keep sorted output? (already have `Path: Ord`)
     }
     fn add_joint(&mut self, (parent, joint): (&Path, Path)) {
-        eprintln!("add joint ({parent}, {joint})");
+        if DEBUG {
+            eprintln!("add joint ({parent}, {joint})");
+        }
         let Self {
             nodes,
             buckets: _, // joint does not affect buckets
@@ -424,7 +430,9 @@ where
 
             let cmd = ModifyCmd::from((path_clone, seed));
             let cmd_str = cmd.display_as_cmd().to_string();
-            println!("-> {cmd_str}");
+            if DEBUG {
+                println!("-> {cmd_str}");
+            }
             if let Err(e) = network.modify(cmd) {
                 panic!("impl Arbitrary for Network should only execute valid commands: {e} \nModifyCmd: {cmd_str}");
             }

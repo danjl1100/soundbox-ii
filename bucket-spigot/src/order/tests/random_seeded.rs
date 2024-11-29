@@ -44,9 +44,9 @@ fn fmt_chunks_spatial<R: rand::Rng + ?Sized>(
     weights: Weights<'_>,
     rng: &mut R,
     (len, repetitions): (usize, usize),
-) -> String {
+) -> Result<String, rand::Error> {
     use std::fmt::Write as _;
-    let mut iter = std::iter::repeat_with(|| uut.next(rng, weights).expect("should not fail"));
+    let mut iter = std::iter::repeat_with(|| uut.next(rng, weights));
 
     // NOTE: assert_debug_snapshot is too verbose (line endings from `:#?`)
     let mut output = String::new();
@@ -59,7 +59,7 @@ fn fmt_chunks_spatial<R: rand::Rng + ?Sized>(
             .expect("infallible");
         }
         for _elem in 0..len {
-            let chosen = iter.next().expect("infinite");
+            let chosen = iter.next().expect("infinite iterator")?;
             writeln!(
                 &mut output,
                 "{chosen: <5}\t{:<chosen$}{:<chosen$}><",
@@ -68,7 +68,7 @@ fn fmt_chunks_spatial<R: rand::Rng + ?Sized>(
             .expect("infallible");
         }
     }
-    output
+    Ok(output)
 }
 #[test]
 fn random_looks_decent() {
@@ -116,7 +116,7 @@ fn random_looks_decent() {
 }
 #[allow(clippy::too_many_lines)]
 #[test]
-fn shuffle_looks_decent() {
+fn shuffle_looks_decent() -> eyre::Result<()> {
     let determined = decode_hex(&[
         // chosen by fair dice roll, then paintsakingly trimmed to length
         // (`head --bytes=? /dev/urandom | sha256sum`)
@@ -136,32 +136,32 @@ fn shuffle_looks_decent() {
         fake_rng! {
             let (rng) = &determined;
         }
-        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 2)), @r###"
-        0    	><
+        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 2))?, @r###"
         1    	  ><
         0    	><
         0    	><
         0    	><
         0    	><
         0    	><
-        0    	><
-        0    	><
-        1    	  ><
         0    	><
         2    	    ><
         0    	><
+        0    	><
+        0    	><
+        0    	><
+        1    	  ><
         --------------------------------------------------------------------------------
         0    	><
+        0    	><
+        0    	><
         1    	  ><
         0    	><
         0    	><
         1    	  ><
+        0    	><
+        0    	><
         0    	><
         2    	    ><
-        0    	><
-        0    	><
-        0    	><
-        0    	><
         0    	><
         0    	><
         "###);
@@ -175,24 +175,24 @@ fn shuffle_looks_decent() {
         fake_rng! {
             let (rng) = &determined;
         }
-        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 3)), @r###"
-        1    	  ><
-        2    	    ><
+        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 3))?, @r###"
         0    	><
-        4    	        ><
         3    	      ><
+        2    	    ><
+        1    	  ><
+        4    	        ><
         --------------------------------------------------------------------------------
         4    	        ><
-        0    	><
         3    	      ><
         2    	    ><
         1    	  ><
+        0    	><
         --------------------------------------------------------------------------------
+        1    	  ><
+        4    	        ><
+        0    	><
         2    	    ><
         3    	      ><
-        1    	  ><
-        0    	><
-        4    	        ><
         "###);
     }
 
@@ -203,76 +203,81 @@ fn shuffle_looks_decent() {
         fake_rng! {
             let (rng, u) = &determined;
         }
-        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 2)), @r###"
-        10   	                    ><
+        insta::assert_snapshot!(fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 2))?, @r###"
+        15   	                              ><
         23   	                                              ><
-        0    	><
-        26   	                                                    ><
-        9    	                  ><
-        7    	              ><
-        28   	                                                        ><
-        2    	    ><
-        13   	                          ><
-        11   	                      ><
         12   	                        ><
-        25   	                                                  ><
-        20   	                                        ><
-        21   	                                          ><
-        17   	                                  ><
+        3    	      ><
+        27   	                                                      ><
+        2    	    ><
+        24   	                                                ><
         6    	            ><
         16   	                                ><
-        14   	                            ><
+        25   	                                                  ><
         29   	                                                          ><
-        22   	                                            ><
-        4    	        ><
-        24   	                                                ><
-        27   	                                                      ><
         18   	                                    ><
-        1    	  ><
-        5    	          ><
-        15   	                              ><
-        8    	                ><
+        26   	                                                    ><
+        22   	                                            ><
+        17   	                                  ><
         19   	                                      ><
-        3    	      ><
+        1    	  ><
+        4    	        ><
+        5    	          ><
+        0    	><
+        21   	                                          ><
+        13   	                          ><
+        7    	              ><
+        28   	                                                        ><
+        10   	                    ><
+        11   	                      ><
+        14   	                            ><
+        8    	                ><
+        9    	                  ><
+        20   	                                        ><
         --------------------------------------------------------------------------------
-        18   	                                    ><
-        13   	                          ><
-        21   	                                          ><
-        2    	    ><
-        0    	><
-        20   	                                        ><
-        23   	                                              ><
+        5    	          ><
         24   	                                                ><
-        8    	                ><
-        1    	  ><
-        11   	                      ><
-        26   	                                                    ><
-        14   	                            ><
-        16   	                                ><
-        25   	                                                  ><
-        7    	              ><
-        10   	                    ><
+        28   	                                                        ><
+        12   	                        ><
+        21   	                                          ><
+        0    	><
         4    	        ><
         3    	      ><
-        19   	                                      ><
-        27   	                                                      ><
-        9    	                  ><
-        6    	            ><
-        22   	                                            ><
-        5    	          ><
-        17   	                                  ><
+        14   	                            ><
         29   	                                                          ><
+        10   	                    ><
+        11   	                      ><
+        19   	                                      ><
+        8    	                ><
+        2    	    ><
+        17   	                                  ><
+        23   	                                              ><
+        16   	                                ><
         15   	                              ><
-        12   	                        ><
-        28   	                                                        ><
+        18   	                                    ><
+        1    	  ><
+        9    	                  ><
+        7    	              ><
+        25   	                                                  ><
+        22   	                                            ><
+        27   	                                                      ><
+        26   	                                                    ><
+        13   	                          ><
+        20   	                                        ><
+        6    	            ><
         "###);
 
         // longest, ensure we used all entropy (to not specify more than needed)
         assert_eq!(u.len(), 0);
     }
+
+    Ok(())
 }
 
-fn calculate_shuffle_equal(length: usize, determined: &[&str]) -> String {
+fn calculate_shuffle_equal(
+    length: usize,
+    determined: &[&str],
+) -> Result<String, CalculateShuffleError> {
     let determined = decode_hex(determined).expect("determined should be valid hex strings");
     let mut uut = Shuffle::default();
     let weights_sum = length;
@@ -280,16 +285,44 @@ fn calculate_shuffle_equal(length: usize, determined: &[&str]) -> String {
     fake_rng! {
         let (rng, u) = &determined;
     }
-    let result = fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 1));
+    let result = fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 1))
+        .map_err(CalculateShuffleError::Rand)?;
 
     // ensure we used all entropy (to not specify more than needed)
-    assert_eq!(u.len(), 0);
+    let len = u.len();
+    if len > 0 {
+        return Err(CalculateShuffleError::ExcessEntropy { len });
+    }
 
-    result
+    Ok(result)
+}
+#[derive(Debug)]
+enum CalculateShuffleError {
+    Rand(rand::Error),
+    ExcessEntropy { len: usize },
+}
+impl std::error::Error for CalculateShuffleError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            CalculateShuffleError::Rand(error) => Some(error),
+            CalculateShuffleError::ExcessEntropy { len: _ } => None,
+        }
+    }
+}
+impl std::fmt::Display for CalculateShuffleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CalculateShuffleError::Rand(_) => write!(f, "rand::Error failure reported"),
+            CalculateShuffleError::ExcessEntropy { len } => {
+                write!(f, "{len} bytes of excess entropy created")
+            }
+        }?;
+        write!(f, " in calculate_shuffle_equal")
+    }
 }
 
 #[test]
-fn shuffle_for_300_items() {
+fn shuffle_for_300_items() -> eyre::Result<()> {
     let result = calculate_shuffle_equal(
         300,
         &[
@@ -304,14 +337,16 @@ fn shuffle_for_300_items() {
             "78e3bcea1d60792a6ee50d53d956945fc83995d8ab1499f368c17dce00949080",
             "366aaf38485b3deb09773a05fa9fc878be1fcdfe0f63030358f8f24c467f36af",
             "f622ff51b9a3fd29f16561c2352b7cc9ab1460d8a692b26f77843537c2fdbcf7",
-            "fc6dd6a6c0bc63439720e8",
+            "fc6dd6a6c0bc63439720e8734274e5158237c605531ed246383ad84d957d7efd",
+            "73812aecc4107213344f20b00fb8bf5b52ea2fc2e9f275",
         ],
-    );
+    )?;
     insta::assert_snapshot!(result);
+    Ok(())
 }
 
 #[test]
-fn shuffle_for_500_items() {
+fn shuffle_for_500_items() -> eyre::Result<()> {
     let result = calculate_shuffle_equal(
         500,
         &[
@@ -332,8 +367,17 @@ fn shuffle_for_500_items() {
             "6d8d18f7acc904539b3818274db95b76b328c1eba8dc74a42f6f0fa57c05a45a",
             "4873f692c6c5122af31dc8b70bbf2b5d6acf2c007d70b2245bc7f5459f8df70d",
             "3bc7d323ed8e07a294c943f75f1cd2ae0e80b73195f9083f652a9d5db68c5f3f",
-            "90036bdbf5126914275802ed6c5fc79f46b8d8",
+            "86045a6491802ca623a95de8d3a30d873d288ae3ef294046d49fd38f92e5b257",
+            "afb8088ab96087313ba159a9f758186a35543c96377320f2a5322e33d0765b2f",
+            "db99afd926cace25ae3137214e08c6b5efcd765d9f760dbce8de2397731a902a",
+            "549198b58276d53a64701b385825f3c0d3e217b6c030b400b2c4451e863b1251",
+            "d9b2003f7cb330fb63a5fbed5fd393b8a8e06277a7e5e300bbf7be8f6d8f840b",
+            "1b5d6eb125895d892f3ef0ac21e9981cb984d41453eb6e6b42995d17aa85224d",
+            "11fa9b9f8187b19444411edd341e22bade10a7d297a31eaceed295fd842e385d",
+            "14d4a0cdf4e25fb532ac4d1165d8c32262a050f437cfee12491a53d964514aa1",
+            "98e20a72c8bf7c",
         ],
-    );
+    )?;
     insta::assert_snapshot!(result);
+    Ok(())
 }

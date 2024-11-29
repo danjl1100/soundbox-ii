@@ -8,7 +8,7 @@
 use crate::Network;
 
 #[test]
-fn repeat_empty() {
+fn repeat_empty() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-joint .
@@ -24,7 +24,7 @@ fn repeat_empty() {
         peek-assert --show-effort a
         peek-assert --show-effort a a a a a
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0.0.0", [
@@ -49,6 +49,7 @@ fn repeat_empty() {
       PeekEffort(14),
     ])
     "###);
+    Ok(())
 }
 
 fn test_case_nested(depth: usize, peek_2_exponent: u8) -> String {
@@ -109,7 +110,7 @@ fn test_case_nested(depth: usize, peek_2_exponent: u8) -> String {
 }
 
 #[test]
-fn creates_script() {
+fn creates_script() -> eyre::Result<()> {
     let script = test_case_nested(0, 4);
     insta::assert_snapshot!(script, @r###"
     # bury the `empty` bucket at depth=0
@@ -145,7 +146,7 @@ fn creates_script() {
     # 16
     peek-assert --show-effort a a a a a a a a a a a a a a a a
     "###);
-    let log = Network::new_strings_run_script(&script);
+    let log = Network::new_strings_run_script(&script)?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -175,12 +176,13 @@ fn creates_script() {
       PeekEffort(32),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn big_branch_8() {
+fn big_branch_8() -> eyre::Result<()> {
     let script = test_case_nested(8, 6);
-    let log = Network::new_strings_run_script(&script);
+    let log = Network::new_strings_run_script(&script)?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0.0.0.0.0.0.0.0", [
@@ -230,12 +232,13 @@ fn big_branch_8() {
       PeekEffort(416),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn big_branch_16() {
+fn big_branch_16() -> eyre::Result<()> {
     let script = test_case_nested(16, 6);
-    let log = Network::new_strings_run_script(&script);
+    let log = Network::new_strings_run_script(&script)?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0", [
@@ -301,4 +304,5 @@ fn big_branch_16() {
       PeekEffort(672),
     ])
     "###);
+    Ok(())
 }

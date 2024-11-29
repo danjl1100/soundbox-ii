@@ -140,9 +140,13 @@ struct PeekFlags {
     show_bucket_ids: bool,
 }
 
+type PeekOutput<T, U> = (Option<u64>, Vec<T>, Option<Entry<T, U>>);
+
 pub type NetworkStrings = Network<String, String>;
 impl Network<String, String> {
-    pub(super) fn new_strings_run_script(commands: &str) -> Log<String, String> {
+    pub(super) fn new_strings_run_script(
+        commands: &str,
+    ) -> Result<Log<String, String>, ScriptError> {
         let mut network = Self::default();
         network.run_script(commands)
     }
@@ -153,19 +157,27 @@ where
     T: crate::clap::ArgBounds + Eq,
     U: crate::clap::ArgBounds,
 {
-    pub(super) fn run_script(&mut self, commands: &str) -> Log<T, U> {
+    pub(super) fn run_script(&mut self, commands: &str) -> Result<Log<T, U>, ScriptError> {
         let mut entries = vec![];
         let mut rng_holder = RngHolder::default();
 
-        let mut expect_error = None;
-        for (index, cmd) in commands.lines().enumerate() {
-            let cmd = cmd.trim();
-            let debug_line = || format!("{cmd:?} (line {number})", number = index + 1);
+        let mut expect_error_line_and_number = None;
+        for (index, cmd_raw) in commands.lines().enumerate() {
+            let cmd = cmd_raw.trim();
+            let line_and_number = (index, cmd);
+            let make_error = |kind| ScriptError {
+                line: cmd.to_string(),
+                line_number: index + 1,
+                kind,
+            };
 
             if cmd.starts_with("!!expect_error") {
-                let expect_why = debug_line();
-                let None = expect_error.replace(expect_why) else {
-                    panic!("duplicate expect_err annotation: {}", debug_line());
+                let existing = expect_error_line_and_number.replace(line_and_number);
+                if let Some((existing_line_number, existing_line)) = existing {
+                    return Err(make_error(ScriptErrorKind::ExpectErrorDuplicate {
+                        existing_line: existing_line.to_owned(),
+                        existing_line_number,
+                    }));
                 };
                 continue;
             }
@@ -175,22 +187,32 @@ where
 
             let result = self.run_script_command(cmd, &mut rng_holder);
 
-            let entry = if let Some(expect_error_why) = expect_error.take() {
-                // expect error
-                let error_str = result.expect_err(&expect_error_why).to_string();
-                // log error value
-                vec![Entry::ExpectError(cmd.to_owned(), error_str)]
+            let entry = if let Some((expect_line_number, expect_line)) =
+                expect_error_line_and_number.take()
+            {
+                match result {
+                    Ok(_) => Err(make_error(ScriptErrorKind::ExpectErrorButOk {
+                        expect_line: expect_line.to_owned(),
+                        expect_line_number,
+                    })),
+                    Err(ScriptErrorKind::Modify(modify_err)) => {
+                        let error_str = modify_err.to_string();
+                        Ok(vec![Entry::ExpectError(cmd.to_owned(), error_str)])
+                    }
+                    Err(e) => Err(make_error(e)),
+                }
             } else {
                 // expect success
-                result.unwrap_or_else(|err| {
-                    // print unexpected error
-                    panic!("error running command: {}\n{err}", debug_line())
-                })
-            };
+                result.map_err(make_error)
+            }?;
             entries.extend(entry);
         }
-        if let Some(expect_why) = expect_error {
-            panic!("expect_err annotation should be followed by a command: {expect_why}");
+        if let Some((expect_line_number, expect_line)) = expect_error_line_and_number {
+            return Err(ScriptError {
+                line: expect_line.to_string(),
+                line_number: expect_line_number,
+                kind: ScriptErrorKind::ExpectErrorMissingCommand,
+            });
         };
 
         let rng_remaining = rng_holder.get_bytes();
@@ -202,14 +224,16 @@ where
             entries.push(Entry::RngRemaining(s));
         }
 
-        Log(entries)
+        Ok(Log(entries))
     }
-    pub(super) fn run_script_command(
+    fn run_script_command(
         &mut self,
         command_str: &str,
         rng_holder: &mut RngHolder,
-    ) -> Result<Vec<Entry<T, U>>, Box<dyn std::error::Error>> {
-        let cmd = Command::<T, U>::try_parse_from(command_str.split_whitespace())?;
+    ) -> Result<Vec<Entry<T, U>>, ScriptErrorKind> {
+        use ScriptErrorKind as Kind;
+        let cmd =
+            Command::<T, U>::try_parse_from(command_str.split_whitespace()).map_err(Kind::Clap)?;
         match cmd {
             Command::Modify { cmd } => {
                 let cmd = cmd.into();
@@ -219,7 +243,7 @@ where
                         | ModifyCmd::FillBucket { .. }
                         | ModifyCmd::SetFilters { .. }
                 );
-                self.modify(cmd)?;
+                self.modify(cmd).map_err(Kind::Modify)?;
 
                 let entry = if output_buckets {
                     let mut buckets: Vec<_> = self
@@ -234,7 +258,10 @@ where
                 Ok(Vec::from_iter(entry))
             }
             Command::GetFilters { path } => {
-                let filters = self.get_filters(path.as_ref()).map_err(ModifyError::from)?;
+                let filters = self
+                    .get_filters(path.as_ref())
+                    .map_err(ModifyError::from)
+                    .map_err(Kind::Modify)?;
                 let filters = filters
                     .iter()
                     .map(|&filter_set| filter_set.to_owned())
@@ -245,12 +272,15 @@ where
                 let bucket_id = BucketId(bucket_id);
                 let path = self
                     .find_bucket_path(bucket_id)
-                    .map_err(ModifyError::from)?
+                    .map_err(ModifyError::from)
+                    .map_err(Kind::Modify)?
                     .to_owned();
                 Ok(vec![Entry::BucketPath(bucket_id, path)])
             }
             Command::Peek { flags, count } => {
-                let (effort, peeked, bucket_ids) = self.run_peek(count, flags, rng_holder);
+                let (effort, peeked, bucket_ids) = self
+                    .run_peek(count, flags, rng_holder)
+                    .map_err(Kind::Rand)?;
                 let entry = if flags.apply {
                     Entry::Pop(effort, peeked)
                 } else {
@@ -260,7 +290,9 @@ where
             }
             Command::PeekAssert { flags, expected } => {
                 let count = expected.len();
-                let (effort, peeked, bucket_ids) = self.run_peek(count, flags, rng_holder);
+                let (effort, peeked, bucket_ids) = self
+                    .run_peek(count, flags, rng_holder)
+                    .map_err(Kind::Rand)?;
                 assert_eq!(peeked, expected);
 
                 let entry_items = flags
@@ -290,8 +322,8 @@ where
             }
             Command::EnableRng { bytes_hex } => match rng_holder.set_bytes(&bytes_hex) {
                 Ok(()) => Ok(vec![]),
-                Err(Some(err)) => Err(err.into()),
-                Err(None) => Err(DuplicateRngInitError.into()),
+                Err(Some(error)) => Err(Kind::ParseHex { bytes_hex, error }),
+                Err(None) => Err(Kind::DuplicateRngInit),
             },
         }
     }
@@ -300,8 +332,8 @@ where
         count: usize,
         flags: PeekFlags,
         rng_holder: &mut RngHolder,
-    ) -> (Option<u64>, Vec<T>, Option<Entry<T, U>>) {
-        let peeked = self.peek_test_rng(count, rng_holder).unwrap();
+    ) -> Result<PeekOutput<T, U>, rand::Error> {
+        let peeked = self.peek_test_rng(count, rng_holder)?;
 
         let items = peeked
             .items()
@@ -321,7 +353,7 @@ where
             self.finalize_peeked(accepted);
         }
 
-        (effort, items, entry_bucket_ids)
+        Ok((effort, items, entry_bucket_ids))
     }
     fn peek_test_rng(
         &mut self,
@@ -396,10 +428,87 @@ impl Topology<usize> {
 }
 
 #[derive(Debug)]
-struct DuplicateRngInitError;
-impl std::fmt::Display for DuplicateRngInitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RNG can only be enabled once")
+pub(super) struct ScriptError {
+    line: String,
+    line_number: usize,
+    kind: ScriptErrorKind,
+}
+#[derive(Debug)]
+enum ScriptErrorKind {
+    Clap(::clap::Error),
+    Rand(::rand::Error),
+    Modify(crate::ModifyError),
+    DuplicateRngInit,
+    ParseHex {
+        bytes_hex: Vec<String>,
+        error: std::num::ParseIntError,
+    },
+    ExpectErrorMissingCommand,
+    ExpectErrorDuplicate {
+        existing_line: String,
+        existing_line_number: usize,
+    },
+    ExpectErrorButOk {
+        expect_line: String,
+        expect_line_number: usize,
+    },
+}
+impl std::error::Error for ScriptError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use ScriptErrorKind as Kind;
+        match &self.kind {
+            Kind::Clap(_error) => {
+                // NOTE: Clap errors are pass-thru for display, so no source here
+                None
+            }
+            Kind::Rand(error) => Some(error),
+            Kind::Modify(error) => Some(error),
+            Kind::DuplicateRngInit
+            | Kind::ExpectErrorMissingCommand
+            | Kind::ExpectErrorDuplicate {
+                existing_line: _,
+                existing_line_number: _,
+            }
+            | Kind::ExpectErrorButOk {
+                expect_line: _,
+                expect_line_number: _,
+            } => None,
+            Kind::ParseHex { error, .. } => Some(error),
+        }
     }
 }
-impl std::error::Error for DuplicateRngInitError {}
+
+impl std::fmt::Display for ScriptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ScriptErrorKind as Kind;
+        let Self {
+            kind,
+            line,
+            line_number,
+        } = self;
+        match kind {
+            Kind::Clap(error) => write!(f, "{error}"),
+            Kind::Rand(_) => write!(f, "failed to simulate random number generator"),
+            Kind::Modify(_) => write!(f, "failed to modify network"),
+            Kind::DuplicateRngInit => {
+                write!(f, "random number generator (RNG) can only be enabled once")
+            }
+            Kind::ParseHex {
+                bytes_hex,
+                error: _,
+            } => write!(f, "failed to parse hex bytes {bytes_hex:?}"),
+            Kind::ExpectErrorMissingCommand => {
+                write!(f, "expect_err annotation should be followed by a command")
+            }
+            Kind::ExpectErrorDuplicate {
+                existing_line,
+                existing_line_number,
+            } => write!(f, "duplicate expect_err annotation (previous line {existing_line_number}: {existing_line:?})"),
+            Kind::ExpectErrorButOk {
+                expect_line,
+                expect_line_number,
+            } => write!(f, "expected error (line {expect_line_number}: {expect_line:?}) but command succeeded"),
+        }?;
+        write!(f, " on script line {line_number}: {line:?}")
+    }
+}

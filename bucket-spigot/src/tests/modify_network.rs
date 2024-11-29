@@ -14,7 +14,7 @@ fn empty() {
 }
 
 #[test]
-fn joint_filters() {
+fn joint_filters() -> eyre::Result<()> {
     let log = Network::<u8, i32>::default().run_script(
         "
         modify add-joint .
@@ -36,7 +36,7 @@ fn joint_filters() {
         get-filters .0.0
         get-filters .0.1
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify set-filters .0 1 2 3"),
@@ -89,10 +89,11 @@ fn joint_filters() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn bucket_filters() {
+fn bucket_filters() -> eyre::Result<()> {
     let log = Network::<u8, i32>::default().run_script(
         "
         modify add-joint .
@@ -117,7 +118,7 @@ fn bucket_filters() {
         get-filters .0.1
         get-filters .1
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify set-filters .0 254"),
@@ -196,10 +197,11 @@ fn bucket_filters() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn joint_filter_invalidates_buckets() {
+fn joint_filter_invalidates_buckets() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-joint .
@@ -219,7 +221,7 @@ fn joint_filter_invalidates_buckets() {
         get-bucket-path 0
         get-bucket-path 1
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0", [
@@ -249,10 +251,11 @@ fn joint_filter_invalidates_buckets() {
       BucketPath(BucketId(1), ".0.1.0.0"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn bucket_filter_invalidates_only_bucket() {
+fn bucket_filter_invalidates_only_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-joint .
@@ -275,7 +278,7 @@ fn bucket_filter_invalidates_only_bucket() {
         get-bucket-path 0
         get-bucket-path 1
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0", [
@@ -315,10 +318,11 @@ fn bucket_filter_invalidates_only_bucket() {
       BucketPath(BucketId(1), ".0.1.0.0"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn single_bucket() {
+fn single_bucket() -> eyre::Result<()> {
     let mut network = Network::<String, u8>::default();
     let log = network.run_script(
         "
@@ -326,7 +330,7 @@ fn single_bucket() {
         peek 9999
         modify fill-bucket .0 a b c
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -336,10 +340,11 @@ fn single_bucket() {
       BucketsNeedingFill("modify fill-bucket .0 a b c"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn delete_empty_bucket() {
+fn delete_empty_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -356,7 +361,7 @@ fn delete_empty_bucket() {
         !!expect_error unknown bucket id
         get-bucket-path 1234567890
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -373,9 +378,10 @@ fn delete_empty_bucket() {
       ExpectError("get-bucket-path 1234567890", "unknown bucket id: 1234567890"),
     ])
     "###);
+    Ok(())
 }
 #[test]
-fn delete_empty_joint() {
+fn delete_empty_joint() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-joint .
@@ -387,16 +393,17 @@ fn delete_empty_joint() {
         modify delete-empty .0.0
         modify delete-empty .0
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       ExpectError("modify delete-empty .0", "cannot delete non-empty joint: Path(.0)"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn delete_updates_weights() {
+fn delete_updates_weights() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -419,7 +426,7 @@ fn delete_updates_weights() {
         !!expect_error unknown bucket id
         get-bucket-path 0
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -453,17 +460,18 @@ fn delete_updates_weights() {
       ExpectError("get-bucket-path 0", "unknown bucket id: 0"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn fill_path_past_bucket() {
+fn fill_path_past_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
         !!expect_error fill path beyond bucket
         modify fill-bucket .0.0
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -472,17 +480,18 @@ fn fill_path_past_bucket() {
       ExpectError("modify fill-bucket .0.0", "unknown path: .0.0"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn set_filter_past_bucket() {
+fn set_filter_past_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
         !!expect_error set filter beyond bucket
         modify set-filters .0.0
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -491,10 +500,11 @@ fn set_filter_past_bucket() {
       ExpectError("modify set-filters .0.0", "unknown path: .0.0"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn set_weights() {
+fn set_weights() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-joint .
@@ -509,7 +519,7 @@ fn set_weights() {
 
         topology weights
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0", [
@@ -533,10 +543,11 @@ fn set_weights() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn delete_bucket_before_fill() {
+fn delete_bucket_before_fill() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -551,7 +562,7 @@ fn delete_bucket_before_fill() {
         get-bucket-path 1
         get-bucket-path 2
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -579,6 +590,7 @@ fn delete_bucket_before_fill() {
       BucketPath(BucketId(2), ".1"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
@@ -597,7 +609,7 @@ fn delete_then_view() -> eyre::Result<()> {
 }
 
 #[test]
-fn delete_child_of_bucket() {
+fn delete_child_of_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -608,7 +620,7 @@ fn delete_child_of_bucket() {
         !!expect_error
         modify delete-empty .5.6.7.8.9.10
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -618,21 +630,23 @@ fn delete_child_of_bucket() {
       ExpectError("modify delete-empty .5.6.7.8.9.10", "unknown path: .5.6.7.8.9.10"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn set_weight_error() {
+fn set_weight_error() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         !!expect_error
         modify set-weight .4.5.6.7 1
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       ExpectError("modify set-weight .4.5.6.7 1", "unknown path: .4.5.6.7"),
     ])
     "###);
+    Ok(())
 }
 
 #[test]

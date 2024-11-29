@@ -1,8 +1,9 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+use self::rand_exact::choose_index;
 use super::RandResult;
 use crate::{ChildVec, Weights};
-use arbitrary::Unstructured;
+use std::num::NonZeroUsize;
 
 pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
     /// Returns the next index in the order, within the range `0..=max_index`
@@ -95,14 +96,97 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
     }
 }
 
-fn arbitrary_bytes<'a, R: rand::Rng + ?Sized>(
-    rng: &mut R,
-    buf: &'a mut Vec<u8>,
-    count: usize,
-) -> RandResult<Unstructured<'a>> {
-    buf.resize(count, 0);
-    rng.try_fill(&mut buf[..])?;
-    Ok(Unstructured::new(buf))
+mod rand_exact {
+    use super::RandResult;
+    use std::num::{NonZeroU32, NonZeroUsize};
+
+    pub(super) fn choose_index<R: rand::Rng + ?Sized>(
+        rng: &mut R,
+        buf: &mut Vec<u8>,
+        len: NonZeroUsize,
+    ) -> RandResult<usize> {
+        let required_bits = len
+            .get()
+            .checked_next_power_of_two()
+            .map_or(usize::BITS, |upper| upper.checked_ilog2().unwrap_or(0));
+        let Some(required_bits) = NonZeroU32::new(required_bits) else {
+            // only one option for zero bytes with nonzero length
+            return Ok(0);
+        };
+        let required_bytes = {
+            let required_bytes_ceil = (required_bits.get() + 7) / 8;
+            let required_bytes =
+                usize::try_from(required_bytes_ceil).expect("ilog2(u32) should fit in usize");
+            NonZeroUsize::new(required_bytes)
+                .expect("nonzero required_bits should yield nonzero required_bytes")
+        };
+        assert_ne!(
+            len.get() >> ((required_bytes.get().saturating_sub(1)) * 8),
+            0,
+            "final byte (of count {required_bytes}) should be required for len {len}"
+        );
+        assert_eq!(
+            (len.get() - 1) >> (required_bytes.get() * 8),
+            0,
+            "byte count {required_bytes} should be sufficient for len {len}"
+        );
+
+        // choose index
+        with_arbitrary_bytes(rng, buf, required_bytes, |u| {
+            u.choose_index(len).expect("sufficient bytes for len")
+        })
+    }
+
+    fn with_arbitrary_bytes<T, R: rand::Rng + ?Sized>(
+        rng: &mut R,
+        buf: &mut Vec<u8>,
+        count: NonZeroUsize,
+        f: impl FnOnce(&mut nonempty::UnstructuredWrap) -> T,
+    ) -> RandResult<T> {
+        buf.resize(count.get(), 0);
+        rng.try_fill(&mut buf[..])?;
+        let mut wrapped = nonempty::UnstructuredWrap::new(buf);
+
+        let result = f(&mut wrapped);
+
+        assert_eq!(
+            wrapped.take_rest().len(),
+            0,
+            "0 extra bytes should remain for with_arbitrary_bytes",
+        );
+
+        Ok(result)
+    }
+
+    mod nonempty {
+        use arbitrary::Unstructured;
+        use std::num::NonZeroUsize;
+
+        pub(super) struct UnstructuredWrap<'a>(Unstructured<'a>);
+        impl<'a> UnstructuredWrap<'a> {
+            pub(super) fn new(bytes: &'a [u8]) -> Self {
+                Self(Unstructured::new(bytes))
+            }
+            fn check_nonempty(&self) -> arbitrary::Result<()> {
+                if self.0.is_empty() {
+                    Err(arbitrary::Error::NotEnoughData)
+                } else {
+                    Ok(())
+                }
+            }
+            pub(super) fn choose_index(&mut self, len: NonZeroUsize) -> arbitrary::Result<usize> {
+                if len.get() == 1 {
+                    Ok(0)
+                } else {
+                    self.check_nonempty()?;
+                    self.0.choose_index(len.get())
+                }
+            }
+            pub(super) fn take_rest(self) -> &'a [u8] {
+                self.0.take_rest()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -144,6 +228,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
 pub(super) struct Shuffle {
     prev_items_count: usize,
     indices: Vec<usize>,
+    rand_buf: Vec<u8>,
 }
 impl Shuffle {
     fn retain(&mut self, keep_fn: impl Fn(usize) -> bool) {
@@ -165,29 +250,6 @@ impl Shuffle {
             }
         }
     }
-    fn extend_to_items_count(
-        &mut self,
-        mut u: Unstructured,
-        new_elems: impl Iterator<Item = usize>,
-    ) -> arbitrary::Result<()> {
-        let prev_len = self.indices.len();
-
-        self.indices.extend(new_elems);
-        let new_len = self.indices.len();
-
-        for insert_from in prev_len..new_len {
-            let dest = u.choose_index(insert_from + 1)?;
-            self.indices.swap(insert_from, dest);
-        }
-
-        let remaining = u.take_rest();
-        assert!(
-            remaining.is_empty(),
-            "excess entropy in Unstructured: {remaining:?}"
-        );
-
-        Ok(())
-    }
 }
 impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
     fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
@@ -208,19 +270,15 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
             // add new indices
             let new_elems = (self.prev_items_count..items_count)
                 .flat_map(|index| std::iter::repeat(index).take(weights.index_as_usize(index)));
-            let count = new_elems.clone().count();
 
-            let mut buf = vec![];
-            let u = arbitrary_bytes(rng, &mut buf, count.saturating_sub(1))?;
-            self.extend_to_items_count(u, new_elems)
-                .expect("sufficient Unstructured for extend_to_items_count");
+            self.indices.extend(new_elems);
         }
         self.prev_items_count = items_count;
 
-        let popped = self
-            .indices
-            .pop()
-            .expect("should have an element after refilling");
+        let indices_len = NonZeroUsize::new(self.indices.len())
+            .expect("nonzero items_count should create nonempty indices list");
+        let chosen_index = choose_index(rng, &mut self.rand_buf, indices_len)?;
+        let popped = self.indices.swap_remove(chosen_index);
         Ok(popped)
     }
 }
@@ -230,6 +288,7 @@ pub(super) struct Random {
     // NOTE: Cache is only to reuse allocation, since the effort to
     // validate the cache is similar to just rebuilding from scratch
     choices_buf: Vec<Choice>,
+    rand_buf: Vec<u8>,
 }
 #[derive(Clone, Copy, Debug)]
 struct Choice {
@@ -264,11 +323,8 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Random {
             (Some(&self.choices_buf), max_choice)
         };
 
-        let mut buf = vec![];
-        let mut u = arbitrary_bytes(rng, &mut buf, 1)?;
-        let chosen = u
-            .int_in_range(0..=max_choice)
-            .expect("sufficient Unstructred for int_in_range");
+        let len = NonZeroUsize::new(max_choice + 1).expect("usize + 1 should be nonzero");
+        let chosen = choose_index(rng, &mut self.rand_buf, len)?;
 
         if let Some(breakpoints) = breakpoints {
             let choice_index = breakpoints

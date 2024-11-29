@@ -22,19 +22,26 @@ pub(crate) fn run_with_timeout<T: Send>(
         let start = Instant::now();
 
         let pair2 = pair.clone();
-        let handle = s.spawn(move || {
-            let result = risky_fn();
+        let handle = std::thread::Builder::new()
+            .name(format!(
+                "{} (with timeout)",
+                std::thread::current().name().unwrap_or("unknown")
+            ))
+            .spawn_scoped(s, move || {
+                let result = risky_fn();
 
-            let (lock, cvar) = &*pair2;
-            let mut finished = lock.lock().expect(MUTEX_POISONED);
-            *finished = true;
-            cvar.notify_one();
+                let (lock, cvar) = &*pair2;
+                let mut finished = lock.lock().expect(MUTEX_POISONED);
+                *finished = true;
+                cvar.notify_one();
 
-            result
-        });
+                result
+            })
+            .expect("no null bytes in thread name");
         let (lock, cvar) = &*pair;
         let mut finished = lock.lock().expect(MUTEX_POISONED);
-        while !*finished {
+        // NOTE: panic causes `handle.is_finished` before Mutex set (propagated on `join` below)
+        while !*finished && !handle.is_finished() {
             let elapsed = start.elapsed();
             if elapsed >= timeout {
                 let _never: Never = timeout_fn(elapsed);
@@ -46,8 +53,6 @@ pub(crate) fn run_with_timeout<T: Send>(
                 .expect(MUTEX_POISONED);
             finished = new_finished;
         }
-        handle
-            .join()
-            .expect("should be finished when finished=true")
+        handle.join().expect("wrapped thread panicked")
     })
 }

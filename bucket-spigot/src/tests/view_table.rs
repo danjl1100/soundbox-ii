@@ -36,7 +36,7 @@ fn table_weights() -> eyre::Result<()> {
         fill-bucket .1.0.2 5 6 7 8 9
         ",
     )?;
-    let log = network.run_script("topology");
+    let log = network.run_script("topology")?;
     insta::assert_ron_snapshot!(log.items().last().unwrap(), @r###"
     Topology([
       4,
@@ -70,7 +70,7 @@ fn table_weights() -> eyre::Result<()> {
         "
         modify set-weight .1.1 0
         ",
-    );
+    )?;
     let table = network.view_table(params).unwrap();
     insta::assert_snapshot!(table, @r###"
     Table {
@@ -87,7 +87,7 @@ fn table_weights() -> eyre::Result<()> {
         "
         modify set-weight .1.0 0
         ",
-    );
+    )?;
     let table = network.view_table(params).unwrap();
     insta::assert_snapshot!(table, @r###"
     Table {
@@ -255,7 +255,7 @@ fn simple_gap() -> eyre::Result<()> {
         add-joint .2
         ",
     )?;
-    let log = network.run_script("topology");
+    let log = network.run_script("topology")?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       Topology([
@@ -291,7 +291,7 @@ fn simple_max_depth() -> eyre::Result<()> {
         add-joint .0.0
         ",
     )?;
-    let log = network.run_script("topology");
+    let log = network.run_script("topology")?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       Topology([
@@ -492,7 +492,7 @@ fn table_view_bucket() -> eyre::Result<()> {
     }
     "###);
 
-    network.run_script("modify set-weight .0 0");
+    network.run_script("modify set-weight .0 0")?;
     insta::assert_snapshot!(network.view_table(params_2).unwrap(), @r###"
     Table {
     o <--- .0.0 bucket (empty) in order (inactive)
@@ -689,9 +689,16 @@ fn node_count() -> eyre::Result<()> {
 
 #[test]
 fn view_arbitrary_network() {
+    const DEBUG: bool = true;
+
     arbtest::arbtest(|u| {
+        use std::fmt::Write as _;
         let network: Network<String, String> = Network::arbitrary(u)?;
-        println!("{}", network.view_table_default());
+        let mut view_str = String::new();
+        write!(&mut view_str, "{}", network.view_table_default()).expect("infallible");
+        if DEBUG {
+            println!("{view_str}");
+        }
         Ok(())
     });
 }

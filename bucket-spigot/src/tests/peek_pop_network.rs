@@ -5,7 +5,7 @@
 use crate::Network;
 
 #[test]
-fn simple_in_order() {
+fn simple_in_order() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -18,7 +18,7 @@ fn simple_in_order() {
         modify fill-bucket .0
         peek 1
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -34,10 +34,11 @@ fn simple_in_order() {
       Peek([]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn weighted_in_order() {
+fn weighted_in_order() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-joint .
@@ -61,7 +62,7 @@ fn weighted_in_order() {
 
         peek --show-bucket-ids 20
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .0.0", [
@@ -140,10 +141,11 @@ fn weighted_in_order() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn two_alternating() {
+fn two_alternating() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -153,7 +155,7 @@ fn two_alternating() {
         peek --apply --show-bucket-ids 5
         peek --apply --show-bucket-ids 5
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -194,10 +196,11 @@ fn two_alternating() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn depth_2() {
+fn depth_2() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -220,7 +223,7 @@ fn depth_2() {
 
         peek 0
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -291,10 +294,11 @@ fn depth_2() {
       Peek([]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn continue_if_first_is_empty() {
+fn continue_if_first_is_empty() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         # first is empty
@@ -307,7 +311,7 @@ fn continue_if_first_is_empty() {
 
         peek --show-bucket-ids 3
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -330,10 +334,11 @@ fn continue_if_first_is_empty() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn skips_empty_weight() {
+fn skips_empty_weight() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         modify add-bucket .
@@ -346,7 +351,7 @@ fn skips_empty_weight() {
 
         peek --show-bucket-ids 4
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -375,23 +380,25 @@ fn skips_empty_weight() {
       ]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn empty() {
-    let log = Network::new_strings_run_script("peek 1");
+fn empty() -> eyre::Result<()> {
+    let log = Network::new_strings_run_script("peek 1")?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       Peek([]),
     ])
     "###);
+    Ok(())
 }
 
 #[test]
-fn sets_order_type_non_strict() {
+fn sets_order_type_non_strict() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        enable-rng 0dfb8b701d6e8d57c83b0c9c6a92a16424fe44
+        enable-rng 0dfb8b701d6e8d57c83b0c9c6a92a16424fe
 
         modify add-bucket .
         modify fill-bucket .0 a b c d
@@ -405,7 +412,7 @@ fn sets_order_type_non_strict() {
         modify set-order-type .0 random
         peek 10
         ",
-    );
+    )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify add-bucket .", [
@@ -425,18 +432,19 @@ fn sets_order_type_non_strict() {
         "b",
       ]),
       Peek([
-        "d",
-        "c",
         "b",
-        "a",
         "c",
         "d",
         "a",
-        "b",
+        "a",
         "c",
+        "d",
+        "b",
+        "b",
         "a",
       ]),
       Peek([
+        "a",
         "d",
         "a",
         "a",
@@ -446,8 +454,8 @@ fn sets_order_type_non_strict() {
         "a",
         "a",
         "c",
-        "a",
       ]),
     ])
     "###);
+    Ok(())
 }
