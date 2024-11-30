@@ -173,7 +173,7 @@ in rec {
     drv = crates.server.drv-open-doc.for-std rustToolchainForDevshell;
   };
 
-  devShellFn = {packages ? []} @ inputs:
+  devShellFn = {packages ? [], ...} @ inputs:
     crates.client.devShellFn (inputs
       // {
         craneLib = craneLibForDevShell;

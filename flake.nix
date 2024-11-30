@@ -189,6 +189,12 @@
               pkgs.cargo-mutants
               pkgs.cargo-outdated
             ];
+            # Darwin does not have working `beets` package in nixpkgs, so use a python3 venv
+            shellHook = ''
+              if [[ "$(uname)" = "Darwin" ]]; then
+                  source ./.venv/bin/activate || echo '.venv not found.  Ensure python3 is installed, and run:   python -m venv .venv;  then re-run the dev shell.  Finally, echo "beets" > requirements.txt; pip install -r requirements.txt;  from inside the dev shell.'
+              fi
+            '';
           };
         };
       }
