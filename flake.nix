@@ -16,7 +16,6 @@
     # nixpkgs.follows = "rust-overlay/nixpkgs";
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-24.05";
     nixpkgs-for-vlc.url = "github:nixos/nixpkgs?ref=nixpkgs-unstable";
-    nixpkgs-for-wasm-bindgen.url = "github:nixos/nixpkgs/34bfa9403e42eece93d1a3740e9d8a02fceafbca";
     crane.inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -26,7 +25,6 @@
     flake-utils,
     nixpkgs,
     nixpkgs-for-vlc,
-    nixpkgs-for-wasm-bindgen,
     # rust
     rust-overlay,
     crane,
@@ -74,14 +72,15 @@
         pkgs-for-vlc = import nixpkgs-for-vlc {
           inherit system;
         };
-        pkgs-for-wasm-bindgen = import nixpkgs-for-wasm-bindgen {
-          inherit system;
-        };
+        # pkgs-for-wasm-bindgen = import nixpkgs-for-wasm-bindgen {
+        #   inherit system;
+        # };
         overlays = [
           rust-overlay.overlays.default
           (next: prev: {
             inherit (pkgs-for-vlc) vlc;
-            inherit (pkgs-for-wasm-bindgen) wasm-bindgen-cli;
+            # TODO reintroduce complexity only if absolutely needed
+            # inherit (pkgs-for-wasm-bindgen) wasm-bindgen-cli;
           })
         ];
         pkgs = import nixpkgs {
