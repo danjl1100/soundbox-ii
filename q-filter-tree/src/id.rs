@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Paths and Identifiers for nodes
 use std::collections::VecDeque;
 
@@ -217,7 +217,7 @@ impl NodePathTyped {
         }
     }
 }
-impl<'a> NodePathRefTyped<'a> {
+impl NodePathRefTyped<'_> {
     pub(crate) fn clone_inner(&self) -> NodePathTyped {
         match self {
             Self::Root(path) => NodePathTyped::Root(**path),
@@ -231,7 +231,7 @@ impl<'a> NodePathRefTyped<'a> {
         }
     }
 }
-impl<'a> PartialEq<NodePathTyped> for NodePathRefTyped<'a> {
+impl PartialEq<NodePathTyped> for NodePathRefTyped<'_> {
     fn eq(&self, other: &NodePathTyped) -> bool {
         match (self, other) {
             (Self::Root(l0), NodePathTyped::Root(r0)) => *l0 == r0,

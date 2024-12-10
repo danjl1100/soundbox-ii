@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Orderer, OrdererImpl, Weights};
 use rand_chacha::ChaCha8Rng;
@@ -57,7 +57,7 @@ impl OrdererImpl for Shuffle {
         self.remaining_shuffled.last().copied()
     }
     fn validate(&self, index: usize, weights: &Weights) -> bool {
-        weights.get(index).map_or(false, |weight| weight > 0)
+        weights.get(index).is_some_and(|weight| weight > 0)
     }
     fn advance(&mut self, weights: &Weights) {
         self.remaining_shuffled.pop();

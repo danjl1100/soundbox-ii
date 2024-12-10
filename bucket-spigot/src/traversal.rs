@@ -272,7 +272,7 @@ impl<S: ?Sized, T, U> std::fmt::Debug for Subtrees<'_, S, T, U> {
             .finish()
     }
 }
-impl<'a, S: ?Sized, T, U> Subtrees<'a, S, T, U> {
+impl<S: ?Sized, T, U> Subtrees<'_, S, T, U> {
     fn visit_depth_first<F>(&mut self, visit_fn: F)
     where
         S: OrderNodeSliceImpl,

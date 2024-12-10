@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use std::num::NonZeroUsize;
 
@@ -143,7 +143,7 @@ impl Converter {
 /// Debug-coercion for `PlaylistAdd` urls to be literal strings
 #[derive(PartialEq)]
 struct ResultFmt<'a>(&'a Result<(), LowAction>);
-impl<'a> std::fmt::Debug for ResultFmt<'a> {
+impl std::fmt::Debug for ResultFmt<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
             Err(LowAction::Command(LowCommand::PlaylistAdd { url })) => f

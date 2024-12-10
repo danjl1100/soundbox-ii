@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Reference helpers for modifying [`Node`]s in the [`Tree`]
 use crate::error::InvalidNodePath;
 use crate::id::{
@@ -16,7 +16,7 @@ pub struct NodeRefMut<'tree, 'path, T, F> {
     path: NodePathRefTyped<'path>,
     sequence_counter: &'tree mut node::SequenceCounter,
 }
-impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
+impl<'path, T, F> NodeRefMut<'_, 'path, T, F> {
     /// Returns a mut handle to the node-children, if the node is type chain (not items)
     pub fn child_nodes(&mut self) -> Option<NodeChildrenRefMut<'_, 'path, T, F>> {
         let Self {
@@ -41,18 +41,18 @@ impl<'tree, 'path, T, F> NodeRefMut<'tree, 'path, T, F> {
         }
     }
 }
-impl<'tree, 'path, T, F> std::ops::Deref for NodeRefMut<'tree, 'path, T, F> {
+impl<T, F> std::ops::Deref for NodeRefMut<'_, '_, T, F> {
     type Target = Node<T, F>;
     fn deref(&self) -> &Self::Target {
         self.node
     }
 }
-impl<'tree, 'path, T, F> std::ops::DerefMut for NodeRefMut<'tree, 'path, T, F> {
+impl<T, F> std::ops::DerefMut for NodeRefMut<'_, '_, T, F> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.node
     }
 }
-impl<'tree, 'path, T, F> SequenceSource for NodeRefMut<'tree, 'path, T, F> {
+impl<T, F> SequenceSource for NodeRefMut<'_, '_, T, F> {
     fn sequence(&self) -> Sequence {
         self.node.sequence()
     }
@@ -65,7 +65,7 @@ pub struct NodeChildrenRefMut<'tree, 'path, T, F> {
     path: NodePathRefTyped<'path>,
     sequence_counter: &'tree mut node::SequenceCounter,
 }
-impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
+impl<T, F> NodeChildrenRefMut<'_, '_, T, F> {
     const DEFAULT_WEIGHT: Weight = 1;
     /// Adds an empty node with the specified filter
     pub fn add_child_filter(&mut self, filter: F) -> NodeId<ty::Child> {
@@ -74,7 +74,7 @@ impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
         self.add_child_from(weight, info)
     }
 }
-impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F>
+impl<T, F> NodeChildrenRefMut<'_, '_, T, F>
 where
     F: Default,
 {
@@ -87,7 +87,7 @@ where
         self.add_child_from(weight, NodeInfoIntrinsic::default())
     }
 }
-impl<'tree, 'path, T, F> NodeChildrenRefMut<'tree, 'path, T, F> {
+impl<T, F> NodeChildrenRefMut<'_, '_, T, F> {
     /// Adds a node from the specified info, with default weight
     pub fn add_child_default_from(&mut self, info: NodeInfoIntrinsic<T, F>) -> NodeId<ty::Child> {
         self.add_child_from(Self::DEFAULT_WEIGHT, info)

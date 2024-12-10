@@ -12,10 +12,9 @@
       flake = false;
     };
     # decrease total count of flake dependencies by following versions from "rust-overlay" input
-    flake-utils.follows = "rust-overlay/flake-utils";
+    flake-utils.url = "github:numtide/flake-utils";
     # nixpkgs.follows = "rust-overlay/nixpkgs";
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-24.05";
-    crane.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-24.11";
   };
 
   outputs = {

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Iterator functionality for [`Tree`]
 //!
 //! See specific functions for details:
@@ -42,7 +42,7 @@ mod shared_ref {
         /// Next node to emit (with the child index to be explored)
         next: Option<&'a Node<T, F>>,
     }
-    impl<'a, T, F> Iter<'a, T, F> {
+    impl<T, F> Iter<'_, T, F> {
         /// Collects `parent_idxs` into a [`NodePathTyped`]
         fn collect_parent_path(&self) -> NodePathTyped {
             self.parent_idxs.iter().map(|(_, idx)| *idx).collect()

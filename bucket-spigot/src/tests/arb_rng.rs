@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 pub(crate) struct ArbitraryRng<'a, 'b>(&'a mut arbtest::arbitrary::Unstructured<'b>)
 where
     'b: 'a;
-impl<'a, 'b> rand::RngCore for ArbitraryRng<'a, 'b> {
+impl rand::RngCore for ArbitraryRng<'_, '_> {
     fn next_u32(&mut self) -> u32 {
         unreachable!("non-fallible RngCore method called");
     }

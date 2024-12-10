@@ -142,7 +142,7 @@ mod weights {
                 .expect("weight should fit in platform's usize")
         }
     }
-    impl<'a> std::ops::Index<usize> for Weights<'a> {
+    impl std::ops::Index<usize> for Weights<'_> {
         type Output = u32;
 
         fn index(&self, index: usize) -> &Self::Output {

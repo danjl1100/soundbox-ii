@@ -1,5 +1,5 @@
 // soundbox-ii/vlc-http VLC communication library *don't keep your sounds boxed up*
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -147,7 +147,7 @@ mod action {
     }
     /// Debug-coercion for `PlaylistAdd` urls to be literal strings
     struct CommandFmt<'a>(&'a Command);
-    impl<'a> std::fmt::Debug for CommandFmt<'a> {
+    impl std::fmt::Debug for CommandFmt<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self.0 {
                 Command::PlaylistSet {

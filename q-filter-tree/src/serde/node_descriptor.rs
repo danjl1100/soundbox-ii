@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use std::str::FromStr;
 
 use serde::{de::Visitor, Deserialize};
@@ -45,7 +45,7 @@ impl<'de> Deserialize<'de> for NodeDescriptor {
     }
 }
 struct NodeDescriptorVisitor;
-impl<'de> Visitor<'de> for NodeDescriptorVisitor {
+impl Visitor<'_> for NodeDescriptorVisitor {
     type Value = NodeDescriptor;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

@@ -1,5 +1,5 @@
 // soundbox-ii/q-filter-tree music playback sequencer *don't keep your sounds boxed up*
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -294,7 +294,7 @@ mod guard {
             TreeGuard(&mut self.0)
         }
     }
-    impl<'a, T: Clone, F> Drop for TreeGuard<'a, T, F> {
+    impl<T: Clone, F> Drop for TreeGuard<'_, T, F> {
         fn drop(&mut self) {
             self.0.refresh_prefill();
         }
@@ -304,7 +304,7 @@ mod guard {
             self
         }
     }
-    impl<'a, T: Clone, F> AsMut<Tree<T, F>> for TreeGuard<'a, T, F> {
+    impl<T: Clone, F> AsMut<Tree<T, F>> for TreeGuard<'_, T, F> {
         fn as_mut(&mut self) -> &mut Tree<T, F> {
             self.0
         }

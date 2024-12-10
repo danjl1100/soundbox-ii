@@ -23,12 +23,12 @@
 //!     - Add (4) - Add new desired items to the end
 //!     - Remove (3) - Remove items blocking the desired items (all in place)
 //!     - NOTE: No action performed for (2), application will send `Command::SeekNext` when immediate
-//!     playback is required
+//!       playback is required
 //! - Key Constraints:
 //!     - "Remove(5)" comes before "Add (4)" for consistent matches
 //!     - "Remove(3)" comes after "Add(4)" for seamless playback progression to desired items
 //!     - (minor) "Remove (1)" can go anywhere, but place first as a "pre-step" before material
-//!     changes to the playback order
+//!       changes to the playback order
 //!
 //! Examples:
 //!

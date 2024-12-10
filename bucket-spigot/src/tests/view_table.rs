@@ -818,7 +818,7 @@ mod arbitrary_limit {
                 let sibling_hidden = cell.get_display_width() == 0;
                 let child_hidden = cell
                     .get_node()
-                    .map_or(false, NodeDetails::is_joint_children_hidden);
+                    .is_some_and(NodeDetails::is_joint_children_hidden);
                 sibling_hidden || child_hidden
             })
         });

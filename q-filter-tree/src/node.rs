@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use std::{borrow::Cow, collections::VecDeque};
 
 use crate::{
@@ -416,7 +416,7 @@ impl<T, F> Chain<T, F> {
         let (is_terminal, has_children) = {
             let nodes = child.children.get_nodes();
             let is_terminal = nodes.is_none();
-            let has_children = nodes.map_or(false, |n| !n.is_empty());
+            let has_children = nodes.is_some_and(|n| !n.is_empty());
             (is_terminal, has_children)
         };
         let remove_result = if has_children {

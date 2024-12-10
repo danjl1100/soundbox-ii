@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::{
     persistence::{
         FromKdlEntries, IntoKdlEntries, KdlEntryVisitor, NodeErrorKind, ParseError,
@@ -29,7 +29,7 @@ impl NoOpFilterVisitor {
 }
 // Required for "back to string" checks
 impl IntoKdlEntries for NoOpFilter {
-    type Error<E> = shared::Never where E: std::fmt::Debug;
+    type Error<E: std::fmt::Debug> = shared::Never;
 
     fn try_into_kdl<V: KdlEntryVisitor>(&self, visitor: V) -> Result<V, Self::Error<V::Error>> {
         Ok(visitor)

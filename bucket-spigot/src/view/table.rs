@@ -51,7 +51,7 @@ impl<T, U> Network<T, U> {
                         table_params.base_path.to_owned(),
                     )),
                 }?;
-                parent_active = parent_active && weights.map_or(false, |w| w[index] != 0);
+                parent_active = parent_active && weights.is_some_and(|w| w[index] != 0);
             }
         }
 
@@ -308,7 +308,7 @@ impl TableBuilder {
                 }
             }
         };
-        let active = parent_active && weight.map_or(true, |w| w != 0);
+        let active = parent_active && (weight != Some(0));
 
         let display_width = if let Some((item_nodes, order_nodes)) = recurse {
             let state = State {

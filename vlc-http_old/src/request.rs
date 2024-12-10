@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-specific primitives (interchange for test purposes)
 
 use crate::http_client::intent::{ArtRequestIntent, CmdArgs, PlaylistIntent, StatusIntent};
@@ -46,6 +46,7 @@ impl From<&ArtRequestIntent> for RequestInfo {
     }
 }
 impl RequestInfo {
+    #[expect(clippy::ref_option)]
     fn format_cmd_args(path: &'static str, cmd_args: &Option<CmdArgs>) -> PathAndQuery {
         cmd_args.as_ref().map_or_else(
             || PathAndQuery::from_static(path),

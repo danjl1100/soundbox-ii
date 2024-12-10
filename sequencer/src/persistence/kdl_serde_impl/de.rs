@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Converts from KDL types to a Rust type by driving a `serde::Deserializer`
 
@@ -274,7 +274,7 @@ impl KdlEntryVisitor for DeserializeVisitor {
     }
 }
 
-impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
+impl<'de> serde::de::Deserializer<'de> for &mut DeserializeVisitor {
     type Error = SuperError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -556,7 +556,7 @@ impl<'de, 'a> serde::de::Deserializer<'de> for &'a mut DeserializeVisitor {
     }
 }
 
-impl<'de, 'a> serde::de::MapAccess<'de> for &'a mut DeserializeVisitor {
+impl<'de> serde::de::MapAccess<'de> for &mut DeserializeVisitor {
     type Error = SuperError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
@@ -592,7 +592,7 @@ impl<'de, 'a> serde::de::MapAccess<'de> for &'a mut DeserializeVisitor {
         seed.deserialize(&mut **self)
     }
 }
-impl<'a, 'de> serde::de::EnumAccess<'de> for &'a mut DeserializeVisitor {
+impl<'de> serde::de::EnumAccess<'de> for &mut DeserializeVisitor {
     type Error = SuperError;
     type Variant = Self;
 
@@ -612,7 +612,7 @@ impl<'a, 'de> serde::de::EnumAccess<'de> for &'a mut DeserializeVisitor {
         }
     }
 }
-impl<'a, 'de> serde::de::VariantAccess<'de> for &'a mut DeserializeVisitor {
+impl<'de> serde::de::VariantAccess<'de> for &mut DeserializeVisitor {
     type Error = SuperError;
 
     fn unit_variant(self) -> Result<(), Self::Error> {
@@ -645,7 +645,7 @@ impl<'a, 'de> serde::de::VariantAccess<'de> for &'a mut DeserializeVisitor {
     }
 }
 
-impl<'a, 'de> serde::de::SeqAccess<'de> for &'a mut DeserializeVisitor {
+impl<'de> serde::de::SeqAccess<'de> for &mut DeserializeVisitor {
     type Error = SuperError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>

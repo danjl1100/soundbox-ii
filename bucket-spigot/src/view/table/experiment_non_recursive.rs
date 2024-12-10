@@ -306,7 +306,7 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
                 }
             }
         };
-        let active = state.parent_active && weight.map_or(true, |w| w != 0);
+        let active = state.parent_active && (weight != Some(0));
 
         let dest_row = self.dest_cells.get_mut(depth).expect("row pushed above");
         let node_details = NodeDetails {

@@ -73,7 +73,7 @@ impl std::fmt::Display for Auth {
 }
 impl Endpoint {
     /// Returns a description of the HTTP request to reach this endpoint with the specified authentication
-    pub fn with_auth<'a>(&'a self, auth: &'a Auth) -> RequestInfo<'_> {
+    pub fn with_auth<'a>(&'a self, auth: &'a Auth) -> RequestInfo<'a> {
         RequestInfo {
             endpoint: self,
             bearer_credential_plaintext: &auth.bearer_credential_plaintext,

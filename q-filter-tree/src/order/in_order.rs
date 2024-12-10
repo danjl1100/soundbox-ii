@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Orderer, OrdererImpl};
 use crate::weight_vec::Weights;
@@ -58,7 +58,7 @@ mod tally {
         pub fn validate(self, weights: &Weights) -> bool {
             weights
                 .get(self.index)
-                .map_or(false, |weight| self.emitted < weight)
+                .is_some_and(|weight| self.emitted < weight)
         }
         pub const fn index(self) -> usize {
             self.index
@@ -79,9 +79,8 @@ impl OrdererImpl for InOrder {
         self.0.as_ref().map(|tally| tally.index())
     }
     fn validate(&self, index: usize, weights: &Weights) -> bool {
-        self.0.map_or(false, |tally| {
-            index == tally.index() && tally.validate(weights)
-        })
+        self.0
+            .is_some_and(|tally| index == tally.index() && tally.validate(weights))
     }
     fn advance(&mut self, weights: &Weights) {
         self.0 = self

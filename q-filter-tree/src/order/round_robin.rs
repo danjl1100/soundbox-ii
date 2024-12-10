@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Round Robin ordering continues cycling through all elements in order, skipping elements as
 //! needed until each element visit-count is equal to its weight.
 
@@ -86,7 +86,7 @@ mod counts {
             self.0
                 .get(index)
                 .zip(weights.get(index))
-                .map_or(false, |(count, weight)| *count < weight)
+                .is_some_and(|(count, weight)| *count < weight)
         }
         pub fn len(&self) -> usize {
             self.0.len()

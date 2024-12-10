@@ -1,5 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
+//! Test case runner for `vlc_http`
+
 // teach me
 #![deny(clippy::pedantic)]
 #![allow(clippy::bool_to_int_with_if)] // except this confusing pattern

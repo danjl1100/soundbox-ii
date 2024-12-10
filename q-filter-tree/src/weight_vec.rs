@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Collection types for weighted items
 //!
 //! See [`OrderVec`] for details of usage.
@@ -499,7 +499,7 @@ mod ref_mut {
         order: Option<&'order mut order::State>,
         index: usize,
     }
-    impl<'vec, 'order> RefMutWeight<'vec, 'order> {
+    impl RefMutWeight<'_, '_> {
         /// Sets the weight to the specified value
         /// Returns the old weight
         #[allow(clippy::missing_panics_doc)] // guaranteed by RefMutWeight creation
@@ -523,7 +523,7 @@ mod ref_mut {
                 .expect("valid index in created RefMutWeight")
         }
     }
-    impl<'vec, 'order, T> std::ops::Deref for RefMut<'vec, 'order, T> {
+    impl<T> std::ops::Deref for RefMut<'_, '_, T> {
         type Target = Weights;
         fn deref(&self) -> &Self::Target {
             self.weights
@@ -645,7 +645,7 @@ where
         Self { order, vec }
     }
 }
-impl<'a, 'b, T> Extend<(Weight, T)> for RefMut<'a, 'b, T> {
+impl<T> Extend<(Weight, T)> for RefMut<'_, '_, T> {
     fn extend<I: IntoIterator<Item = (Weight, T)>>(&mut self, iter: I) {
         for elem in iter {
             self.push(elem);

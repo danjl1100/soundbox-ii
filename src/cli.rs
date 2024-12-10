@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::seq;
 use arg_util::ArgSplit;
 use shared::Shutdown;
@@ -163,7 +163,7 @@ mod sender_dot_session {
             }
         }
     }
-    impl<'a, T> SenderDotSession<'a, T>
+    impl<T> SenderDotSession<'_, T>
     where
         T: std::fmt::Display,
     {

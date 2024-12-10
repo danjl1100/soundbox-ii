@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Tracks iteration, along with a breadcrumb trail to the root node
 
 use crate::{
@@ -99,7 +99,7 @@ where
         })
     }
 }
-impl<'tree, T, F, W, B: Clone> IterMutBreadcrumb<T, F, B> for Walker<'tree, T, F, W, B>
+impl<T, F, W, B: Clone> IterMutBreadcrumb<T, F, B> for Walker<'_, T, F, W, B>
 where
     W: Fn(&Node<T, F>) -> B,
 {

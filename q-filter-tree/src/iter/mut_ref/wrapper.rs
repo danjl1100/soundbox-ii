@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Wrapper for [`super::breadcrumb`] types, without the breadcrumb
 
 use super::{breadcrumb, IterMutBreadcrumb};
@@ -43,6 +43,7 @@ where
 ///
 /// Returns an error if the specified `limit_path` is invalid for this [`Tree`]
 // NOTE: free-standing function, since impl block doesn't allow impl-bounds as trait bounds (right?)
+#[expect(clippy::type_complexity)]
 pub(super) fn new<'tree, T, F>(
     tree: &'tree mut Tree<T, F>,
     subtree_limit_path: Option<NodePathRefTyped<'_>>,
@@ -50,7 +51,7 @@ pub(super) fn new<'tree, T, F>(
     let no_fn = false.then_some(|_: &Node<T, F>| unreachable!());
     breadcrumb::Walker::new(tree, subtree_limit_path, no_fn).map(Wrapper)
 }
-impl<'tree, T, F, W> IterMutBreadcrumb<T, F, Never> for Wrapper<'tree, T, F, W>
+impl<T, F, W> IterMutBreadcrumb<T, F, Never> for Wrapper<'_, T, F, W>
 where
     W: Fn(&Node<T, F>) -> Never,
 {
@@ -68,4 +69,4 @@ where
         self.0.with_next(consume_fn)
     }
 }
-impl<'tree, T, F, W> IterMut<T, F> for Wrapper<'tree, T, F, W> where W: Fn(&Node<T, F>) -> Never {}
+impl<T, F, W> IterMut<T, F> for Wrapper<'_, T, F, W> where W: Fn(&Node<T, F>) -> Never {}

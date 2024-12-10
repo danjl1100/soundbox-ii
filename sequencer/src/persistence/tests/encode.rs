@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
     persistence::{IntoKdlEntries, SequencerConfig},
@@ -27,7 +27,7 @@ where
 }
 
 impl IntoKdlEntries for FieldsFilter {
-    type Error<E> = Error<E> where E: std::fmt::Debug; // E where E: std::fmt::Debug;
+    type Error<E: std::fmt::Debug> = Error<E>;
 
     fn try_into_kdl<V: crate::persistence::KdlEntryVisitor>(
         &self,

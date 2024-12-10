@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::id::{NodePathElem, NodePathRefTyped, NodePathTyped};
 
 use serde::de::{Deserialize, Deserializer, Error, Visitor};
@@ -13,7 +13,7 @@ impl NodePathTyped {
 }
 // NOTE: Serialize defined on `NodePathRefTyped` as lowest-common-denominator
 // for both `NodePathTyped` and `NodeIdTyped` to benefit.
-impl<'a> std::fmt::Display for NodePathRefTyped<'a> {
+impl std::fmt::Display for NodePathRefTyped<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let start_delim = NodePathTyped::START_DELIM;
         let delim = NodePathTyped::DELIM;
@@ -30,7 +30,7 @@ impl<'a> std::fmt::Display for NodePathRefTyped<'a> {
         Ok(())
     }
 }
-impl<'a> Serialize for NodePathRefTyped<'a> {
+impl Serialize for NodePathRefTyped<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -63,7 +63,7 @@ impl<'de> Deserialize<'de> for NodePathTyped {
     }
 }
 struct NodePathVisitor;
-impl<'de> Visitor<'de> for NodePathVisitor {
+impl Visitor<'_> for NodePathVisitor {
     type Value = NodePathTyped;
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(NodePathTyped::SERIALIZED_DESCRIPTION)

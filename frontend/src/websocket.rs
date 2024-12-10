@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use futures::{
     channel::{mpsc, oneshot},
@@ -220,7 +220,7 @@ pub(crate) struct WriteHandle<'a, T, U> {
     _phantom: PhantomData<U>,
 }
 
-impl<'a, T, U> WriteHandle<'a, T, U>
+impl<T, U> WriteHandle<'_, T, U>
 where
     U: Serialize + 'static,
 {

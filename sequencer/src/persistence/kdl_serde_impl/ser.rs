@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Converts from a Rust type to KDL by acting as a `serde::Serializer`
 
@@ -127,7 +127,7 @@ where
         }
     }
 }
-impl<'a, V> serde::ser::Serializer for &'a mut Serializer<V>
+impl<V> serde::ser::Serializer for &mut Serializer<V>
 where
     V: KdlEntryVisitor,
 {
@@ -322,7 +322,7 @@ where
         Err(self.unimplemented("struct variant", name))
     }
 }
-impl<'a, V> serde::ser::SerializeStruct for &'a mut Serializer<V>
+impl<V> serde::ser::SerializeStruct for &mut Serializer<V>
 where
     V: KdlEntryVisitor,
 {
@@ -357,7 +357,7 @@ where
         }
     }
 }
-impl<'a, V> serde::ser::SerializeStructVariant for &'a mut Serializer<V>
+impl<V> serde::ser::SerializeStructVariant for &mut Serializer<V>
 where
     V: KdlEntryVisitor,
 {
@@ -377,7 +377,7 @@ where
     }
 }
 
-impl<'a, V> serde::ser::SerializeTupleVariant for &'a mut Serializer<V>
+impl<V> serde::ser::SerializeTupleVariant for &mut Serializer<V>
 where
     V: KdlEntryVisitor,
 {

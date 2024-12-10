@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Updates the user-editable configuration of a [`SequencerTree`]
 
 use super::{single_root::KdlNodesBySequence, IntoKdlEntries, SingleRootKdlDocument};
@@ -34,7 +34,7 @@ where
             );
             (flat_doc, Ok(string))
         }
-        Err((flat_doc, err)) => (flat_doc, Err(err)),
+        Err((flat_doc, err)) => (*flat_doc, Err(err)),
     }
 }
 
@@ -75,7 +75,7 @@ impl Updater {
     fn update<T, F>(
         mut self,
         src_sequencer_tree: &SequencerTree<T, F>,
-    ) -> Result<SingleRootKdlDocument, (KdlNodesBySequence, F::Error<Never>)>
+    ) -> Result<SingleRootKdlDocument, (Box<KdlNodesBySequence>, F::Error<Never>)>
     where
         T: Clone,
         F: IntoKdlEntries,
@@ -91,7 +91,7 @@ impl Updater {
         let update_result = self.update_node(&mut doc_root, None, tree_root);
         if let Err(err) = update_result {
             return_nodes_to_flat(&mut self.src_flat_doc, doc_root, tree_root);
-            Err((self.src_flat_doc, err))
+            Err((Box::new(self.src_flat_doc), err))
         } else {
             // add root node to the empty document
             let doc_empty = self.src_flat_doc.end_delete_remaining();
@@ -171,11 +171,11 @@ fn update_weight(dest_doc_node: &mut KdlNode, weight: Weight) {
             .expect("found index exists")
             .value()
             .as_i64();
-        if current_value.map_or(false, |value| value == i64::from(weight)) {
+        if current_value.is_some_and(|value| value == i64::from(weight)) {
             return;
         }
         let is_default =
-            current_value.map_or(false, |value| value == i64::from(super::DEFAULT_WEIGHT));
+            current_value.is_some_and(|value| value == i64::from(super::DEFAULT_WEIGHT));
         entries.remove(existing_weight_index);
         is_default
     } else {
@@ -224,7 +224,7 @@ mod visitor {
         fn with_property_value<T>(&mut self, key: &str, f: impl FnOnce(&mut KdlValue) -> T) -> T {
             self.with_entry_generic(
                 f,
-                |name| name.map_or(false, |n| n.value() == key),
+                |name| name.is_some_and(|n| n.value() == key),
                 |value| KdlEntry::new_prop(key, value),
             )
         }
