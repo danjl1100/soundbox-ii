@@ -10,6 +10,7 @@ use determined::Determined;
 use path_url::BaseUrl;
 use std::path::PathBuf;
 use todo_move_to_a_beet_lib::{query_beet, BeetItem};
+use tracing::{debug, info};
 use vlc_http::action::TargetPlaylistItems;
 
 #[derive(clap::Parser, Debug)]
@@ -269,7 +270,7 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
                 })?;
             self.spigot.finalize_peeked(peeked.accept_into_inner());
 
-            tracing::debug!(
+            debug!(
                 items = ?self.determined.items(),
                 "Selected new desired items",
             );
@@ -714,6 +715,7 @@ fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
             .into_iter()
             .flat_map(|filter_set| filter_set.iter().cloned());
         let new_contents = query_beet(filters)?;
+        info!("fill bucket {bucket} with {} items", new_contents.len());
         spigot.modify(ModifyCmd::FillBucket {
             bucket,
             new_contents,
@@ -727,11 +729,14 @@ fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
 mod todo_move_to_a_beet_lib {
     pub use self::beet_item::BeetItem;
     use std::{borrow::Cow, io::BufRead, process::Command};
+    use tracing::debug;
 
     pub(super) fn query_beet(
         filters: impl Iterator<Item = String>,
     ) -> Result<Vec<BeetItem>, Error> {
         let make_error = |kind| Error { kind };
+
+        debug!("spawn `beet` command");
 
         let output = Command::new("beet")
             .arg("ls")
@@ -754,6 +759,8 @@ mod todo_move_to_a_beet_lib {
                 stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             }));
         }
+
+        debug!("parse `beet` output ({} bytes)", output.stdout.len());
 
         output
             .stdout

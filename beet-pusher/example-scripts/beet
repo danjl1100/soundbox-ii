@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Wrapper for `beet` on a nixos system, where the source library is mounted readonly
+
+# Tunable params
+SRC_LIBRARY_DB=/home/$USER/.config/beet/musiclibrary.db
+REAL_BEET=/etc/profiles/per-user/$USER/bin/beet
+
+SCRIPT_DIR=$(dirname $0)
+
+export HOME=${SCRIPT_DIR}/fake-home
+if [ ! -d $HOME ]; then
+  mkdir -p $HOME/.config/beets
+  cp $SRC_LIBRARY_DB $HOME/musiclibrary.db
+  echo "library: $HOME/musiclibrary.db" > $HOME/.config/beets/config.yaml
+fi
+${REAL_BEET} $*
