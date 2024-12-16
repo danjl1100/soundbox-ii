@@ -7,7 +7,7 @@ use crate::request::AuthInput as CrateAuthInput;
 use crate::Command as CrateCommand;
 
 // re-export `clap`
-#[allow(clippy::module_name_repetitions)]
+#[expect(clippy::module_name_repetitions)]
 pub use ::clap as clap_crate;
 
 /// Low-level Control commands for VLC (correspond to a single API call)
@@ -159,7 +159,7 @@ pub enum RepeatMode {
     /// Repeat only the current item
     RepeatOne,
 }
-impl From<RepeatMode> for crate::action::RepeatMode {
+impl From<RepeatMode> for crate::goal::RepeatMode {
     fn from(value: RepeatMode) -> Self {
         match value {
             RepeatMode::RepeatOff => Self::Off,
@@ -175,7 +175,7 @@ impl From<Action> for crate::Action {
                 repeat_mode,
                 random,
             } => {
-                let mode = crate::action::PlaybackMode::default()
+                let mode = crate::goal::PlaybackMode::default()
                     .set_repeat(repeat_mode.into())
                     .set_random(random);
                 Self::PlaybackMode(mode)
@@ -185,7 +185,7 @@ impl From<Action> for crate::Action {
     }
 }
 
-/// Target for a playlist set action/query
+/// Target for a playlist set goal
 #[derive(clap::Args, Clone, Debug)]
 pub struct PlaylistSetQueryMatched {
     /// Path to the file(s) to queue next, starting with the current/past item
@@ -194,7 +194,7 @@ pub struct PlaylistSetQueryMatched {
     #[clap(long, default_value_t = 10)]
     keep_history: u16,
 }
-impl From<PlaylistSetQueryMatched> for crate::action::TargetPlaylistItems {
+impl From<PlaylistSetQueryMatched> for crate::goal::TargetPlaylistItems {
     fn from(value: PlaylistSetQueryMatched) -> Self {
         let PlaylistSetQueryMatched { urls, keep_history } = value;
         Self::new()

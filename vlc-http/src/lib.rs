@@ -16,6 +16,21 @@
 //
 //! Encodes commands and parses events for the HTTP interface of VLC
 //! ([sans-io](https://sans-io.readthedocs.io/))
+//!
+//! # Commands
+//! [`Command`]s provide low-level control of the player, suitable for basic playback
+//! control ([`PlaybackResume`], [`PlaybackPause`], [`SeekNext`], [`SeekPrevious`]).
+//!
+//! # Plans
+//! For more complex state-dependent commands, a higher level interferace is needed.
+//! [`Plan`]s complete high-level actions through a series of steps, depending on the updates to
+//! [`ClientState`] from each step.
+//!
+//!
+//! [`PlaybackResume`]: `Command::PlaybackResume`
+//! [`PlaybackPause`]: `Command::PlaybackPause`
+//! [`SeekNext`]: `Command::SeekNext`
+//! [`SeekPrevious`]: `Command::SeekPrevious`
 
 // teach me
 #![deny(clippy::pedantic)]
@@ -39,11 +54,11 @@ mod fmt;
 pub use command::{Command, VolumePercent, VolumePercentDelta};
 pub mod command;
 
+pub use goal::{Action, Plan};
+pub mod goal;
+
 pub use request::{Auth, Endpoint};
 pub mod request;
-
-pub use action::{Action, Pollable};
-pub mod action;
 
 // --------------------------------------------------
 // Responses received from VLC

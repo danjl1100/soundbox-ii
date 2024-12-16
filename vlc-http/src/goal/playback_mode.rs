@@ -1,8 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{
-    query_playback::QueryPlayback, ClientState, Error, PlaybackMode, Poll, Pollable,
-    PollableConstructor,
+    query_playback::QueryPlayback, ClientState, Error, Plan, PlanConstructor, PlaybackMode, Step,
 };
 use crate::{client_state::ClientStateSequence, Command};
 use tracing::{debug, trace};
@@ -13,13 +12,13 @@ pub(crate) struct Set {
     query_playback: QueryPlayback,
 }
 
-impl Pollable for Set {
+impl Plan for Set {
     type Output<'a> = ();
 
-    fn next(&mut self, state: &ClientState) -> Result<Poll<()>, Error> {
+    fn next(&mut self, state: &ClientState) -> Result<Step<()>, Error> {
         let status = match self.query_playback.next(state)? {
-            Poll::Done(status) => status,
-            Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
+            Step::Done(status) => status,
+            Step::Need(endpoint) => return Ok(Step::Need(endpoint)),
         };
 
         if status.is_random != self.target.is_random() {
@@ -28,7 +27,7 @@ impl Pollable for Set {
                 target = self.target.is_random(),
                 "want to toggle random",
             );
-            return Ok(Poll::Need(Command::ToggleRandom.into()));
+            return Ok(Step::Need(Command::ToggleRandom.into()));
         }
 
         if status.is_loop_all != self.target.is_loop_all() {
@@ -37,7 +36,7 @@ impl Pollable for Set {
                 target = self.target.is_loop_all(),
                 "want to toggle loop-all",
             );
-            return Ok(Poll::Need(Command::ToggleLoopAll.into()));
+            return Ok(Step::Need(Command::ToggleLoopAll.into()));
         }
 
         if status.is_repeat_one != self.target.is_repeat_one() {
@@ -46,15 +45,15 @@ impl Pollable for Set {
                 target = self.target.is_repeat_one(),
                 "want to toggle repeat-one",
             );
-            return Ok(Poll::Need(Command::ToggleRepeatOne.into()));
+            return Ok(Step::Need(Command::ToggleRepeatOne.into()));
         }
 
         trace!("no change for playback_mode");
 
-        Ok(Poll::Done(()))
+        Ok(Step::Done(()))
     }
 }
-impl PollableConstructor for Set {
+impl PlanConstructor for Set {
     type Args = PlaybackMode;
     fn new(target: Self::Args, state: ClientStateSequence) -> Self {
         Self {
@@ -70,18 +69,27 @@ impl std::fmt::Debug for Set {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{action::RepeatMode, Action, Response};
+    use crate::{goal::RepeatMode, Action, Response};
     use std::str::FromStr as _;
     use test_log::test;
 
-    fn action<'a>(
-        mode: PlaybackMode,
-        state: &ClientState,
-    ) -> impl Pollable<Output<'a> = ()> + 'static {
-        Action::PlaybackMode(mode).pollable(state.get_ref())
+    fn plan<'a>(mode: PlaybackMode, state: &ClientState) -> impl Plan<Output<'a> = ()> + 'static {
+        Action::PlaybackMode(mode).into_plan(state.get_ref())
+    }
+
+    trait ResultExt<T, E> {
+        fn display_err(self) -> Result<T, String>;
+    }
+    impl<T, E> ResultExt<T, E> for Result<T, E>
+    where
+        E: std::fmt::Display,
+    {
+        fn display_err(self) -> Result<T, String> {
+            self.map_err(|e| format!("{e}"))
+        }
     }
 
     fn status(mode: PlaybackMode) -> Response {
@@ -110,11 +118,14 @@ mod tests {
         let default = PlaybackMode::default();
         let random = default.set_random(true);
 
-        let mut action_default = action(default, &state);
-        let mut action_random = action(random, &state);
+        let mut action_default = plan(default, &state);
+        let mut action_random = plan(random, &state);
 
         // all require the status
-        assert_eq!(action_default.next(&state), action_random.next(&state));
+        assert_eq!(
+            action_default.next(&state).unwrap(),
+            action_random.next(&state).unwrap()
+        );
         insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
         Need(Endpoint(
           path_and_query: "/requests/status.json",
@@ -148,13 +159,19 @@ mod tests {
         let one = default.set_repeat(RepeatMode::One);
         let all = default.set_repeat(RepeatMode::All);
 
-        let mut action_default = action(default, &state);
-        let mut action_one = action(one, &state);
-        let mut action_all = action(all, &state);
+        let mut action_default = plan(default, &state);
+        let mut action_one = plan(one, &state);
+        let mut action_all = plan(all, &state);
 
         // all require the status
-        assert_eq!(action_default.next(&state), action_one.next(&state));
-        assert_eq!(action_default.next(&state), action_all.next(&state));
+        assert_eq!(
+            action_default.next(&state).unwrap(),
+            action_one.next(&state).unwrap()
+        );
+        assert_eq!(
+            action_default.next(&state).unwrap(),
+            action_all.next(&state).unwrap()
+        );
         insta::assert_ron_snapshot!(action_default.next(&state).unwrap(), @r###"
         Need(Endpoint(
           path_and_query: "/requests/status.json",
@@ -211,21 +228,21 @@ mod tests {
 
         let default = PlaybackMode::default();
 
-        let mut action_on_1 = action(default, &state1);
-        let mut action_on_2 = action(default, &state2);
+        let mut action_on_1 = plan(default, &state1);
+        let mut action_on_2 = plan(default, &state2);
 
-        insta::assert_ron_snapshot!(action_on_1.next(&state1), @r###"
+        insta::assert_ron_snapshot!(action_on_1.next(&state1).display_err(), @r###"
         Ok(Need(Endpoint(
           path_and_query: "/requests/status.json",
         )))
         "###);
-        insta::assert_ron_snapshot!(action_on_2.next(&state2), @r###"
+        insta::assert_ron_snapshot!(action_on_2.next(&state2).display_err(), @r###"
         Ok(Need(Endpoint(
           path_and_query: "/requests/status.json",
         )))
         "###);
 
-        insta::assert_ron_snapshot!(action_on_1.next(&state2), @"Err(InvalidClientInstance)");
-        insta::assert_ron_snapshot!(action_on_2.next(&state1), @"Err(InvalidClientInstance)");
+        insta::assert_ron_snapshot!(action_on_1.next(&state2).display_err(), @r###"Err("action shared among multiple client instances")"###);
+        insta::assert_ron_snapshot!(action_on_2.next(&state1).display_err(), @r###"Err("action shared among multiple client instances")"###);
     }
 }

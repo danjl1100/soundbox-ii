@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use vlc_http::{action::Poll, ClientState, Pollable as _};
+use vlc_http::{goal::Step, ClientState, Plan as _};
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Model {
@@ -42,7 +42,7 @@ impl Model {
     }
     pub fn request(&mut self, endpoint: &str) -> String {
         let dummy_state = ClientState::new();
-        let Poll::Need(playlist) = vlc_http::Action::query_playlist(dummy_state.get_ref())
+        let Step::Need(playlist) = vlc_http::Action::query_playlist(dummy_state.get_ref())
             .next(&dummy_state)
             .expect("singleton dummy_state")
         else {
@@ -50,7 +50,7 @@ impl Model {
         };
         let playlist = playlist.get_path_and_query();
 
-        let Poll::Need(playback) = vlc_http::Action::query_playback(dummy_state.get_ref())
+        let Step::Need(playback) = vlc_http::Action::query_playback(dummy_state.get_ref())
             .next(&dummy_state)
             .expect("singleton dummy_state")
         else {
@@ -207,14 +207,14 @@ impl Model {
             "currentplid":self.current_item_id.map_or(-1, |(id, _)| i32::from(id)),
             "position":0.0,
             "volume":256,
-            "state":"playing",
+            "state":"playing", // TODO: paused, stopped, playing test them all!
             "information":{"category":{"meta":{}}},
         })
         .to_string()
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)] // signature required by serde
+#[expect(clippy::trivially_copy_pass_by_ref)] // signature required by serde
 fn bool_is_false(value: &bool) -> bool {
     !(*value)
 }

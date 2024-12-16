@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
-//! High-level actions for VLC (correspond to a single API call)
+//! High-level actions for VLC, requiring multiple steps to reach the desired state
 
 use crate::{
     client_state::{ClientStateRef, ClientStateSequence, InvalidClientInstance, Sequence},
@@ -18,6 +18,7 @@ mod query_playlist;
 /// NOTE: The enum variants are for non-query actions (think `Result<(), Error>`)
 ///
 /// See the inherent functions for queries with specific return results
+// TODO: rename (goal::NoOutput?) when `set_repeat`, etc. functions are moved to `ClientState` or another type.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -58,11 +59,11 @@ impl PlaybackMode {
         self.is_random = is_random;
         self
     }
-    #[allow(missing_docs)] // self-explanatory
+    #[expect(missing_docs)] // self-explanatory
     pub const fn get_repeat(self) -> RepeatMode {
         self.repeat
     }
-    #[allow(missing_docs)] // self-explanatory
+    #[expect(missing_docs)] // self-explanatory
     #[must_use]
     pub const fn is_random(self) -> bool {
         self.is_random
@@ -115,20 +116,18 @@ impl TargetPlaylistItems {
     }
 }
 
-/// [`Pollable`] container for various (non-query) [`Action`]s
+/// [`Plan`] container for various (non-query) [`Action`]s
 #[derive(Clone, Debug)]
-enum ActionPollableInner {
+enum ActionPlanInner {
     PlaybackMode(playback_mode::Set),
     PlaylistSet(playlist_items::Set),
 }
 
-/// [`Pollable`] container for various (non-query) [`Action`]s
-#[allow(clippy::module_name_repetitions)]
+/// [`Plan`] container for various (non-query) [`Action`]s
 #[derive(Clone, Debug)]
-pub struct ActionPollable(ActionPollableInner);
+pub struct ActionPlan(ActionPlanInner);
 
-/// [`Pollable`] container for [`Action::set_playlist_query_matched`]
-#[allow(clippy::module_name_repetitions)]
+/// [`Plan`] container for [`Action::set_playlist_query_matched`]
 #[derive(Clone, Debug)]
 pub struct ActionQuerySetItems(playlist_items::Update);
 
@@ -137,14 +136,14 @@ impl Action {
     #[must_use]
     pub fn query_playlist<'a>(
         state: ClientStateRef<'_>,
-    ) -> impl Pollable<Output<'a> = &'a [response::playlist::Item]> + 'static {
+    ) -> impl Plan<Output<'a> = &'a [response::playlist::Item]> + 'static {
         query_playlist::QueryPlaylist::new((), state.get_sequence())
     }
     /// Returns an endpoint source for querying the playlist info
     #[must_use]
     pub fn query_playback<'a>(
         state: ClientStateRef<'_>,
-    ) -> impl Pollable<Output<'a> = &'a response::PlaybackStatus> + 'static {
+    ) -> impl Plan<Output<'a> = &'a response::PlaybackStatus> + 'static {
         query_playback::QueryPlayback::new((), state.get_sequence())
     }
     /// Returns an endpoint source for setting the `playlist_items` and querying matched items after
@@ -160,10 +159,10 @@ impl Action {
         let inner = playlist_items::Update::new(target, state.get_sequence());
         ActionQuerySetItems(inner)
     }
-    /// Converts the action into a [`Pollable`] with empty output
+    /// Converts the action into a [`Plan`] with empty output
     #[must_use]
-    pub fn pollable(self, state: ClientStateRef<'_>) -> ActionPollable {
-        use ActionPollableInner as Inner;
+    pub fn into_plan(self, state: ClientStateRef<'_>) -> ActionPlan {
+        use ActionPlanInner as Inner;
         let inner = match self {
             Action::PlaybackMode(mode) => {
                 Inner::PlaybackMode(playback_mode::Set::new(mode, state.get_sequence()))
@@ -172,32 +171,36 @@ impl Action {
                 Inner::PlaylistSet(playlist_items::Set::new(target, state.get_sequence()))
             }
         };
-        ActionPollable(inner)
+        ActionPlan(inner)
     }
 }
 
-/// Result of [`Pollable`] [`Action`]s
+/// Result for one part in reaching a goal
 #[derive(Debug, serde::Serialize, PartialEq, Eq)]
-pub enum Poll<T> {
+pub enum Step<T> {
     /// Final success output
     Done(T),
     /// Nexxt endpoint required to determine the result
     Need(Endpoint),
 }
-impl<T> Poll<T> {
-    fn map<U>(self, map_fn: impl FnOnce(T) -> U) -> Poll<U> {
+impl<T> Step<T> {
+    /// Change the [`Self::Done`] type
+    fn map<U>(self, map_fn: impl FnOnce(T) -> U) -> Step<U> {
         match self {
-            Poll::Done(value) => Poll::Done(map_fn(value)),
-            Poll::Need(endpoint) => Poll::Need(endpoint),
+            Step::Done(value) => Step::Done(map_fn(value)),
+            Step::Need(endpoint) => Step::Need(endpoint),
         }
     }
+    /// Discard the [`Self::Done`] data
+    fn ignore_done(self) -> Step<()> {
+        self.map(|_| ())
+    }
 }
-/// Error of [`Pollable`] [`Action`]s
-#[derive(Debug, PartialEq, serde::Serialize)]
+/// Error of [`Plan`] [`Action`]s
+#[derive(Debug)]
 pub enum Error {
-    /// The [`ClientState`] identity changed between creation and poll
-    #[allow(missing_docs)]
-    InvalidClientInstance(#[serde(skip)] InvalidClientInstance),
+    /// The [`ClientState`] identity changed between creation and executing the [`Plan`]
+    InvalidClientInstance(InvalidClientInstance),
 }
 impl std::error::Error for Error {}
 impl std::fmt::Display for Error {
@@ -224,20 +227,18 @@ impl Sequence {
     }
 }
 
-/// Sequence of endpoints required to calculated the output
-pub trait Pollable: std::fmt::Debug {
+/// Sequence of endpoints required to accomplish the high-level goal
+pub trait Plan: std::fmt::Debug {
     /// Final output when no more endpoints are needed
     type Output<'a>: std::fmt::Debug;
 
     /// Returns an [`Endpoint`] to make progress on the action on the [`ClientState`]
     ///
     /// # Errors
-    /// Returns an error describing why no further actions are possible.
-    ///
-    /// The error may contain a query result (for queries), or an error (for non-queries)
-    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error>;
+    /// Returns an error describing why no further steps are possible to reach the end goal.
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error>;
 }
-trait PollableConstructor: Pollable
+trait PlanConstructor: Plan
 where
     // NOTE: `Serialize` is for tests, hopefully not too invasive?... KEEP THIS TRAIT PRIVATE!
     for<'a> Self::Output<'a>: serde::Serialize,
@@ -245,21 +246,30 @@ where
     type Args;
     fn new(args: Self::Args, state: ClientStateSequence) -> Self;
 }
+// TODO: this may not be the right shape...
+// trait IntoPlan
+// where
+//     // NOTE: `Serialize` is for tests, hopefully not too invasive?... KEEP THIS TRAIT PRIVATE!
+//     for<'a> <Self::Plan as Plan>::Output<'a>: serde::Serialize,
+// {
+//     type Plan: Plan;
+//     fn into_plan(self, state: ClientStateSequence) -> Self;
+// }
 
-impl Pollable for ActionPollable {
+impl Plan for ActionPlan {
     type Output<'a> = ();
     // NOTE: However unlikely it is to mutate `self`, the uniqueness of `self` aligns with usage
-    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         let Self(inner) = self;
         match inner {
-            ActionPollableInner::PlaybackMode(inner) => inner.next(state),
-            ActionPollableInner::PlaylistSet(inner) => inner.next(state),
+            ActionPlanInner::PlaybackMode(inner) => inner.next(state),
+            ActionPlanInner::PlaylistSet(inner) => inner.next(state),
         }
     }
 }
-impl Pollable for ActionQuerySetItems {
+impl Plan for ActionQuerySetItems {
     type Output<'a> = &'a [response::playlist::Item];
-    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         self.0.next(state)
     }
 }

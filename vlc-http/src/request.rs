@@ -83,7 +83,7 @@ impl Endpoint {
 }
 
 /// Borrowed information to construct an HTTP request
-#[allow(clippy::module_name_repetitions)]
+#[expect(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestInfo<'a> {
     /// destination path and query for the request

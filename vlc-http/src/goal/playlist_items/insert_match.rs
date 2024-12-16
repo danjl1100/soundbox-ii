@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::similar_names)]
+    #[expect(clippy::similar_names)]
     fn find_interspersed() {
         let needle = &[1, 2, 3];
         let x_at = |index| Indexed { index, value: X };

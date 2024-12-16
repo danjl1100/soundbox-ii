@@ -49,7 +49,6 @@ mod item {
 
     /// Item in the playlist (track, playlist, folder, etc.)
     #[derive(Clone, PartialEq, Eq, serde::Serialize)]
-    #[allow(missing_docs)]
     pub struct Item {
         /// Duration in seconds (if known)
         duration_secs: Option<u64>,

@@ -1,8 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{
-    response, ClientState, Endpoint, Error, Poll, Pollable, PollableConstructor, Sequence,
-};
+use super::{response, ClientState, Endpoint, Error, Plan, PlanConstructor, Sequence, Step};
 use crate::client_state::ClientStateSequence;
 
 /// Query the playlist items
@@ -10,20 +8,20 @@ use crate::client_state::ClientStateSequence;
 pub struct QueryPlaylist {
     start_sequence: Sequence,
 }
-impl Pollable for QueryPlaylist {
+impl Plan for QueryPlaylist {
     type Output<'a> = &'a [response::playlist::Item];
 
-    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         let playlist_info = state.playlist_info();
-        let poll = if playlist_info.get_sequence().is_after(self.start_sequence)? {
-            Poll::Done(&playlist_info.items[..])
+        let step = if playlist_info.get_sequence().is_after(self.start_sequence)? {
+            Step::Done(&playlist_info.items[..])
         } else {
-            Poll::Need(Endpoint::query_playlist())
+            Step::Need(Endpoint::query_playlist())
         };
-        Ok(poll)
+        Ok(step)
     }
 }
-impl PollableConstructor for QueryPlaylist {
+impl PlanConstructor for QueryPlaylist {
     type Args = ();
     fn new((): Self::Args, state: ClientStateSequence) -> Self {
         let start_sequence = state.playlist_info();
@@ -32,7 +30,7 @@ impl PollableConstructor for QueryPlaylist {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::{Action, Response};

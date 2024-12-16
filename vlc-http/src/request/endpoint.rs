@@ -11,7 +11,6 @@ use std::borrow::Cow;
 mod tests;
 
 /// VLC HTTP endpoint information to execute a [`Command`]
-#[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct Endpoint {

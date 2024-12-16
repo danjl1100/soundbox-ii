@@ -2,18 +2,8 @@
 
 //! Test case runner for `vlc_http`
 
-// teach me
-#![deny(clippy::pedantic)]
-#![allow(clippy::bool_to_int_with_if)] // except this confusing pattern
-// no unsafe
-#![forbid(unsafe_code)]
-// no unwrap
-#![deny(clippy::unwrap_used)]
-// yes panic, it's tests! // no panic
-// #![deny(clippy::panic)]
-// docs!
-#![deny(missing_docs)]
-#![deny(rustdoc::broken_intra_doc_links)]
+// yes panic, it's tests!
+#![allow(clippy::panic)]
 
 use test_log::test;
 use tracing::{trace_span, warn_span};

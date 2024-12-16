@@ -82,12 +82,13 @@ impl Default for ClientState {
 
 /// Reference to a [`ClientState`] for use in creating an action
 ///
-/// See [`crate::Action::pollable()`] and related functions
+/// See [`crate::goal`] and related functions
 ///
 /// NOTE: This struct is intended to be short-lived, created right when needed to create an action
+// TODO: the above note seems like a code smell... why not directly ask the State to create a `Plan`?
 #[derive(Clone, Copy)]
 #[must_use]
-#[allow(clippy::module_name_repetitions)]
+#[expect(clippy::module_name_repetitions)]
 pub struct ClientStateRef<'a> {
     // NOTE: This artificial lifetime constrains users to guide them to keep short-lived refs
     _phantom: std::marker::PhantomData<&'a ()>,
@@ -115,7 +116,7 @@ impl ClientStateRef<'_> {
 /// Instant in the lifetime of the [`ClientState`] cache, for use in
 /// [`ClientStateRef::assume_cache_valid_since()`]
 #[derive(Clone, Copy, Debug)]
-#[allow(clippy::module_name_repetitions)]
+#[expect(clippy::module_name_repetitions)]
 pub struct ClientStateSequence {
     playlist_info: Sequence,
     playback_status: Sequence,

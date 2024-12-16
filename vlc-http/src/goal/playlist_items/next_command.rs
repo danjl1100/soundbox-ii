@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::similar_names)]
+    #[expect(clippy::similar_names)]
     fn matched_excludes_playing() {
         let uut123 = target(&["M1", "M2", "M3"]);
         let uut23 = target(&["M2", "M3"]);

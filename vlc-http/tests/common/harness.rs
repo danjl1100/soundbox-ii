@@ -4,7 +4,7 @@ use super::Model;
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
 use tracing::error;
-use vlc_http::{action::Poll, client_state::ClientStateSequence, ClientState, Endpoint, Pollable};
+use vlc_http::{client_state::ClientStateSequence, goal::Step, ClientState, Endpoint, Plan};
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
     let mut runner = Runner::default();
@@ -45,8 +45,8 @@ struct Runner {
 
 #[derive(Debug)]
 enum ActionPending {
-    NoOutput(vlc_http::action::ActionPollable),
-    ItemsOutput(vlc_http::action::ActionQuerySetItems),
+    NoOutput(vlc_http::goal::ActionPlan),
+    ItemsOutput(vlc_http::goal::ActionQuerySetItems),
 }
 
 impl Runner {
@@ -96,7 +96,7 @@ impl Runner {
                 self.set_action_pending_or_bail(
                     line,
                     ActionPending::NoOutput(
-                        vlc_http::Action::from(action).pollable(client_state_ref),
+                        vlc_http::Action::from(action).into_plan(client_state_ref),
                     ),
                 );
                 self.run_pending_action(line);
@@ -174,7 +174,7 @@ impl Runner {
     }
     fn run_action_generic<T>(&mut self, mut pollable: T, line: &str) -> Option<T>
     where
-        T: Pollable,
+        T: Plan,
         for<'a> T::Output<'a>: serde::Serialize + std::fmt::Debug,
     {
         let mut iter_count = 0;
@@ -188,13 +188,13 @@ impl Runner {
             }
 
             let endpoint = match pollable.next(&self.client_state) {
-                Ok(Poll::Need(endpoint)) => endpoint,
-                Ok(Poll::Done(output)) => {
+                Ok(Step::Need(endpoint)) => endpoint,
+                Ok(Step::Done(output)) => {
                     self.model_logger.log_output(&output);
                     // NOTE: difficult to return the `output`, due to generic associated type shenanigans
                     break None;
                 }
-                Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
+                Err(vlc_http::goal::Error::InvalidClientInstance(_)) => {
                     panic!("invalid state for {line:?}: non-singleton client_state")
                 }
             };
@@ -211,16 +211,16 @@ impl Runner {
     }
     fn ignore_endpoints<T>(&mut self, push_count: u32, mut pollable: T, line: &str) -> Option<T>
     where
-        T: Pollable,
+        T: Plan,
     {
         let mut iter = 0;
         loop {
             let endpoint = match pollable.next(&self.client_state) {
-                Ok(Poll::Need(endpoint)) => endpoint,
-                Ok(Poll::Done(_)) => {
+                Ok(Step::Need(endpoint)) => endpoint,
+                Ok(Step::Done(_)) => {
                     panic!("invalid command {line:?}: action returned None (completed) so cannot ignore (completed iter {iter} of {push_count})")
                 }
-                Err(vlc_http::action::Error::InvalidClientInstance(_)) => {
+                Err(vlc_http::goal::Error::InvalidClientInstance(_)) => {
                     panic!("invalid state for {line:?}: non-singleton client_state")
                 }
             };
@@ -398,7 +398,7 @@ enum OverrideCommand {
     ActionStepLimit { step_count: u32 },
     /// Runs future actions to completion (for use in `ActionResume` and future actions)
     ActionClearLimit,
-    /// Poll one endpoint from the current action, but do not act on the endpoint
+    /// Step one endpoint from the current action, but do not act on the endpoint
     ///
     /// Stores the unused endpoint in a queue for use in `ActionApplyIgnored`
     ActionIgnorePush { push_count: Option<NonZeroU32> },

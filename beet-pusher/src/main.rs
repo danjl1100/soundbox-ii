@@ -11,7 +11,7 @@ use path_url::BaseUrl;
 use std::path::PathBuf;
 use todo_move_to_a_beet_lib::{query_beet, BeetItem};
 use tracing::{debug, info};
-use vlc_http::action::TargetPlaylistItems;
+use vlc_http::goal::TargetPlaylistItems;
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -211,7 +211,7 @@ mod now_playing_observer {
 
 type UreqError = vlc_http::http_runner::ureq::Error;
 type ExhaustResult<'a, T> =
-    Result<<T as vlc_http::Pollable>::Output<'a>, vlc_http::sync::Error<T, UreqError>>;
+    Result<<T as vlc_http::Plan>::Output<'a>, vlc_http::sync::Error<T, UreqError>>;
 
 struct BeetPusher<'a, R, F> {
     spigot: bucket_spigot::Network<BeetItem, String>,
@@ -230,12 +230,12 @@ struct Config {
     base_url: BaseUrl,
 }
 impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
-    fn exhaust_pollable<T>(&mut self, query: T) -> ExhaustResult<'_, T>
+    fn complete_plan<T>(&mut self, query: T) -> ExhaustResult<'_, T>
     where
-        T: vlc_http::Pollable,
+        T: vlc_http::Plan,
     {
         const MAX_ENDPOINTS_PER_ACTION: usize = 100;
-        let (output, seq) = vlc_http::sync::exhaust_pollable(
+        let (output, seq) = vlc_http::sync::complete_plan(
             query,
             &mut self.client.state,
             &mut self.http_runner,
@@ -291,11 +291,9 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
             .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
             .set_keep_history(5);
 
-        let action = vlc_http::action::Action::set_playlist_query_matched(
-            target,
-            self.client.state.get_ref(),
-        );
-        let output = self.exhaust_pollable(action)?;
+        let action =
+            vlc_http::goal::Action::set_playlist_query_matched(target, self.client.state.get_ref());
+        let output = self.complete_plan(action)?;
         let output_len = output.len();
         if output_len < self.determined.len() {
             let () = self

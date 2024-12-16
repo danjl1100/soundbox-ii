@@ -24,10 +24,16 @@ pub enum Command {
         item_id: Option<u64>,
     },
     /// Randomizes VLC playback order when toggled to `true`
+    ///
+    /// See [`crate::goal::PlaybackMode::set_random`]
     ToggleRandom,
     /// Repeats one VLC item when toggled to `true`
+    ///
+    /// See [`crate::goal::PlaybackMode::set_repeat`]
     ToggleRepeatOne,
     /// Repeats the VLC playlist when toggled to `true`
+    ///
+    /// See [`crate::goal::PlaybackMode::set_repeat`]
     ToggleLoopAll,
     // ========================================
     /// Force playback to resume
@@ -132,7 +138,7 @@ mod volume {
                 })
         }
         /// Equivalent to [`i16::unsigned_abs`]
-        #[allow(clippy::missing_panics_doc)]
+        #[expect(clippy::missing_panics_doc)]
         #[must_use]
         pub fn unsigned_abs(self) -> Percent {
             let magnitude = self.value().unsigned_abs();
@@ -155,8 +161,8 @@ mod volume {
 
             // result is 0-768 (inclusive), comfortably fits in u16
             let based_256 = f32::from(percent) * Self::PERCENT_TO_256;
-            #[allow(clippy::cast_possible_truncation)] // target size comfortably fits 0-768 (inclusive)
-            #[allow(clippy::cast_sign_loss)] // value is always non-negative
+            #[expect(clippy::cast_possible_truncation)] // target size comfortably fits 0-768 (inclusive)
+            #[expect(clippy::cast_sign_loss)] // value is always non-negative
             {
                 Self(based_256.round() as u16)
             }
@@ -205,8 +211,8 @@ impl VolumePercent256 {
     /// Convert the 256-based value into the equivalent precentage
     pub(crate) fn unchecked_to_percent(based_256: u16) -> u16 {
         let percent = f32::from(based_256) / Self::PERCENT_TO_256;
-        #[allow(clippy::cast_possible_truncation)] // guaranteed, conversion factor is <1.0
-        #[allow(clippy::cast_sign_loss)] // value is always non-negative
+        #[expect(clippy::cast_possible_truncation)] // guaranteed, conversion factor is <1.0
+        #[expect(clippy::cast_sign_loss)] // value is always non-negative
         {
             percent.round() as u16
         }

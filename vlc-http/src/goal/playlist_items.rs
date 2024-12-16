@@ -22,8 +22,8 @@
 //!     - Remove (5) - Ensure newly-added items will be continuous with matched items
 //!     - Add (4) - Add new desired items to the end
 //!     - Remove (3) - Remove items blocking the desired items (all in place)
-//!     - NOTE: No action performed for (2), application will send `Command::SeekNext` when immediate
-//!       playback is required
+//!     - NOTE: No action performed for (2), client application must request `Command::SeekNext` if
+//!       immediate playback is required
 //! - Key Constraints:
 //!     - "Remove(5)" comes before "Add (4)" for consistent matches
 //!     - "Remove(3)" comes after "Add(4)" for seamless playback progression to desired items
@@ -63,9 +63,9 @@
 
 use super::{
     playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, response, Error,
-    PlaybackMode, Poll, PollableConstructor,
+    PlanConstructor, PlaybackMode, Step,
 };
-use crate::{client_state::ClientStateSequence, fmt::DebugUrl, Command, Pollable};
+use crate::{client_state::ClientStateSequence, fmt::DebugUrl, Command, Plan};
 
 mod insert_match;
 mod next_command;
@@ -87,23 +87,23 @@ struct Target<T> {
     pub max_history_count: u16,
 }
 
-impl Pollable for Update {
+impl Plan for Update {
     type Output<'a> = &'a [response::playlist::Item];
 
-    fn next<'a>(&mut self, state: &'a crate::ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+    fn next<'a>(&mut self, state: &'a crate::ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         match self.playback_mode.next(state)? {
-            Poll::Done(()) => {}
-            Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
+            Step::Done(()) => {}
+            Step::Need(endpoint) => return Ok(Step::Need(endpoint)),
         }
 
         let playback = match self.query_playback.next(state)? {
-            Poll::Done(playback) => playback,
-            Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
+            Step::Done(playback) => playback,
+            Step::Need(endpoint) => return Ok(Step::Need(endpoint)),
         };
 
         let playlist = match self.query_playlist.next(state)? {
-            Poll::Done(playlist) => playlist,
-            Poll::Need(endpoint) => return Ok(Poll::Need(endpoint)),
+            Step::Done(playlist) => playlist,
+            Step::Need(endpoint) => return Ok(Step::Need(endpoint)),
         };
 
         let playing_item_id = playback
@@ -128,18 +128,18 @@ impl Pollable for Update {
                     item_id: item.get_id(),
                 },
             };
-            Ok(Poll::Need(command.into()))
+            Ok(Step::Need(command.into()))
         } else {
-            Ok(Poll::Done(matched_items))
+            Ok(Step::Done(matched_items))
         }
     }
 }
 
-impl PollableConstructor for Update {
+impl PlanConstructor for Update {
     type Args = super::TargetPlaylistItems;
     fn new(target: Self::Args, state: ClientStateSequence) -> Self {
         const LINEAR_PLAYBACK: PlaybackMode = PlaybackMode::new()
-            .set_repeat(crate::action::RepeatMode::Off)
+            .set_repeat(crate::goal::RepeatMode::Off)
             .set_random(false);
         let target = {
             let super::TargetPlaylistItems {
@@ -177,14 +177,14 @@ impl std::fmt::Debug for Set {
 pub(crate) struct Set {
     update: Update,
 }
-impl Pollable for Set {
+impl Plan for Set {
     type Output<'a> = ();
-    fn next<'a>(&mut self, state: &'a crate::ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
-        self.update.next(state).map(|poll| poll.map(|_| ()))
+    fn next(&mut self, state: &crate::ClientState) -> Result<Step<()>, Error> {
+        self.update.next(state).map(Step::ignore_done)
     }
 }
-impl PollableConstructor for Set {
-    type Args = <Update as PollableConstructor>::Args;
+impl PlanConstructor for Set {
+    type Args = <Update as PlanConstructor>::Args;
     fn new(args: Self::Args, state: ClientStateSequence) -> Self {
         let update = Update::new(args, state);
         Self { update }

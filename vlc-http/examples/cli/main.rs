@@ -160,7 +160,7 @@ impl Client {
             CliAction::Query {
                 query: Query::Playlist,
             } => {
-                let result = self.exhaust_pollable(vlc_http::Action::query_playlist(
+                let result = self.complete_plan(vlc_http::Action::query_playlist(
                     self.client_state.get_ref(),
                 ))?;
                 dbg!(result);
@@ -170,7 +170,7 @@ impl Client {
             CliAction::Query {
                 query: Query::Playback,
             } => {
-                let result = self.exhaust_pollable(vlc_http::Action::query_playback(
+                let result = self.complete_plan(vlc_http::Action::query_playback(
                     self.client_state.get_ref(),
                 ))?;
                 dbg!(result);
@@ -180,18 +180,17 @@ impl Client {
             CliAction::Query {
                 query: Query::PlaylistSet(target),
             } => {
-                let result =
-                    self.exhaust_pollable(vlc_http::Action::set_playlist_query_matched(
-                        target.into(),
-                        self.client_state.get_ref(),
-                    ))?;
+                let result = self.complete_plan(vlc_http::Action::set_playlist_query_matched(
+                    target.into(),
+                    self.client_state.get_ref(),
+                ))?;
                 dbg!(result);
 
                 Ok(None)
             }
             CliAction::Action { action } => {
-                self.exhaust_pollable(
-                    vlc_http::Action::from(action).pollable(self.client_state.get_ref()),
+                self.complete_plan(
+                    vlc_http::Action::from(action).into_plan(self.client_state.get_ref()),
                 )?;
 
                 Ok(None)
@@ -200,14 +199,14 @@ impl Client {
         }
     }
 
-    fn exhaust_pollable<T>(&mut self, source: T) -> eyre::Result<T::Output<'_>>
+    fn complete_plan<T>(&mut self, plan: T) -> eyre::Result<T::Output<'_>>
     where
-        T: vlc_http::Pollable,
+        T: vlc_http::Plan,
         eyre::Report: From<vlc_http::sync::Error<T, vlc_http::http_runner::ureq::Error>>,
     {
         const MAX_ITER_COUNT: usize = 100;
-        let (output, _seq) = vlc_http::sync::exhaust_pollable(
-            source,
+        let (output, _seq) = vlc_http::sync::complete_plan(
+            plan,
             &mut self.client_state,
             &mut self.runner,
             MAX_ITER_COUNT,

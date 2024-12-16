@@ -39,7 +39,6 @@ pub struct Status {
 }
 /// Mode of the playback
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
-#[allow(missing_docs)]
 pub enum Mode {
     Paused,
     #[default]
@@ -48,7 +47,6 @@ pub enum Mode {
 }
 /// Information about the current (playing/paused) item
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
-#[allow(missing_docs)]
 #[non_exhaustive]
 pub struct Info {
     pub title: String,

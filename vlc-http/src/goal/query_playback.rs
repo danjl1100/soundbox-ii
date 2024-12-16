@@ -1,8 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{
-    response, ClientState, Endpoint, Error, Poll, Pollable, PollableConstructor, Sequence,
-};
+use super::{response, ClientState, Endpoint, Error, Plan, PlanConstructor, Sequence, Step};
 use crate::client_state::ClientStateSequence;
 
 /// Query the playback status
@@ -10,22 +8,22 @@ use crate::client_state::ClientStateSequence;
 pub struct QueryPlayback {
     start_sequence: Sequence,
 }
-impl Pollable for QueryPlayback {
+impl Plan for QueryPlayback {
     type Output<'a> = &'a response::PlaybackStatus;
 
-    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Poll<Self::Output<'a>>, Error> {
+    fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         let playback_status = state.playback_status();
         let status_updated = playback_status
             .get_sequence()
             .is_after(self.start_sequence)?;
-        let poll = match &**playback_status {
-            Some(playback) if status_updated => Poll::Done(playback),
-            _ => Poll::Need(Endpoint::query_status()),
+        let step = match &**playback_status {
+            Some(playback) if status_updated => Step::Done(playback),
+            _ => Step::Need(Endpoint::query_status()),
         };
-        Ok(poll)
+        Ok(step)
     }
 }
-impl PollableConstructor for QueryPlayback {
+impl PlanConstructor for QueryPlayback {
     type Args = ();
 
     fn new((): Self::Args, state: ClientStateSequence) -> Self {
@@ -35,7 +33,7 @@ impl PollableConstructor for QueryPlayback {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::{Action, Response};
