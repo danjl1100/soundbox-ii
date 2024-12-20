@@ -16,7 +16,7 @@ pub struct ClientState {
 }
 
 impl ClientState {
-    /// Returns an empty state for a specific VLC client
+    /// Returns an empty state
     pub fn new() -> Self {
         let builder = Sequenced::builder();
         Self {

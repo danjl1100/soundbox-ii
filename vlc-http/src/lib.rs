@@ -14,17 +14,78 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-//! Encodes commands and parses events for the HTTP interface of VLC
-//! ([sans-io](https://sans-io.readthedocs.io/))
+//! A [sans-io](https://sans-io.readthedocs.io/) library for encoding commands and parsing
+//! responses for the ubiquitous [VLC](https://www.videolan.org/vlc/) media player's
+//! [HTTP interface](https://wiki.videolan.org/VSG:Interface:HTTP)
 //!
-//! # Commands
+//!
+//! # Philosophy
+//!
+//! Where possible, this library chooses to use *data* for commands and goals instead of function
+//! calls.  This allows for easier RPC, and even cli debugging using the [`crate::clap`] helpers.
+//!
+//! Who needs "mocks" for testing when the business-logic control flow is plan old data?
+//!
+//!
+//! # Overview
+//!
+//! The illustration below shows the general flow for an application using this library:
+//!
+//! ```text
+//!
+//!    (*) START: application wants to control or query VLC
+//!     v
+//!   ----------------
+//!  | 0. ClientState |
+//!   ----------------
+//!     v
+//!     v < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < <
+//!     v                                                                             ^
+//!   ---------      ------------      -------------                                  ^
+//!  | 1. Plan | -> | 2. Command | -> | 3. Endpoint |                                 ^
+//!   ---------  |   ------------      -------------                                  ^
+//!             [OR]                         v                                        ^
+//!              |                          (*) application sends HTTP request        ^
+//!              -> (*) Query result         v                                        ^
+//!                                       [ VLC ]                                     ^
+//!                                          v                                        ^
+//!                                         (*) application receives HTTP response    ^
+//!                                          v                                        ^
+//!                                    -------------      --------------------        ^
+//!                                   | 4. Response | -> | update ClientState | -> repeat
+//!                                    -------------      --------------------
+//! ```
+//!
+//! The components are described in detail below:
+//!
+//!
+//! ## 0. [`ClientState`]
+//! A [`ClientState`] instance tracks the current state of one VLC instance, for the purpose of speeding up
+//! commands and queries. The cache is used or invalidated based on the creation of the plans.
+//!
+//! ## 1. [`Plan`]
+//! A [`Plan`] completes a high-level action through a series of steps, depending on the updates to
+//! [`ClientState`] from each step.
+//! This is needed for more complex state-dependent commands.
+//!
+//! ## 2. [`Command`]
 //! [`Command`]s provide low-level control of the player, suitable for basic playback
 //! control ([`PlaybackResume`], [`PlaybackPause`], [`SeekNext`], [`SeekPrevious`]).
 //!
-//! # Plans
-//! For more complex state-dependent commands, a higher level interferace is needed.
-//! [`Plan`]s complete high-level actions through a series of steps, depending on the updates to
-//! [`ClientState`] from each step.
+//! ## 3. [`Endpoint`]
+//! #TODO
+//!
+//! ## 4. [`Response`]
+//! #TODO
+//!
+//! #TODO
+//! ... Then, use the response to update the client state. The update returns a sequence marker
+//! than can be used to extend caching for future commands or queries. That is, later the
+//! application wants to query the **cached** playback status, then it provides the earlier
+//! sequence marker and the HTTP request should not needed.
+//!
+//! The application has to provide proof of some prior update in order to use the cached results.
+//! Obviously, if new data arrived since then, the newer data will be used.
 //!
 //!
 //! [`PlaybackResume`]: `Command::PlaybackResume`

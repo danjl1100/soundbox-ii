@@ -1,10 +1,12 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
-//! Low-level Control command types for VLC (correspond to a single API call)
+//! Low-level control command types for VLC (correspond to a single API call)
 
-/// Low-level Control commands for VLC (correspond to a single API call)
+/// Low-level control commands that correspond to a single API call to VLC.
 ///
-/// See [`Action`](`crate::Action`) for more complex controls
+/// See also: [`crate::goal`] provides higher-level controls
+///
+/// [`Endpoint`]: `crate::Endpoint`
 #[non_exhaustive]
 #[derive(Clone, PartialEq)]
 pub enum Command {
@@ -25,15 +27,15 @@ pub enum Command {
     },
     /// Randomizes VLC playback order when toggled to `true`
     ///
-    /// See [`crate::goal::PlaybackMode::set_random`]
+    /// See also: [`crate::goal::PlaybackMode::set_random`]
     ToggleRandom,
     /// Repeats one VLC item when toggled to `true`
     ///
-    /// See [`crate::goal::PlaybackMode::set_repeat`]
+    /// See also: [`crate::goal::PlaybackMode::set_repeat`]
     ToggleRepeatOne,
     /// Repeats the VLC playlist when toggled to `true`
     ///
-    /// See [`crate::goal::PlaybackMode::set_repeat`]
+    /// See also: [`crate::goal::PlaybackMode::set_repeat`]
     ToggleLoopAll,
     // ========================================
     /// Force playback to resume
