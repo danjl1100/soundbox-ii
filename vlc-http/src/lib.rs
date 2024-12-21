@@ -115,7 +115,7 @@ mod fmt;
 pub use command::{Command, VolumePercent, VolumePercentDelta};
 pub mod command;
 
-pub use goal::{Action, Plan};
+pub use goal::{Change, Plan};
 pub mod goal;
 
 pub use request::{Auth, Endpoint};

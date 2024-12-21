@@ -72,7 +72,7 @@ impl Runner {
             } => {
                 self.set_action_pending_or_bail(
                     line,
-                    ActionPending::ItemsOutput(vlc_http::Action::set_playlist_query_matched(
+                    ActionPending::ItemsOutput(vlc_http::Change::set_playlist_query_matched(
                         action_query.into(),
                         self.client_state.get_ref(),
                     )),
@@ -96,7 +96,7 @@ impl Runner {
                 self.set_action_pending_or_bail(
                     line,
                     ActionPending::NoOutput(
-                        vlc_http::Action::from(action).into_plan(client_state_ref),
+                        vlc_http::Change::from(action).into_plan(client_state_ref),
                     ),
                 );
                 self.run_pending_action(line);
@@ -371,7 +371,7 @@ enum TestAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::Action,
+        action: vlc_http::clap::Change,
         /// Marks all cached data as valid, behaving as-if the action was created at the beginning of the program
         #[clap(long)]
         extend_cache: bool,

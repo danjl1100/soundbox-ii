@@ -42,7 +42,7 @@ impl Model {
     }
     pub fn request(&mut self, endpoint: &str) -> String {
         let dummy_state = ClientState::new();
-        let Step::Need(playlist) = vlc_http::Action::query_playlist(dummy_state.get_ref())
+        let Step::Need(playlist) = vlc_http::Change::query_playlist(dummy_state.get_ref())
             .next(&dummy_state)
             .expect("singleton dummy_state")
         else {
@@ -50,7 +50,7 @@ impl Model {
         };
         let playlist = playlist.get_path_and_query();
 
-        let Step::Need(playback) = vlc_http::Action::query_playback(dummy_state.get_ref())
+        let Step::Need(playback) = vlc_http::Change::query_playback(dummy_state.get_ref())
             .next(&dummy_state)
             .expect("singleton dummy_state")
         else {

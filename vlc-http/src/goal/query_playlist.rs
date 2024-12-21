@@ -5,6 +5,7 @@ use crate::client_state::ClientStateSequence;
 
 /// Query the playlist items
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct QueryPlaylist {
     start_sequence: Sequence,
 }
@@ -33,7 +34,7 @@ impl PlanConstructor for QueryPlaylist {
 #[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{Action, Response};
+    use crate::Response;
     use std::str::FromStr;
     use test_log::test;
 
@@ -52,8 +53,8 @@ mod tests {
     fn caches() {
         let mut state = ClientState::default();
 
-        let mut query1 = Action::query_playlist(state.get_ref());
-        let mut query2 = Action::query_playlist(state.get_ref());
+        let mut query1 = state.query_playlist();
+        let mut query2 = state.query_playlist();
 
         // both request `playlist.json`
         insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
@@ -100,7 +101,7 @@ mod tests {
         // initialize state before creating query
         state.update(Response::from_str(RESPONSE_PLAYLIST_SIMPLE).expect("valid response"));
 
-        let mut query = Action::query_playlist(state.get_ref());
+        let mut query = state.query_playlist();
 
         insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
         Need(Endpoint(

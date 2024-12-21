@@ -5,6 +5,7 @@ use crate::client_state::ClientStateSequence;
 
 /// Query the playback status
 #[derive(Clone, Debug)]
+#[must_use]
 pub struct QueryPlayback {
     start_sequence: Sequence,
 }
@@ -36,7 +37,7 @@ impl PlanConstructor for QueryPlayback {
 #[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{Action, Response};
+    use crate::{Change, Response};
     use std::str::FromStr as _;
     use test_log::test;
 
@@ -71,8 +72,8 @@ mod tests {
     fn caches() {
         let mut state = ClientState::new();
 
-        let mut query1 = Action::query_playback(state.get_ref());
-        let mut query2 = Action::query_playback(state.get_ref());
+        let mut query1 = Change::query_playback(state.get_ref());
+        let mut query2 = Change::query_playback(state.get_ref());
 
         // both request `status.json`
         insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
@@ -149,7 +150,7 @@ mod tests {
         // initialize state before creating query
         state.update(Response::from_str(RESPONSE_STATUS_SIMPLE).expect("valid response"));
 
-        let mut query = Action::query_playback(state.get_ref());
+        let mut query = Change::query_playback(state.get_ref());
 
         insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
         Need(Endpoint(

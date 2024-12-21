@@ -131,10 +131,10 @@ impl From<AuthInput> for CrateAuthInput {
     }
 }
 
-/// High-level actions to control VLC (dynamic API calls depending on the current state)
+/// High-level change to VLC state (dynamic API calls depending on the current state)
 #[derive(Clone, clap::Subcommand, Debug)]
 #[non_exhaustive]
-pub enum Action {
+pub enum Change {
     /// Set the item selection mode
     PlaybackMode {
         /// Rule for repeating items
@@ -168,10 +168,10 @@ impl From<RepeatMode> for crate::goal::RepeatMode {
         }
     }
 }
-impl From<Action> for crate::Action {
-    fn from(value: Action) -> Self {
+impl From<Change> for crate::Change {
+    fn from(value: Change) -> Self {
         match value {
-            Action::PlaybackMode {
+            Change::PlaybackMode {
                 repeat_mode,
                 random,
             } => {
@@ -180,7 +180,7 @@ impl From<Action> for crate::Action {
                     .set_random(random);
                 Self::PlaybackMode(mode)
             }
-            Action::PlaylistSet(target) => Self::PlaylistSet(target.into()),
+            Change::PlaylistSet(target) => Self::PlaylistSet(target.into()),
         }
     }
 }

@@ -42,7 +42,7 @@ enum CliAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::Action,
+        action: vlc_http::clap::Change,
     },
     #[clap(alias = "exit", alias = "q")]
     Quit,
@@ -59,7 +59,7 @@ enum OneshotAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::Action,
+        action: vlc_http::clap::Change,
     },
 }
 impl From<OneshotAction> for CliAction {
@@ -160,7 +160,7 @@ impl Client {
             CliAction::Query {
                 query: Query::Playlist,
             } => {
-                let result = self.complete_plan(vlc_http::Action::query_playlist(
+                let result = self.complete_plan(vlc_http::Change::query_playlist(
                     self.client_state.get_ref(),
                 ))?;
                 dbg!(result);
@@ -170,7 +170,7 @@ impl Client {
             CliAction::Query {
                 query: Query::Playback,
             } => {
-                let result = self.complete_plan(vlc_http::Action::query_playback(
+                let result = self.complete_plan(vlc_http::Change::query_playback(
                     self.client_state.get_ref(),
                 ))?;
                 dbg!(result);
@@ -180,7 +180,7 @@ impl Client {
             CliAction::Query {
                 query: Query::PlaylistSet(target),
             } => {
-                let result = self.complete_plan(vlc_http::Action::set_playlist_query_matched(
+                let result = self.complete_plan(vlc_http::Change::set_playlist_query_matched(
                     target.into(),
                     self.client_state.get_ref(),
                 ))?;
@@ -190,7 +190,7 @@ impl Client {
             }
             CliAction::Action { action } => {
                 self.complete_plan(
-                    vlc_http::Action::from(action).into_plan(self.client_state.get_ref()),
+                    vlc_http::Change::from(action).into_plan(self.client_state.get_ref()),
                 )?;
 
                 Ok(None)

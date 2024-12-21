@@ -30,7 +30,7 @@ impl ClientState {
     /// Returns the [`ClientStateSequence`] for the previous cache instant (for use in
     /// [`ClientStateRef::assume_cache_valid_since()`].
     ///
-    /// This allows [`Action`](`crate::Action`)s to progress to return a result, or a new
+    /// This allows [`Plan`](`crate::Plan`)s to progress to return a result, or a new
     /// [`Endpoint`](`crate::Endpoint`)
     pub fn update(&mut self, response: Response) -> ClientStateSequence {
         let previous_cache_instant = self.get_sequence();
@@ -46,13 +46,14 @@ impl ClientState {
     }
 
     /// Returns a handle for use in actions
+    #[deprecated = "build Plans directly from ClientState methods"]
     pub fn get_ref(&self) -> ClientStateRef<'_> {
         ClientStateRef {
             _phantom: std::marker::PhantomData,
             sequence: self.get_sequence(),
         }
     }
-    fn get_sequence(&self) -> ClientStateSequence {
+    pub(crate) fn get_sequence(&self) -> ClientStateSequence {
         let Self {
             playlist_info,
             playback_status,
@@ -95,7 +96,7 @@ pub struct ClientStateRef<'a> {
     sequence: ClientStateSequence,
 }
 impl ClientStateRef<'_> {
-    /// The returned reference will start the [`crate::Action`] as if it was created before the specified
+    /// The returned reference will start the [`crate::Plan`] as if it was created before the specified
     /// [`ClientStateSequence`] instant.
     ///
     /// # Errors

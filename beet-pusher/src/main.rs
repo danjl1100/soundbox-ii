@@ -292,7 +292,7 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
             .set_keep_history(5);
 
         let action =
-            vlc_http::goal::Action::set_playlist_query_matched(target, self.client.state.get_ref());
+            vlc_http::goal::Change::set_playlist_query_matched(target, self.client.state.get_ref());
         let output = self.complete_plan(action)?;
         let output_len = output.len();
         if output_len < self.determined.len() {
