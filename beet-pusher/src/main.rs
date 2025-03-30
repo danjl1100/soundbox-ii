@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Pushes tracks from `beet` to VLC, with a minimal (read "nonexistent") user interface
 //!
@@ -27,18 +27,18 @@ fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
 
     // TODO delete unused diagnostic
-    // {
-    //     let mut spigot = setup_spigot()?;
-    //     let view = spigot.view_table_default();
-    //     println!("{view}");
-    //     let rng = &mut rand::thread_rng();
-    //     for _ in 0..50 {
-    //         let peeked = spigot.peek(rng, 1)?;
-    //         println!("{:?}", peeked.items());
-    //         spigot.finalize_peeked(peeked.accept_into_inner());
-    //     }
-    //     return Ok(());
-    // }
+    if false {
+        let mut spigot = setup_spigot()?;
+        let view = spigot.view_table_default();
+        println!("{view}");
+        let rng = &mut rand::thread_rng();
+        for _ in 0..50 {
+            let peeked = spigot.peek(rng, 1)?;
+            println!("{:?}", peeked.items());
+            spigot.finalize_peeked(peeked.accept_into_inner());
+        }
+        return Ok(());
+    }
 
     let Args { auth, config_file } = Args::parse();
     let auth = vlc_http::Auth::new(auth.into())?;
@@ -677,22 +677,49 @@ fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
         path::{Path, PathRef},
         ModifyCmd, Network,
     };
-    const ROOT: Path = bucket_spigot::path::Path::empty();
-    let bucket_path: Path = ".0".parse().expect("valid path .0");
 
     let mut spigot = Network::default();
     let init_commands = {
+        let root: Path = ".".parse().expect("valid path .");
+        let split: Path = ".0".parse().expect("valid path .0");
+        let bucket1: Path = ".0.0".parse().expect("valid path .0.0");
+        let bucket2: Path = ".0.1".parse().expect("valid path .0.1");
+
         // TODO: use the Network creation script... Luke!
         vec![
-            ModifyCmd::AddBucket { parent: ROOT },
-            // NOTE: this step not strictly necessary, but want to test the beet params roundtrip
-            // through bucket_spigot nodes
+            ModifyCmd::AddJoint { parent: root },
+            ModifyCmd::AddBucket {
+                parent: split.clone(),
+            },
+            ModifyCmd::AddBucket { parent: split },
             ModifyCmd::SetFilters {
-                path: bucket_path.clone(),
-                new_filters: vec!["added:2024".to_owned()],
+                path: bucket1.clone(),
+                new_filters: [
+                    //
+                    "added:2020..",
+                    "grouping::^$",
+                ]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
             },
             ModifyCmd::SetOrderType {
-                path: bucket_path,
+                path: bucket1,
+                new_order_type: OrderType::Shuffle,
+            },
+            ModifyCmd::SetFilters {
+                path: bucket2.clone(),
+                new_filters: [
+                    //
+                    "grouping::1|2|3|4|5",
+                    "has_lyrics::^$",
+                ]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            },
+            ModifyCmd::SetOrderType {
+                path: bucket2,
                 new_order_type: OrderType::Shuffle,
             },
         ]
@@ -727,7 +754,7 @@ fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
 mod todo_move_to_a_beet_lib {
     pub use self::beet_item::BeetItem;
     use std::{borrow::Cow, io::BufRead, process::Command};
-    use tracing::debug;
+    use tracing::{debug, trace};
 
     pub(super) fn query_beet(
         filters: impl Iterator<Item = String>,
@@ -736,11 +763,17 @@ mod todo_move_to_a_beet_lib {
 
         debug!("spawn `beet` command");
 
-        let output = Command::new("beet")
+        let mut command = Command::new("beet");
+        command
+            //
             .arg("ls")
             .arg("-f")
             .arg("$id=$path")
-            .args(filters)
+            .args(filters);
+
+        trace!(?command);
+
+        let output = command
             .output()
             .map_err(ErrorKind::Spawn)
             .map_err(make_error)?;
