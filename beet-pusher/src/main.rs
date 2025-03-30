@@ -291,8 +291,12 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
             .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
             .set_keep_history(5);
 
-        let action =
-            vlc_http::goal::Change::set_playlist_query_matched(target, self.client.state.get_ref());
+        let action = self
+            .client
+            .state
+            .build_plan()
+            .set_playlist_and_query_matched(target);
+
         let output = self.complete_plan(action)?;
         let output_len = output.len();
         if output_len < self.determined.len() {

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{
     query_playback::QueryPlayback, ClientState, Error, Plan, PlanConstructor, PlaybackMode, Step,
@@ -77,7 +77,7 @@ mod tests {
     use test_log::test;
 
     fn plan<'a>(mode: PlaybackMode, state: &ClientState) -> impl Plan<Output<'a> = ()> + 'static {
-        Change::PlaybackMode(mode).into_plan(state.get_ref())
+        state.build_plan().apply(Change::PlaybackMode(mode))
     }
 
     trait ResultExt<T, E> {

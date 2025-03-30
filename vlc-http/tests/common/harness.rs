@@ -1,10 +1,10 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::Model;
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
 use tracing::error;
-use vlc_http::{client_state::ClientStateSequence, goal::Step, ClientState, Endpoint, Plan};
+use vlc_http::{client_state::PlanBuilder, goal::Step, ClientState, Endpoint, Plan};
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
     let mut runner = Runner::default();
@@ -40,7 +40,7 @@ struct Runner {
     action_step_limit: Option<u32>,
     action_ignored_endpoints: VecDeque<Endpoint>,
     action_pending: Option<ActionPending>,
-    first_cache_instant: Option<ClientStateSequence>,
+    first_cache_instant: Option<PlanBuilder<'static>>,
 }
 
 #[derive(Debug)]
@@ -72,10 +72,11 @@ impl Runner {
             } => {
                 self.set_action_pending_or_bail(
                     line,
-                    ActionPending::ItemsOutput(vlc_http::Change::set_playlist_query_matched(
-                        action_query.into(),
-                        self.client_state.get_ref(),
-                    )),
+                    ActionPending::ItemsOutput(
+                        self.client_state
+                            .build_plan()
+                            .set_playlist_and_query_matched(action_query.into()),
+                    ),
                 );
                 self.run_pending_action(line);
             }
@@ -83,21 +84,16 @@ impl Runner {
                 action,
                 extend_cache,
             } => {
-                let mut client_state_ref = self.client_state.get_ref();
-                if extend_cache {
-                    client_state_ref = client_state_ref
-                        .assume_cache_valid_since(
-                            self.first_cache_instant
-                                .expect("first action cannot use extend_cache"),
-                        )
-                        .expect("non-singleton client_state");
-                }
+                let plan_builder = if extend_cache {
+                    self.first_cache_instant
+                        .expect("first action cannot use extend_cache")
+                } else {
+                    self.client_state.build_plan()
+                };
 
                 self.set_action_pending_or_bail(
                     line,
-                    ActionPending::NoOutput(
-                        vlc_http::Change::from(action).into_plan(client_state_ref),
-                    ),
+                    ActionPending::NoOutput(plan_builder.apply(vlc_http::Change::from(action))),
                 );
                 self.run_pending_action(line);
             }
@@ -187,6 +183,11 @@ impl Runner {
                 _ => {}
             }
 
+            if self.first_cache_instant.is_none() {
+                self.first_cache_instant =
+                    Some(self.client_state.assume_cache_valid_for_later_building());
+            }
+
             let endpoint = match pollable.next(&self.client_state) {
                 Ok(Step::Need(endpoint)) => endpoint,
                 Ok(Step::Done(output)) => {
@@ -198,13 +199,9 @@ impl Runner {
                     panic!("invalid state for {line:?}: non-singleton client_state")
                 }
             };
-            let previous_cache_instant = self
-                .model_logger
-                .update_for(endpoint, &mut self.client_state);
 
-            if self.first_cache_instant.is_none() {
-                self.first_cache_instant = Some(previous_cache_instant);
-            }
+            self.model_logger
+                .update_for(endpoint, &mut self.client_state);
 
             iter_count += 1;
         }

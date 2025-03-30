@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use vlc_http::{goal::Step, ClientState, Plan as _};
 
@@ -42,7 +42,9 @@ impl Model {
     }
     pub fn request(&mut self, endpoint: &str) -> String {
         let dummy_state = ClientState::new();
-        let Step::Need(playlist) = vlc_http::Change::query_playlist(dummy_state.get_ref())
+        let Step::Need(playlist) = dummy_state
+            .build_plan()
+            .query_playlist()
             .next(&dummy_state)
             .expect("singleton dummy_state")
         else {
@@ -50,7 +52,9 @@ impl Model {
         };
         let playlist = playlist.get_path_and_query();
 
-        let Step::Need(playback) = vlc_http::Change::query_playback(dummy_state.get_ref())
+        let Step::Need(playback) = dummy_state
+            .build_plan()
+            .query_playback()
             .next(&dummy_state)
             .expect("singleton dummy_state")
         else {

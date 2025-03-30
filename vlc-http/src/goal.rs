@@ -3,7 +3,7 @@
 //! High-level actions for VLC, requiring multiple steps to reach the desired state
 
 use crate::{
-    client_state::{ClientStateRef, ClientStateSequence, InvalidClientInstance, Sequence},
+    client_state::{ClientStateSequence, InvalidClientInstance, PlanBuilder, Sequence},
     response, ClientState, Endpoint,
 };
 
@@ -18,20 +18,15 @@ mod builders {
         playlist_items, query_playback::QueryPlayback, query_playlist::QueryPlaylist, ActionPlan,
         ActionQuerySetItems, Change, PlanConstructor as _, TargetPlaylistItems,
     };
-    use crate::{goal::playback_mode, ClientState};
+    use crate::{client_state::PlanBuilder, goal::playback_mode};
 
-    // TODO change to `PlanBuilder<'a>` (used to be ClientStateRef<'_>), with functions
-    // - `ClientState::build_plan(&self) -> PlanBuilder<'_>` and
-    // - `ClientState::assume_cache_valid_for_later_building(&self) -> PlanBuilder<'static>` with documentation
-    //   about how this can cause plans (and especially queries) to blindly use stale data.
-    //   `build_plan()` is recommended for ensuring that new data is fetched for each plan
-    impl ClientState {
+    impl PlanBuilder<'_> {
         /// Creates a [`Plan`](`super::Plan`) to query the playlist items
-        pub fn query_playlist(&self) -> QueryPlaylist {
+        pub fn query_playlist(self) -> QueryPlaylist {
             QueryPlaylist::new((), self.get_sequence())
         }
         /// Creates a [`Plan`](`super::Plan`) to query the playback status
-        pub fn query_playback(&self) -> QueryPlayback {
+        pub fn query_playback(self) -> QueryPlayback {
             QueryPlayback::new((), self.get_sequence())
         }
         /// Returns an endpoint source for setting the `playlist_items` and querying matched items after
@@ -40,14 +35,14 @@ mod builders {
         /// Output items will be items from a subset of the original target if playing desired items.
         /// The intended use is to advance a "want to play" list based on playback progress.
         pub fn set_playlist_and_query_matched(
-            &self,
+            self,
             target: TargetPlaylistItems,
         ) -> ActionQuerySetItems {
             let inner = playlist_items::Update::new(target, self.get_sequence());
             ActionQuerySetItems(inner)
         }
         /// Creates a [`Plan`](`super::Plan`) to apply the desired change
-        pub fn apply(&self, change: Change) -> ActionPlan {
+        pub fn apply(self, change: Change) -> ActionPlan {
             use super::ActionPlanInner as Inner;
             let inner = match change {
                 Change::PlaybackMode(mode) => {
@@ -65,7 +60,7 @@ mod builders {
 /// High-level change to VLC state (dynamic API calls depending on the current state), with no output.
 /// (think `Result<(), Error>`)
 ///
-/// Used with [`ClientState::apply`] to create a [`Plan`] to execute.
+/// Used with [`PlanBuilder::apply`] to create a [`Plan`] to execute.
 ///
 /// See also: [`Command`](`crate::Command`)s for simple changes that do not rely on the current
 /// client state.
@@ -187,18 +182,18 @@ pub struct ActionQuerySetItems(playlist_items::Update);
 
 impl Change {
     /// Returns an endpoint source for querying the playlist info
-    #[deprecated = "use the ClientState function instead"]
+    #[deprecated = "use the PlanBuilder function instead: PlanBuilder::query_playlist"]
     #[must_use]
     pub fn query_playlist<'a>(
-        state: ClientStateRef<'_>,
+        state: PlanBuilder<'_>,
     ) -> impl Plan<Output<'a> = &'a [response::playlist::Item]> + 'static {
         query_playlist::QueryPlaylist::new((), state.get_sequence())
     }
     /// Returns an endpoint source for querying the playlist info
-    #[deprecated = "use the ClientState function instead"]
+    #[deprecated = "use the PlanBuilder function instead: PlanBuilder::query_playback"]
     #[must_use]
     pub fn query_playback<'a>(
-        state: ClientStateRef<'_>,
+        state: PlanBuilder<'_>,
     ) -> impl Plan<Output<'a> = &'a response::PlaybackStatus> + 'static {
         query_playback::QueryPlayback::new((), state.get_sequence())
     }
@@ -207,17 +202,17 @@ impl Change {
     ///
     /// Output items will be items from a subset of the original target if playing desired items.
     /// The intended use is to advance a "want to play" list based on playback progress.
-    #[deprecated = "use the ClientState function instead"]
+    #[deprecated = "use the PlanBuilder function instead: PlanBuilder::set_playlist_and_query_matched"]
     pub fn set_playlist_query_matched(
         target: TargetPlaylistItems,
-        state: ClientStateRef<'_>,
+        state: PlanBuilder<'_>,
     ) -> ActionQuerySetItems {
         let inner = playlist_items::Update::new(target, state.get_sequence());
         ActionQuerySetItems(inner)
     }
     /// Converts the action into a [`Plan`] with empty output
-    #[deprecated = "use the ClientState function instead"]
-    pub fn into_plan(self, state: ClientStateRef<'_>) -> ActionPlan {
+    #[deprecated = "use the PlanBuilder function instead: PlanBuilder::apply"]
+    pub fn into_plan(self, state: PlanBuilder<'_>) -> ActionPlan {
         use ActionPlanInner as Inner;
         let inner = match self {
             Change::PlaybackMode(mode) => {

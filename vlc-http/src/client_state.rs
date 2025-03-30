@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Types to track the state of a specific VLC instance
 
 use self::sequenced::Sequenced;
@@ -28,7 +28,7 @@ impl ClientState {
     /// Updates the state for the specified [`Response`]
     ///
     /// Returns the [`ClientStateSequence`] for the previous cache instant (for use in
-    /// [`ClientStateRef::assume_cache_valid_since()`].
+    /// [`PlanBuilder::assume_cache_valid_since()`].
     ///
     /// This allows [`Plan`](`crate::Plan`)s to progress to return a result, or a new
     /// [`Endpoint`](`crate::Endpoint`)
@@ -46,9 +46,33 @@ impl ClientState {
     }
 
     /// Returns a handle for use in actions
-    #[deprecated = "build Plans directly from ClientState methods"]
-    pub fn get_ref(&self) -> ClientStateRef<'_> {
-        ClientStateRef {
+    #[deprecated = "build Plans directly from ClientState::build_plan methods (e.g. apply)"]
+    pub fn get_ref(&self) -> PlanBuilder<'_> {
+        self.build_plan_unchecked()
+    }
+    /// Returns a short-lived builder referencing the current [`ClientState`]
+    ///
+    /// The reference is needed to ensure any cached data used in building the
+    /// [`Plan`](`super::Plan`)
+    /// is not invalidated by a later [`ClientState::update`]
+    pub fn build_plan(&self) -> PlanBuilder<'_> {
+        self.build_plan_unchecked()
+    }
+    /// Returns a builder referencing an old/outdated [`ClientState`]
+    ///
+    /// <div class="warning">
+    /// WARNING: The builder from this function generates plans that can blindly
+    /// use stale data. Query plans from this builder are free to return cached
+    /// data, without performing any real query.
+    /// </div>
+    ///
+    /// Use [`build_plan()`](`Self::build_plan`) instead, to ensure that new
+    /// data is fetched for each plan.
+    pub fn assume_cache_valid_for_later_building(&self) -> PlanBuilder<'static> {
+        self.build_plan_unchecked()
+    }
+    fn build_plan_unchecked(&self) -> PlanBuilder<'static> {
+        PlanBuilder {
             _phantom: std::marker::PhantomData,
             sequence: self.get_sequence(),
         }
@@ -89,19 +113,19 @@ impl Default for ClientState {
 // TODO: the above note seems like a code smell... why not directly ask the State to create a `Plan`?
 #[derive(Clone, Copy)]
 #[must_use]
-#[expect(clippy::module_name_repetitions)]
-pub struct ClientStateRef<'a> {
+pub struct PlanBuilder<'a> {
     // NOTE: This artificial lifetime constrains users to guide them to keep short-lived refs
     _phantom: std::marker::PhantomData<&'a ()>,
     sequence: ClientStateSequence,
 }
-impl ClientStateRef<'_> {
+impl PlanBuilder<'_> {
     /// The returned reference will start the [`crate::Plan`] as if it was created before the specified
     /// [`ClientStateSequence`] instant.
     ///
     /// # Errors
     /// Returns an error if the specified [`ClientStateSequence`] is from a different instance from
     /// the current [`ClientState`]
+    #[deprecated = "use the ClientState method instead: ClientState::assume_cache_valid_for_later_building"]
     pub fn assume_cache_valid_since(
         mut self,
         other: ClientStateSequence,
@@ -115,9 +139,10 @@ impl ClientStateRef<'_> {
 }
 
 /// Instant in the lifetime of the [`ClientState`] cache, for use in
-/// [`ClientStateRef::assume_cache_valid_since()`]
+/// [`PlanBuilder::assume_cache_valid_since()`]
 #[derive(Clone, Copy, Debug)]
 #[expect(clippy::module_name_repetitions)]
+// #[deprecated = "use ClientState::assume_cache_valid_for_later_building"] // TODO pub(crate)
 pub struct ClientStateSequence {
     playlist_info: Sequence,
     playback_status: Sequence,
@@ -147,9 +172,9 @@ fn try_min_seq(lhs: Sequence, rhs: Sequence) -> Result<Sequence, InvalidClientIn
     })
 }
 
-impl std::fmt::Debug for ClientStateRef<'_> {
+impl std::fmt::Debug for PlanBuilder<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientStateRef")
+        f.debug_struct("PlanBuilder")
             .field("sequence", &self.sequence)
             .finish()
     }

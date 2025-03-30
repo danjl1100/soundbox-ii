@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Proof-of-concept for using the [`vlc_http`] crate without an async runtime
 //!
 //! For the experiment to succeed, this binary crate should be simple and tiny
@@ -160,9 +160,7 @@ impl Client {
             CliAction::Query {
                 query: Query::Playlist,
             } => {
-                let result = self.complete_plan(vlc_http::Change::query_playlist(
-                    self.client_state.get_ref(),
-                ))?;
+                let result = self.complete_plan(self.client_state.build_plan().query_playlist())?;
                 dbg!(result);
 
                 Ok(None)
@@ -170,9 +168,7 @@ impl Client {
             CliAction::Query {
                 query: Query::Playback,
             } => {
-                let result = self.complete_plan(vlc_http::Change::query_playback(
-                    self.client_state.get_ref(),
-                ))?;
+                let result = self.complete_plan(self.client_state.build_plan().query_playback())?;
                 dbg!(result);
 
                 Ok(None)
@@ -180,17 +176,20 @@ impl Client {
             CliAction::Query {
                 query: Query::PlaylistSet(target),
             } => {
-                let result = self.complete_plan(vlc_http::Change::set_playlist_query_matched(
-                    target.into(),
-                    self.client_state.get_ref(),
-                ))?;
+                let result = self.complete_plan(
+                    self.client_state
+                        .build_plan()
+                        .set_playlist_and_query_matched(target.into()),
+                )?;
                 dbg!(result);
 
                 Ok(None)
             }
             CliAction::Action { action } => {
                 self.complete_plan(
-                    vlc_http::Change::from(action).into_plan(self.client_state.get_ref()),
+                    self.client_state
+                        .build_plan()
+                        .apply(vlc_http::Change::from(action)),
                 )?;
 
                 Ok(None)

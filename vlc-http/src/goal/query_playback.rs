@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{response, ClientState, Endpoint, Error, Plan, PlanConstructor, Sequence, Step};
 use crate::client_state::ClientStateSequence;
@@ -37,7 +37,7 @@ impl PlanConstructor for QueryPlayback {
 #[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{Change, Response};
+    use crate::Response;
     use std::str::FromStr as _;
     use test_log::test;
 
@@ -72,8 +72,8 @@ mod tests {
     fn caches() {
         let mut state = ClientState::new();
 
-        let mut query1 = Change::query_playback(state.get_ref());
-        let mut query2 = Change::query_playback(state.get_ref());
+        let mut query1 = state.build_plan().query_playback();
+        let mut query2 = state.build_plan().query_playback();
 
         // both request `status.json`
         insta::assert_ron_snapshot!(query1.next(&state).unwrap(), @r###"
@@ -150,7 +150,7 @@ mod tests {
         // initialize state before creating query
         state.update(Response::from_str(RESPONSE_STATUS_SIMPLE).expect("valid response"));
 
-        let mut query = Change::query_playback(state.get_ref());
+        let mut query = state.build_plan().query_playback();
 
         insta::assert_ron_snapshot!(query.next(&state).unwrap(), @r###"
         Need(Endpoint(
