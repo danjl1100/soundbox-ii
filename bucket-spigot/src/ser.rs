@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmd`]s
 
@@ -184,7 +184,7 @@ impl<T, U> Network<T, U> {
             };
 
             let path = {
-                if parent_weights.map_or(true, |w| !w.is_unity()) {
+                if parent_weights.is_none_or(|w| !w.is_unity()) {
                     reuse_path! {
                         dest.visit(&ModifyCmd::SetWeight {
                             path,

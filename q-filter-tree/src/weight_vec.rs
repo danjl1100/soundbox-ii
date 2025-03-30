@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Collection types for weighted items
 //!
 //! See [`OrderVec`] for details of usage.
@@ -65,7 +65,7 @@ mod weights {
         #[must_use]
         pub fn iter(&self) -> Box<dyn Iterator<Item = Weight> + '_> {
             match self {
-                Self::Equal(len) => Box::new(std::iter::repeat(Self::EQUAL_WEIGHT).take(*len)),
+                Self::Equal(len) => Box::new(std::iter::repeat_n(Self::EQUAL_WEIGHT, *len)),
                 Self::Some(weights) => Box::new(weights.iter().copied()),
             }
         }

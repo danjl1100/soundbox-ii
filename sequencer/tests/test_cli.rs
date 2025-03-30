@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -28,7 +28,6 @@ where
     ];
     let args = args
         .into_iter()
-        .map(String::from)
         .chain(extra_args.into_iter().map(Into::into));
 
     let bin_sequencer = PathBuf::from(env!("CARGO_BIN_EXE_sequencer"));

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Tracks iteration, along with a breadcrumb trail to the root node
 
 use crate::{
@@ -107,6 +107,7 @@ where
     where
         U: FnMut(&[B], NodePathRefTyped<'_>, NodeRefMut<'_, '_, T, F>) -> Result<(), E>,
     {
+        #[expect(clippy::needless_continue)]
         while let Some(result) = self.with_next(&mut consume_fn) {
             match result {
                 Err(err) => return Err(err),

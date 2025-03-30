@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Location-dependent identifier for nodes
 
 use serde::Deserialize;
@@ -64,6 +64,7 @@ impl Path {
 
         let mut this = self.0.iter_mut().peekable();
         let mut other = removed.iter().peekable();
+        #[expect(clippy::needless_continue)]
         while let Some((this_elem, other_elem)) = this.next().zip(other.next()) {
             let other_ended = other.peek().is_none();
             match other_elem.cmp(this_elem) {

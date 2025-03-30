@@ -1,9 +1,9 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Iterator functionality for [`Tree`]
 //!
 //! See specific functions for details:
 //!  * Mutable iterators - [`Tree::enumerate_mut`], [`Tree::enumerate_mut_subtree`],
-//!      [`Tree::enumerate_mut_filters`], and [`Tree::enumerate_mut_subtree_filters`]
+//!    [`Tree::enumerate_mut_filters`], and [`Tree::enumerate_mut_subtree_filters`]
 //!  * Shared/reference iterators - [`Tree::iter_ids`] and [`Tree::enumerate`]
 #![allow(clippy::module_name_repetitions)]
 

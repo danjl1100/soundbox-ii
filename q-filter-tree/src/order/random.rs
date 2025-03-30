@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Orderer, OrdererImpl, Weights};
 use rand_chacha::ChaCha8Rng;
@@ -120,9 +120,7 @@ mod tests {
     fn verify_change_all_zero_yields_none() {
         const SEED: u64 = 243_597_435;
         const N: usize = 100;
-        let mut weight_vec = std::iter::repeat((1, ()))
-            .take(50)
-            .collect::<WeightVec<_>>();
+        let mut weight_vec = std::iter::repeat_n((1, ()), 50).collect::<WeightVec<_>>();
         let weights = weight_vec.weights();
         let mut s = State::from(Random::from_seed(SEED, weights));
         for _ in 0..N {
@@ -153,7 +151,7 @@ mod tests {
     fn verify_removed_changes_current() {
         const SEED: u64 = 651_874_963;
         const N: usize = 100;
-        let mut weight_vec = std::iter::repeat((1, ())).take(5).collect::<WeightVec<_>>();
+        let mut weight_vec = std::iter::repeat_n((1, ()), 5).collect::<WeightVec<_>>();
         let weights = weight_vec.weights();
         let mut s = State::from(Random::from_seed(SEED, weights));
         // sees all items
@@ -185,7 +183,7 @@ mod tests {
     #[test]
     fn verify_changed_to_zero_changes_current() {
         const SEED: u64 = 651_874_963;
-        let mut weight_vec = std::iter::repeat((1, ())).take(5).collect::<WeightVec<_>>();
+        let mut weight_vec = std::iter::repeat_n((1, ()), 5).collect::<WeightVec<_>>();
         let weights = weight_vec.weights();
         let mut s = State::from(Random::from_seed(SEED, weights));
         //

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use self::rand_exact::choose_index;
 use super::RandResult;
@@ -114,7 +114,7 @@ mod rand_exact {
             return Ok(0);
         };
         let required_bytes = {
-            let required_bytes_ceil = (required_bits.get() + 7) / 8;
+            let required_bytes_ceil = required_bits.get().div_ceil(8);
             let required_bytes =
                 usize::try_from(required_bytes_ceil).expect("ilog2(u32) should fit in usize");
             NonZeroUsize::new(required_bytes)
@@ -269,7 +269,7 @@ impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
         if items_count > self.prev_items_count {
             // add new indices
             let new_elems = (self.prev_items_count..items_count)
-                .flat_map(|index| std::iter::repeat(index).take(weights.index_as_usize(index)));
+                .flat_map(|index| std::iter::repeat_n(index, weights.index_as_usize(index)));
 
             self.indices.extend(new_elems);
         }

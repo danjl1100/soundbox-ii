@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{
     arb_rng::{PanicRng, RngHolder},
@@ -178,7 +178,7 @@ where
                         existing_line: existing_line.to_owned(),
                         existing_line_number,
                     }));
-                };
+                }
                 continue;
             }
             if cmd.is_empty() || cmd.starts_with('#') {
@@ -213,7 +213,7 @@ where
                 line_number: expect_line_number,
                 kind: ScriptErrorKind::ExpectErrorMissingCommand,
             });
-        };
+        }
 
         let rng_remaining = rng_holder.get_bytes();
         if !rng_remaining.is_empty() {

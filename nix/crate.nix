@@ -97,9 +97,10 @@ in rec {
     my-crate-clippy = craneLib.cargoClippy (commonArgs
       // {
         inherit cargoArtifacts;
-        # deny warnings (kinda strict, but let's see how it goes)
-        cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-        # cargoClippyExtraArgs = "--all-targets";
+        # NOTE: NEVER deny warnings, as it breaks when "expect"-ing new lints,
+        #       which the older flake compiler may not trigger.
+        # cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+        cargoClippyExtraArgs = "--all-targets";
       });
 
     # Check formatting

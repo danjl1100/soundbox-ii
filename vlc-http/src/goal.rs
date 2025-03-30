@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 //! High-level actions for VLC, requiring multiple steps to reach the desired state
 
@@ -208,7 +208,6 @@ impl Change {
     /// Output items will be items from a subset of the original target if playing desired items.
     /// The intended use is to advance a "want to play" list based on playback progress.
     #[deprecated = "use the ClientState function instead"]
-    #[must_use]
     pub fn set_playlist_query_matched(
         target: TargetPlaylistItems,
         state: ClientStateRef<'_>,
@@ -218,7 +217,6 @@ impl Change {
     }
     /// Converts the action into a [`Plan`] with empty output
     #[deprecated = "use the ClientState function instead"]
-    #[must_use]
     pub fn into_plan(self, state: ClientStateRef<'_>) -> ActionPlan {
         use ActionPlanInner as Inner;
         let inner = match self {

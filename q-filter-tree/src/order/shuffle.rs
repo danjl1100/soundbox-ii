@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Orderer, OrdererImpl, Weights};
 use rand_chacha::ChaCha8Rng;
@@ -33,7 +33,7 @@ impl Shuffle {
             .iter()
             .map(|weight| usize::try_from(weight).expect("weight fit into usize"))
             .enumerate()
-            .flat_map(|(idx, weight)| std::iter::repeat(idx).take(weight))
+            .flat_map(|(idx, weight)| std::iter::repeat_n(idx, weight))
             .collect();
         idxs.shuffle(&mut self.rng);
         self.remaining_shuffled = idxs;
@@ -182,7 +182,7 @@ mod tests {
                         .weights()
                         .iter()
                         .enumerate()
-                        .flat_map(|(idx, count)| std::iter::repeat(idx).take(count as usize))
+                        .flat_map(|(idx, count)| std::iter::repeat_n(idx, count as usize))
                         .collect();
                     if first {
                         assert_eq!(ids, vec![0, 1, 1, 2, 2, 3, 3, 3, 3, 3]);

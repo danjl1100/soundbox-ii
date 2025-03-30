@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Utilities for managing concurrent tasks
 
 use shared::{Never, Shutdown};
@@ -38,9 +38,7 @@ impl ShutdownReceiver {
     }
     /// Asynchronous wait for Shutdown
     pub async fn wait_for_shutdown(mut self, task_name: &'static str) {
-        while self.check_shutdown(task_name).await.is_none() {
-            continue;
-        }
+        while self.check_shutdown(task_name).await.is_none() {}
     }
 }
 

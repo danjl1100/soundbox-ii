@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use tracing::{debug, trace, trace_span};
 
@@ -43,6 +43,7 @@ where
         if target_first == existing_first {
             let mut matched_subset = &existing[0..1]; // first matches (base case)
             trace!(?target_first, "match found");
+            #[expect(clippy::needless_continue)]
             let next = loop {
                 let Some(target_elem) = target_iter.next() else {
                     if let Some((existing_index, existing_elem)) = existing_iter.next() {
