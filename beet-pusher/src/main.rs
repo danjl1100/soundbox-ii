@@ -83,10 +83,7 @@ fn main() -> eyre::Result<()> {
     let mut pusher = BeetPusher {
         spigot,
         rng,
-        client: Client {
-            state,
-            last_state_sequence: None,
-        },
+        client: Client { state },
         http_runner,
         determined: Determined::default(),
         config: Config { base_url },
@@ -224,7 +221,6 @@ struct BeetPusher<'a, R, F> {
 }
 struct Client {
     state: vlc_http::ClientState,
-    last_state_sequence: Option<vlc_http::client_state::ClientStateSequence>,
 }
 struct Config {
     base_url: BaseUrl,
@@ -235,15 +231,12 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
         T: vlc_http::Plan,
     {
         const MAX_ENDPOINTS_PER_ACTION: usize = 100;
-        let (output, seq) = vlc_http::sync::complete_plan(
+        let output = vlc_http::sync::complete_plan(
             query,
             &mut self.client.state,
             &mut self.http_runner,
             MAX_ENDPOINTS_PER_ACTION,
         )?;
-        if let Some(seq) = seq {
-            self.client.last_state_sequence = Some(seq);
-        }
         Ok(output)
     }
     fn fill_determined(&mut self) -> eyre::Result<()> {
@@ -332,11 +325,7 @@ impl<R, F> std::fmt::Debug for BeetPusher<'_, R, F> {
         let Self {
             spigot,
             rng: _,
-            client:
-                Client {
-                    state,
-                    last_state_sequence,
-                },
+            client: Client { state },
             http_runner: _,
             determined,
             config: Config { base_url },
@@ -345,7 +334,6 @@ impl<R, F> std::fmt::Debug for BeetPusher<'_, R, F> {
         f.debug_struct("BeetPusher")
             .field("spigot", &DebugAsDisplay(spigot.view_table_default()))
             .field("client.state", state)
-            .field("client.last_state_sequence", last_state_sequence)
             .field("determined.items", &determined.items())
             .field("determined.urls", &determined.urls())
             .field("config.base_url", base_url)

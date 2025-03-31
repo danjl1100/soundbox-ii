@@ -27,29 +27,19 @@ impl ClientState {
 
     /// Updates the state for the specified [`Response`]
     ///
-    /// Returns the [`ClientStateSequence`] for the previous cache instant (for use in
-    /// [`PlanBuilder::assume_cache_valid_since()`].
-    ///
     /// This allows [`Plan`](`crate::Plan`)s to progress to return a result, or a new
     /// [`Endpoint`](`crate::Endpoint`)
-    pub fn update(&mut self, response: Response) -> ClientStateSequence {
-        let previous_cache_instant = self.get_sequence();
+    pub fn update(&mut self, response: Response) {
         match response.inner {
             crate::response::ResponseInner::PlaylistInfo(new) => {
-                let _prev = self.playlist_info.replace(new);
+                let _ = self.playlist_info.replace(new);
             }
             crate::response::ResponseInner::PlaybackStatus(new) => {
-                let _prev = self.playback_status.replace(Some(new));
+                let _ = self.playback_status.replace(Some(new));
             }
         }
-        previous_cache_instant
     }
 
-    /// Returns a handle for use in actions
-    #[deprecated = "build Plans directly from ClientState::build_plan methods (e.g. apply)"]
-    pub fn get_ref(&self) -> PlanBuilder<'_> {
-        self.build_plan_unchecked()
-    }
     /// Returns a short-lived builder referencing the current [`ClientState`]
     ///
     /// The reference is needed to ensure any cached data used in building the
@@ -107,10 +97,11 @@ impl Default for ClientState {
 
 /// Reference to a [`ClientState`] for use in creating an action
 ///
+/// Created by [`ClientState::build_plan`]
+///
 /// See [`crate::goal`] and related functions
 ///
 /// NOTE: This struct is intended to be short-lived, created right when needed to create an action
-// TODO: the above note seems like a code smell... why not directly ask the State to create a `Plan`?
 #[derive(Clone, Copy)]
 #[must_use]
 pub struct PlanBuilder<'a> {
@@ -119,20 +110,6 @@ pub struct PlanBuilder<'a> {
     sequence: ClientStateSequence,
 }
 impl PlanBuilder<'_> {
-    /// The returned reference will start the [`crate::Plan`] as if it was created before the specified
-    /// [`ClientStateSequence`] instant.
-    ///
-    /// # Errors
-    /// Returns an error if the specified [`ClientStateSequence`] is from a different instance from
-    /// the current [`ClientState`]
-    #[deprecated = "use the ClientState method instead: ClientState::assume_cache_valid_for_later_building"]
-    pub fn assume_cache_valid_since(
-        mut self,
-        other: ClientStateSequence,
-    ) -> Result<Self, InvalidClientInstance> {
-        self.sequence = self.sequence.try_min(other)?;
-        Ok(self)
-    }
     pub(crate) fn get_sequence(self) -> ClientStateSequence {
         self.sequence
     }
@@ -141,9 +118,7 @@ impl PlanBuilder<'_> {
 /// Instant in the lifetime of the [`ClientState`] cache, for use in
 /// [`PlanBuilder::assume_cache_valid_since()`]
 #[derive(Clone, Copy, Debug)]
-#[expect(clippy::module_name_repetitions)]
-// #[deprecated = "use ClientState::assume_cache_valid_for_later_building"] // TODO pub(crate)
-pub struct ClientStateSequence {
+pub(crate) struct ClientStateSequence {
     playlist_info: Sequence,
     playback_status: Sequence,
 }
@@ -154,23 +129,23 @@ impl ClientStateSequence {
     pub(crate) fn playback_status(self) -> Sequence {
         self.playback_status
     }
-    fn try_min(self, other: Self) -> Result<Self, InvalidClientInstance> {
-        let Self {
-            playlist_info,
-            playback_status,
-        } = self;
-        Ok(Self {
-            playlist_info: try_min_seq(playlist_info, other.playlist_info)?,
-            playback_status: try_min_seq(playback_status, other.playback_status)?,
-        })
-    }
+    // fn try_min(self, other: Self) -> Result<Self, InvalidClientInstance> {
+    //     let Self {
+    //         playlist_info,
+    //         playback_status,
+    //     } = self;
+    //     Ok(Self {
+    //         playlist_info: try_min_seq(playlist_info, other.playlist_info)?,
+    //         playback_status: try_min_seq(playback_status, other.playback_status)?,
+    //     })
+    // }
 }
-fn try_min_seq(lhs: Sequence, rhs: Sequence) -> Result<Sequence, InvalidClientInstance> {
-    lhs.min(rhs).ok_or(InvalidClientInstance {
-        expected: lhs,
-        found: rhs,
-    })
-}
+// fn try_min_seq(lhs: Sequence, rhs: Sequence) -> Result<Sequence, InvalidClientInstance> {
+//     lhs.min(rhs).ok_or(InvalidClientInstance {
+//         expected: lhs,
+//         found: rhs,
+//     })
+// }
 
 impl std::fmt::Debug for PlanBuilder<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -265,7 +265,7 @@ mod model_logger {
     use super::Model;
     use std::str::FromStr;
     use tracing::info;
-    use vlc_http::{client_state::ClientStateSequence, ClientState, Endpoint, Response};
+    use vlc_http::{ClientState, Endpoint, Response};
 
     #[derive(Debug, PartialEq, Eq, serde::Serialize)]
     pub enum LogEntry {
@@ -284,11 +284,7 @@ mod model_logger {
         log: Vec<LogEntry>,
     }
     impl ModelLogger {
-        pub fn update_for(
-            &mut self,
-            endpoint: Endpoint,
-            target: &mut ClientState,
-        ) -> ClientStateSequence {
+        pub fn update_for(&mut self, endpoint: Endpoint, target: &mut ClientState) {
             const MAX_LOG_COUNT: usize = 50;
             const MAX_REPEAT_COUNT: usize = 10;
 
@@ -302,7 +298,7 @@ mod model_logger {
                 Err(e) => panic!("invalid response from model {response_str:?}: {e}"),
             };
 
-            let client_state_sequence = target.update(response.clone());
+            target.update(response.clone());
 
             let log_entry = LogEntry::Endpoint(endpoint, self.model.clone());
 
@@ -321,8 +317,6 @@ mod model_logger {
             self.log.push(log_entry);
 
             assert!(self.log.len() <= MAX_LOG_COUNT, "Log length is too long");
-
-            client_state_sequence
         }
         pub fn log_endpoint_only(&mut self, endpoint: Endpoint) {
             self.log.push(LogEntry::HarnessEndpoint(endpoint));

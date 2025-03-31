@@ -74,14 +74,14 @@ mod sequence {
                 count: count + 1,
             }
         }
-        pub fn min(self, other: Self) -> Option<Self> {
-            self.try_cmp(&other).map(|ord| match ord {
-                // self <= other
-                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => self,
-                // self > other
-                std::cmp::Ordering::Greater => other,
-            })
-        }
+        // pub fn min(self, other: Self) -> Option<Self> {
+        //     self.try_cmp(&other).map(|ord| match ord {
+        //         // self <= other
+        //         std::cmp::Ordering::Less | std::cmp::Ordering::Equal => self,
+        //         // self > other
+        //         std::cmp::Ordering::Greater => other,
+        //     })
+        // }
         // NOTE DO NOT implement PartialOrd, this could be confusing for `None` result cases
         pub fn try_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
             let Self { instance, count } = *self;

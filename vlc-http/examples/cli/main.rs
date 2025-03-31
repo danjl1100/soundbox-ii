@@ -204,7 +204,7 @@ impl Client {
         eyre::Report: From<vlc_http::sync::Error<T, vlc_http::http_runner::ureq::Error>>,
     {
         const MAX_ITER_COUNT: usize = 100;
-        let (output, _seq) = vlc_http::sync::complete_plan(
+        let output = vlc_http::sync::complete_plan(
             plan,
             &mut self.client_state,
             &mut self.runner,

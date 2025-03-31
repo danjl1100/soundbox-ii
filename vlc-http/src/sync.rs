@@ -1,7 +1,7 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Convenience functions for [`Plan`]s in a synchronous (blocking) context
 
-use crate::{client_state::ClientStateSequence, goal::Step, ClientState, Endpoint, Plan, Response};
+use crate::{goal::Step, ClientState, Endpoint, Plan, Response};
 
 /// IO portion that resolves [`Endpoint`]s into the [`Response`]
 pub trait EndpointRequestor {
@@ -40,14 +40,13 @@ pub fn complete_plan<'a, T, E, F>(
     client_state: &'a mut ClientState,
     endpoint_caller: &mut F,
     max_iter_count: usize,
-) -> Result<(T::Output<'a>, Option<ClientStateSequence>), Error<T, E>>
+) -> Result<T::Output<'a>, Error<T, E>>
 where
     T: Plan,
     F: EndpointRequestor<Error = E>,
     Error<T, E>: std::error::Error,
 {
     let inner = |source: &mut T, client_state: &'a mut ClientState, endpoint_caller: &mut F| {
-        let mut last_state_sequence = None;
         // FIXME does a `loop` fix the borrowing issue? (currently duplicates final call to `next`)
         for _ in 0..max_iter_count {
             let Step::Need(endpoint) = source.next(client_state).map_err(ErrorKind::Poll)? else {
@@ -57,12 +56,10 @@ where
                 .request(endpoint)
                 .map_err(ErrorKind::EndpointFn)?;
 
-            let seq = client_state.update(response);
-
-            last_state_sequence = Some(seq);
+            client_state.update(response);
         }
         match source.next(client_state).map_err(ErrorKind::Poll)? {
-            Step::Done(output) => Ok((output, last_state_sequence)),
+            Step::Done(output) => Ok(output),
             Step::Need(next_endpoint) => Err(ErrorKind::IterationCountExceeded {
                 max_iter_count,
                 next_endpoint,
