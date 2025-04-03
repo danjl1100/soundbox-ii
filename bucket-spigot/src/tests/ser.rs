@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::script::NetworkStrings;
 use crate::{clap::ArgBounds, order::OrderType, path::Path, ModifyCmd, Network};
@@ -193,6 +193,49 @@ fn node_placement() -> eyre::Result<()> {
 
     Ok(())
 }
+
+// TODO
+// #[test]
+// fn node_filters() -> eyre::Result<()> {
+//     let network = NetworkStrings::from_commands_str(
+//         "
+//         add-bucket .
+//         add-joint .
+//
+//         set-filters .0 abc def
+//         set-filters .1 ghi jkl
+//         ",
+//     )?;
+//     network.check_ser(|cmds| {
+//         insta::assert_snapshot!(cmds_script(cmds), @r###"
+//         add-bucket .
+//         set-filters .0 "abc" "def"
+//         add-joint .
+//         set-filters .1 "ghi" "jkl"
+//         "###);
+//     });
+//
+//     Ok(())
+// }
+//
+// #[test]
+// fn node_items() -> eyre::Result<()> {
+//     let network = NetworkStrings::from_commands_str(
+//         "
+//         add-bucket .
+//
+//         fill-bucket .0 abc def
+//         ",
+//     )?;
+//     network.check_ser(|cmds| {
+//         insta::assert_snapshot!(cmds_script(cmds), @r###"
+//         add-bucket .
+//         fill-bucket .0 "abc" "def"
+//         "###);
+//     });
+//
+//     Ok(())
+// }
 
 #[test]
 fn node_order_type() -> eyre::Result<()> {

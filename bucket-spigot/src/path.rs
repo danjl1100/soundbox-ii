@@ -19,9 +19,10 @@ pub struct Path(
 );
 
 /// Borrow of a [`Path`]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(transparent)]
 #[allow(clippy::module_name_repetitions)]
-pub struct PathRef<'a>(&'a [usize]);
+pub struct PathRef<'a>(#[serde(serialize_with = "path_elems_serialize")] &'a [usize]);
 
 impl Path {
     /// Constructs an empty [`Path`]

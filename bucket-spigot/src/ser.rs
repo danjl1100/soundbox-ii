@@ -1,12 +1,13 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-//! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmd`]s
+//! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmdRef`]s
 
 use crate::{
-    order::OrderType, path::Path, traversal::TraversalElem, ModifyCmd, ModifyError, Network,
+    order::OrderType, path::Path, traversal::TraversalElem, ModifyCmd, ModifyCmdRef, ModifyError,
+    Network,
 };
 
-/// Visitor for [`ModifyCmd`] elements to serialize a [`Network`]
+/// Visitor for [`ModifyCmdRef`] elements to serialize a [`Network`]
 ///
 /// Inspired by and blanket implemented for [`serde::ser::SerializeSeq`]
 ///
@@ -17,11 +18,11 @@ pub(crate) trait Visitor<T, U> {
 
     /// Visit a command.
     ///
-    /// The implementor is responsible for cloning the [`ModifyCmd`] if needed for the usecase
+    /// The implementor is responsible for cloning the [`ModifyCmdRef`] if needed for the usecase
     ///
     /// # Errors
     /// Returns an error if the serialization fails
-    fn visit(&mut self, cmd: &ModifyCmd<T, U>) -> Result<(), Self::Error>;
+    fn visit(&mut self, cmd: ModifyCmdRef<'_, T, U>) -> Result<(), Self::Error>;
 
     /// Finish the visitor and return the result
     ///
@@ -32,31 +33,79 @@ pub(crate) trait Visitor<T, U> {
 
 mod vec_visitor {
     use super::Visitor;
-    use crate::ModifyCmd;
+    use crate::ModifyCmdRef;
 
     pub(super) enum Never {}
 
     /// Simple [`Visitor`] that clones the items into a [`Vec`]
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(super) struct VecVisitor<T, U>(Vec<ModifyCmd<T, U>>);
-    impl<T, U> Default for VecVisitor<T, U> {
-        fn default() -> Self {
-            Self(vec![])
+    pub(super) struct VecVisitor<T, U, V, F>
+    where
+        F: FnMut(ModifyCmdRef<'_, T, U>) -> V,
+    {
+        elems: Vec<V>,
+        map_fn: F,
+        _marker: std::marker::PhantomData<(T, U)>,
+    }
+
+    impl<T, U, V, F> VecVisitor<T, U, V, F>
+    where
+        F: FnMut(ModifyCmdRef<'_, T, U>) -> V,
+    {
+        pub(super) fn new(map_fn: F) -> Self {
+            Self {
+                elems: vec![],
+                map_fn,
+                _marker: std::marker::PhantomData,
+            }
         }
     }
-    impl<T, U> Visitor<T, U> for VecVisitor<T, U>
+    impl<T, U, V, F> Visitor<T, U> for VecVisitor<T, U, V, F>
     where
-        T: Clone,
-        U: Clone,
+        F: FnMut(ModifyCmdRef<'_, T, U>) -> V,
     {
-        type Ok = Vec<ModifyCmd<T, U>>;
+        type Ok = Vec<V>;
         type Error = Never;
-        fn visit(&mut self, cmd: &ModifyCmd<T, U>) -> Result<(), Never> {
-            self.0.push(cmd.clone());
+        fn visit(&mut self, cmd: ModifyCmdRef<'_, T, U>) -> Result<(), Never> {
+            let Self { elems, map_fn, .. } = self;
+            elems.push(map_fn(cmd));
             Ok(())
         }
-        fn finish(self) -> Result<Vec<ModifyCmd<T, U>>, Never> {
-            Ok(self.0)
+        fn finish(self) -> Result<Vec<V>, Never> {
+            let Self { elems, .. } = self;
+            Ok(elems)
+        }
+    }
+
+    impl<T, U, V, F> std::fmt::Debug for VecVisitor<T, U, V, F>
+    where
+        V: std::fmt::Debug,
+        F: std::fmt::Debug,
+        F: FnMut(ModifyCmdRef<'_, T, U>) -> V,
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("VecVisitor")
+                .field("elems", &self.elems)
+                .field("map_fn", &self.map_fn)
+                .finish()
+        }
+    }
+    impl<T, U, V, F> Clone for VecVisitor<T, U, V, F>
+    where
+        V: Clone,
+        F: Clone,
+        F: FnMut(ModifyCmdRef<'_, T, U>) -> V,
+    {
+        fn clone(&self) -> Self {
+            let Self {
+                elems,
+                map_fn,
+                _marker,
+            } = self;
+            Self {
+                elems: elems.clone(),
+                map_fn: map_fn.clone(),
+                _marker: std::marker::PhantomData,
+            }
         }
     }
 }
@@ -64,36 +113,33 @@ mod vec_visitor {
 impl<T, U, V, O, E> Visitor<T, U> for V
 where
     V: serde::ser::SerializeSeq<Ok = O, Error = E>,
-    ModifyCmd<T, U>: serde::Serialize,
+    for<'a> ModifyCmdRef<'a, T, U>: serde::Serialize,
 {
     type Ok = O;
     type Error = E;
-    fn visit(&mut self, cmd: &ModifyCmd<T, U>) -> Result<(), E> {
-        self.serialize_element(cmd)
+    fn visit(&mut self, cmd: ModifyCmdRef<'_, T, U>) -> Result<(), E> {
+        self.serialize_element(&cmd)
     }
     fn finish(self) -> Result<Self::Ok, Self::Error> {
         self.end()
     }
 }
 
-// TODO is this macro complexity worth it? (removes some `clones`). This may become more complex with `if`, etc.
-// NOTE add optimizations **after** the test passes
-macro_rules! reuse_path {
-    ($dest:ident . $method:ident ( &ModifyCmd:: $variant:ident {
-        $path:ident $(,)?
-        $($field:ident : $value:expr),* $(,)?
-    })?;) => {
-        let cmd = ModifyCmd::$variant {
-            $path,
-            $($field : $value),*
-        };
-        $dest.$method(&cmd)?;
-        let ModifyCmd::$variant { $path, .. } = cmd else {
-            unreachable!()
-        };
+impl<T, U> Network<T, U>
+where
+    T: crate::clap::ArgBounds + serde::Serialize,
+    U: crate::clap::ArgBounds,
+{
+    /// Serialize into a lines for use with [`crate::clap::ModifyCmd`]
+    #[allow(unused)] // TODO for fn: as_command_lines
+    #[must_use]
+    pub(crate) fn serialize_as_command_lines(&self) -> Vec<String> {
+        let visitor =
+            vec_visitor::VecVisitor::new(|modify_cmd| modify_cmd.display_as_cmd().to_string());
+        self.serialize(visitor)
+            .unwrap_or_else(|never| match never {})
     }
 }
-
 impl<T, U> Network<T, U> {
     /// Serialize into a vector
     #[must_use]
@@ -102,10 +148,13 @@ impl<T, U> Network<T, U> {
         T: Clone,
         U: Clone,
     {
-        self.serialize(vec_visitor::VecVisitor::default())
+        // TODO minimze the example, why is the closure needed for type inference?
+        #[expect(clippy::redundant_closure_for_method_calls)]
+        let visitor = vec_visitor::VecVisitor::new(|modify_cmd_ref| modify_cmd_ref.to_owned());
+        self.serialize(visitor)
             .unwrap_or_else(|never| match never {})
     }
-    // TODO is there any use-case for serializing from a specific node? like, for (non-tablurar) views?
+    // TODO is there any use-case for serializing from a specific node? like, for (non-tabular) views?
     fn serialize<V>(&self, mut dest: V) -> Result<V::Ok, V::Error>
     where
         V: Visitor<T, U>,
@@ -113,8 +162,8 @@ impl<T, U> Network<T, U> {
         {
             let root_order_type = self.trees.order.node().get_order_type();
             if root_order_type != OrderType::default() {
-                dest.visit(&ModifyCmd::SetOrderType {
-                    path: Path::empty(),
+                dest.visit(ModifyCmdRef::SetOrderType {
+                    path: Path::empty().as_ref(),
                     new_order_type: root_order_type,
                 })?;
             }
@@ -122,82 +171,53 @@ impl<T, U> Network<T, U> {
 
         self.trees.try_visit_depth_first(|elem| {
             let TraversalElem {
-                node_path,
+                node_path: path,
                 parent_weights,
                 node_weight,
                 node_item,
                 node_order,
             } = elem;
 
-            // TODO with ModifyCmd accepting PathRef, this would be a lot simpler
-            //      (e.g. remove the move dances below, which are there to only clone once)
-            //
-            // let (_last, parent) = node_path
-            //     .split_last()
-            //     .expect("node should not be pathless root");
-            // let parent = parent.to_owned();
-            // let creation_cmd = match node_item {
-            //     crate::Child::Bucket(_) => ModifyCmd::AddBucket { parent },
-            //     crate::Child::Joint(_) => ModifyCmd::AddJoint { parent },
-            // };
-            // dest.visit(&creation_cmd)?;
-
-            let path = {
-                // split last, parent
-                let (last, parent) = node_path
-                    .split_last()
-                    .expect("node should not be pathless root");
-                let parent = parent.to_owned();
-                let parent = match node_item {
-                    crate::Child::Bucket(_) => {
-                        reuse_path! {
-                            dest.visit(&ModifyCmd::AddBucket { parent })?;
-                        }
-                        parent
-                    }
-                    crate::Child::Joint(_) => {
-                        reuse_path! {
-                            dest.visit(&ModifyCmd::AddJoint { parent })?;
-                        }
-                        parent
-                    }
-                };
-                // joint last, parent
-                let mut path = parent;
-                path.push(last);
-                path
+            let (_last, parent) = path.split_last().expect("node should not be pathless root");
+            let creation_cmd = match node_item {
+                crate::Child::Bucket(_) => ModifyCmdRef::AddBucket { parent },
+                crate::Child::Joint(_) => ModifyCmdRef::AddJoint { parent },
             };
+            dest.visit(creation_cmd)?;
 
-            let path = {
-                let order_type = node_order.get_order_type();
-                if order_type == OrderType::default() {
-                    path
-                } else {
-                    reuse_path! {
-                        dest.visit(&ModifyCmd::SetOrderType {
-                            path,
-                            new_order_type: order_type,
-                        })?;
-                    }
-                    path
-                }
-            };
+            let order_type = node_order.get_order_type();
+            if order_type != OrderType::default() {
+                dest.visit(ModifyCmdRef::SetOrderType {
+                    path,
+                    new_order_type: order_type,
+                })?;
+            }
 
-            let path = {
-                if parent_weights.is_none_or(|w| !w.is_unity()) {
-                    reuse_path! {
-                        dest.visit(&ModifyCmd::SetWeight {
-                            path,
-                            new_weight: node_weight,
-                        })?;
-                    }
-                    path
-                } else {
-                    path
-                }
-            };
+            if parent_weights.is_none_or(|w| !w.is_unity()) {
+                dest.visit(ModifyCmdRef::SetWeight {
+                    path,
+                    new_weight: node_weight,
+                })?;
+            }
 
-            drop(path);
+            // TODO
+            // let filters = node_item.get_filters();
+            // if !filters.is_empty() {
+            //     dest.visit(ModifyCmdRef::SetFilters {
+            //         path,
+            //         new_filters: filters,
+            //     })?;
+            // }
+
+            // if let crate::Child::Bucket(bucket) = &node_item {
+            //     let items = &bucket.items;
+            //     if !items.is_empty() {
+            //         dest.visit(ModifyCmdRef::FillBucket {
+            //             bucket: path,
+            //             new_contents: items,
+            //         })?;
+            //     }
+            // }
 
             Ok(())
         })?;
@@ -211,7 +231,7 @@ where
     T: serde::Serialize,
     U: serde::Serialize,
 {
-    /// Serialize as a sequence of [`ModifyCmd`]
+    /// Serialize as a sequence of [`ModifyCmdRef`]s
     ///
     /// Avoids the (small) overhead of collecting into a [`Vec`] before serializing
     ///
@@ -241,7 +261,7 @@ where
     T: serde::de::DeserializeOwned,
     U: serde::de::DeserializeOwned,
 {
-    /// Deserialize from a sequence of [`ModifyCmd`]
+    /// Deserialize from a sequence of [`ModifyCmd`]s
     ///
     /// # Errors
     /// Forwards deserializer errors, or any [`ModifyError`]s

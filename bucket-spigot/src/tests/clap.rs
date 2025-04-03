@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
     clap::{ArgBounds, ModifyCmd, OrderType},
@@ -162,7 +162,7 @@ where
             #[clap(subcommand)]
             cmd: crate::clap::ModifyCmd<T, U>,
         }
-        let cmd_string = self.display_as_cmd().to_string();
+        let cmd_string = self.as_ref().display_as_cmd().to_string();
         {
             // verify equivalent re-parse
             let reparsed_cmd = {

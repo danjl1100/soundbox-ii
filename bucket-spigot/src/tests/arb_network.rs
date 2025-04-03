@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
     clap::ArgBounds,
@@ -429,7 +429,7 @@ where
             }
 
             let cmd = ModifyCmd::from((path_clone, seed));
-            let cmd_str = cmd.display_as_cmd().to_string();
+            let cmd_str = cmd.as_ref().display_as_cmd().to_string();
             if DEBUG {
                 println!("-> {cmd_str}");
             }

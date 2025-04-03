@@ -1,7 +1,7 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! [`clap`] compatible versions of types
 
-use crate::path::Path;
+use crate::{modify_cmd_ref::ModifyCmdRef, path::Path};
 
 // re-export `clap`
 #[allow(clippy::module_name_repetitions, unused)]
@@ -175,17 +175,17 @@ mirror_impl! {
     }
 }
 
-#[cfg(test)]
-impl<T, U> crate::ModifyCmd<T, U>
+impl<'a, T, U> ModifyCmdRef<'a, T, U>
 where
     T: ArgBounds,
     U: ArgBounds,
 {
-    pub(crate) fn display_as_cmd(&self) -> impl std::fmt::Display + '_ {
-        use crate::ModifyCmd as Other;
+    #[allow(unused)] // TODO for fn: as_command_lines
+    pub(crate) fn display_as_cmd(self) -> impl std::fmt::Display + 'a {
+        use crate::ModifyCmdRef as Other;
         use clap_crate::ValueEnum as _;
 
-        struct Ret<'a, T, U>(&'a Other<T, U>)
+        struct Ret<'a, T, U>(Other<'a, T, U>)
         where
             T: ArgBounds,
             U: ArgBounds;
@@ -223,7 +223,7 @@ where
                         path,
                         new_order_type,
                     } => {
-                        let new_order_type = OrderType::from(*new_order_type)
+                        let new_order_type = OrderType::from(new_order_type)
                             .to_possible_value()
                             .expect("no clap-skipped OrderTypes");
                         let new_order_type = new_order_type.get_name();
@@ -317,6 +317,44 @@ mod network_cmd_lines {
             Ok(())
         }
     }
+    // TODO when test can pass (fill-bucket and set-filter is included in serialize commands)
+    // impl<T, U> Network<T, U>
+    // where
+    //     T: crate::clap::ArgBounds + serde::Serialize,
+    //     U: crate::clap::ArgBounds,
+    // {
+    //     /// Convenience function for serializing a [`Network`] structure as [`crate::clap::ModifyCmd`] lines
+    //     ///
+    //     /// # Errors
+    //     /// Returns an error if parsing a command or applying the command fails
+    //     ///
+    //     /// # Example
+    //     /// ```
+    //     /// use bucket_spigot::{Network, path::Path};
+    //     /// let construction_string = "add-joint .
+    //     /// add-bucket .0
+    //     /// set-filters .0.0 filter values
+    //     /// fill-bucket .0.0 item1 item2 item3";
+    //     /// let network: Network<String, String> =
+    //     ///     Network::from_commands_str(construction_string).unwrap();
+    //     /// let command_lines = network.as_command_lines();
+    //     /// assert_eq!(command_lines, construction_string);
+    //     /// ```
+    //     // NOTE: Separate from `std::string::FromStr`, because a "string of commands" is not a canonical representation
+    //     #[must_use]
+    //     pub fn as_command_lines(&self) -> String {
+    //         self.serialize_as_command_lines()
+    //             .into_iter()
+    //             .fold(String::new(), |mut buf, line| {
+    //                 use std::fmt::Write as _;
+    //                 if !buf.is_empty() {
+    //                     writeln!(buf).expect("string format is infallible");
+    //                 }
+    //                 write!(buf, "{line}").expect("string format is infallible");
+    //                 buf
+    //             })
+    //     }
+    // }
 
     /// Failure to modify a [`Network`] by script commands
     #[derive(Debug)]

@@ -1,5 +1,5 @@
 // soundbox-ii/filter-buckets Item accumulations for sequencing *don't keep your sounds boxed up*
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! A [`Network`] provides a sequence of items, first tentatively then permanently.
 //!
@@ -480,6 +480,16 @@ impl<T, U> Default for Joint<T, U> {
     }
 }
 
+// TODO
+// impl<T, U> Child<T, U> {
+//     fn get_filters(&self) -> &[U] {
+//         match self {
+//             Child::Bucket(bucket) => &bucket.filters,
+//             Child::Joint(joint) => &joint.filters,
+//         }
+//     }
+// }
+
 /// Command to modify a network
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -531,6 +541,140 @@ pub enum ModifyCmd<T, U> {
     },
     // TODO MoveBucket
     // TODO MoveJoint (unless this destroys the BucketId -> Path logic) MoveEmptyJoint?
+}
+pub use modify_cmd_ref::ModifyCmdRef;
+mod modify_cmd_ref {
+    use crate::{order, path::PathRef, ModifyCmd};
+
+    /// Reference to a [`ModifyCmd`]
+    ///
+    /// See [`ModifyCmd`] for documentation on specific fields
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+    #[expect(missing_docs)]
+    #[non_exhaustive]
+    #[must_use]
+    pub enum ModifyCmdRef<'a, T, U> {
+        AddBucket {
+            parent: PathRef<'a>,
+        },
+        AddJoint {
+            parent: PathRef<'a>,
+        },
+        DeleteEmpty {
+            path: PathRef<'a>,
+        },
+        FillBucket {
+            bucket: PathRef<'a>,
+            new_contents: &'a [T],
+        },
+        SetFilters {
+            path: PathRef<'a>,
+            new_filters: &'a [U],
+        },
+        SetWeight {
+            path: PathRef<'a>,
+            new_weight: u32,
+        },
+        SetOrderType {
+            path: PathRef<'a>,
+            new_order_type: order::OrderType,
+        },
+    }
+    impl<T, U> ModifyCmd<T, U> {
+        #[expect(missing_docs)]
+        pub fn as_ref(&self) -> ModifyCmdRef<'_, T, U> {
+            self.into()
+        }
+    }
+    impl<T, U> ModifyCmdRef<'_, T, U>
+    where
+        T: Clone,
+        U: Clone,
+    {
+        #[expect(missing_docs)]
+        #[must_use]
+        pub fn to_owned(self) -> ModifyCmd<T, U> {
+            self.into()
+        }
+    }
+    impl<'a, T, U> From<&'a ModifyCmd<T, U>> for ModifyCmdRef<'a, T, U> {
+        fn from(value: &'a ModifyCmd<T, U>) -> Self {
+            match value {
+                ModifyCmd::AddBucket { parent } => Self::AddBucket {
+                    parent: parent.as_ref(),
+                },
+                ModifyCmd::AddJoint { parent } => Self::AddJoint {
+                    parent: parent.as_ref(),
+                },
+                ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty {
+                    path: path.as_ref(),
+                },
+                ModifyCmd::FillBucket {
+                    bucket,
+                    new_contents,
+                } => Self::FillBucket {
+                    bucket: bucket.as_ref(),
+                    new_contents,
+                },
+                ModifyCmd::SetFilters { path, new_filters } => Self::SetFilters {
+                    path: path.as_ref(),
+                    new_filters,
+                },
+                ModifyCmd::SetWeight { path, new_weight } => Self::SetWeight {
+                    path: path.as_ref(),
+                    new_weight: *new_weight,
+                },
+                ModifyCmd::SetOrderType {
+                    path,
+                    new_order_type,
+                } => Self::SetOrderType {
+                    path: path.as_ref(),
+                    new_order_type: *new_order_type,
+                },
+            }
+        }
+    }
+    impl<'a, T, U> From<ModifyCmdRef<'a, T, U>> for ModifyCmd<T, U>
+    where
+        T: Clone,
+        U: Clone,
+    {
+        fn from(value: ModifyCmdRef<'a, T, U>) -> Self {
+            match value {
+                ModifyCmdRef::AddBucket { parent } => Self::AddBucket {
+                    parent: parent.to_owned(),
+                },
+                ModifyCmdRef::AddJoint { parent } => Self::AddJoint {
+                    parent: parent.to_owned(),
+                },
+                ModifyCmdRef::DeleteEmpty { path } => Self::DeleteEmpty {
+                    path: path.to_owned(),
+                },
+                ModifyCmdRef::FillBucket {
+                    bucket,
+                    new_contents,
+                } => Self::FillBucket {
+                    bucket: bucket.to_owned(),
+                    new_contents: new_contents.to_vec(),
+                },
+                ModifyCmdRef::SetFilters { path, new_filters } => Self::SetFilters {
+                    path: path.to_owned(),
+                    new_filters: new_filters.to_vec(),
+                },
+                ModifyCmdRef::SetWeight { path, new_weight } => Self::SetWeight {
+                    path: path.to_owned(),
+                    new_weight,
+                },
+                ModifyCmdRef::SetOrderType {
+                    path,
+                    new_order_type,
+                } => Self::SetOrderType {
+                    path: path.to_owned(),
+                    new_order_type,
+                },
+            }
+        }
+    }
 }
 
 /// Error modifying the [`Network`]
