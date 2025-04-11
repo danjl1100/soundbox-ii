@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Helper utilities for parsing and validating arguments
 
 // teach me
@@ -16,6 +16,9 @@
 
 pub use arg_split::ArgSplit;
 mod arg_split;
+
+pub use arg_join::{join_debug_by_spaces, join_display_by_spaces, StrDebugSplit, StringDebugSplit};
+mod arg_join;
 
 pub use multi_source::{Input, Source, Value};
 pub mod multi_source;

@@ -480,15 +480,14 @@ impl<T, U> Default for Joint<T, U> {
     }
 }
 
-// TODO
-// impl<T, U> Child<T, U> {
-//     fn get_filters(&self) -> &[U] {
-//         match self {
-//             Child::Bucket(bucket) => &bucket.filters,
-//             Child::Joint(joint) => &joint.filters,
-//         }
-//     }
-// }
+impl<T, U> Child<T, U> {
+    fn get_filters(&self) -> &[U] {
+        match self {
+            Child::Bucket(bucket) => &bucket.filters,
+            Child::Joint(joint) => &joint.filters,
+        }
+    }
+}
 
 /// Command to modify a network
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

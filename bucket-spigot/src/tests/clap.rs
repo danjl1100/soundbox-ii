@@ -150,32 +150,17 @@ where
     U: ArgBounds + PartialEq,
 {
     pub(crate) fn display_as_cmd_verified(&self) -> String {
-        use clap::Parser as _;
-
-        #[derive(clap::Parser)]
-        #[clap(no_binary_name = true)]
-        struct FakeCmd<T, U>
-        where
-            T: ArgBounds,
-            U: ArgBounds,
-        {
-            #[clap(subcommand)]
-            cmd: crate::clap::ModifyCmd<T, U>,
-        }
         let cmd_string = self.as_ref().display_as_cmd().to_string();
-        {
-            // verify equivalent re-parse
-            let reparsed_cmd = {
-                let FakeCmd { cmd: reparsed_cmd } =
-                    FakeCmd::try_parse_from(arg_util::ArgSplit::split_into_owned(&cmd_string))
-                        .unwrap_or_else(|err| {
-                            eprintln!("{err}");
-                            panic!("ModifyCmd::display_as_cmd should produce a valid subcommand")
-                        });
-                crate::ModifyCmd::from(reparsed_cmd)
-            };
-            assert_eq!(self, &reparsed_cmd);
-        }
+
+        let reparsed_cmd: Self =
+            ModifyCmd::from_command_args(arg_util::ArgSplit::split_into_owned(&cmd_string))
+                .unwrap_or_else(|err| {
+                    eprintln!("{err}");
+                    panic!("ModifyCmd::display_as_cmd should produce a valid subcommand")
+                })
+                .into();
+        assert_eq!(self, &reparsed_cmd);
+
         cmd_string
     }
 }

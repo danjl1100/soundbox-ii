@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Parses command-line arguments
 
 use self::args::{RawArgs, RawArgsUnpacked};
@@ -149,7 +149,7 @@ pub enum SequencerError {
 impl std::fmt::Display for ConfigFileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { filename, error } = self;
-        write!(f, "in file {filename:?}")?;
+        write!(f, "in file {}", filename.display())?;
         match error {
             ConfigFileErrorNoContext::Toml(err) => write!(f, "{err}"),
             ConfigFileErrorNoContext::Io(err) => write!(f, "{err}"),

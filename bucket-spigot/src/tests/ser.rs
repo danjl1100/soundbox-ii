@@ -94,7 +94,7 @@ fn check_rebuilds_script(
     script: &str,
     extra_cmds: Vec<ModifyCmd<String, String>>,
 ) -> Result<(), crate::clap::NetworkScriptError> {
-    let mut network = NetworkStrings::from_commands_str(script)?;
+    let mut network = NetworkStrings::from_commands_str_whitespace(script)?;
     for cmd in extra_cmds {
         network.modify(cmd).unwrap();
     }
@@ -124,7 +124,7 @@ fn empty() {
 
 #[test]
 fn nodes_shallow() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         add-bucket .
         add-bucket .
@@ -146,7 +146,7 @@ fn nodes_shallow() -> eyre::Result<()> {
 
 #[test]
 fn nodes_narrow() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .0
@@ -166,7 +166,7 @@ fn nodes_narrow() -> eyre::Result<()> {
 
 #[test]
 fn node_placement() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         add-bucket .
         add-joint .
@@ -194,48 +194,47 @@ fn node_placement() -> eyre::Result<()> {
     Ok(())
 }
 
-// TODO
-// #[test]
-// fn node_filters() -> eyre::Result<()> {
-//     let network = NetworkStrings::from_commands_str(
-//         "
-//         add-bucket .
-//         add-joint .
-//
-//         set-filters .0 abc def
-//         set-filters .1 ghi jkl
-//         ",
-//     )?;
-//     network.check_ser(|cmds| {
-//         insta::assert_snapshot!(cmds_script(cmds), @r###"
-//         add-bucket .
-//         set-filters .0 "abc" "def"
-//         add-joint .
-//         set-filters .1 "ghi" "jkl"
-//         "###);
-//     });
-//
-//     Ok(())
-// }
-//
-// #[test]
-// fn node_items() -> eyre::Result<()> {
-//     let network = NetworkStrings::from_commands_str(
-//         "
-//         add-bucket .
-//
-//         fill-bucket .0 abc def
-//         ",
-//     )?;
-//     network.check_ser(|cmds| {
-//         insta::assert_snapshot!(cmds_script(cmds), @r###"
-//         add-bucket .
-//         fill-bucket .0 "abc" "def"
-//         "###);
-//     });
-//
-//     Ok(())
-// }
+#[test]
+fn node_filters() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str_whitespace(
+        "
+        add-bucket .
+        add-joint .
+
+        set-filters .0 abc def
+        set-filters .1 ghi jkl
+        ",
+    )?;
+    network.check_ser(|cmds| {
+        insta::assert_snapshot!(cmds_script(cmds), @r###"
+        add-bucket .
+        set-filters .0 "abc" "def"
+        add-joint .
+        set-filters .1 "ghi" "jkl"
+        "###);
+    });
+
+    Ok(())
+}
+
+#[test]
+fn node_items() -> eyre::Result<()> {
+    let network = NetworkStrings::from_commands_str_whitespace(
+        "
+        add-bucket .
+
+        fill-bucket .0 abc def
+        ",
+    )?;
+    network.check_ser(|cmds| {
+        insta::assert_snapshot!(cmds_script(cmds), @r###"
+        add-bucket .
+        fill-bucket .0 "abc" "def"
+        "###);
+    });
+
+    Ok(())
+}
 
 #[test]
 fn node_order_type() -> eyre::Result<()> {
@@ -265,7 +264,7 @@ fn node_weight() -> eyre::Result<()> {
 #[test]
 fn check_arbitrary_network() {
     arbtest::arbtest(|u| {
-        let network: Network<_, String> = Network::arbitrary_no_items(u)?;
+        let network: Network<_, arg_util::StringDebugSplit> = Network::arbitrary_no_items(u)?;
 
         network.check_ser(|_| ());
         Ok(())

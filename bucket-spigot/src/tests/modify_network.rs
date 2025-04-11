@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::arb_rng::{assert_arb_error, fake_rng};
 use crate::{path::RemovedSelf, tests::script::NetworkStrings, ModifyErr, ModifyError, Network};
@@ -595,7 +595,7 @@ fn delete_bucket_before_fill() -> eyre::Result<()> {
 
 #[test]
 fn delete_then_view() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .

@@ -26,6 +26,9 @@ fn main() -> eyre::Result<()> {
 
     tracing_subscriber::fmt::init();
 
+    // TODO handle weirder requests like:
+    // <file:///clone/wilbur_dan/beet/Music/Louie%20Zong/3%/01%20That%20Someone%20Is%20You.mp3>
+
     // TODO delete unused diagnostic
     if false {
         let mut spigot = setup_spigot()?;
@@ -664,61 +667,19 @@ mod path_url {
 }
 
 fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
-    use bucket_spigot::{
-        order::OrderType,
-        path::{Path, PathRef},
-        ModifyCmd, Network,
-    };
+    use bucket_spigot::{path::PathRef, ModifyCmd, Network};
 
-    let mut spigot = Network::default();
-    let init_commands = {
-        let root: Path = ".".parse().expect("valid path .");
-        let split: Path = ".0".parse().expect("valid path .0");
-        let bucket1: Path = ".0.0".parse().expect("valid path .0.0");
-        let bucket2: Path = ".0.1".parse().expect("valid path .0.1");
-
-        // TODO: use the Network creation script... Luke!
-        vec![
-            ModifyCmd::AddJoint { parent: root },
-            ModifyCmd::AddBucket {
-                parent: split.clone(),
-            },
-            ModifyCmd::AddBucket { parent: split },
-            ModifyCmd::SetFilters {
-                path: bucket1.clone(),
-                new_filters: [
-                    //
-                    "added:2020..",
-                    "grouping::^$",
-                ]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            },
-            ModifyCmd::SetOrderType {
-                path: bucket1,
-                new_order_type: OrderType::Shuffle,
-            },
-            ModifyCmd::SetFilters {
-                path: bucket2.clone(),
-                new_filters: [
-                    //
-                    "grouping::1|2|3|4|5",
-                    "has_lyrics::^$",
-                ]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            },
-            ModifyCmd::SetOrderType {
-                path: bucket2,
-                new_order_type: OrderType::Shuffle,
-            },
-        ]
-    };
-    for cmd in init_commands {
-        spigot.modify(cmd)?;
-    }
+    let mut spigot = Network::from_commands_str_whitespace(
+        r#"
+        add-joint .
+        add-bucket .0
+        set-order-type .0.0 shuffle
+        set-filters .0.0 "added:2020.." "grouping::^$"
+        add-bucket .0
+        set-order-type .0.1 shuffle
+        set-filters .0.1 "grouping::1|2|3|4|5" "has_lyrics::^$"
+        "#,
+    )?;
 
     let buckets: Vec<_> = spigot
         .get_buckets_needing_fill()
@@ -870,7 +831,7 @@ mod todo_move_to_a_beet_lib {
 
         const SEPARATOR: &str = "=";
 
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, serde::Serialize)]
         pub struct BeetItem {
             beet_id: u64,
             // NOTE: not `PathBuf` because we already entered UTF-8 land by parsing Beet output

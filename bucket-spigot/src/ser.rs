@@ -131,7 +131,6 @@ where
     U: crate::clap::ArgBounds,
 {
     /// Serialize into a lines for use with [`crate::clap::ModifyCmd`]
-    #[allow(unused)] // TODO for fn: as_command_lines
     #[must_use]
     pub(crate) fn serialize_as_command_lines(&self) -> Vec<String> {
         let visitor =
@@ -200,24 +199,23 @@ impl<T, U> Network<T, U> {
                 })?;
             }
 
-            // TODO
-            // let filters = node_item.get_filters();
-            // if !filters.is_empty() {
-            //     dest.visit(ModifyCmdRef::SetFilters {
-            //         path,
-            //         new_filters: filters,
-            //     })?;
-            // }
+            let filters = node_item.get_filters();
+            if !filters.is_empty() {
+                dest.visit(ModifyCmdRef::SetFilters {
+                    path,
+                    new_filters: filters,
+                })?;
+            }
 
-            // if let crate::Child::Bucket(bucket) = &node_item {
-            //     let items = &bucket.items;
-            //     if !items.is_empty() {
-            //         dest.visit(ModifyCmdRef::FillBucket {
-            //             bucket: path,
-            //             new_contents: items,
-            //         })?;
-            //     }
-            // }
+            if let crate::Child::Bucket(bucket) = &node_item {
+                let items = &bucket.items;
+                if !items.is_empty() {
+                    dest.visit(ModifyCmdRef::FillBucket {
+                        bucket: path,
+                        new_contents: items,
+                    })?;
+                }
+            }
 
             Ok(())
         })?;

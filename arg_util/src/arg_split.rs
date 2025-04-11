@@ -1,11 +1,11 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! See [`ArgSplit`] for details.
 
 use std::borrow::Cow;
 
-const BACKSLASH: char = '\\';
-const DOUBLE_QUOTE: char = '"';
-const SINGLE_QUOTE: char = '\'';
+pub(super) const BACKSLASH: char = '\\';
+pub(super) const DOUBLE_QUOTE: char = '"';
+pub(super) const SINGLE_QUOTE: char = '\'';
 
 /// Parses a char sequence into arguments. Accepts quoted arguments and respects simple escaping.
 ///
@@ -23,44 +23,48 @@ const SINGLE_QUOTE: char = '\'';
 ///     "some".to_string(),
 ///     "quoted arguments".to_string(),
 /// ])
-///
 /// ```
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ArgSplit<'a> {
     input: &'a str,
     /// Completed tokens
     tokens: Vec<Cow<'a, str>>,
     /// Pending token
-    next_token: NextToken,
+    next_token: Option<NextToken>,
     /// Whether escape sequence is active
     escape_flag: Option<()>,
     /// Type of active quote
     quote_flag: Option<char>,
 }
+#[derive(Debug)]
 enum NextToken {
     Owned(String),
     Borrowed(usize),
 }
-impl Default for NextToken {
-    fn default() -> Self {
-        Self::Borrowed(0)
-    }
-}
 impl NextToken {
     fn convert_to_cow(self, input: &str, index: usize) -> Option<Cow<'_, str>> {
         match self {
-            Self::Owned(owned) if !owned.is_empty() => Some(Cow::Owned(owned)),
-            Self::Borrowed(start) if start != index => {
-                let token = &input[start..index];
-                Some(Cow::Borrowed(token))
+            Self::Owned(owned) => Some(Cow::Owned(owned)),
+            Self::Borrowed(start) => {
+                if self.is_empty(index) {
+                    None
+                } else {
+                    let token = &input[start..index];
+                    Some(Cow::Borrowed(token))
+                }
             }
-            _ => None,
         }
     }
     fn push_if_owned(&mut self, c: char) {
         match self {
             Self::Owned(next_token) => next_token.push(c),
             Self::Borrowed(_start) => {}
+        }
+    }
+    fn is_empty(&self, index: usize) -> bool {
+        match self {
+            NextToken::Owned(owned) => owned.is_empty(),
+            NextToken::Borrowed(start) => *start == index,
         }
     }
 }
@@ -87,17 +91,22 @@ impl<'a> ArgSplit<'a> {
     /// Process the next `char`
     fn push(&mut self, char_index: (usize, char)) {
         let (index, c) = char_index;
+        let next_token = self.next_token.get_or_insert(NextToken::Borrowed(index));
         let need_owned = match c {
             _ if self.escape_flag.is_some() => {
                 // accept any character escaped as itself (relaxed escape logic)
                 self.escape_flag.take();
-                self.next_token.push_if_owned(c);
+                next_token.push_if_owned(c);
                 false
             }
             BACKSLASH if self.escape_flag.is_none() => {
                 // START escape
                 self.escape_flag = Some(());
-                true
+                let is_token_empty = next_token.is_empty(index);
+                if is_token_empty {
+                    self.next_token.take();
+                }
+                !is_token_empty
             }
             DOUBLE_QUOTE | SINGLE_QUOTE if self.quote_flag.is_none() => {
                 // OPEN quote
@@ -114,24 +123,24 @@ impl<'a> ArgSplit<'a> {
                 false
             }
             _ => {
-                self.next_token.push_if_owned(c);
+                next_token.push_if_owned(c);
                 false
             }
         };
         if need_owned {
-            if let NextToken::Borrowed(start) = &self.next_token {
+            if let Some(NextToken::Borrowed(start)) = &self.next_token {
                 let from_start = self.input[*start..index].to_string();
-                self.next_token = NextToken::Owned(from_start);
+                self.next_token = Some(NextToken::Owned(from_start));
             }
         }
     }
     /// Finalize `next_token`, and add the value to `tokens`
     fn end_token(&mut self, index: usize) {
-        let next_token = NextToken::Owned(String::new());
-        let token = std::mem::replace(&mut self.next_token, next_token);
-        if let Some(token) = token.convert_to_cow(self.input, index) {
-            self.tokens.push(token);
-        }
+        let ended_token: Option<Cow<'_, str>> = self
+            .next_token
+            .take()
+            .and_then(|token| token.convert_to_cow(self.input, index));
+        self.tokens.extend(ended_token);
     }
     /// Finish the split and return the final `tokens`
     fn finish(mut self) -> Vec<Cow<'a, str>> {
@@ -143,9 +152,6 @@ impl<'a> ArgSplit<'a> {
 #[cfg(test)]
 mod tests {
     use super::ArgSplit;
-
-    #[test]
-    fn doctest() {}
 
     macro_rules! test {
         (
@@ -229,10 +235,10 @@ mod tests {
         test! {
             "'a" => "a";
             "a'" => "a";
-            "'";
+            "'" => "";
             r#""a"# => "a";
             r#"a""# => "a";
-            r#"""#;
+            r#"""# => "";
         }
     }
 
@@ -248,6 +254,24 @@ mod tests {
         test! {
             r"a\ b\" => "a b";
             r"sometimes you just trail off \" => "sometimes", "you", "just", "trail", "off";
+        }
+    }
+
+    #[test]
+    fn persists_empty_quotes() {
+        test! {
+            r#""""# => "";
+            r#"empty looks like """# => "empty", "looks", "like", "";
+            r#"empty looks like ""     "# => "empty", "looks", "like", "";
+        }
+    }
+
+    #[test]
+    fn unicode_escapes() {
+        test! {
+            "\u{99}" => "\u{99}";
+            "a\u{99}" => "a\u{99}";
+            "\u{99}b" => "\u{99}b";
         }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
     path::{Path, PathRef},
@@ -20,7 +20,7 @@ fn empty() {
 
 #[test]
 fn table_weights() -> eyre::Result<()> {
-    let mut network = NetworkStrings::from_commands_str(
+    let mut network = NetworkStrings::from_commands_str_whitespace(
         "
         add-bucket .
         fill-bucket .0 abc def ghi jkl
@@ -105,7 +105,7 @@ fn table_weights() -> eyre::Result<()> {
 }
 
 fn arbitrary_pattern1() -> eyre::Result<NetworkStrings> {
-    Ok(NetworkStrings::from_commands_str(
+    Ok(NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-bucket .
@@ -245,7 +245,7 @@ fn table_depths_narrow_to_wider() -> eyre::Result<()> {
 }
 #[test]
 fn simple_gap() -> eyre::Result<()> {
-    let mut network = NetworkStrings::from_commands_str(
+    let mut network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .
@@ -284,7 +284,7 @@ fn simple_gap() -> eyre::Result<()> {
 }
 #[test]
 fn simple_max_depth() -> eyre::Result<()> {
-    let mut network = NetworkStrings::from_commands_str(
+    let mut network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .0
@@ -339,7 +339,7 @@ fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
 
 #[test]
 fn unique_weights() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .
@@ -470,7 +470,7 @@ fn table_depth_child_right() -> eyre::Result<()> {
 
 #[test]
 fn table_view_bucket() -> eyre::Result<()> {
-    let mut network = NetworkStrings::from_commands_str(
+    let mut network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-bucket .
@@ -577,7 +577,7 @@ fn limit_width_root() {
 #[test]
 fn limit_width_child() -> eyre::Result<()> {
     const N: usize = 50;
-    let mut network = NetworkStrings::from_commands_str(
+    let mut network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .
@@ -625,7 +625,7 @@ fn limit_width_child() -> eyre::Result<()> {
 
 #[test]
 fn node_count() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         add-joint .
         add-joint .
@@ -882,9 +882,9 @@ mod arbitrary_limit {
 }
 
 #[test]
-#[ignore = "need to fix node-count behavior"] // TODO
+#[ignore = "need to fix node-count behavior..."] // TODO
 fn view_specific_complex() -> eyre::Result<()> {
-    let network = NetworkStrings::from_commands_str(
+    let network = NetworkStrings::from_commands_str_whitespace(
         "
         set-order-type . shuffle
         add-bucket .
