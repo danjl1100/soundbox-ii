@@ -29,8 +29,8 @@ mod builders {
         pub fn query_playback(self) -> QueryPlayback {
             QueryPlayback::new((), self.get_sequence())
         }
-        /// Returns an endpoint source for setting the `playlist_items` and querying matched items after
-        /// the current playing item.
+        /// Returns an endpoint source for setting the `playlist_items` and querying matched items
+        /// after the current playing item.
         ///
         /// Output items will be items from a subset of the original target if playing desired items.
         /// The intended use is to advance a "want to play" list based on playback progress.
@@ -205,18 +205,29 @@ impl<T> Step<T> {
         self.map(|_| ())
     }
 }
-/// Error of [`Plan`] [`Change`]s
+/// Error executing a [`Plan`]
 #[derive(Debug)]
-pub enum Error {
+pub struct Error {
+    kind: ErrorKind,
+}
+#[derive(Debug)]
+enum ErrorKind {
     /// The [`ClientState`] identity changed between creation and executing the [`Plan`]
     InvalidClientInstance(InvalidClientInstance),
 }
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            ErrorKind::InvalidClientInstance(_) => None,
+        }
+    }
+}
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::InvalidClientInstance(_) => {
-                write!(f, "action shared among multiple client instances")
+        match &self.kind {
+            ErrorKind::InvalidClientInstance(inner) => {
+                let InvalidClientInstance { expected, found } = inner;
+                write!(f, "action shared among multiple client instances (found {found:?}, expected {expected:?})")
             }
         }
     }
@@ -228,10 +239,12 @@ impl Sequence {
             // `self.after(other)`: self > other
             Ok(order == std::cmp::Ordering::Greater)
         } else {
-            Err(Error::InvalidClientInstance(InvalidClientInstance {
-                expected: self,
-                found: other,
-            }))
+            Err(Error {
+                kind: ErrorKind::InvalidClientInstance(InvalidClientInstance {
+                    expected: self,
+                    found: other,
+                }),
+            })
         }
     }
 }

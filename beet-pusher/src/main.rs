@@ -568,7 +568,7 @@ mod path_url {
     impl UrlSource<BeetItem> for BaseUrl {
         type Error = ErrorBeetPath;
 
-        fn get_url(&mut self, item: &BeetItem) -> Result<url::Url, ErrorBeetPath> {
+        fn get_url(&mut self, item_path: &str) -> Result<url::Url, ErrorBeetPath> {
             // SOURCE `url::parser::PATH` not public, and somehow not used for `url::Url::join`
             // <https://github.com/servo/rust-url/blob/7492360d4230b67fa0e62794b6fde276525e5f84/url/src/parser.rs#L23>
             const PATH: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -585,7 +585,7 @@ mod path_url {
 
             let base_url = &self.0;
 
-            let path = item.get_path();
+            let path = item_path;
             let path = path.strip_prefix('/').unwrap_or(path);
             let path_percentencoded = percent_encoding::utf8_percent_encode(path, PATH).to_string();
             let path = &path_percentencoded;
@@ -849,10 +849,7 @@ mod todo_move_to_a_beet_lib {
             pub(crate) fn test_creation(beet_id: u64, path: String) -> Self {
                 Self { beet_id, path }
             }
-        }
-        impl FromStr for BeetItem {
-            type Err = Error;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
+            fn parse_id_path(s: &str) -> Result<Self, Error> {
                 let Some((beet_id, path)) = s.split_once(SEPARATOR) else {
                     return Err(Error {
                         kind: ErrorKind::MissingSeparator,

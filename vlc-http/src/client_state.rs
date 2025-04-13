@@ -40,7 +40,7 @@ impl ClientState {
         }
     }
 
-    /// Returns a short-lived builder referencing the current [`ClientState`]
+    /// Borrows the [`ClientState`] for constructing a [`Plan`](`super::Plan`)
     ///
     /// The reference is needed to ensure any cached data used in building the
     /// [`Plan`](`super::Plan`)
@@ -48,7 +48,9 @@ impl ClientState {
     pub fn build_plan(&self) -> PlanBuilder<'_> {
         self.build_plan_unchecked()
     }
-    /// Returns a builder referencing an old/outdated [`ClientState`]
+    /// Captures a thin snapshot of the [`ClientState`] for the sole purpose of constructing
+    /// [`Plan`]s at a later time that use only cached data (E.g. queries that immediately
+    /// return a result)
     ///
     /// <div class="warning">
     /// WARNING: The builder from this function generates plans that can blindly
@@ -56,8 +58,10 @@ impl ClientState {
     /// data, without performing any real query.
     /// </div>
     ///
-    /// Use [`build_plan()`](`Self::build_plan`) instead, to ensure that new
+    /// See the recommended [`build_plan()`](`Self::build_plan`) which ensures that new
     /// data is fetched for each plan.
+    ///
+    /// [`Plan`]: `crate::Plan`
     pub fn assume_cache_valid_for_later_building(&self) -> PlanBuilder<'static> {
         self.build_plan_unchecked()
     }
@@ -95,13 +99,16 @@ impl Default for ClientState {
     }
 }
 
-/// Reference to a [`ClientState`] for use in creating an action
+/// View of a [`ClientState`] for use in creating [`Plan`]s
 ///
 /// Created by [`ClientState::build_plan`]
 ///
-/// See [`crate::goal`] and related functions
+/// NOTE: [`Plan`]s depend on the [`ClientState`] to determine when to use cached data or
+/// request fresh data. See [`crate::goal`] module for details and related functions.
 ///
 /// NOTE: This struct is intended to be short-lived, created right when needed to create an action
+///
+/// [`Plan`]: `crate::Plan`
 #[derive(Clone, Copy)]
 #[must_use]
 pub struct PlanBuilder<'a> {

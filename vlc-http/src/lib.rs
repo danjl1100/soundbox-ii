@@ -1,5 +1,5 @@
 // soundbox-ii/vlc-http VLC communication library *don't keep your sounds boxed up*
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -67,6 +67,8 @@
 //! A [`Plan`] completes a high-level action through a series of steps, depending on the updates to
 //! [`ClientState`] from each step.
 //! This is needed for more complex state-dependent commands.
+//!
+//! See the [`goal`] module for more details.
 //!
 //! ## 2. [`Command`]
 //! [`Command`]s provide low-level control of the player, suitable for basic playback
