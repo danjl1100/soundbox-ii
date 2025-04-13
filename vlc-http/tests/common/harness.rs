@@ -195,8 +195,9 @@ impl Runner {
                     // NOTE: difficult to return the `output`, due to generic associated type shenanigans
                     break None;
                 }
-                Err(vlc_http::goal::Error::InvalidClientInstance(_)) => {
-                    panic!("invalid state for {line:?}: non-singleton client_state")
+                Err(err @ vlc_http::goal::Error { .. }) => {
+                    eprintln!("{err}");
+                    panic!("invalid state for {line:?}, non-singleton client_state?")
                 }
             };
 
@@ -217,8 +218,9 @@ impl Runner {
                 Ok(Step::Done(_)) => {
                     panic!("invalid command {line:?}: action returned None (completed) so cannot ignore (completed iter {iter} of {push_count})")
                 }
-                Err(vlc_http::goal::Error::InvalidClientInstance(_)) => {
-                    panic!("invalid state for {line:?}: non-singleton client_state")
+                Err(err @ vlc_http::goal::Error { .. }) => {
+                    eprintln!("{err}");
+                    panic!("invalid state for {line:?}, non-singleton client_state?")
                 }
             };
 

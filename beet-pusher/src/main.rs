@@ -259,11 +259,13 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
                     expected = peek_len,
                 );
             }
-            let () = self
-                .determined
-                .modify_gen_urls(&mut self.config.base_url, |dest| {
+            let () = self.determined.modify_gen_urls(
+                &mut self.config.base_url,
+                BeetItem::get_path,
+                |dest| {
                     dest.extend(peeked.items().iter().map(|&item| item.clone()));
-                })?;
+                },
+            )?;
             self.spigot.finalize_peeked(peeked.accept_into_inner());
 
             debug!(
@@ -296,9 +298,10 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
         let output = self.complete_plan(action)?;
         let output_len = output.len();
         if output_len < self.determined.len() {
-            let () = self
-                .determined
-                .modify_gen_urls(&mut self.config.base_url, |dest| {
+            let () = self.determined.modify_gen_urls(
+                &mut self.config.base_url,
+                BeetItem::get_path,
+                |dest| {
                     // FIXME this would be terrible (~N^2?) if expected len >> 2
                     while dest.len() > output_len {
                         let removed = dest.remove(0);
@@ -307,7 +310,8 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
                         }
                     }
                     Ok::<_, E>(())
-                })??;
+                },
+            )??;
         }
         Ok(())
     }
@@ -500,14 +504,15 @@ mod determined {
         }
         pub fn modify_gen_urls<U, E>(
             &mut self,
-            url_source: &mut impl UrlSource<T, Error = E>,
+            url_source: &mut impl UrlSource<Error = E>,
+            item_path_fn: impl Fn(&T) -> &str,
             modify_fn: impl FnOnce(&mut Vec<T>) -> U,
         ) -> Result<U, E> {
             let mut result = Ok(modify_fn(&mut self.items));
             match self
                 .items
                 .iter()
-                .map(|item| url_source.get_url(item))
+                .map(|item| url_source.get_url(item_path_fn(item)))
                 .collect()
             {
                 Ok(new_urls) => self.urls = new_urls,
@@ -527,23 +532,22 @@ mod determined {
         }
     }
 
-    pub trait UrlSource<T> {
+    pub trait UrlSource {
         type Error;
-        fn get_url(&mut self, item: &T) -> Result<url::Url, Self::Error>;
+        fn get_url(&mut self, item_path: &str) -> Result<url::Url, Self::Error>;
     }
-    impl<F, T, E> UrlSource<T> for F
+    impl<F, E> UrlSource for F
     where
-        F: FnMut(&T) -> Result<url::Url, E>,
+        F: FnMut(&str) -> Result<url::Url, E>,
     {
         type Error = E;
-        fn get_url(&mut self, item: &T) -> Result<url::Url, Self::Error> {
-            (self)(item)
+        fn get_url(&mut self, item_path: &str) -> Result<url::Url, Self::Error> {
+            (self)(item_path)
         }
     }
 }
 
 mod path_url {
-    use super::BeetItem;
     use crate::determined::UrlSource;
 
     // TODO add tests for Windows beet-path conversion to URL
@@ -565,7 +569,7 @@ mod path_url {
         }
     }
 
-    impl UrlSource<BeetItem> for BaseUrl {
+    impl UrlSource for BaseUrl {
         type Error = ErrorBeetPath;
 
         fn get_url(&mut self, item_path: &str) -> Result<url::Url, ErrorBeetPath> {
@@ -591,7 +595,7 @@ mod path_url {
             let path = &path_percentencoded;
 
             let url = base_url.join(path).map_err(|error| ErrorBeetPath {
-                item: item.clone(),
+                item_path: item_path.to_owned(),
                 error,
             })?;
 
@@ -621,7 +625,7 @@ mod path_url {
     // }
     #[derive(Debug)]
     pub(super) struct ErrorBeetPath {
-        item: BeetItem,
+        item_path: String,
         error: url::ParseError,
     }
     impl std::error::Error for ErrorBeetPath {
@@ -631,13 +635,11 @@ mod path_url {
     }
     impl std::fmt::Display for ErrorBeetPath {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self { item, error: _ } = self;
-            write!(
-                f,
-                "invalid beet URL for id {id}: {url:?}",
-                id = item.get_beet_id(),
-                url = item.get_path(),
-            )
+            let Self {
+                item_path,
+                error: _,
+            } = self;
+            write!(f, "invalid beet URL: {item_path:?}")
         }
     }
 
@@ -655,7 +657,7 @@ mod path_url {
                 let item = BeetItem::test_creation(0, input.to_string());
                 let mut base = BaseUrl("file:///some/base/".parse().expect("test base url valid"));
 
-                let result = base.get_url(&item).expect("test item url valid");
+                let result = base.get_url(item.get_path()).expect("test item url valid");
                 assert_eq!(
                     result.fragment(),
                     None,
@@ -827,8 +829,6 @@ mod todo_move_to_a_beet_lib {
     }
 
     mod beet_item {
-        use std::str::FromStr;
-
         const SEPARATOR: &str = "=";
 
         #[derive(Clone, Debug, serde::Serialize)]
@@ -867,6 +867,28 @@ mod todo_move_to_a_beet_lib {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let Self { beet_id, path } = self;
                 write!(f, "{beet_id}{SEPARATOR}{path}")
+            }
+        }
+
+        // TODO cannot easily feed in an "adapter type" to Network::from_commands_str_whitespace,
+        //    it makes the API too messy.
+        // pub struct BeetIdAndPath(BeetItem);
+        // impl std::str::FromStr for BeetIdAndPath {
+        //     type Err = Error;
+        //     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        //         BeetItem::parse_id_path(s).map(Self)
+        //     }
+        // }
+        // impl BeetIdAndPath {
+        //     fn into_inner(self) -> BeetItem {
+        //         let Self(inner) = self;
+        //         inner
+        //     }
+        // }
+        impl std::str::FromStr for BeetItem {
+            type Err = Error;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                BeetItem::parse_id_path(s)
             }
         }
 
