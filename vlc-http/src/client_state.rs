@@ -35,7 +35,7 @@ impl ClientState {
                 let _ = self.playlist_info.replace(new);
             }
             crate::response::ResponseInner::PlaybackStatus(new) => {
-                let _ = self.playback_status.replace(Some(new));
+                let _ = self.playback_status.replace(Some(*new));
             }
         }
     }

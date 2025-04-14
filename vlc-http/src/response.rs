@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-level response primitives
 
 use std::io::Read;
@@ -22,14 +22,14 @@ pub struct Response {
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) enum ResponseInner {
     PlaylistInfo(PlaylistInfo),
-    PlaybackStatus(PlaybackStatus),
+    PlaybackStatus(Box<PlaybackStatus>),
 }
 
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum ResponseJSON {
     PlaylistInfo(playlist::InfoJSON),
-    PlaybackStatus(playback::StatusJSON),
+    PlaybackStatus(Box<playback::StatusJSON>),
 }
 
 impl std::str::FromStr for Response {
@@ -67,9 +67,12 @@ impl From<ResponseJSON> for Response {
             ResponseJSON::PlaylistInfo(info) => Self {
                 inner: ResponseInner::PlaylistInfo(PlaylistInfo::new(info)),
             },
-            ResponseJSON::PlaybackStatus(status) => Self {
-                inner: ResponseInner::PlaybackStatus(status.into()),
-            },
+            ResponseJSON::PlaybackStatus(status) => {
+                let status = Box::new((*status).into());
+                Self {
+                    inner: ResponseInner::PlaybackStatus(status),
+                }
+            }
         }
     }
 }

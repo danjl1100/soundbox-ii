@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use super::{ItemSource, PathError};
 use std::{
     ffi::{OsStr, OsString},
@@ -54,10 +54,9 @@ impl Beet {
             Ok(status) if status.success() => {
                 return Ok(Self { command });
             }
-            Ok(status) => std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("beet command executable returned non-zero result {status}"),
-            ),
+            Ok(status) => std::io::Error::other(format!(
+                "beet command executable returned non-zero result {status}"
+            )),
             Err(e) => e,
         };
         Err(PathError::new(&command, err))
@@ -87,9 +86,10 @@ impl<T: ArgSource> ItemSource<T> for Beet {
             .args(arg_elems)
             .stdout(Stdio::piped())
             .spawn()?;
-        let stdout = child.stdout.as_mut().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::Other, "unable to capture stdout")
-        })?;
+        let stdout = child
+            .stdout
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("unable to capture stdout"))?;
         let reader = BufReader::new(stdout);
         let items = reader
             .lines()
@@ -107,10 +107,9 @@ impl<T: ArgSource> ItemSource<T> for Beet {
         } else {
             //TODO consider capturing stderr to provide more info in an error message
             //  (how to condense stderr down to a plain error message? last line?)
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("child process failure: {result}"),
-            ))
+            Err(std::io::Error::other(format!(
+                "child process failure: {result}"
+            )))
         }
     }
 }
