@@ -10,7 +10,7 @@ use determined::Determined;
 use path_url::BaseUrl;
 use std::path::PathBuf;
 use todo_move_to_a_beet_lib::{query_beet, BeetItem};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use vlc_http::goal::TargetPlaylistItems;
 
 #[derive(clap::Parser, Debug)]
@@ -243,6 +243,11 @@ impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
         Ok(output)
     }
     fn fill_determined(&mut self) -> eyre::Result<()> {
+        if self.spigot.is_empty() {
+            let view = self.spigot.view_table_default();
+            eyre::bail!("spigot must be non-empty:\n{view}")
+        }
+
         let peek_len = match self.determined.items().len() {
             len @ 0..=0 => Some(1 - len),
             1 => None,
@@ -672,15 +677,16 @@ fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
     use bucket_spigot::{path::PathRef, ModifyCmd, Network};
 
     let mut spigot = Network::from_commands_str_whitespace(
-        r#"
+        // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
+        "
         add-joint .
         add-bucket .0
         set-order-type .0.0 shuffle
-        set-filters .0.0 "added:2020.." "grouping::^$"
+        set-filters .0.0 added:2020.. grouping::^$
         add-bucket .0
         set-order-type .0.1 shuffle
-        set-filters .0.1 "grouping::1|2|3|4|5" "has_lyrics::^$"
-        "#,
+        set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
+        ",
     )?;
 
     let buckets: Vec<_> = spigot
@@ -688,18 +694,28 @@ fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
         .map(PathRef::to_owned)
         .collect();
 
+    let mut any_items = false;
     for bucket in buckets {
         let filters = spigot
             .get_filters(bucket.as_ref())
             .expect("path should be valid for bucket needing fill")
             .into_iter()
-            .flat_map(|filter_set| filter_set.iter().cloned());
-        let new_contents = query_beet(filters)?;
+            .flat_map(|filter_set| filter_set.iter().cloned())
+            .collect::<Vec<_>>();
+        let new_contents = query_beet(filters.iter().cloned())?;
         info!("fill bucket {bucket} with {} items", new_contents.len());
+        if new_contents.is_empty() {
+            warn!(?filters, "empty bucket");
+        } else {
+            any_items = true;
+        }
         spigot.modify(ModifyCmd::FillBucket {
             bucket,
             new_contents,
         })?;
+    }
+    if !any_items {
+        eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
     }
 
     Ok(spigot)
@@ -747,6 +763,14 @@ mod todo_move_to_a_beet_lib {
         }
 
         debug!("parse `beet` output ({} bytes)", output.stdout.len());
+
+        // let output_len = output.stdout.len();
+        // let output_trim = String::from_utf8_lossy(if output_len > 100 {
+        //     &output.stdout[0..100]
+        // } else {
+        //     &output.stdout[..]
+        // });
+        // trace!(?output_trim, ?output_len);
 
         output
             .stdout

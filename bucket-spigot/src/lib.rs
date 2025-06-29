@@ -372,6 +372,24 @@ impl<T, U> Network<T, U> {
             Err(UnknownPath(path).into())
         }
     }
+    /// Returns `true` if all leaf buckets in the network have no items
+    pub fn is_empty(&self) -> bool {
+        let mut item_found = None;
+        self.trees.visit_depth_first(|elem| {
+            if item_found.is_some() {
+                return;
+            }
+            match &elem.node_item {
+                Child::Bucket(bucket) => {
+                    if !bucket.items.is_empty() {
+                        item_found = Some(());
+                    }
+                }
+                Child::Joint(_) => {}
+            }
+        });
+        item_found.is_none()
+    }
 }
 
 mod bucket_paths_map {
