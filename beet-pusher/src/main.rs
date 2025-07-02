@@ -5,13 +5,11 @@
 //! Proof of concept for pushing a simple beet query to VLC, with id tracking
 
 use crate::config_file::ConfigFile;
+use beet_pusher::BeetPusher;
 use clap::Parser;
-use determined::Determined;
-use path_url::BaseUrl;
 use std::path::PathBuf;
 use todo_move_to_a_beet_lib::{query_beet, BeetItem};
-use tracing::{debug, info, warn};
-use vlc_http::goal::TargetPlaylistItems;
+use tracing::{info, warn};
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -46,7 +44,7 @@ fn main() -> eyre::Result<()> {
     let Args { auth, config_file } = Args::parse();
     let auth = vlc_http::Auth::new(auth.into())?;
 
-    let config_file = config_file.unwrap_or(PathBuf::from("beet-pusher.config.toml"));
+    let config_file = config_file.unwrap_or_else(|| PathBuf::from("beet-pusher.config.toml"));
     let config_file = match ConfigFile::open(&config_file) {
         Ok(config_file) => config_file,
         Err(error) if error.is_missing_file() => {
@@ -77,21 +75,10 @@ fn main() -> eyre::Result<()> {
         Ok::<_, now_playing_observer::PublishError>(())
     };
 
+    let rng = &mut rand::thread_rng();
     let spigot = setup_spigot()?;
 
-    let rng = &mut rand::thread_rng();
-    let state = vlc_http::ClientState::new();
-    let http_runner = vlc_http::http_runner::ureq::HttpRunner::new(auth);
-
-    let mut pusher = BeetPusher {
-        spigot,
-        rng,
-        client: Client { state },
-        http_runner,
-        determined: Determined::default(),
-        config: Config { base_url },
-        now_playing_observer: Some(now_playing_observer),
-    };
+    let mut pusher = BeetPusher::new(auth, rng, spigot, base_url, Some(now_playing_observer));
 
     // TODO add a "determined holder" concept, to make it easy to:
     // 1. Peek a bunch, update spigot
@@ -209,147 +196,181 @@ mod now_playing_observer {
     }
 }
 
-type UreqError = vlc_http::http_runner::ureq::Error;
-type ExhaustResult<'a, T> =
-    Result<<T as vlc_http::Plan>::Output<'a>, vlc_http::sync::Error<T, UreqError>>;
+mod beet_pusher {
+    use crate::{determined::Determined, path_url::BaseUrl, todo_move_to_a_beet_lib::BeetItem};
+    use bucket_spigot::Network;
+    use tracing::debug;
+    use vlc_http::{goal::TargetPlaylistItems, Auth};
 
-struct BeetPusher<'a, R, F> {
-    spigot: bucket_spigot::Network<BeetItem, String>,
-    rng: &'a mut R,
-    client: Client,
-    http_runner: vlc_http::http_runner::ureq::HttpRunner,
-    determined: Determined<BeetItem>,
-    config: Config,
-    now_playing_observer: Option<F>,
-}
-struct Client {
-    state: vlc_http::ClientState,
-}
-struct Config {
-    base_url: BaseUrl,
-}
-impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
-    fn complete_plan<T>(&mut self, query: T) -> ExhaustResult<'_, T>
-    where
-        T: vlc_http::Plan,
-    {
-        const MAX_ENDPOINTS_PER_ACTION: usize = 100;
-        let output = vlc_http::sync::complete_plan(
-            query,
-            &mut self.client.state,
-            &mut self.http_runner,
-            MAX_ENDPOINTS_PER_ACTION,
-        )?;
-        Ok(output)
+    type UreqError = vlc_http::http_runner::ureq::Error;
+    type ExhaustResult<'a, T> =
+        Result<<T as vlc_http::Plan>::Output<'a>, vlc_http::sync::Error<T, UreqError>>;
+
+    pub struct BeetPusher<'a, R, F> {
+        spigot: bucket_spigot::Network<BeetItem, String>,
+        rng: &'a mut R,
+        client: Client,
+        http_runner: vlc_http::http_runner::ureq::HttpRunner,
+        determined: Determined<BeetItem>,
+        config: Config,
+        now_playing_observer: Option<F>,
     }
-    fn fill_determined(&mut self) -> eyre::Result<()> {
-        if self.spigot.is_empty() {
-            let view = self.spigot.view_table_default();
-            eyre::bail!("spigot must be non-empty:\n{view}")
+    pub struct Client {
+        state: vlc_http::ClientState,
+    }
+    impl Client {
+        pub fn new() -> Self {
+            let state = vlc_http::ClientState::new();
+            Self { state }
         }
+    }
+    struct Config {
+        base_url: BaseUrl,
+    }
+    impl<'a, R, F> BeetPusher<'a, R, F> {
+        pub fn new(
+            auth: Auth,
+            rng: &'a mut R,
+            spigot: Network<BeetItem, String>,
+            base_url: BaseUrl,
+            now_playing_observer: Option<F>,
+        ) -> Self {
+            let http_runner = vlc_http::http_runner::ureq::HttpRunner::new(auth);
 
-        let peek_len = match self.determined.items().len() {
-            len @ 0..=0 => Some(1 - len),
-            1 => None,
-            2.. => unreachable!("determined should be 1 item or fewer"),
-        };
-
-        if let Some(peek_len) = peek_len {
-            let peeked = self.spigot.peek(self.rng, peek_len)?;
-            if peeked.items().len() != peek_len {
+            Self {
+                spigot,
+                rng,
+                client: Client::new(),
+                http_runner,
+                determined: Determined::default(),
+                config: Config { base_url },
+                now_playing_observer,
+            }
+        }
+    }
+    impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
+        fn complete_plan<T>(&mut self, query: T) -> ExhaustResult<'_, T>
+        where
+            T: vlc_http::Plan,
+        {
+            const MAX_ENDPOINTS_PER_ACTION: usize = 100;
+            let output = vlc_http::sync::complete_plan(
+                query,
+                &mut self.client.state,
+                &mut self.http_runner,
+                MAX_ENDPOINTS_PER_ACTION,
+            )?;
+            Ok(output)
+        }
+        pub fn fill_determined(&mut self) -> eyre::Result<()> {
+            if self.spigot.is_empty() {
                 let view = self.spigot.view_table_default();
-                unreachable!(
+                eyre::bail!("spigot must be non-empty:\n{view}")
+            }
+
+            let peek_len = match self.determined.items().len() {
+                len @ 0..=0 => Some(1 - len),
+                1 => None,
+                2.. => unreachable!("determined should be 1 item or fewer"),
+            };
+
+            if let Some(peek_len) = peek_len {
+                let peeked = self.spigot.peek(self.rng, peek_len)?;
+                if peeked.items().len() != peek_len {
+                    let view = self.spigot.view_table_default();
+                    unreachable!(
                     "insufficient items in spigot count = {found}, expected {expected}:\n{view}",
                     found = peeked.items().len(),
                     expected = peek_len,
                 );
-            }
-            let () = self.determined.modify_gen_urls(
-                &mut self.config.base_url,
-                BeetItem::get_path,
-                |dest| {
-                    dest.extend(peeked.items().iter().map(|&item| item.clone()));
-                },
-            )?;
-            self.spigot.finalize_peeked(peeked.accept_into_inner());
+                }
+                let () = self.determined.modify_gen_urls(
+                    &mut self.config.base_url,
+                    BeetItem::get_path,
+                    |dest| {
+                        dest.extend(peeked.items().iter().map(|&item| item.clone()));
+                    },
+                )?;
+                self.spigot.finalize_peeked(peeked.accept_into_inner());
 
-            debug!(
-                items = ?self.determined.items(),
-                "Selected new desired items",
+                debug!(
+                    items = ?self.determined.items(),
+                    "Selected new desired items",
+                );
+            }
+            assert_eq!(
+                self.determined.len(),
+                1,
+                "determine should be 1 item after peek"
             );
+            Ok(())
         }
-        assert_eq!(
-            self.determined.len(),
-            1,
-            "determine should be 1 item after peek"
-        );
-        Ok(())
-    }
-    fn push_playlist_update<E>(&mut self) -> eyre::Result<()>
-    where
-        F: FnMut(BeetItem) -> Result<(), E>,
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        let target = TargetPlaylistItems::new()
-            .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
-            .set_keep_history(5);
-
-        let action = self
-            .client
-            .state
-            .build_plan()
-            .set_playlist_and_query_matched(target);
-
-        let output = self.complete_plan(action)?;
-        let output_len = output.len();
-        if output_len < self.determined.len() {
-            let () = self.determined.modify_gen_urls(
-                &mut self.config.base_url,
-                BeetItem::get_path,
-                |dest| {
-                    // FIXME this would be terrible (~N^2?) if expected len >> 2
-                    while dest.len() > output_len {
-                        let removed = dest.remove(0);
-                        if let Some(now_playing_observer) = &mut self.now_playing_observer {
-                            now_playing_observer(removed)?;
-                        }
-                    }
-                    Ok::<_, E>(())
-                },
-            )??;
-        }
-        Ok(())
-    }
-}
-
-impl<R, F> std::fmt::Debug for BeetPusher<'_, R, F> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugAsDisplay<T>(T);
-        impl<T> std::fmt::Debug for DebugAsDisplay<T>
+        pub fn push_playlist_update<E>(&mut self) -> eyre::Result<()>
         where
-            T: std::fmt::Display,
+            F: FnMut(BeetItem) -> Result<(), E>,
+            E: std::error::Error + Send + Sync + 'static,
         {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                <T as std::fmt::Display>::fmt(&self.0, f)
-            }
-        }
+            let target = TargetPlaylistItems::new()
+                .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
+                .set_keep_history(5);
 
-        let Self {
-            spigot,
-            rng: _,
-            client: Client { state },
-            http_runner: _,
-            determined,
-            config: Config { base_url },
-            now_playing_observer: _,
-        } = self;
-        f.debug_struct("BeetPusher")
-            .field("spigot", &DebugAsDisplay(spigot.view_table_default()))
-            .field("client.state", state)
-            .field("determined.items", &determined.items())
-            .field("determined.urls", &determined.urls())
-            .field("config.base_url", base_url)
-            .finish()
+            let action = self
+                .client
+                .state
+                .build_plan()
+                .set_playlist_and_query_matched(target);
+
+            let output = self.complete_plan(action)?;
+            let output_len = output.len();
+            if output_len < self.determined.len() {
+                let () = self.determined.modify_gen_urls(
+                    &mut self.config.base_url,
+                    BeetItem::get_path,
+                    |dest| {
+                        // FIXME this would be terrible (~N^2?) if expected len >> 2
+                        while dest.len() > output_len {
+                            let removed = dest.remove(0);
+                            if let Some(now_playing_observer) = &mut self.now_playing_observer {
+                                now_playing_observer(removed)?;
+                            }
+                        }
+                        Ok::<_, E>(())
+                    },
+                )??;
+            }
+            Ok(())
+        }
+    }
+
+    impl<R, F> std::fmt::Debug for BeetPusher<'_, R, F> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            struct DebugAsDisplay<T>(T);
+            impl<T> std::fmt::Debug for DebugAsDisplay<T>
+            where
+                T: std::fmt::Display,
+            {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    <T as std::fmt::Display>::fmt(&self.0, f)
+                }
+            }
+
+            let Self {
+                spigot,
+                rng: _,
+                client: Client { state },
+                http_runner: _,
+                determined,
+                config: Config { base_url },
+                now_playing_observer: _,
+            } = self;
+            f.debug_struct("BeetPusher")
+                .field("spigot", &DebugAsDisplay(spigot.view_table_default()))
+                .field("client.state", state)
+                .field("determined.items", &determined.items())
+                .field("determined.urls", &determined.urls())
+                .field("config.base_url", base_url)
+                .finish()
+        }
     }
 }
 
