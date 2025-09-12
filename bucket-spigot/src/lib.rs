@@ -373,6 +373,7 @@ impl<T, U> Network<T, U> {
         }
     }
     /// Returns `true` if all leaf buckets in the network have no items
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         let mut item_found = None;
         self.trees.visit_depth_first(|elem| {

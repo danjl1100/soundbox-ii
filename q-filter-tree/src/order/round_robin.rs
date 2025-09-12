@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Round Robin ordering continues cycling through all elements in order, skipping elements as
 //! needed until each element visit-count is equal to its weight.
 
@@ -349,7 +349,7 @@ mod high_level_tests {
     #[test]
     fn resizing() {
         let all_weights = &[1, 2, 2, 3, 0, 5];
-        let test_sizes = (0..100).map(|i| (i % (all_weights.len() + 1)));
+        let test_sizes = (0..100).map(|i| i % (all_weights.len() + 1));
         let check_counter = do_run_round_robin(all_weights, test_sizes);
         assert!(check_counter >= 533, "{check_counter:?}"); // rigging to ensure test does not get shorter while modifying
     }

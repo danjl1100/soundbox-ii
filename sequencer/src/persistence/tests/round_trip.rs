@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::persistence::{OptionStructSerializeDeserialize, SequencerConfig};
 use serde::{Deserialize, Serialize};
@@ -314,15 +314,16 @@ mod error_messages_for_unimplemented {
     #[derive(Clone, Debug, Serialize, Deserialize, Default)]
     struct NewtypeStruct(UnitStruct);
 
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    enum NewtypeEnum {
-        Variant(()),
-    }
-    impl Default for NewtypeEnum {
-        fn default() -> Self {
-            Self::Variant(())
-        }
-    }
+    // TODO remove if unused
+    // #[derive(Clone, Debug, Serialize, Deserialize)]
+    // enum NewtypeEnum {
+    //     Variant(()),
+    // }
+    // impl Default for NewtypeEnum {
+    //     fn default() -> Self {
+    //         Self::Variant(())
+    //     }
+    // }
 
     #[derive(Clone, Debug, Serialize, Deserialize, Default)]
     struct TupleStruct((), ());

@@ -1,5 +1,5 @@
 // soundbox-ii/frontend music playback controller *don't keep your sounds boxed up*
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,6 +30,8 @@
 // docs!
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
+// yew macros are unhappy with updated clippy 0.1.90 (67cb8e039b 2025-09-11)
+#![allow(clippy::unnecessary_operation)]
 
 use backoff::{exponential::ExponentialBackoff, SystemClock};
 use gloo_net::websocket::WebSocketError;

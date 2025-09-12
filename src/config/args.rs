@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2023  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{env_vars, Input, SequencerError, UsageError, Value, VlcHttpError, WebError};
 use clap::Parser;
@@ -209,6 +209,7 @@ impl TryFrom<Input<RawWebServer>> for super::WebServer {
     }
 }
 
+#[allow(clippy::infallible_try_from)] // TODO
 impl TryFrom<Input<RawCli>> for super::Cli {
     type Error = shared::Never;
 

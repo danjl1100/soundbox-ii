@@ -7,7 +7,8 @@
 use crate::config_file::ConfigFile;
 use beet_pusher::BeetPusher;
 use clap::Parser;
-use std::path::PathBuf;
+use eyre::Context as _;
+use std::{borrow::Cow, path::PathBuf};
 use todo_move_to_a_beet_lib::{query_beet, BeetItem};
 use tracing::{info, warn};
 
@@ -17,19 +18,58 @@ struct Args {
     auth: vlc_http::clap::AuthInput,
     #[clap(long)]
     config_file: Option<std::path::PathBuf>,
+    /// Script file to use for the bucket spigot sequencer
+    #[clap(long)]
+    spigot_script: Option<std::path::PathBuf>,
+    /// If set, only print the bucket spigot setup then exit
+    #[clap(long)]
+    debug_items: bool,
 }
 
 fn main() -> eyre::Result<()> {
     const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_millis(1000);
 
-    tracing_subscriber::fmt::init();
+    // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
+    const DEFAULT_SCRIPT: &str = "
+        add-joint .
+
+        add-bucket .0
+        set-order-type .0.0 shuffle
+        set-filters .0.0 added:2020.. grouping::^$
+
+        add-bucket .0
+        set-order-type .0.1 shuffle
+        set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
+        ";
+
+    init_tracing();
+
+    let Args {
+        auth,
+        config_file,
+        spigot_script,
+        debug_items,
+    } = Args::parse();
+    let auth = vlc_http::Auth::new(auth.into())?;
 
     // TODO handle weirder requests like:
     // <file:///clone/wilbur_dan/beet/Music/Louie%20Zong/3%/01%20That%20Someone%20Is%20You.mp3>
+    let script = spigot_script.map_or_else(
+        || {
+            tracing::info!("Using default script");
+            Ok(Cow::Borrowed(DEFAULT_SCRIPT))
+        },
+        |spigot_script| {
+            tracing::info!("Reading script file");
+            std::fs::read_to_string(&spigot_script)
+                .with_context(|| format!("failed to read script file {}", spigot_script.display()))
+                .map(Cow::Owned)
+        },
+    )?;
 
     // TODO delete unused diagnostic
-    if false {
-        let mut spigot = setup_spigot()?;
+    if debug_items {
+        let mut spigot = setup_spigot(&script)?;
         let view = spigot.view_table_default();
         println!("{view}");
         let rng = &mut rand::thread_rng();
@@ -40,9 +80,6 @@ fn main() -> eyre::Result<()> {
         }
         return Ok(());
     }
-
-    let Args { auth, config_file } = Args::parse();
-    let auth = vlc_http::Auth::new(auth.into())?;
 
     let config_file = config_file.unwrap_or_else(|| PathBuf::from("beet-pusher.config.toml"));
     let config_file = match ConfigFile::open(&config_file) {
@@ -76,7 +113,7 @@ fn main() -> eyre::Result<()> {
     };
 
     let rng = &mut rand::thread_rng();
-    let spigot = setup_spigot()?;
+    let spigot = setup_spigot(&script)?;
 
     let mut pusher = BeetPusher::new(auth, rng, spigot, base_url, Some(now_playing_observer));
 
@@ -92,6 +129,14 @@ fn main() -> eyre::Result<()> {
 
         std::thread::sleep(SLEEP_DURATION);
     }
+}
+
+fn init_tracing() {
+    use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 }
 
 mod now_playing_observer {
@@ -694,21 +739,10 @@ mod path_url {
     }
 }
 
-fn setup_spigot() -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
+fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
     use bucket_spigot::{path::PathRef, ModifyCmd, Network};
 
-    let mut spigot = Network::from_commands_str_whitespace(
-        // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
-        "
-        add-joint .
-        add-bucket .0
-        set-order-type .0.0 shuffle
-        set-filters .0.0 added:2020.. grouping::^$
-        add-bucket .0
-        set-order-type .0.1 shuffle
-        set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
-        ",
-    )?;
+    let mut spigot = Network::from_commands_str_whitespace(script)?;
 
     let buckets: Vec<_> = spigot
         .get_buckets_needing_fill()

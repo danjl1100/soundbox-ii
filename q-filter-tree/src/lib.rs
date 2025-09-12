@@ -1,5 +1,5 @@
 // soundbox-ii/q-filter-tree music playback sequencer *don't keep your sounds boxed up*
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,19 +15,6 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 //! [`Tree`] structure, where each node has a queue of items and a filter.
-
-// teach me
-#![deny(clippy::pedantic)]
-#![allow(clippy::bool_to_int_with_if)] // except this confusing pattern
-// no unsafe
-#![forbid(unsafe_code)]
-// no unwrap
-#![deny(clippy::unwrap_used)]
-// no panic
-#![deny(clippy::panic)]
-// docs!
-#![deny(missing_docs)]
-#![deny(rustdoc::broken_intra_doc_links)]
 
 use std::borrow::Cow;
 

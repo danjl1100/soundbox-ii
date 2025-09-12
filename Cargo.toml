@@ -23,6 +23,8 @@ resolver = "2"
 pedantic = { level = "warn", priority = -1}
 # except this confusing pattern
 bool_to_int_with_if = { level = "allow", priority = 1}
+# ok to ignore with no reason
+ignore_without_reason = { level = "allow", priority = 1}
 
 # no unwrap
 unwrap_used = "deny"
