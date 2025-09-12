@@ -1,0 +1,2 @@
+- [ ] simplify flake deps, just use buildRustPackage with a minimal devShell
+- [ ] continue defining external interface for package beet-pusher (reference commit 97ca037)
