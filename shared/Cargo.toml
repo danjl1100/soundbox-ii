@@ -5,14 +5,4 @@ authors = ["Daniel Lambert <danjl1100@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-or-later"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[features]
-client = []
-server = []
-time_now = []
-wasm = ['chrono/wasmbind']
-
 [dependencies]
-serde = { version = "^1.0", features = [ "derive" ] }
-chrono = "0.4.23"
-vlc-http = { path = "../vlc-http" }

@@ -1,1 +1,0 @@
-trunk watch -w . -w ..\shared\ --dist ..\dist

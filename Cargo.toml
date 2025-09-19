@@ -1,19 +1,9 @@
-[package]
-name = "soundbox-ii"
-version = "0.1.0"
-edition = "2021"
-description = "Interactive graph-based sequencer for beets songs playing on a VLC backend."
-license = "GPL-3.0-or-later"
-
 [workspace]
 members = [
-  "q-filter-tree",
-  "vlc-http",
-  "vlc-http_old",
-  "frontend",
-  "sequencer",
+  "beet-pusher",
+  "bucket-spigot",
   "shared",
-  "arg_util", "bucket-spigot", "beet-pusher",
+  "vlc-http",
 ]
 resolver = "2"
 
@@ -44,7 +34,7 @@ broken_intra_doc_links = "deny"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
+[workspace.dependencies]
 q-filter-tree = { path = "./q-filter-tree" }
 vlc-http = { package = "vlc-http_old", path = "./vlc-http_old" }
 sequencer = { path = "./sequencer" }
