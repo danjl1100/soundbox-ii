@@ -8,11 +8,13 @@
 
 COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
 
+cd "$(git rev-parse --show-toplevel)"
+
 # Run tests
 true \
   && echo "Missing copyright notice in changed files:" \
     && [[ ! $( \
-        cd "$(git rev-parse --show-toplevel)" && git diff --cached --name-only HEAD | grep '.rs$' | \
+        git diff --cached --name-only HEAD | grep '.rs$' | \
         xargs --no-run-if-empty grep -LH "${COPYRIGHT_TEXT}" | tee /dev/stderr \
       ) ]] \
       || (echo "fix using:   echo \"// ${COPYRIGHT_TEXT}, see /COPYING file for details
