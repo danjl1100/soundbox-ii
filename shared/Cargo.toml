@@ -2,7 +2,10 @@
 name = "shared"
 version = "0.1.0"
 authors = ["Daniel Lambert <danjl1100@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-or-later"
+
+[lints]
+workspace = true
 
 [dependencies]

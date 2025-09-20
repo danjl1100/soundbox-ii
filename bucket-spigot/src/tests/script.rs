@@ -5,10 +5,10 @@ use super::{
     fake_rng,
 };
 use crate::{
+    BucketId, ModifyCmd, ModifyError, Network,
     bucket_paths_map::BucketPathsMap,
     clap::ModifyCmd as ClapModifyCmd,
     path::{Path, PathRef},
-    BucketId, ModifyCmd, ModifyError, Network,
 };
 use ::clap::Parser as _;
 use arbitrary::Unstructured;
@@ -31,29 +31,17 @@ pub(super) enum Entry<T, U> {
     Filters(Path, Vec<Vec<U>>),
     ExpectError(String, String),
     Peek(
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            with = "::serde_with::rust::unwrap_or_skip"
-        )]
-        Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")] Option<u64>,
         Vec<T>,
     ),
     /// Only shown when no values are requested (e.g. [`Command::PeekAssert`])
     PeekEffort(u64),
     Pop(
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            with = "::serde_with::rust::unwrap_or_skip"
-        )]
-        Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")] Option<u64>,
         Vec<T>,
     ),
     PopFrom(
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            with = "::serde_with::rust::unwrap_or_skip"
-        )]
-        Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")] Option<u64>,
         Vec<BucketId>,
     ),
     InternalStats(Stats),
@@ -503,11 +491,17 @@ impl std::fmt::Display for ScriptError {
             Kind::ExpectErrorDuplicate {
                 existing_line,
                 existing_line_number,
-            } => write!(f, "duplicate expect_err annotation (previous line {existing_line_number}: {existing_line:?})"),
+            } => write!(
+                f,
+                "duplicate expect_err annotation (previous line {existing_line_number}: {existing_line:?})"
+            ),
             Kind::ExpectErrorButOk {
                 expect_line,
                 expect_line_number,
-            } => write!(f, "expected error (line {expect_line_number}: {expect_line:?}) but command succeeded"),
+            } => write!(
+                f,
+                "expected error (line {expect_line_number}: {expect_line:?}) but command succeeded"
+            ),
         }?;
         write!(f, " on script line {line_number}: {line:?}")
     }

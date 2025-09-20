@@ -1,8 +1,17 @@
 [package]
 name = "vlc-http"
 version = "0.1.0"
-edition = "2021"
+authors = ["Daniel Lambert <danjl1100@gmail.com>"]
+edition = "2024"
 license = "GPL-3.0-or-later"
+
+[lints]
+workspace = true
+
+[features]
+default = ["clap", "ureq"]
+clap = ["dep:clap"]
+ureq = ["dep:ureq"]
 
 [dependencies]
 base64 = "0.22.1"
@@ -20,12 +29,5 @@ clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
 insta = { version = "1.38.0", features = ["ron", "glob"] }
 test-log = { version = "0.2.16", default-features = false, features = ["color", "trace"] }
-ureq = { version = "2.9.7", features = ["http-crate"], default-features = false }
+ureq = { version = "2.9.7", features = [], default-features = false }
 
-[features]
-default = ["clap", "ureq"]
-clap = ["dep:clap"]
-ureq = ["dep:ureq"]
-
-[lints]
-workspace = true
