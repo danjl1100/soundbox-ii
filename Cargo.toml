@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "arg-util",
   "beet-pusher",
   "bucket-spigot",
   "shared",
