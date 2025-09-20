@@ -1,4 +1,4 @@
-- [ ] add a tiny http server with a blank page to hold the canvas
+- [x] add a tiny http server with a blank page to hold the canvas
 
 - [ ] add typescript pipeline
     - [ ] check out xtask for compiling the typescript source?
