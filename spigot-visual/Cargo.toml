@@ -1,0 +1,10 @@
+[package]
+name = "spigot-visual"
+version = "0.1.0"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+bucket-spigot = { version = "0.1.0", path = "../bucket-spigot" }

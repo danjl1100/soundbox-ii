@@ -3,7 +3,7 @@ members = [
   "arg-util",
   "beet-pusher",
   "bucket-spigot",
-  "shared",
+  "shared", "spigot-visual",
   "vlc-http",
 ]
 resolver = "2"
