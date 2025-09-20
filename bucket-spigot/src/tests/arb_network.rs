@@ -1,9 +1,9 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
+    ModifyCmd, Network,
     clap::ArgBounds,
     path::{Path, RemovedSelf},
-    ModifyCmd, Network,
 };
 
 const DEBUG: bool = false;
@@ -41,7 +41,7 @@ where
 
 mod seed {
     use super::never;
-    use crate::{order::OrderType, path::Path, ModifyCmd};
+    use crate::{ModifyCmd, order::OrderType, path::Path};
 
     #[derive(arbtest::arbitrary::Arbitrary)]
     pub(super) enum OrderTypeSeed {
@@ -434,7 +434,9 @@ where
                 println!("-> {cmd_str}");
             }
             if let Err(e) = network.modify(cmd) {
-                panic!("impl Arbitrary for Network should only execute valid commands: {e} \nModifyCmd: {cmd_str}");
+                panic!(
+                    "impl Arbitrary for Network should only execute valid commands: {e} \nModifyCmd: {cmd_str}"
+                );
             }
         }
 

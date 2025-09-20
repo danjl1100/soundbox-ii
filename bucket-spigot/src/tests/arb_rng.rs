@@ -119,7 +119,10 @@ impl RngHolder {
         };
 
         let len_orig = bytes.len();
-        assert!(len_new <= len_orig, "truncate_from_left should not increase length (len_orig {len_orig} -> len_new {len_new})");
+        assert!(
+            len_new <= len_orig,
+            "truncate_from_left should not increase length (len_orig {len_orig} -> len_new {len_new})"
+        );
 
         bytes.rotate_left(len_orig - len_new);
         bytes.truncate(len_new);

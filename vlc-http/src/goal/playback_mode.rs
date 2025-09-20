@@ -1,9 +1,9 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{
-    query_playback::QueryPlayback, ClientState, Error, Plan, PlanConstructor, PlaybackMode, Step,
+    ClientState, Error, Plan, PlanConstructor, PlaybackMode, Step, query_playback::QueryPlayback,
 };
-use crate::{client_state::ClientStateSequence, Command};
+use crate::{Command, client_state::ClientStateSequence};
 use tracing::{debug, trace};
 
 #[derive(Clone)]
@@ -72,7 +72,7 @@ impl std::fmt::Debug for Set {
 #[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::{goal::RepeatMode, Change, Response};
+    use crate::{Change, Response, goal::RepeatMode};
     use std::str::FromStr as _;
     use test_log::test;
 

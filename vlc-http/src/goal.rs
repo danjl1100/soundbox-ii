@@ -3,8 +3,9 @@
 //! High-level actions for VLC, requiring multiple steps to reach the desired state
 
 use crate::{
+    ClientState, Endpoint,
     client_state::{ClientStateSequence, InvalidClientInstance, Sequence},
-    response, ClientState, Endpoint,
+    response,
 };
 
 mod playback_mode;
@@ -15,8 +16,8 @@ mod query_playlist;
 
 mod builders {
     use super::{
-        playlist_items, query_playback::QueryPlayback, query_playlist::QueryPlaylist, ActionPlan,
-        ActionQuerySetItems, Change, PlanConstructor as _, TargetPlaylistItems,
+        ActionPlan, ActionQuerySetItems, Change, PlanConstructor as _, TargetPlaylistItems,
+        playlist_items, query_playback::QueryPlayback, query_playlist::QueryPlaylist,
     };
     use crate::{client_state::PlanBuilder, goal::playback_mode};
 

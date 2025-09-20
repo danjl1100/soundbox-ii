@@ -17,7 +17,7 @@
 pub use arg_split::ArgSplit;
 mod arg_split;
 
-pub use arg_join::{join_debug_by_spaces, join_display_by_spaces, StrDebugSplit, StringDebugSplit};
+pub use arg_join::{StrDebugSplit, StringDebugSplit, join_debug_by_spaces, join_display_by_spaces};
 mod arg_join;
 
 pub use multi_source::{Input, Source, Value};

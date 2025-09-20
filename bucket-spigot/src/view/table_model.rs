@@ -332,7 +332,8 @@ impl std::fmt::Display for TableView {
                     writeln!(
                         f,
                         "{:<position$}{marker} <{:-<remainder_width$}--- (one or more nodes omitted...)",
-                        "", "")?;
+                        "", ""
+                    )?;
                 }
 
                 position += width;

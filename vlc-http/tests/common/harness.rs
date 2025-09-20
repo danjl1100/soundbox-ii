@@ -4,7 +4,7 @@ use super::Model;
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
 use tracing::error;
-use vlc_http::{client_state::PlanBuilder, goal::Step, ClientState, Endpoint, Plan};
+use vlc_http::{ClientState, Endpoint, Plan, client_state::PlanBuilder, goal::Step};
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
     let mut runner = Runner::default();
@@ -123,7 +123,9 @@ impl Runner {
                     let pop_count = pop_count.map_or(1, NonZeroU32::get);
                     for iter in 0..pop_count {
                         let Some(endpoint) = self.action_ignored_endpoints.pop_front() else {
-                            panic!("invalid state for {line:?}: no ignored endpoint found for ActionApplyIgnored (iter {iter})")
+                            panic!(
+                                "invalid state for {line:?}: no ignored endpoint found for ActionApplyIgnored (iter {iter})"
+                            )
                         };
                         self.run_endpoint(endpoint);
                     }
@@ -144,7 +146,9 @@ impl Runner {
                 ?action_pending,
                 "invalid command: cannot start action when one is already pending"
             );
-            panic!("invalid command {line:?}: cannot start action when one is already pending: {action_pending:#?}");
+            panic!(
+                "invalid command {line:?}: cannot start action when one is already pending: {action_pending:#?}"
+            );
         }
         self.action_pending = Some(action_pending);
     }
@@ -216,7 +220,9 @@ impl Runner {
             let endpoint = match pollable.next(&self.client_state) {
                 Ok(Step::Need(endpoint)) => endpoint,
                 Ok(Step::Done(_)) => {
-                    panic!("invalid command {line:?}: action returned None (completed) so cannot ignore (completed iter {iter} of {push_count})")
+                    panic!(
+                        "invalid command {line:?}: action returned None (completed) so cannot ignore (completed iter {iter} of {push_count})"
+                    )
                 }
                 Err(err @ vlc_http::goal::Error { .. }) => {
                     eprintln!("{err}");
@@ -250,12 +256,16 @@ impl Runner {
 
         if let Some(action_pending) = action_pending {
             let log_str = log_json();
-            panic!("FAIL log entries: {log_str}\nFAIL ended while still pending action: {action_pending:#?}");
+            panic!(
+                "FAIL log entries: {log_str}\nFAIL ended while still pending action: {action_pending:#?}"
+            );
         }
 
         if !action_ignored_endpoints.is_empty() {
             let log_str = log_json();
-            panic!("FAIL log entries: {log_str}\nFAIL ended while still pending ignored endpoints: {action_ignored_endpoints:#?}");
+            panic!(
+                "FAIL log entries: {log_str}\nFAIL ended while still pending ignored endpoints: {action_ignored_endpoints:#?}"
+            );
         }
 
         log
@@ -313,7 +323,9 @@ mod model_logger {
                     .all(|log_last| *log_last == log_entry)
             {
                 let log_str = serde_json::to_string_pretty(&self.log).expect("json serialize log");
-                panic!("FAIL log entries: {log_str}\nFAIL Cycle detected, duplicated log entry {log_entry:#?}");
+                panic!(
+                    "FAIL log entries: {log_str}\nFAIL Cycle detected, duplicated log entry {log_entry:#?}"
+                );
             }
 
             self.log.push(log_entry);

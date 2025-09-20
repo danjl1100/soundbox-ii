@@ -2,10 +2,10 @@
 
 #![allow(clippy::panic)]
 
-use super::source::{InOrder, Order, OrderSource as _, OrderType};
 use super::RandResult;
-use crate::tests::{assert_arb_error, fake_rng, run_with_timeout};
+use super::source::{InOrder, Order, OrderSource as _, OrderType};
 use crate::Weights;
+use crate::tests::{assert_arb_error, fake_rng, run_with_timeout};
 use arbtest::arbitrary::Unstructured;
 use std::time::Duration;
 
@@ -63,7 +63,7 @@ impl<'a> Validator<'a> {
         mut next_fn: impl FnMut(&mut Unstructured) -> RandResult<usize> + Send + Sync + 'b,
         // TODO type alias for arbtest::arbitrary::Result<ControlFlow<()>>
     ) -> impl FnMut(&mut Unstructured) -> arbtest::arbitrary::Result<std::ops::ControlFlow<()>>
-           + Captures<&'a &'b ()> {
+    + Captures<&'a &'b ()> {
         const TIMEOUT: Duration = Duration::from_secs(1);
 
         let mut prev = None;
@@ -74,7 +74,10 @@ impl<'a> Validator<'a> {
                 |elapsed| {
                     // FIXME no way of reporting a "failure" seed if `next_fn` is stuck,
                     //       since only the process abort will cancel the function
-                    eprintln!("aborting process, call to `next` (type {ty}) took longer than {elapsed:?}\nEXIT 1", ty=self.order_type);
+                    eprintln!(
+                        "aborting process, call to `next` (type {ty}) took longer than {elapsed:?}\nEXIT 1",
+                        ty = self.order_type
+                    );
                     std::process::exit(1)
                 },
             )?;
@@ -207,9 +210,9 @@ impl<'a> Validator<'a> {
                     Ok(ratio) => {
                         let relative_to_first = ratio / first;
                         assert!(
-                        relative_to_first > 0.9 && relative_to_first < 1.1,
-                        "{index}: {ratio} ratios should be similar, first {first}, relative_to_first {relative_to_first}"
-                    );
+                            relative_to_first > 0.9 && relative_to_first < 1.1,
+                            "{index}: {ratio} ratios should be similar, first {first}, relative_to_first {relative_to_first}"
+                        );
                     }
                     Err(seen) => {
                         assert_eq!(

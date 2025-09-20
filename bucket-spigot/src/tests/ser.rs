@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::script::NetworkStrings;
-use crate::{clap::ArgBounds, order::OrderType, path::Path, ModifyCmd, Network};
+use crate::{ModifyCmd, Network, clap::ArgBounds, order::OrderType, path::Path};
 
 fn into_cmds<T, U>(network: Network<T, U>) -> Vec<ModifyCmd<T, U>>
 where

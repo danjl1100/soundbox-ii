@@ -9,7 +9,7 @@ use beet_pusher::BeetPusher;
 use clap::Parser;
 use eyre::Context as _;
 use std::{borrow::Cow, path::PathBuf};
-use todo_move_to_a_beet_lib::{query_beet, BeetItem};
+use todo_move_to_a_beet_lib::{BeetItem, query_beet};
 use tracing::{info, warn};
 
 #[derive(clap::Parser, Debug)]
@@ -245,7 +245,7 @@ mod beet_pusher {
     use crate::{determined::Determined, path_url::BaseUrl, todo_move_to_a_beet_lib::BeetItem};
     use bucket_spigot::Network;
     use tracing::debug;
-    use vlc_http::{goal::TargetPlaylistItems, Auth};
+    use vlc_http::{Auth, goal::TargetPlaylistItems};
 
     type UreqError = vlc_http::http_runner::ureq::Error;
     type ExhaustResult<'a, T> =
@@ -324,10 +324,10 @@ mod beet_pusher {
                 if peeked.items().len() != peek_len {
                     let view = self.spigot.view_table_default();
                     unreachable!(
-                    "insufficient items in spigot count = {found}, expected {expected}:\n{view}",
-                    found = peeked.items().len(),
-                    expected = peek_len,
-                );
+                        "insufficient items in spigot count = {found}, expected {expected}:\n{view}",
+                        found = peeked.items().len(),
+                        expected = peek_len,
+                    );
                 }
                 let () = self.determined.modify_gen_urls(
                     &mut self.config.base_url,
@@ -740,7 +740,7 @@ mod path_url {
 }
 
 fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
-    use bucket_spigot::{path::PathRef, ModifyCmd, Network};
+    use bucket_spigot::{ModifyCmd, Network, path::PathRef};
 
     let mut spigot = Network::from_commands_str_whitespace(script)?;
 

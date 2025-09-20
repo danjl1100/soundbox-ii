@@ -265,7 +265,7 @@ impl<T, U> Network<T, U> {
             Ok(ChildFound::RootChildren(child_vec)) => child_vec,
             Ok(ChildFound::Joint(joint)) => &mut joint.next,
             Ok(ChildFound::Bucket(_)) | Err(UnknownPathRef(_)) => {
-                return Err(UnknownPath(path).into())
+                return Err(UnknownPath(path).into());
             }
         };
 
@@ -361,7 +361,7 @@ impl<T, U> Network<T, U> {
             Ok(ChildFound::RootChildren(child_vec)) => child_vec,
             Ok(ChildFound::Joint(joint)) => &mut joint.next,
             Ok(ChildFound::Bucket(_)) | Err(UnknownPathRef(_)) => {
-                return Err(UnknownPath(path).into())
+                return Err(UnknownPath(path).into());
             }
         };
 
@@ -395,8 +395,8 @@ impl<T, U> Network<T, U> {
 
 mod bucket_paths_map {
     use crate::{
-        path::{Path, PathRef},
         BucketId,
+        path::{Path, PathRef},
     };
     use std::collections::{HashMap, HashSet};
 
@@ -562,7 +562,7 @@ pub enum ModifyCmd<T, U> {
 }
 pub use modify_cmd_ref::ModifyCmdRef;
 mod modify_cmd_ref {
-    use crate::{order, path::PathRef, ModifyCmd};
+    use crate::{ModifyCmd, order, path::PathRef};
 
     /// Reference to a [`ModifyCmd`]
     ///
@@ -822,7 +822,7 @@ pub(crate) struct CannotDeleteNonempty(Path);
 #[allow(clippy::panic)] // TODO use actual error handling for tests, `eyre` prints good details!
 #[allow(clippy::unwrap_used)]
 mod tests {
-    pub(crate) use arb_rng::{assert_arb_error, decode_hex, fake_rng, PanicRng};
+    pub(crate) use arb_rng::{PanicRng, assert_arb_error, decode_hex, fake_rng};
     pub(crate) use sync::run_with_timeout;
 
     // utils

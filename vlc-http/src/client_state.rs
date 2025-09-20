@@ -2,7 +2,7 @@
 //! Types to track the state of a specific VLC instance
 
 use self::sequenced::Sequenced;
-use crate::{response, Response};
+use crate::{Response, response};
 
 pub(crate) use sequenced::Sequence;
 mod sequenced;

@@ -3,10 +3,10 @@
 
 //! Prototype HTML viewer for `bucket-spigot`
 
-use bucket_spigot::clap::clap_crate::{self as clap, Parser as _};
 use bucket_spigot::clap::ArgBounds;
+use bucket_spigot::clap::clap_crate::{self as clap, Parser as _};
 use bucket_spigot::view::TableView;
-use bucket_spigot::{clap::ModifyCmd, view::TableParams, Network};
+use bucket_spigot::{Network, clap::ModifyCmd, view::TableParams};
 
 /// helper for writing SVG elements, think `dbg!`
 macro_rules! elem_write {

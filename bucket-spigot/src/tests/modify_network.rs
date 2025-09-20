@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::arb_rng::{assert_arb_error, fake_rng};
-use crate::{path::RemovedSelf, tests::script::NetworkStrings, ModifyErr, ModifyError, Network};
+use crate::{ModifyErr, ModifyError, Network, path::RemovedSelf, tests::script::NetworkStrings};
 
 #[test]
 fn empty() {

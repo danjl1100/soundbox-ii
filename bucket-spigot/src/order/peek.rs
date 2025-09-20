@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{source::OrderSource as _, CountsRemaining, OrderNode, RandResult, Root};
-use crate::{child_vec::ChildVec, BucketId, Child, Network};
+use super::{CountsRemaining, OrderNode, RandResult, Root, source::OrderSource as _};
+use crate::{BucketId, Child, Network, child_vec::ChildVec};
 use std::rc::Rc;
 impl<T, U> Network<T, U> {
     /// Returns a proposed sequence of items leaving the spigot.

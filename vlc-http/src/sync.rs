@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Convenience functions for [`Plan`]s in a synchronous (blocking) context
 
-use crate::{goal::Step, ClientState, Endpoint, Plan, Response};
+use crate::{ClientState, Endpoint, Plan, Response, goal::Step};
 
 /// IO portion that resolves [`Endpoint`]s into the [`Response`]
 pub trait EndpointRequestor {
@@ -108,8 +108,13 @@ where
         match kind {
             ErrorKind::Poll(_) => write!(f, "failed to determine next endpoint"),
             ErrorKind::EndpointFn(_) => write!(f, "failed evaluating endpoint"),
-            ErrorKind::IterationCountExceeded{max_iter_count, next_endpoint} =>
-            write!(f, "exceeded iteration count safety net ({max_iter_count}), next endpoint {next_endpoint:?}"),
+            ErrorKind::IterationCountExceeded {
+                max_iter_count,
+                next_endpoint,
+            } => write!(
+                f,
+                "exceeded iteration count safety net ({max_iter_count}), next endpoint {next_endpoint:?}"
+            ),
         }?;
         write!(f, " for source {source:?}")
     }

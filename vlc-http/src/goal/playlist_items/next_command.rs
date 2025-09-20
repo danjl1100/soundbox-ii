@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::insert_match::{find_insert_match, MatchAction};
 use super::Target;
+use super::insert_match::{MatchAction, find_insert_match};
 
 impl<T> Target<T> {
     /// Returns the next command and the matching subset of non-playing target items

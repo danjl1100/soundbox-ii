@@ -2,14 +2,14 @@
 
 use super::TableParams;
 use crate::{
+    Child, Trees,
     path::PathRef,
     traversal::{ControlFlow, DepthFirstVisitor, TraversalElem},
     view::{
-        error::{count, ViewError},
-        table_model::CellPartial,
         Cell, NodeDetails, NodeKind, Row, TableView,
+        error::{ViewError, count},
+        table_model::CellPartial,
     },
-    Child, Trees,
 };
 
 #[allow(clippy::missing_panics_doc, clippy::unwrap_used)] // TODO remove the test-only panics
@@ -37,8 +37,8 @@ pub(super) fn run<T, U>(
         assert!(
             expected_rows_json == rows_2_json,
             "Original: {expected_rows_json}\nUpdated:{rows_2_json}\nFirst mismatched line {first_mismatch_line:?}"
-            // ... "\nOriginal {expected_view}\nUpdated {view}"
         );
+        // ... "\nOriginal {expected_view}\nUpdated {view}"
     }
     assert_eq!(expected_rows, rows, "rows should match old/new algorithms");
     assert_eq!(
@@ -147,15 +147,15 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
             .expect("should visit paths at or below the base path");
         dbg!(("visit", &node_path, node_path.len(), depth));
 
-        if let Some(prev_visit_depth) = self.prev_visit_depth {
-            if depth < prev_visit_depth {
-                println!(
-                    "@{node_path} RESET parent_active to TRUE for depths {}..={prev_visit_depth}",
-                    depth + 1
-                );
-                for prev_child_state in &mut self.state_stack[depth + 1..=prev_visit_depth] {
-                    prev_child_state.parent_active = true;
-                }
+        if let Some(prev_visit_depth) = self.prev_visit_depth
+            && depth < prev_visit_depth
+        {
+            println!(
+                "@{node_path} RESET parent_active to TRUE for depths {}..={prev_visit_depth}",
+                depth + 1
+            );
+            for prev_child_state in &mut self.state_stack[depth + 1..=prev_visit_depth] {
+                prev_child_state.parent_active = true;
             }
         }
 
@@ -189,16 +189,16 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
             .get_mut(depth)
             .expect("row should be pushed above");
 
-        if let Some(prev_continuation_marker_needed) = self.prev_continuation_marker_needed.take() {
-            if depth <= prev_continuation_marker_needed {
-                dest_row.push(CellPartial {
-                    display_width: Some(0),
-                    position: state.position,
-                    parent_position,
-                    node: None,
-                });
-                return Ok(Err(ControlFlow::SkipAnyChildrenAndSiblings));
-            }
+        if let Some(prev_continuation_marker_needed) = self.prev_continuation_marker_needed.take()
+            && depth <= prev_continuation_marker_needed
+        {
+            dest_row.push(CellPartial {
+                display_width: Some(0),
+                position: state.position,
+                parent_position,
+                node: None,
+            });
+            return Ok(Err(ControlFlow::SkipAnyChildrenAndSiblings));
         }
         if matches!(self.params.max_width, Some(max_width) if state.position >= max_width) {
             // // let dest_row = dest_cells

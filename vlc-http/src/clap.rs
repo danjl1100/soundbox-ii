@@ -3,8 +3,8 @@
 
 use crate::command::VolumeBoundsError;
 // avoid local name conflicts
-use crate::request::AuthInput as CrateAuthInput;
 use crate::Command as CrateCommand;
+use crate::request::AuthInput as CrateAuthInput;
 
 // re-export `clap`
 #[expect(clippy::module_name_repetitions)]

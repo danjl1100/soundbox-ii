@@ -2,8 +2,8 @@
 //! HTTP-level primitives (interchange for test purposes)
 
 use crate::{
-    command::{VolumePercent256, VolumePercentDelta256},
     Command,
+    command::{VolumePercent256, VolumePercentDelta256},
 };
 use std::borrow::Cow;
 

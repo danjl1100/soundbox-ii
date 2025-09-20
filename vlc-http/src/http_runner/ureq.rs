@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP runner using [`ureq`]
-use crate::{sync::EndpointRequestor, Auth, Endpoint, Response};
+use crate::{Auth, Endpoint, Response, sync::EndpointRequestor};
 use std::str::FromStr as _;
 
 type ResponseStrObserver = dyn FnMut(&str);

@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-level request primitives (interchange for test purposes)
 
-use base64::{prelude::BASE64_STANDARD, Engine as _};
+use base64::{Engine as _, prelude::BASE64_STANDARD};
 pub use endpoint::Endpoint;
 use http::uri::Authority;
 use std::str::FromStr as _;

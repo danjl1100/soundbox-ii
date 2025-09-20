@@ -1,10 +1,10 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
+    Network,
     path::{Path, PathRef},
     tests::script::NetworkStrings,
     view::TableParams,
-    Network,
 };
 use std::str::FromStr as _;
 
@@ -705,8 +705,8 @@ fn view_arbitrary_network() {
 
 mod arbitrary_limit {
     use crate::{
-        view::{NodeDetails, TableParams, TableView},
         Network,
+        view::{NodeDetails, TableParams, TableView},
     };
 
     #[derive(Clone, Copy, Debug, arbitrary::Arbitrary)]

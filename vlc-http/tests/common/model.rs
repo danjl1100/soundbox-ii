@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use vlc_http::{goal::Step, ClientState, Plan as _};
+use vlc_http::{ClientState, Plan as _, goal::Step};
 
 #[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Model {

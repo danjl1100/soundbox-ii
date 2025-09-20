@@ -3,8 +3,8 @@
 //! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmdRef`]s
 
 use crate::{
-    order::OrderType, path::Path, traversal::TraversalElem, ModifyCmd, ModifyCmdRef, ModifyError,
-    Network,
+    ModifyCmd, ModifyCmdRef, ModifyError, Network, order::OrderType, path::Path,
+    traversal::TraversalElem,
 };
 
 /// Visitor for [`ModifyCmdRef`] elements to serialize a [`Network`]

@@ -127,11 +127,9 @@ impl<'a> ArgSplit<'a> {
                 false
             }
         };
-        if need_owned {
-            if let Some(NextToken::Borrowed(start)) = &self.next_token {
-                let from_start = self.input[*start..index].to_string();
-                self.next_token = Some(NextToken::Owned(from_start));
-            }
+        if need_owned && let Some(NextToken::Borrowed(start)) = &self.next_token {
+            let from_start = self.input[*start..index].to_string();
+            self.next_token = Some(NextToken::Owned(from_start));
         }
     }
     /// Finalize `next_token`, and add the value to `tokens`

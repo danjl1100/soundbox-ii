@@ -5,10 +5,10 @@ use self::{
     simple_visitor::SimpleVisitor,
 };
 use crate::{
+    Bucket, Child, Joint, Trees, UnknownPath, UnknownPathRef,
     child_vec::{ChildVec, Weights},
     order,
     path::{Path, PathRef},
-    Bucket, Child, Joint, Trees, UnknownPath, UnknownPathRef,
 };
 
 #[derive(Clone, Copy)]
@@ -216,7 +216,7 @@ pub(crate) trait DepthFirstVisitor<T, U, E, S: ?Sized + OrderNodeSliceImpl = Ord
 
 mod simple_visitor {
     use super::{
-        generic_order_opt::OrderNodeSliceImpl, ControlFlow, DepthFirstVisitor, TraversalElem,
+        ControlFlow, DepthFirstVisitor, TraversalElem, generic_order_opt::OrderNodeSliceImpl,
     };
 
     pub(super) enum Never {}

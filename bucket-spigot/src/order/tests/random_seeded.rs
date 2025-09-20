@@ -3,9 +3,9 @@
 //! NOTE: "fair dice roll" is an homage to <https://xkcd.com/221/>
 
 use super::NONEMPTY_WEIGHTS;
+use crate::Weights;
 use crate::order::source::{OrderSource, Random, Shuffle};
 use crate::tests::decode_hex;
-use crate::Weights;
 use arbtest::arbitrary::Unstructured;
 
 macro_rules! fake_rng {

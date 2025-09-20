@@ -1,11 +1,11 @@
 // Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{error::count, error::ViewError, Cell, NodeDetails, NodeKind, Row, TableView};
+use super::{Cell, NodeDetails, NodeKind, Row, TableView, error::ViewError, error::count};
 use crate::{
+    Child, Network,
     child_vec::{ChildVec, Weights},
     order::OrderNode,
     path::{Path, PathRef},
-    Child, Network,
 };
 use std::rc::Rc;
 

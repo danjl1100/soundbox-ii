@@ -62,10 +62,10 @@
 //!
 
 use super::{
-    playback_mode, query_playback::QueryPlayback, query_playlist::QueryPlaylist, response, Error,
-    PlanConstructor, PlaybackMode, Step,
+    Error, PlanConstructor, PlaybackMode, Step, playback_mode, query_playback::QueryPlayback,
+    query_playlist::QueryPlaylist, response,
 };
-use crate::{client_state::ClientStateSequence, fmt::DebugUrl, Command, Plan};
+use crate::{Command, Plan, client_state::ClientStateSequence, fmt::DebugUrl};
 
 mod insert_match;
 mod next_command;
