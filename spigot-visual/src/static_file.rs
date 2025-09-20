@@ -1,7 +1,7 @@
 //! References to static web resource files (with optional development reloading)
 
 use eyre::Context;
-use tiny_http::Response;
+use tiny_http::{Request, Response};
 
 /// Constructor for [`StaticFile`]
 #[macro_export]
@@ -31,34 +31,33 @@ impl StaticFile {
     ///
     /// # Errors
     /// Returns an error if the file load or reply fails
-    pub fn reply_file(
-        self,
-        request: tiny_http::Request,
-        debug_path_prefix: Option<&str>,
-    ) -> eyre::Result<()> {
-        self.get_response(debug_path_prefix)?.reply_to(request)?;
+    pub fn reply_file(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+        self.get_response(prefix)?.reply_to(request)?;
         Ok(())
     }
     /// Replies with the file contents as HTML
     ///
     /// # Errors
     /// Returns an error if the file load or reply fails
-    #[allow(clippy::missing_panics_doc)] // panic indicates bug
-    pub fn reply_html(
-        self,
-        request: tiny_http::Request,
-        debug_path_prefix: Option<&str>,
-    ) -> eyre::Result<()> {
-        self.get_response(debug_path_prefix)?
-            .with_header(
-                tiny_http::Header::from_bytes("Content-Type", "text/html").expect("valid header"),
-            )
+    pub fn reply_html(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+        self.get_response(prefix)?
+            .content_type("text/html")
             .reply_to(request)?;
         Ok(())
     }
-    fn get_response(self, debug_path_prefix: Option<&str>) -> eyre::Result<FileResponse> {
+    /// Replies with the file contents as JS
+    ///
+    /// # Errors
+    /// Returns an error if the file load or reply fails
+    pub fn reply_js(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+        self.get_response(prefix)?
+            .content_type("application/javascript")
+            .reply_to(request)?;
+        Ok(())
+    }
+    fn get_response(self, prefix: Option<&str>) -> eyre::Result<FileResponse> {
         let Self { path, bytes } = self;
-        let file_response = if let Some(prefix) = debug_path_prefix {
+        let file_response = if let Some(prefix) = prefix {
             let path = format!("{prefix}/{path}");
             let file = std::fs::File::open(&path)
                 .with_context(|| format!("failed to read path: {path}"))?;
@@ -75,16 +74,25 @@ enum FileResponse {
     Data(Response<std::io::Cursor<Vec<u8>>>),
 }
 impl FileResponse {
-    fn reply_to(self, request: tiny_http::Request) -> std::io::Result<()> {
+    fn reply_to(self, request: Request) -> std::io::Result<()> {
         match self {
             Self::File(inner) => request.respond(inner),
             Self::Data(inner) => request.respond(inner),
         }
     }
-    fn with_header(self, header: tiny_http::Header) -> Self {
-        match self {
+    /// # Panics
+    /// Panics if the provided string is non-ascii
+    fn content_type(self, content_type: &'static str) -> Self {
+        self.with_header("Content-Type", content_type)
+            .expect("valid content-type")
+    }
+    /// Returns the response with the header, or `None` if the header is invalid (non-ascii)
+    fn with_header(self, header: &'static str, value: &'static str) -> Option<Self> {
+        let header = tiny_http::Header::from_bytes(header, value).ok()?;
+        let this = match self {
             Self::File(inner) => Self::File(inner.with_header(header)),
             Self::Data(inner) => Self::Data(inner.with_header(header)),
-        }
+        };
+        Some(this)
     }
 }

@@ -1,7 +1,7 @@
 - [x] add a tiny http server with a blank page to hold the canvas
 
 - [ ] add typescript pipeline
-    - [ ] check out xtask for compiling the typescript source?
+    - [x] add xtask command for compiling the typescript source
     - [ ] look at `tsify` (alternate `ts-rs`) for exporting Rust types as typescript definitions
         - NOTE: Not exporting any functions or wasm, just vanilla JS created by a typescript compiler, communicating with the web server via plain JSON payloads
 

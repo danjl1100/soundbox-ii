@@ -49,11 +49,12 @@ fn handle_request(request: tiny_http::Request, config: &Config) -> eyre::Result<
     const CODE_404_NOT_FOUND: u32 = 404;
     const INDEX: &str = "/index.html";
 
+    let prefix = config.dev_path_prefix.as_deref();
+
     let url = request.url();
     match url {
-        s if s == INDEX => {
-            static_file!("index.html").reply_html(request, config.dev_path_prefix.as_deref())
-        }
+        s if s == INDEX => static_file!("index.html").reply_html(request, prefix),
+        "/app.js" => static_file!("app.js").reply_js(request, prefix),
         "/" => {
             let redirect = Response::empty(CODE_301_MOVED)
                 .with_header(Header::from_bytes("Location", INDEX).expect("valid header"));

@@ -1,11 +1,5 @@
 [workspace]
-members = [
-  "arg-util",
-  "beet-pusher",
-  "bucket-spigot",
-  "shared", "spigot-visual",
-  "vlc-http",
-]
+members = [ "arg-util", "beet-pusher", "bucket-spigot", "shared", "spigot-visual", "vlc-http", "xtask" ]
 resolver = "2"
 
 
