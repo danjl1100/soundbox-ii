@@ -12,7 +12,6 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Run tests
 true \
-  && cargo xtask checks \
   && echo "Missing copyright notice in changed files:" \
     && [[ ! $( \
         git diff --cached --name-only --diff-filter=d HEAD | grep '.\(rs\|ts\)$' | \
@@ -24,12 +23,7 @@ true \
 \$(cat \$FILE)\" > \$FILE" && false) \
     && echo "[none]" \
   && (echo "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  COPYING" | sha256sum -c - --strict) \
-  && (cd spigot-visual/static-ts && biome check) \
-  && cargo xtask spigot-visual-dist \
-  && cargo clippy --workspace --all-targets --color always \
-  && cargo test --workspace --color always \
-  && cargo doc --workspace --no-deps -q --color always \
-  && true # trailing commas for the win
+  && cargo xtask checks
 RESULT=$?
 
 # TODO when nix reinstated

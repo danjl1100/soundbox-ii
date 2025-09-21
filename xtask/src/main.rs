@@ -21,15 +21,19 @@ fn main() -> eyre::Result<()> {
     match task.as_deref() {
         Some("checks") => all_checks(args)?,
         Some("spigot-visual-run") => spigot_visual::run(args)?,
-        Some("spigot-visual-dist") => spigot_visual::dist_js()?,
+        Some("spigot-visual-dist") => spigot_visual::dist_js(Some(WriteOutput))?,
         _ => print_help(),
     }
     Ok(())
 }
 
-/// If present, attempt to fix the checks by writing to files
+/// If present, attempt to fix the checks by writing to files (otherwise, run read-only checks)
 #[derive(Clone, Copy, Debug)]
 struct Fix;
+
+/// If present, write output files (otherwise, run read-only checks)
+#[derive(Clone, Copy, Debug)]
+struct WriteOutput;
 
 fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let bail_unknown = |arg| eyre::eyre!("unknown checks argument: {arg:?}");
@@ -114,10 +118,14 @@ fn project_root() -> PathBuf {
 }
 
 mod rust {
-    use crate::{Fix, status_cargo};
+    use crate::{Fix, run_cargo, status_cargo};
 
     pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
         fmt(fix)?;
+        clippy(fix)?;
+        test()?;
+        doc()?;
+
         Ok(())
     }
 
@@ -148,12 +156,34 @@ mod rust {
         }
         Ok(())
     }
+
+    fn clippy(fix: Option<Fix>) -> eyre::Result<()> {
+        run_cargo(|c| {
+            c.args([
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--color",
+                "always",
+            ]);
+            if let Some(Fix) = fix {
+                c.arg("--fix");
+            }
+            c
+        })
+    }
+    fn test() -> eyre::Result<()> {
+        run_cargo(|c| c.args(["test", "--workspace", "--color", "always"]))
+    }
+    fn doc() -> eyre::Result<()> {
+        run_cargo(|c| c.args(["doc", "--workspace", "--no-deps", "--color", "always"]))
+    }
 }
 
 mod spigot_visual {
     //! Tasks for the `spigot_visual` crate
 
-    use crate::{Fix, print_help_fix_checks, project_root, run_cargo, run_cmd};
+    use crate::{Fix, WriteOutput, print_help_fix_checks, project_root, run_cargo, run_cmd};
     use std::{ffi::OsStr, path::PathBuf};
 
     pub fn run<S>(args: impl IntoIterator<Item = S>) -> eyre::Result<()>
@@ -161,7 +191,7 @@ mod spigot_visual {
         S: AsRef<OsStr>,
     {
         fmt_js()?;
-        dist_js()?;
+        dist_js(Some(WriteOutput))?;
 
         run_cargo(|c| {
             c.args(["run", "--package", "spigot-visual", "--"])
@@ -175,6 +205,7 @@ mod spigot_visual {
 
     pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
         check_js(fix)?;
+        dist_js(None)?;
         Ok(())
     }
     pub fn check_js(fix: Option<Fix>) -> eyre::Result<()> {
@@ -196,8 +227,13 @@ mod spigot_visual {
         check_js(Some(Fix))
     }
 
-    pub fn dist_js() -> eyre::Result<()> {
-        run_cmd("tsc", |c| c.current_dir(ts_src_dir()))
+    pub fn dist_js(write: Option<WriteOutput>) -> eyre::Result<()> {
+        run_cmd("tsc", |c| {
+            if write.is_none() {
+                c.arg("--noEmit");
+            }
+            c.current_dir(ts_src_dir())
+        })
     }
 
     fn ts_src_dir() -> PathBuf {
