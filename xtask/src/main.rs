@@ -5,13 +5,21 @@
 use eyre::Context as _;
 use std::{
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, ExitStatus},
 };
+
+const HELP_TEXT: &str = "Tasks:
+
+checks [fix]            run all linting checks
+spigot-visual-run       runs spigot-visual with the compiled typescript
+spigot-visual-dist      compiles the spigot-visual typescript
+";
 
 fn main() -> eyre::Result<()> {
     let mut args = std::env::args().skip(1);
     let task = args.next();
     match task.as_deref() {
+        Some("checks") => all_checks(args)?,
         Some("spigot-visual-run") => spigot_visual::run(args)?,
         Some("spigot-visual-dist") => spigot_visual::dist_js()?,
         _ => print_help(),
@@ -19,30 +27,82 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-fn run_cmd(cmd: &str, args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<()> {
-    let mut command = Command::new(cmd);
-    args_fn(&mut command);
-    let status = command.status().with_context(|| {
-        dbg!(&command);
-        format!("failed to run `{cmd}`")
-    })?;
+/// If present, attempt to fix the checks by writing to files
+#[derive(Clone, Copy, Debug)]
+struct Fix;
 
+fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    let bail_unknown = |arg| eyre::eyre!("unknown checks argument: {arg:?}");
+    let fix = args
+        .next()
+        .map(|arg| {
+            if arg == "fix" {
+                Ok(Fix)
+            } else {
+                Err(bail_unknown(arg))
+            }
+        })
+        .transpose()?;
+
+    if let Some(extra) = args.next() {
+        return Err(bail_unknown(extra));
+    }
+
+    rust::checks(fix)?;
+    spigot_visual::checks(fix)?;
+
+    Ok(())
+}
+
+fn run_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<()> {
+    let status = status_cargo(args_fn)?;
     if !status.success() {
-        dbg!(&command);
+        eyre::bail!("cargo command failed");
+    }
+    Ok(())
+}
+fn status_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<ExitStatus> {
+    status_cmd(env!("CARGO"), args_fn)
+}
+fn run_cmd(cmd: &str, args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<()> {
+    let status = status_cmd(cmd, args_fn)?;
+    if !status.success() {
+        // dbg!(&command);
         eyre::bail!("`{cmd}` failed");
     }
 
     Ok(())
 }
+fn status_cmd(
+    cmd: &str,
+    args_fn: impl FnOnce(&mut Command) -> &mut Command,
+) -> eyre::Result<ExitStatus> {
+    let mut command = Command::new(cmd);
+    args_fn(&mut command);
+    command.status().with_context(|| {
+        dbg!(&command);
+        format!("failed to run `{cmd}`")
+    })
+}
 
 fn print_help() {
-    eprintln!(
-        "Tasks:
+    eprintln!("{HELP_TEXT}");
+}
 
-spigot-visual-run       runs spigot-visual with the compiled typescript
-spigot-visual-dist      compiles the spigot-visual typescript
-"
-    );
+fn print_help_fix_checks() {
+    let args = ["cargo xtask".to_owned()]
+        .into_iter()
+        .chain(std::env::args().skip(1))
+        .chain(["fix".to_string()])
+        .fold(String::new(), |mut acc, arg| {
+            use std::fmt::Write as _;
+            if !acc.is_empty() {
+                write!(acc, " ").expect("infallible");
+            }
+            write!(acc, "{arg}").expect("infallible");
+            acc
+        });
+    eprintln!("NOTE: Apply fixes using `{args}`");
 }
 
 fn project_root() -> PathBuf {
@@ -53,10 +113,47 @@ fn project_root() -> PathBuf {
         .to_path_buf()
 }
 
+mod rust {
+    use crate::{Fix, status_cargo};
+
+    pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
+        fmt(fix)?;
+        Ok(())
+    }
+
+    pub fn fmt(fix: Option<Fix>) -> eyre::Result<()> {
+        if fix.is_none() {
+            // no fix = printing list
+            eprintln!("Outstanding cargo fmt files:");
+        }
+
+        let status = status_cargo(|c| {
+            c.args(["fmt", "--all", "--"]);
+            if fix.is_none() {
+                c.args(["--check", "-l"]);
+            }
+            c
+        })?;
+        if fix.is_none() {
+            // no fix = printing list
+            if status.success() {
+                // passed, report "none"
+                eprintln!("[none]");
+            }
+            eprintln!("{:-<80}", "");
+        }
+
+        if !status.success() {
+            eyre::bail!("cargo fmt failed");
+        }
+        Ok(())
+    }
+}
+
 mod spigot_visual {
     //! Tasks for the `spigot_visual` crate
 
-    use crate::{project_root, run_cmd};
+    use crate::{Fix, print_help_fix_checks, project_root, run_cargo, run_cmd};
     use std::{ffi::OsStr, path::PathBuf};
 
     pub fn run<S>(args: impl IntoIterator<Item = S>) -> eyre::Result<()>
@@ -66,7 +163,7 @@ mod spigot_visual {
         fmt_js()?;
         dist_js()?;
 
-        run_cmd(env!("CARGO"), |c| {
+        run_cargo(|c| {
             c.args(["run", "--package", "spigot-visual", "--"])
                 //
                 .arg("--dev-path-prefix")
@@ -76,10 +173,27 @@ mod spigot_visual {
         })
     }
 
+    pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
+        check_js(fix)?;
+        Ok(())
+    }
+    pub fn check_js(fix: Option<Fix>) -> eyre::Result<()> {
+        let result = run_cmd("biome", |c| {
+            c.arg("check");
+            if let Some(Fix) = fix {
+                c.arg("--write");
+            }
+            c.current_dir(ts_src_dir())
+        });
+        if result.is_err() && fix.is_none() {
+            print_help_fix_checks();
+        }
+        result
+    }
+
     pub fn fmt_js() -> eyre::Result<()> {
-        run_cmd("biome", |c| {
-            c.args(["format", "--write"]).current_dir(ts_src_dir())
-        })
+        // `biome format --write` also works, but format is a subset of `biome check --write`
+        check_js(Some(Fix))
     }
 
     pub fn dist_js() -> eyre::Result<()> {
