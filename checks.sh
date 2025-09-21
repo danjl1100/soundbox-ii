@@ -14,7 +14,7 @@ cd "$(git rev-parse --show-toplevel)"
 true \
   && echo "Missing copyright notice in changed files:" \
     && [[ ! $( \
-        git diff --cached --name-only HEAD | grep '.rs$' | \
+        git diff --cached --name-only HEAD | grep '.\(rs\|ts\)$' | \
         xargs --no-run-if-empty grep -LH "${COPYRIGHT_TEXT}" | tee /dev/stderr \
       ) ]] \
       || (echo "fix using:   echo \"// ${COPYRIGHT_TEXT}, see /COPYING file for details
@@ -22,6 +22,7 @@ true \
     && echo "[none]" \
   && (echo "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  COPYING" | sha256sum -c - --strict) \
   && echo "Outstanding cargo fmt files:" && cargo fmt --all -- --check -l && echo "[none]" \
+  && cargo xtask spigot-visual-dist \
   && cargo clippy --workspace --all-targets --color always \
   && cargo test --workspace --color always \
   && cargo doc --workspace --no-deps -q --color always \
