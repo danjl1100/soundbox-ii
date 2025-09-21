@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! References to static web resource files (with optional development reloading)
 
 use eyre::Context;
@@ -51,7 +52,7 @@ impl StaticFile {
     /// Returns an error if the file load or reply fails
     pub fn reply_js(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
         self.get_response(prefix)?
-            .content_type("application/javascript")
+            .content_type("text/javascript")
             .reply_to(request)?;
         Ok(())
     }

@@ -55,6 +55,7 @@ fn handle_request(request: tiny_http::Request, config: &Config) -> eyre::Result<
     match url {
         s if s == INDEX => static_file!("index.html").reply_html(request, prefix),
         "/app.js" => static_file!("app.js").reply_js(request, prefix),
+        "/van-1.5.5.js" => static_file!("van-1.5.5.js").reply_js(request, prefix),
         "/" => {
             let redirect = Response::empty(CODE_301_MOVED)
                 .with_header(Header::from_bytes("Location", INDEX).expect("valid header"));
