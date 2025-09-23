@@ -5,6 +5,10 @@ authors = ["Daniel Lambert <danjl1100@gmail.com>"]
 edition = "2024"
 license = "GPL-3.0-or-later"
 
+[features]
+default = ["ts-rs"]
+ts-rs = ["dep:ts-rs"]
+
 [lints]
 workspace = true
 
@@ -13,6 +17,7 @@ rand = "0.8.5"
 clap = { version = "4.5.4", features = ["derive"] }
 serde = { version = "1.0.199", features = ["derive"] }
 arbitrary = "1.3.2"
+ts-rs = { version = "11.0.1", optional = true }
 
 [dev-dependencies]
 arbtest = "0.3.1"

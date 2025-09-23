@@ -184,12 +184,18 @@ mod spigot_visual {
     //! Tasks for the `spigot_visual` crate
 
     use crate::{Fix, WriteOutput, print_help_fix_checks, project_root, run_cargo, run_cmd};
-    use std::{ffi::OsStr, path::PathBuf};
+    use eyre::Context;
+    use std::{
+        ffi::OsStr,
+        fs::DirEntry,
+        path::{Path, PathBuf},
+    };
 
     pub fn run<S>(args: impl IntoIterator<Item = S>) -> eyre::Result<()>
     where
         S: AsRef<OsStr>,
     {
+        gen_bindings_ts()?;
         fmt_js()?;
         dist_js(Some(WriteOutput))?;
 
@@ -234,6 +240,134 @@ mod spigot_visual {
             }
             c.current_dir(ts_src_dir())
         })
+    }
+
+    fn gen_bindings_ts() -> eyre::Result<()> {
+        const IGNORE_FILE_NAMES: &[&str] = &[
+            // rustfmt hint
+            ".gitignore",
+        ];
+        const KNOWN_BINDING_NAMES: &[&str] = &[
+            "Cell",
+            "NodeDetails",
+            "NodeKind",
+            "OrderType",
+            "Path",
+            "Row",
+            "TableView",
+        ];
+        const EXTENSION_BINDING: &str = "ts";
+        const EXTENSION_DEST: &str = "d.ts";
+
+        fn remove_generated_file(entry: &DirEntry, extension: &str) -> eyre::Result<()> {
+            let entry_path = entry.path();
+            let entry_type = entry.file_type().context("cannot read file type")?;
+
+            // check for type "file" ...
+            if !entry_type.is_file() {
+                eyre::bail!("expected file, found {entry_type:?}")
+            }
+            // ... with a filename
+            let Some(full_name) = entry_path.file_name() else {
+                eyre::bail!("no filename")
+            };
+            // (skip ignored)
+            if IGNORE_FILE_NAMES.iter().any(|v| *v == full_name) {
+                return Ok(());
+            }
+
+            let Ok(full_name) = String::from_utf8(full_name.as_encoded_bytes().to_vec()) else {
+                eyre::bail!("non-utf8 filename: {}", full_name.display())
+            };
+            let Some((name, extension_multi)) = full_name.split_once('.') else {
+                eyre::bail!("no filename extension")
+            };
+
+            // ... with the expected extension
+            if extension != extension_multi {
+                eyre::bail!(
+                    "refusing to remove unknown file extension: {}",
+                    entry_path.display()
+                )
+            }
+            // ... with any expected name
+            if !KNOWN_BINDING_NAMES.contains(&name) {
+                eyre::bail!(
+                    "refusing to remove unknown file name: {}",
+                    entry_path.display()
+                )
+            }
+
+            // .. then delete
+            std::fs::remove_file(entry_path).context("failed to delete the file")?;
+
+            Ok(())
+        }
+        fn remove_generated_dir(dir: &Path, extension: &str) -> eyre::Result<()> {
+            let listing = std::fs::read_dir(dir);
+            if let Err(e) = &listing
+                && e.kind() == std::io::ErrorKind::NotFound
+            {
+                return Ok(());
+            }
+            let listing =
+                listing.with_context(|| format!("cannot list folder: {}", dir.display()))?;
+
+            for entry in listing {
+                let entry = entry?;
+                remove_generated_file(&entry, extension)
+                    .with_context(|| format!("cannot remove file {}", entry.path().display()))?;
+            }
+
+            // verify files removed
+            let listing: Result<Vec<DirEntry>, _> = std::fs::read_dir(dir)?.collect();
+            let listing = listing?;
+            if listing.len() > IGNORE_FILE_NAMES.len() {
+                eyre::bail!("extra files in folder {}: {listing:#?}", dir.display())
+            }
+            Ok(())
+        }
+
+        let binding_dir = bucket_spigot_bindings_dir();
+        let dest_dir = ts_src_dir().join("bucket-spigot-bindings");
+
+        // delete old files
+        remove_generated_dir(&binding_dir, EXTENSION_BINDING)?;
+        remove_generated_dir(&dest_dir, EXTENSION_DEST)?;
+
+        // generate bindings
+        run_cargo(|c| {
+            c.args(["test", "--features", "ts-rs", "export_bindings"])
+                .current_dir(bucket_spigot_dir())
+        })?;
+
+        // copy bindings into place
+        std::fs::create_dir_all(&dest_dir).with_context(|| {
+            format!(
+                "failed to create destination folder: {}",
+                dest_dir.display()
+            )
+        })?;
+        for binding in KNOWN_BINDING_NAMES {
+            let src = binding_dir.join(binding).with_extension(EXTENSION_BINDING);
+            let dest = dest_dir.join(binding).with_extension(EXTENSION_DEST);
+            std::fs::copy(&src, &dest).with_context(|| {
+                format!(
+                    "failed to copy SRC {} to DEST {}",
+                    src.display(),
+                    dest.display()
+                )
+            })?;
+        }
+
+        Ok(())
+    }
+
+    fn bucket_spigot_dir() -> PathBuf {
+        project_root().join("bucket-spigot")
+    }
+    fn bucket_spigot_bindings_dir() -> PathBuf {
+        project_root().join("bucket-spigot/bindings")
     }
 
     fn ts_src_dir() -> PathBuf {

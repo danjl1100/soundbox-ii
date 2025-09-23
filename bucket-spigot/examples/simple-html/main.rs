@@ -1,5 +1,5 @@
 // soundbox-ii/bucket-spigot/simple-html Prototype view for `bucket-spigot`
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Prototype HTML viewer for `bucket-spigot`
 
@@ -49,12 +49,13 @@ fn write_elem() {
 #[derive(clap::Parser)]
 struct ExecArgs {
     #[clap(long)]
-    render_mode: RenderMode,
+    render_mode: Option<RenderMode>,
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Default, Debug, PartialEq, Eq)]
 enum RenderMode {
     Table,
+    SvgBox,
     #[default]
     Svg,
 }
@@ -104,7 +105,7 @@ fn main() -> eyre::Result<()> {
 
     let args = ExecArgs::parse();
 
-    let mut app = App::<String, String>::new(args.render_mode);
+    let mut app = App::<String, String>::new(args.render_mode.unwrap_or_default());
     app.update_for_commands_str(script)?;
 
     let params = TableParams::default();
@@ -155,7 +156,8 @@ where
     fn write_view_html(&self, table: &TableView, w: &mut impl std::fmt::Write) -> eyre::Result<()> {
         match self.render_mode {
             RenderMode::Table => Self::write_view_html_table(table, w),
-            RenderMode::Svg => Self::write_view_html_svg(table, w),
+            RenderMode::SvgBox => Self::write_view_html_svg(table, w, true),
+            RenderMode::Svg => Self::write_view_html_svg(table, w, false),
         }
     }
     fn write_view_html_table(table: &TableView, w: &mut impl std::fmt::Write) -> eyre::Result<()> {
@@ -198,7 +200,11 @@ where
     ///               .2.0.1
     /// .3   .3.0
     /// ```
-    fn write_view_html_svg(table: &TableView, w: &mut impl std::fmt::Write) -> eyre::Result<()> {
+    fn write_view_html_svg(
+        table: &TableView,
+        w: &mut impl std::fmt::Write,
+        as_box: bool,
+    ) -> eyre::Result<()> {
         const XMLNS: &str = "http://www.w3.org/2000/svg";
         const CELL_HEIGHT: u32 = 50;
         const CELL_WIDTH: u32 = 100;
@@ -218,6 +224,7 @@ where
         writeln!(
             w,
             "<svg viewBox=\"0 0 {canvas_width} {canvas_height}\" xmlns=\"{XMLNS}\">",
+            // NOTE: alternate viewBox doesn't work quite as well:
             // viewBox=\"-{half_stride_x} -{half_stride_y} ...
             // half_stride_x = f64::from(CELL_X_STRIDE) / 2.0,
             // half_stride_y = f64::from(CELL_Y_STRIDE) / 2.0,
@@ -265,17 +272,21 @@ where
                         //     f64::from(CELL_X_STRIDE * parent_x) + (f64::from(CELL_WIDTH_PAD) * 0.5)
                         // });
 
-                        let x1 = f64::from(CELL_X_STRIDE * x) + (f64::from(CELL_WIDTH_PAD) * 0.5);
+                        let x_relative = if as_box {
+                            f64::from(CELL_WIDTH_PAD) * 0.5
+                        } else {
+                            f64::from(CELL_X_STRIDE) * 0.5
+                        };
+                        let x1 = f64::from(CELL_X_STRIDE * x) + x_relative;
                         let y1 = f64::from(CELL_Y_STRIDE * y)
                             + (f64::from(CELL_Y_STRIDE * colspan) * 0.5);
-                        let x2 = (f64::from(CELL_X_STRIDE * x) - (f64::from(CELL_WIDTH_PAD) * 0.5))
-                            .max(1.0);
+                        let x2 = (f64::from(CELL_X_STRIDE * x) - x_relative).max(1.0);
                         let y2 = f64::from(CELL_Y_STRIDE * parent_y)
                             + (f64::from(CELL_Y_STRIDE * parent_colspan) * 0.5);
                         elem_writeln!(w, <line: x1 y1 x2 y2 />)?;
                     }
 
-                    {
+                    if as_box {
                         // rectangle
 
                         let x = f64::from(CELL_X_STRIDE * x) + (f64::from(CELL_WIDTH_PAD) * 0.5);
@@ -292,10 +303,24 @@ where
                         let cx = f64::from(CELL_X_STRIDE * x) + (f64::from(CELL_X_STRIDE) * 0.5);
                         let cy = f64::from(CELL_Y_STRIDE * y)
                             + (f64::from(CELL_Y_STRIDE * colspan) * 0.5);
-                        let r = f64::from(CELL_HEIGHT.min(CELL_WIDTH)) * 0.05;
+                        let r = f64::from(CELL_HEIGHT.min(CELL_WIDTH))
+                            * (if as_box { 0.05 } else { 0.15 });
                         // writeln!(w, "\t<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\"/>")?;
                         elem_writeln!(w, <circle: cx cy r />)?;
                     }
+
+                    // if let Some(node) = cell.get_node()
+                    //     && node.is_bucket()
+                    // {
+                    //     // horizontal guides for buckets
+                    //     let x1 = 0;
+                    //     let x2 = f64::from(CELL_X_STRIDE * x) + (f64::from(CELL_X_STRIDE) * 0.5);
+                    //     let y = f64::from(CELL_Y_STRIDE * y)
+                    //         + (f64::from(CELL_Y_STRIDE * colspan) * 0.5);
+                    //     let y1 = y;
+                    //     let y2 = y;
+                    //     elem_writeln!(w, <line: x1 y1 x2 y2 />)?;
+                    // }
                 }
 
                 y += colspan;

@@ -5,6 +5,9 @@ use crate::{
     path::{Path, PathRef},
 };
 
+#[cfg(all(test, feature = "ts-rs"))]
+mod typescript_bindings;
+
 /// Tabular view of a [`Network`](`crate::Network`)
 #[derive(Clone, PartialEq, Eq, serde::Serialize)]
 #[must_use]
