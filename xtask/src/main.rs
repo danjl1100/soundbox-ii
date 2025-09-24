@@ -167,7 +167,7 @@ mod rust {
                 "always",
             ]);
             if let Some(Fix) = fix {
-                c.arg("--fix");
+                c.args(["--fix", "--allow-dirty"]);
             }
             c
         })
@@ -195,7 +195,6 @@ mod spigot_visual {
     where
         S: AsRef<OsStr>,
     {
-        gen_bindings_ts()?;
         fmt_js()?;
         dist_js(Some(WriteOutput))?;
 
@@ -214,7 +213,7 @@ mod spigot_visual {
         dist_js(None)?;
         Ok(())
     }
-    pub fn check_js(fix: Option<Fix>) -> eyre::Result<()> {
+    fn check_js(fix: Option<Fix>) -> eyre::Result<()> {
         let result = run_cmd("biome", |c| {
             c.arg("check");
             if let Some(Fix) = fix {
@@ -234,6 +233,8 @@ mod spigot_visual {
     }
 
     pub fn dist_js(write: Option<WriteOutput>) -> eyre::Result<()> {
+        gen_bindings_ts()?;
+
         run_cmd("tsc", |c| {
             if write.is_none() {
                 c.arg("--noEmit");
