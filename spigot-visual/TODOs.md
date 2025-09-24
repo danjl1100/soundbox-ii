@@ -1,11 +1,4 @@
-- [x] add a tiny http server with a blank page to hold the canvas
-
-- [x] add typescript pipeline
-    - [x] add xtask command for compiling the typescript source
-    - [x] look at ~~`tsify`~~ alternate `ts-rs` (looks better for non wasm-bindgen usage) for exporting Rust types as typescript definitions
-        - NOTE: Not exporting any functions or wasm, just vanilla JS created by a typescript compiler, communicating with the web server via plain JSON payloads
-
-- [ ] add features to the visualizer
-    - [ ] display the bucket-spigot network
-    - [ ] add hover menus to display information about specific nodes
-    - [ ] add UI to modify the network
+- [ ] define requirements for the visualizer features, example high level items:
+    - display the bucket-spigot network
+    - display information about specific nodes, when hovered
+    - allow the user to modify the network (edit nodes, remove nodes, add nodes)
