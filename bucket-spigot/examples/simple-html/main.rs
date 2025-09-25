@@ -58,6 +58,7 @@ enum RenderMode {
     SvgBox,
     #[default]
     Svg,
+    Json,
 }
 
 fn main() -> eyre::Result<()> {
@@ -158,6 +159,7 @@ where
             RenderMode::Table => Self::write_view_html_table(table, w),
             RenderMode::SvgBox => Self::write_view_html_svg(table, w, true),
             RenderMode::Svg => Self::write_view_html_svg(table, w, false),
+            RenderMode::Json => Ok(write!(w, "{}", serde_json::to_string(table)?)?),
         }
     }
     fn write_view_html_table(table: &TableView, w: &mut impl std::fmt::Write) -> eyre::Result<()> {
