@@ -18,11 +18,28 @@ const STYLES = `
     margin: 10px 0;
   }
 
-  .network-row {
+  .network-container {
     display: flex;
-    align-items: center;
-    margin: 8px 0;
+    align-items: flex-start;
+    gap: 20px;
     position: relative;
+  }
+
+  .network-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .connections-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 1;
   }
 
   .node {
@@ -183,68 +200,88 @@ function hideTooltip(tooltip: HTMLElement) {
 function renderHtmlCssNetwork(table: TableView): HTMLElement {
   const { div } = van.tags;
 
-  const container = div({ class: "network-container" });
+  const outerContainer = div({ class: "network-container" });
   const tooltipContainer = div({
     /* this breaks the mouse coordinate location logic
     style: "position: relative;"
     */
   });
 
-  // Process each row
-  for (const [rowIndex, row] of table.rows.entries()) {
-    const rowEl = div({ class: "network-row" });
+  // Group cells by position (column) instead of row
+  const columnMap = new Map<number, Array<{ cell: Cell; rowIndex: number }>>();
 
+  for (const [rowIndex, row] of table.rows.entries()) {
     for (const cell of row) {
       const nodeType = getNodeType(cell);
-
       if (nodeType !== "empty") {
-        const nodeClasses = [
-          "node",
-          `node-${nodeType}`,
-          cell.node && !cell.node.active ? "node-inactive" : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-
-        const nodeText =
-          nodeType === "spigot"
-            ? "SPIGOT"
-            : nodeType === "joint"
-              ? `J${cell.node?.weight ?? ""}`
-              : nodeType === "bucket"
-                ? `B${cell.node?.weight ?? ""}`
-                : "";
-
-        const nodeEl = div(
-          {
-            class: nodeClasses,
-            style: `margin-left: ${cell.position * 20}px;`,
-          },
-          nodeText,
-        );
-
-        if (cell.node) {
-          const tooltip = createTooltip(formatNodeInfo(cell.node));
-          tooltipContainer.appendChild(tooltip);
-
-          nodeEl.addEventListener("mouseenter", (e) =>
-            showTooltip(tooltip, e as MouseEvent),
-          );
-          nodeEl.addEventListener("mouseleave", () => hideTooltip(tooltip));
-          nodeEl.addEventListener("mousemove", (e) =>
-            showTooltip(tooltip, e as MouseEvent),
-          );
+        const column = columnMap.get(cell.position);
+        if (column) {
+          column.push({ cell, rowIndex });
+        } else {
+          columnMap.set(cell.position, [{ cell, rowIndex }]);
         }
-
-        rowEl.appendChild(nodeEl);
       }
     }
-
-    container.appendChild(rowEl);
   }
 
-  container.appendChild(tooltipContainer);
-  return container;
+  // Sort columns by position
+  const sortedColumns = Array.from(columnMap.entries()).sort(
+    ([a], [b]) => a - b,
+  );
+
+  for (const [position, cellsInColumn] of sortedColumns) {
+    const columnEl = div({ class: "network-column" });
+
+    // Sort cells in column by row index
+    cellsInColumn.sort((a, b) => a.rowIndex - b.rowIndex);
+
+    for (const { cell } of cellsInColumn) {
+      const nodeType = getNodeType(cell);
+      const nodeClasses = [
+        "node",
+        `node-${nodeType}`,
+        cell.node && !cell.node.active ? "node-inactive" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const nodeText =
+        nodeType === "spigot"
+          ? "SPIGOT"
+          : nodeType === "joint"
+            ? `J${cell.node?.weight ?? ""}`
+            : nodeType === "bucket"
+              ? `B${cell.node?.weight ?? ""}`
+              : "";
+
+      const nodeEl = div(
+        {
+          class: nodeClasses,
+        },
+        nodeText,
+      );
+
+      if (cell.node) {
+        const tooltip = createTooltip(formatNodeInfo(cell.node));
+        tooltipContainer.appendChild(tooltip);
+
+        nodeEl.addEventListener("mouseenter", (e) =>
+          showTooltip(tooltip, e as MouseEvent),
+        );
+        nodeEl.addEventListener("mouseleave", () => hideTooltip(tooltip));
+        nodeEl.addEventListener("mousemove", (e) =>
+          showTooltip(tooltip, e as MouseEvent),
+        );
+      }
+
+      columnEl.appendChild(nodeEl);
+    }
+
+    outerContainer.appendChild(columnEl);
+  }
+
+  outerContainer.appendChild(tooltipContainer);
+  return outerContainer;
 }
 
 function createPlaceholderEditControls(): HTMLElement {
@@ -299,10 +336,22 @@ function createPlayerPlaceholder(): HTMLElement {
 
 function renderSvgNetwork(table: TableView): HTMLElement {
   const { div } = van.tags;
-  const { svg, g, rect, text } = van.tags("http://www.w3.org/2000/svg");
+  const { svg, g, rect, text, line, circle } = van.tags(
+    "http://www.w3.org/2000/svg",
+  );
 
-  const svgWidth = Math.max(600, table.total_width * 40 + 100);
-  const svgHeight = Math.max(400, table.rows.length * 60 + 100);
+  // Layout constants (similar to reference implementation)
+  const CELL_HEIGHT = 50;
+  const CELL_WIDTH = 100;
+  const CELL_HEIGHT_PAD = 5;
+  const CELL_WIDTH_PAD = 20;
+  const CELL_X_STRIDE = CELL_WIDTH + CELL_WIDTH_PAD;
+  const CELL_Y_STRIDE = CELL_HEIGHT + CELL_HEIGHT_PAD;
+
+  // Calculate canvas dimensions
+  const rowCount = table.rows.length;
+  const canvasWidth = CELL_X_STRIDE * rowCount + 100;
+  const canvasHeight = CELL_Y_STRIDE * table.total_width + 100;
 
   const svgContainer = div({
     style:
@@ -315,9 +364,9 @@ function renderSvgNetwork(table: TableView): HTMLElement {
   });
 
   const svgEl = svg({
-    width: svgWidth,
-    height: svgHeight,
-    viewBox: `0 0 ${svgWidth} ${svgHeight}`,
+    width: canvasWidth,
+    height: canvasHeight,
+    viewBox: `0 0 ${canvasWidth} ${canvasHeight}`,
     style: "border: 1px solid #bdc3c7; border-radius: 4px; background: white;",
   });
 
@@ -325,15 +374,27 @@ function renderSvgNetwork(table: TableView): HTMLElement {
   const connectionsGroup = g({ id: "connections" });
   const nodesGroup = g({ id: "nodes" });
 
+  // Map to store node positions for connection drawing
+  const nodePositions = new Map<string, { x: number; y: number }>();
+
+  // Process each row (represents depth in tree, left to right)
   for (const [rowIndex, row] of table.rows.entries()) {
-    const y = 50 + rowIndex * 60;
+    let y = 0; // vertical position within this row
 
     for (const cell of row) {
       const nodeType = getNodeType(cell);
 
-      if (nodeType !== "empty") {
-        const x = 50 + cell.position * 40;
-        const width = Math.max(60, cell.display_width * 30);
+      if (nodeType !== "empty" && cell.node) {
+        // X position: based on row index (depth in tree)
+        const x = 50 + rowIndex * CELL_X_STRIDE + CELL_X_STRIDE / 2;
+
+        // Y position: based on vertical position in this row
+        // Use display_width to determine height span
+        const cellY =
+          50 + y * CELL_Y_STRIDE + (CELL_Y_STRIDE * cell.display_width) / 2;
+
+        // Store position for connection drawing
+        nodePositions.set(cell.node.path, { x, y: cellY });
 
         // Node background color
         const color =
@@ -343,14 +404,15 @@ function renderSvgNetwork(table: TableView): HTMLElement {
               ? "#3498db"
               : "#2ecc71";
 
-        const opacity = cell.node && !cell.node.active ? "0.6" : "1.0";
+        const opacity = !cell.node.active ? "0.6" : "1.0";
 
-        // Create node rectangle
+        // Create node rectangle with height based on display_width
+        const nodeHeight = CELL_Y_STRIDE * cell.display_width - CELL_HEIGHT_PAD;
         const nodeRect = rect({
-          x: x - width / 2,
-          y: y - 20,
-          width: width,
-          height: 40,
+          x: x - CELL_WIDTH / 2,
+          y: cellY - nodeHeight / 2,
+          width: CELL_WIDTH,
+          height: nodeHeight,
           fill: color,
           stroke: "#2c3e50",
           "stroke-width": "2",
@@ -365,15 +427,15 @@ function renderSvgNetwork(table: TableView): HTMLElement {
           nodeType === "spigot"
             ? "SPIGOT"
             : nodeType === "joint"
-              ? `J${cell.node?.weight ?? ""}`
+              ? `J${cell.node.weight ?? ""}`
               : nodeType === "bucket"
-                ? `B${cell.node?.weight ?? ""}`
+                ? `B${cell.node.weight ?? ""}`
                 : "";
 
         const textEl = text(
           {
             x: x,
-            y: y + 5,
+            y: cellY + 5,
             fill: "white",
             "text-anchor": "middle",
             "font-family": "monospace",
@@ -384,52 +446,78 @@ function renderSvgNetwork(table: TableView): HTMLElement {
           nodeText,
         );
 
-        // Connection lines to parent
-        if (rowIndex > 0 && cell.parent_position !== cell.position) {
-          const parentX = 50 + cell.parent_position * 40;
-          const parentY = 50 + (rowIndex - 1) * 60;
-
-          // Vertical line from parent
-          const verticalLine = rect({
-            x: parentX - 1,
-            y: parentY + 20,
-            width: 2,
-            height: 30,
-            fill: "#34495e",
-          });
-
-          // Horizontal line to child
-          const horizontalLine = rect({
-            x: Math.min(parentX, x) - 1,
-            y: y - 21,
-            width: Math.abs(x - parentX) + 2,
-            height: 2,
-            fill: "#34495e",
-          });
-
-          connectionsGroup.appendChild(verticalLine);
-          connectionsGroup.appendChild(horizontalLine);
-        }
-
         nodesGroup.appendChild(nodeRect);
         nodesGroup.appendChild(textEl);
 
         // Add hover functionality
-        if (cell.node) {
-          const tooltip = createTooltip(formatNodeInfo(cell.node));
-          tooltipContainer.appendChild(tooltip);
+        const tooltip = createTooltip(formatNodeInfo(cell.node));
+        tooltipContainer.appendChild(tooltip);
 
-          nodeRect.addEventListener("mouseenter", (e: Event) =>
-            showTooltip(tooltip, e as MouseEvent),
-          );
-          nodeRect.addEventListener("mouseleave", () => hideTooltip(tooltip));
-          nodeRect.addEventListener("mousemove", (e: Event) =>
-            showTooltip(tooltip, e as MouseEvent),
-          );
+        nodeRect.addEventListener("mouseenter", (e: Event) =>
+          showTooltip(tooltip, e as MouseEvent),
+        );
+        nodeRect.addEventListener("mouseleave", () => hideTooltip(tooltip));
+        nodeRect.addEventListener("mousemove", (e: Event) =>
+          showTooltip(tooltip, e as MouseEvent),
+        );
+      }
+
+      // Move y position by the display width of this cell
+      y += cell.display_width;
+    }
+  }
+
+  // Add root convergence point
+  const rootX = 20;
+  const rootY = canvasHeight / 2;
+
+  // Draw connections after all nodes are positioned
+  for (const [rowIndex, row] of table.rows.entries()) {
+    for (const cell of row) {
+      if (cell.node && cell.node.path !== ".") {
+        const childPos = nodePositions.get(cell.node.path);
+        // Find parent path by removing last segment
+        const parentPath =
+          cell.node.path.substring(0, cell.node.path.lastIndexOf(".")) || ".";
+
+        if (childPos) {
+          let parentPos = nodePositions.get(parentPath);
+
+          // If parent is root (path "."), use root convergence point
+          if (parentPath === ".") {
+            parentPos = { x: rootX, y: rootY };
+          }
+
+          if (parentPos) {
+            // Direct line from parent to child
+            const connectionLine = line({
+              x1: parentPos.x,
+              y1: parentPos.y,
+              x2: childPos.x,
+              y2: childPos.y,
+              stroke: "#34495e",
+              "stroke-width": "2",
+            });
+
+            connectionsGroup.appendChild(connectionLine);
+          }
         }
       }
     }
   }
+
+  // Add root convergence indicator (small dot)
+  const rootIndicator = circle({
+    cx: rootX,
+    cy: rootY,
+    r: 4,
+    fill: "#e74c3c",
+    stroke: "#c0392b",
+    "stroke-width": "2",
+    opacity: "0.8",
+  });
+
+  nodesGroup.appendChild(rootIndicator);
 
   svgEl.appendChild(connectionsGroup);
   svgEl.appendChild(nodesGroup);

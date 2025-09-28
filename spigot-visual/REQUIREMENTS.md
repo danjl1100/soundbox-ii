@@ -14,10 +14,10 @@ Visual interface for bucket-spigot network with read-only display and placeholde
 ### 1. Network Display
 
 #### Layout Strategy
-- **Bucket-Centered**: Buckets equally spaced as rows
-- **Depth-Based Indentation**: Different indentation levels by hierarchy depth
-- **Joint Positioning**: Joints vertically centered around their child nodes
-- **Use TableView Data**: Leverage existing `display_width`, `position`, `parent_position` calculations
+- **Depth-Based Columns**: X-axis represents tree depth (row index in TableView), progressing left to right
+- **Bucket-Centered Vertical Distribution**: Y-axis represents position within each depth level
+- **Display Width Integration**: Node height spans based on `display_width` property for visual hierarchy
+- **Reference Implementation**: Follow `bucket-spigot/examples/simple-html/main.rs::write_view_html_svg()` layout calculations
 
 #### Node Visualization
 - **Spigot (Root)**: Distinctive central node treatment
@@ -62,10 +62,10 @@ Visual interface for bucket-spigot network with read-only display and placeholde
 
 ### 5. Technical Implementation
 
-#### Multiple Prototype Versions
-- Canvas-based rendering (performance)
-- SVG-based rendering (precision/accessibility)
-- HTML/CSS-based rendering (simplicity)
+#### Rendering Implementation Status
+- ❌ **Canvas-based rendering**: Moved to trash (equivalent complexity to SVG)
+- ✅ **SVG-based rendering**: Implemented with direct parent-child connections and root convergence point
+- ❌ **HTML/CSS-based rendering**: Ruled out - cannot handle diagonal connections elegantly with pure HTML/CSS
 
 #### Framework Constraints
 - Keep VanJS and existing build system
@@ -78,12 +78,39 @@ Visual interface for bucket-spigot network with read-only display and placeholde
 - No real TableView filter data yet (future enhancement)
 
 ## Success Criteria
-- Clear visual hierarchy showing network structure
-- Intuitive bucket-centered layout with proper joint positioning
-- Responsive hover information display
-- Placeholder editing UI ready for future functionality
-- Multiple rendering prototypes to compare approaches
-- Integration-ready design for player UI addition
+- [x] Clear visual hierarchy showing network structure with depth-based columns
+- [x] Proper tree layout with buckets distributed vertically by position
+- [x] Responsive hover information display with node details
+- [x] Placeholder editing UI ready **for future functionality**
+- [x] SVG rendering with direct parent-child connections (ruled out Canvas/HTML alternatives)
+- [x] Root convergence point visualization for implied spigot root
+- [x] Integration-ready design for player UI addition (**placeholder** implemented)
+
+## Implementation Notes
+
+### Layout Understanding
+The TableView data structure represents a tree laid out in a specific format:
+- **rows[]**: Each row represents a depth level in the tree (left to right progression)
+- **position**: Vertical position within that depth level
+- **display_width**: How much vertical space the node should occupy
+- **parent_position**: Links to parent's position in previous row
+
+### Key Layout Algorithm
+```
+for each row (depth level):
+  x = row_index * CELL_X_STRIDE  // horizontal position
+  y = 0
+  for each cell in row:
+    if cell has node:
+      cellY = y * CELL_Y_STRIDE + (display_width * CELL_Y_STRIDE) / 2
+      render node at (x, cellY) with height = display_width * CELL_Y_STRIDE
+    y += cell.display_width
+```
+
+### Connection Strategy
+- Root convergence point at fixed position for all top-level nodes (path depth 1)
+- Direct lines from parent to child nodes (no right angles)
+- Parent position lookup via path string manipulation
 
 ## Future Enhancements
 - Real filter system integration
