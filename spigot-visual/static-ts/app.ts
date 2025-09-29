@@ -10,99 +10,9 @@ import { REALISTIC_TABLE_JSON } from "./sample-input.js";
 
 // CSS styles for the network visualization
 const STYLES = `
-  .network-container {
-    padding: 20px;
-    font-family: monospace;
-    background: #f8f9fa;
-    border-radius: 8px;
-    margin: 10px 0;
-  }
-
-  .network-container {
-    display: flex;
-    align-items: flex-start;
-    gap: 20px;
-    position: relative;
-  }
-
-  .network-column {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    position: relative;
-    z-index: 2;
-  }
-
-  .connections-svg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .node {
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin: 2px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    border: 2px solid transparent;
-    min-width: 60px;
-    text-align: center;
-    font-size: 12px;
-  }
-
-  .node:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  }
-
-  /* Node types */
-  .node-spigot {
-    background: #e74c3c;
-    color: white;
-    font-weight: bold;
-    border-color: #c0392b;
-  }
-
-  .node-joint {
-    background: #3498db;
-    color: white;
-    border-color: #2980b9;
-  }
-
-  .node-bucket {
-    background: #2ecc71;
-    color: white;
-    border-color: #27ae60;
-  }
-
-  /* Active/Inactive states */
-  .node-inactive {
-    opacity: 0.6;
-    filter: grayscale(0.3);
-  }
-
-  /* Connection lines */
-  .connection-line {
-    position: absolute;
-    background: #34495e;
-    pointer-events: none;
-  }
-
-  .connection-horizontal {
-    height: 2px;
-  }
-
-  .connection-vertical {
-    width: 2px;
-  }
-
   /* Hover tooltip */
   .tooltip {
+    display: none;
     position: absolute;
     background: #2c3e50;
     color: white;
@@ -116,7 +26,7 @@ const STYLES = `
   }
 
   /* Controls */
-  .prototype-controls {
+  .controls {
     margin: 20px 0;
     padding: 15px;
     background: #ecf0f1;
@@ -154,9 +64,8 @@ function injectStyles() {
   }
 }
 
-function getNodeType(cell: Cell): "spigot" | "joint" | "bucket" | "empty" {
+function getNodeType(cell: Cell): "joint" | "bucket" | "empty" {
   if (!cell.node) return "empty";
-  if (cell.node.path === ".") return "spigot";
   if ("Joint" in cell.node.kind || "JointAbbrev" in cell.node.kind)
     return "joint";
   if ("Bucket" in cell.node.kind) return "bucket";
@@ -184,7 +93,7 @@ function formatNodeInfo(node: NodeDetails): string {
 
 function createTooltip(info: string): HTMLElement {
   const { div } = van.tags;
-  return div({ class: "tooltip", style: "display: none;" }, info);
+  return div({ class: "tooltip" }, info);
 }
 
 function showTooltip(tooltip: HTMLElement, event: MouseEvent) {
@@ -197,98 +106,11 @@ function hideTooltip(tooltip: HTMLElement) {
   tooltip.style.display = "none";
 }
 
-function renderHtmlCssNetwork(table: TableView): HTMLElement {
-  const { div } = van.tags;
-
-  const outerContainer = div({ class: "network-container" });
-  const tooltipContainer = div({
-    /* this breaks the mouse coordinate location logic
-    style: "position: relative;"
-    */
-  });
-
-  // Group cells by position (column) instead of row
-  const columnMap = new Map<number, Array<{ cell: Cell; rowIndex: number }>>();
-
-  for (const [rowIndex, row] of table.rows.entries()) {
-    for (const cell of row) {
-      const nodeType = getNodeType(cell);
-      if (nodeType !== "empty") {
-        const column = columnMap.get(cell.position);
-        if (column) {
-          column.push({ cell, rowIndex });
-        } else {
-          columnMap.set(cell.position, [{ cell, rowIndex }]);
-        }
-      }
-    }
-  }
-
-  // Sort columns by position
-  const sortedColumns = Array.from(columnMap.entries()).sort(
-    ([a], [b]) => a - b,
-  );
-
-  for (const [position, cellsInColumn] of sortedColumns) {
-    const columnEl = div({ class: "network-column" });
-
-    // Sort cells in column by row index
-    cellsInColumn.sort((a, b) => a.rowIndex - b.rowIndex);
-
-    for (const { cell } of cellsInColumn) {
-      const nodeType = getNodeType(cell);
-      const nodeClasses = [
-        "node",
-        `node-${nodeType}`,
-        cell.node && !cell.node.active ? "node-inactive" : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      const nodeText =
-        nodeType === "spigot"
-          ? "SPIGOT"
-          : nodeType === "joint"
-            ? `J${cell.node?.weight ?? ""}`
-            : nodeType === "bucket"
-              ? `B${cell.node?.weight ?? ""}`
-              : "";
-
-      const nodeEl = div(
-        {
-          class: nodeClasses,
-        },
-        nodeText,
-      );
-
-      if (cell.node) {
-        const tooltip = createTooltip(formatNodeInfo(cell.node));
-        tooltipContainer.appendChild(tooltip);
-
-        nodeEl.addEventListener("mouseenter", (e) =>
-          showTooltip(tooltip, e as MouseEvent),
-        );
-        nodeEl.addEventListener("mouseleave", () => hideTooltip(tooltip));
-        nodeEl.addEventListener("mousemove", (e) =>
-          showTooltip(tooltip, e as MouseEvent),
-        );
-      }
-
-      columnEl.appendChild(nodeEl);
-    }
-
-    outerContainer.appendChild(columnEl);
-  }
-
-  outerContainer.appendChild(tooltipContainer);
-  return outerContainer;
-}
-
 function createPlaceholderEditControls(): HTMLElement {
   const { div, button, input, select, option } = van.tags;
 
   return div(
-    { class: "prototype-controls" },
+    { class: "controls" },
     div("Placeholder Edit Controls:"),
     button({ class: "control-button" }, "Add Bucket"),
     button({ class: "control-button" }, "Add Joint"),
@@ -309,7 +131,7 @@ function createPlayerPlaceholder(): HTMLElement {
 
   return div(
     {
-      class: "prototype-controls",
+      class: "controls",
       style: "background: #d5dbdb; border-left: 4px solid #e74c3c;",
     },
     div("Player UI Placeholder:"),
@@ -349,26 +171,13 @@ function renderSvgNetwork(table: TableView): HTMLElement {
   const CELL_Y_STRIDE = CELL_HEIGHT + CELL_HEIGHT_PAD;
 
   // Calculate canvas dimensions
+  const bucketWidthModifier = 2;
   const rowCount = table.rows.length;
-  const canvasWidth = CELL_X_STRIDE * rowCount + 100;
+  const canvasWidth =
+    CELL_X_STRIDE * (rowCount - 1 + bucketWidthModifier) + 100;
   const canvasHeight = CELL_Y_STRIDE * table.total_width + 100;
 
-  const svgContainer = div({
-    style:
-      "background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 10px 0;",
-  });
-  const tooltipContainer = div({
-    /* this breaks the mouse coordinate location logic
-    style: "position: relative;"
-    */
-  });
-
-  const svgEl = svg({
-    width: canvasWidth,
-    height: canvasHeight,
-    viewBox: `0 0 ${canvasWidth} ${canvasHeight}`,
-    style: "border: 1px solid #bdc3c7; border-radius: 4px; background: white;",
-  });
+  const tooltipContainer = div();
 
   // Create connection and node groups
   const connectionsGroup = g({ id: "connections" });
@@ -379,96 +188,113 @@ function renderSvgNetwork(table: TableView): HTMLElement {
 
   // Process each row (represents depth in tree, left to right)
   for (const [rowIndex, row] of table.rows.entries()) {
-    let y = 0; // vertical position within this row
+    let nextY = 0;
 
     for (const cell of row) {
-      const nodeType = getNodeType(cell);
-
-      if (nodeType !== "empty" && cell.node) {
-        // X position: based on row index (depth in tree)
-        const x = 50 + rowIndex * CELL_X_STRIDE + CELL_X_STRIDE / 2;
-
-        // Y position: based on vertical position in this row
-        // Use display_width to determine height span
-        const cellY =
-          50 + y * CELL_Y_STRIDE + (CELL_Y_STRIDE * cell.display_width) / 2;
-
-        // Store position for connection drawing
-        nodePositions.set(cell.node.path, { x, y: cellY });
-
-        // Node background color
-        const color =
-          nodeType === "spigot"
-            ? "#e74c3c"
-            : nodeType === "joint"
-              ? "#3498db"
-              : "#2ecc71";
-
-        const opacity = !cell.node.active ? "0.6" : "1.0";
-
-        // Create node rectangle with height based on display_width
-        const nodeHeight = CELL_Y_STRIDE * cell.display_width - CELL_HEIGHT_PAD;
-        const nodeRect = rect({
-          x: x - CELL_WIDTH / 2,
-          y: cellY - nodeHeight / 2,
-          width: CELL_WIDTH,
-          height: nodeHeight,
-          fill: color,
-          stroke: "#2c3e50",
-          "stroke-width": "2",
-          rx: "6",
-          ry: "6",
-          opacity: opacity,
-          style: "cursor: pointer; transition: all 0.2s ease;",
-        });
-
-        // Create node text
-        const nodeText =
-          nodeType === "spigot"
-            ? "SPIGOT"
-            : nodeType === "joint"
-              ? `J${cell.node.weight ?? ""}`
-              : nodeType === "bucket"
-                ? `B${cell.node.weight ?? ""}`
-                : "";
-
-        const textEl = text(
-          {
-            x: x,
-            y: cellY + 5,
-            fill: "white",
-            "text-anchor": "middle",
-            "font-family": "monospace",
-            "font-size": "12",
-            "font-weight": nodeType === "spigot" ? "bold" : "normal",
-            style: "pointer-events: none;",
-          },
-          nodeText,
-        );
-
-        nodesGroup.appendChild(nodeRect);
-        nodesGroup.appendChild(textEl);
-
-        // Add hover functionality
-        const tooltip = createTooltip(formatNodeInfo(cell.node));
-        tooltipContainer.appendChild(tooltip);
-
-        nodeRect.addEventListener("mouseenter", (e: Event) =>
-          showTooltip(tooltip, e as MouseEvent),
-        );
-        nodeRect.addEventListener("mouseleave", () => hideTooltip(tooltip));
-        nodeRect.addEventListener("mousemove", (e: Event) =>
-          showTooltip(tooltip, e as MouseEvent),
-        );
-      }
+      const y = nextY; // vertical position within this row
 
       // Move y position by the display width of this cell
-      y += cell.display_width;
+      nextY += cell.display_width;
+
+      const nodeType = getNodeType(cell);
+
+      if (nodeType === "empty" || !cell.node) {
+        continue;
+      }
+
+      // X position: based on row index (depth in tree)
+      const x = rowIndex * CELL_X_STRIDE + CELL_X_STRIDE / 2;
+
+      // Y position: based on vertical position in this row
+      // Use display_width to determine height span
+      const cellY =
+        y * CELL_Y_STRIDE + (CELL_Y_STRIDE * cell.display_width) / 2;
+
+      // Store position for connection drawing
+      nodePositions.set(cell.node.path, { x, y: cellY });
+
+      // Node background color
+      const color =
+        nodeType === "joint"
+          ? "#3498db"
+          : nodeType === "bucket"
+            ? "#2ecc71"
+            : "";
+
+      const opacity = !cell.node.active ? "0.6" : "1.0";
+
+      // Create node rectangle with height based on display_width
+      const nodeHeight = CELL_HEIGHT; // CELL_Y_STRIDE * cell.display_width - CELL_HEIGHT_PAD;
+      let nodeWidth = CELL_WIDTH;
+      if (nodeType === "bucket") {
+        nodeWidth = bucketWidthModifier * CELL_WIDTH;
+      }
+      const nodeRect = rect({
+        x: x - CELL_WIDTH / 2,
+        y: cellY - nodeHeight / 2,
+        width: nodeWidth,
+        height: nodeHeight,
+        fill: color,
+        stroke: "#2c3e50",
+        "stroke-width": "2",
+        rx: "6",
+        ry: "6",
+        opacity: opacity,
+        style: "cursor: pointer; transition: all 0.2s ease;",
+      });
+
+      // Create node text
+      const nodeText =
+        nodeType === "joint" ? "Joint" : nodeType === "bucket" ? "Bucket" : "";
+
+      const textEl = text(
+        {
+          x: x - CELL_WIDTH / 4,
+          y: cellY + 5,
+          fill: "white",
+          "text-anchor": "left",
+          "font-family": "monospace",
+          "font-size": "12",
+          style: "pointer-events: none;",
+        },
+        nodeText,
+      );
+
+      nodesGroup.appendChild(nodeRect);
+      nodesGroup.appendChild(textEl);
+
+      if (cell.node.weight) {
+        const textWeight = text(
+          {
+            x: x - CELL_WIDTH / 2 + 5,
+            y: cellY + 5,
+            fill: "white",
+            "text-anchor": "left",
+            "font-family": "monospace",
+            "font-size": "12",
+            style: "pointer-events: none;",
+          },
+          cell.node.weight,
+        );
+        nodesGroup.appendChild(textWeight);
+      }
+
+      // Add hover functionality
+      const tooltip = createTooltip(formatNodeInfo(cell.node));
+      tooltipContainer.appendChild(tooltip);
+
+      nodeRect.addEventListener("mouseenter", (e: Event) =>
+        showTooltip(tooltip, e as MouseEvent),
+      );
+      nodeRect.addEventListener("mouseleave", () => hideTooltip(tooltip));
+      nodeRect.addEventListener("mousemove", (e: Event) =>
+        showTooltip(tooltip, e as MouseEvent),
+      );
     }
   }
 
   // Add root convergence point
-  const rootX = 20;
+  const rootX = -10;
   const rootY = canvasHeight / 2;
 
   // Draw connections after all nodes are positioned
@@ -485,15 +311,15 @@ function renderSvgNetwork(table: TableView): HTMLElement {
 
           // If parent is root (path "."), use root convergence point
           if (parentPath === ".") {
-            parentPos = { x: rootX, y: rootY };
+            parentPos = { x: rootX - CELL_WIDTH / 2, y: rootY };
           }
 
           if (parentPos) {
             // Direct line from parent to child
             const connectionLine = line({
-              x1: parentPos.x,
+              x1: parentPos.x + CELL_WIDTH / 2,
               y1: parentPos.y,
-              x2: childPos.x,
+              x2: childPos.x - CELL_WIDTH / 2,
               y2: childPos.y,
               stroke: "#34495e",
               "stroke-width": "2",
@@ -519,10 +345,26 @@ function renderSvgNetwork(table: TableView): HTMLElement {
 
   nodesGroup.appendChild(rootIndicator);
 
-  svgEl.appendChild(connectionsGroup);
-  svgEl.appendChild(nodesGroup);
-  svgContainer.appendChild(svgEl);
-  svgContainer.appendChild(tooltipContainer);
+  const svgEl = svg(
+    {
+      width: canvasWidth,
+      height: canvasHeight,
+      viewBox: `${rootX - 5} 0 ${canvasWidth} ${canvasHeight}`,
+      style:
+        "border: 1px solid #bdc3c7; border-radius: 4px; background: white;",
+    },
+    connectionsGroup,
+    nodesGroup,
+  );
+
+  const svgContainer = div(
+    {
+      style:
+        "background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 10px 0;",
+    },
+    svgEl,
+    tooltipContainer,
+  );
 
   return svgContainer;
 }
@@ -532,8 +374,6 @@ function renderPrototype(): HTMLElement {
 
   // Parse the realistic sample data
   const table: TableView = JSON.parse(REALISTIC_TABLE_JSON);
-
-  let currentRenderer: "html" | "svg" = "html";
 
   const container = div();
   const visualizationContainer = div();
@@ -545,62 +385,21 @@ function renderPrototype(): HTMLElement {
       "width: 100%; margin: 10px 0; padding: 5px; font-family: monospace; font-size: 10px;",
   });
 
-  const rendererSelect = select(
-    {
-      class: "control-input",
-      style: "margin: 10px 5px;",
-    },
-    option({ value: "html" }, "HTML/CSS"),
-    option({ value: "svg" }, "SVG"),
-  );
-
   function updateVisualization() {
     try {
       const newTable: TableView = JSON.parse(inputEl.value);
-      let networkViz: HTMLElement;
+      const networkViz: HTMLElement = renderSvgNetwork(newTable);
 
-      switch (currentRenderer) {
-        case "html":
-          networkViz = renderHtmlCssNetwork(newTable);
-          break;
-        case "svg":
-          networkViz = renderSvgNetwork(newTable);
-          break;
-        default:
-          networkViz = renderHtmlCssNetwork(newTable);
-      }
-
-      visualizationContainer.innerHTML = "";
-      visualizationContainer.appendChild(networkViz);
+      setContent(visualizationContainer, networkViz);
     } catch (e) {
       console.error("Invalid JSON:", e);
     }
   }
 
-  rendererSelect.addEventListener("change", (e) => {
-    currentRenderer = (e.target as HTMLSelectElement).value as "html" | "svg";
-    updateVisualization();
-  });
-
   container.appendChild(
     div(
-      h3("Multi-Prototype Bucket-Spigot Network Visualizer"),
+      h3("Bucket-Spigot Network Visualizer"),
       createPlayerPlaceholder(),
-      div(
-        {
-          style:
-            "display: flex; align-items: center; gap: 10px; margin: 10px 0;",
-        },
-        div("Renderer:"),
-        rendererSelect,
-        button(
-          {
-            onclick: updateVisualization,
-            class: "control-button",
-          },
-          "Update Visualization",
-        ),
-      ),
       div("JSON Input:"),
       inputEl,
       visualizationContainer,
@@ -614,7 +413,7 @@ function renderPrototype(): HTMLElement {
   return container;
 }
 
-function set_content(container: HTMLElement, content: HTMLElement) {
+function setContent(container: HTMLElement, content: HTMLElement) {
   container.innerHTML = "";
   container.appendChild(content);
 }
@@ -624,6 +423,6 @@ window.onload = async (): Promise<void> => {
 
   const content = document.getElementById("content");
   if (content != null) {
-    set_content(content, renderPrototype());
+    setContent(content, renderPrototype());
   }
 };
