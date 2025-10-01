@@ -3,7 +3,7 @@
 import type { Cell } from "./bucket-spigot-bindings/Cell.ts";
 import type { NodeDetails } from "./bucket-spigot-bindings/NodeDetails.ts";
 import type { TableView } from "./bucket-spigot-bindings/TableView.ts";
-import type { Van } from "./van-1.5.5.d.ts";
+import type { State, Van } from "./van-1.5.5.d.ts";
 import van from "./van-1.5.5.js";
 
 import { REALISTIC_TABLE_JSON } from "./sample-input.js";
@@ -31,6 +31,9 @@ const STYLES = `
     padding: 15px;
     background: #ecf0f1;
     border-radius: 6px;
+  }
+  .controls.hidden {
+    display: none;
   }
 
   .control-button {
@@ -87,7 +90,7 @@ function formatNodeInfo(node: NodeDetails): string {
     `Type: ${kindInfo}`,
     `Order: ${node.order_type}`,
     `Weight: ${node.weight ?? "default"}`,
-    `Status: ${node.active ? "Active" : "Inactive"}`,
+    `Status: ${node.active === true ? "Active" : "Inactive"}`,
   ].join(" | ");
 }
 
@@ -106,12 +109,29 @@ function hideTooltip(tooltip: HTMLElement) {
   tooltip.style.display = "none";
 }
 
-function createPlaceholderEditControls(): HTMLElement {
-  const { div, button, input, select, option } = van.tags;
+function createPlaceholderEditControls(
+  selectedNodePath: State<string | null>,
+): HTMLElement {
+  const { a, div, button, input, select, option } = van.tags;
+
+  const controlsClass = van.derive(() => {
+    let classNames = "controls";
+    if (selectedNodePath.val === null) {
+      classNames += " hidden";
+    }
+    return classNames;
+  });
+
+  const clearSelectedNode = () => {
+    selectedNodePath.val = null;
+  };
 
   return div(
-    { class: "controls" },
-    div("Placeholder Edit Controls:"),
+    { class: controlsClass },
+    div(
+      a({ onclick: clearSelectedNode }, "[x]"),
+      van.derive(() => ` Edit ${selectedNodePath.val}`),
+    ),
     button({ class: "control-button" }, "Add Bucket"),
     button({ class: "control-button" }, "Add Joint"),
     button({ class: "control-button" }, "Delete Selected"),
@@ -156,7 +176,10 @@ function createPlayerPlaceholder(): HTMLElement {
   );
 }
 
-function renderSvgNetwork(table: TableView): HTMLElement {
+function renderSvgNetwork(
+  table: TableView,
+  selectedNodePath: State<string | null>,
+): HTMLElement {
   const { div } = van.tags;
   const { svg, g, rect, text, line, circle } = van.tags(
     "http://www.w3.org/2000/svg",
@@ -201,6 +224,10 @@ function renderSvgNetwork(table: TableView): HTMLElement {
       if (nodeType === "empty" || !cell.node) {
         continue;
       }
+      const node: NodeDetails = cell.node;
+      const nodeIsSelected: State<boolean> = van.derive(
+        () => selectedNodePath.val === node.path,
+      );
 
       // X position: based on row index (depth in tree)
       const x = rowIndex * CELL_X_STRIDE + CELL_X_STRIDE / 2;
@@ -211,7 +238,7 @@ function renderSvgNetwork(table: TableView): HTMLElement {
         y * CELL_Y_STRIDE + (CELL_Y_STRIDE * cell.display_width) / 2;
 
       // Store position for connection drawing
-      nodePositions.set(cell.node.path, { x, y: cellY });
+      nodePositions.set(node.path, { x, y: cellY });
 
       // Node background color
       const color =
@@ -221,7 +248,7 @@ function renderSvgNetwork(table: TableView): HTMLElement {
             ? "#2ecc71"
             : "";
 
-      const opacity = !cell.node.active ? "0.6" : "1.0";
+      const opacity = cell.node.active === false ? "0.6" : "1.0";
 
       // Create node rectangle with height based on display_width
       const nodeHeight = CELL_HEIGHT; // CELL_Y_STRIDE * cell.display_width - CELL_HEIGHT_PAD;
@@ -235,8 +262,12 @@ function renderSvgNetwork(table: TableView): HTMLElement {
         width: nodeWidth,
         height: nodeHeight,
         fill: color,
-        stroke: "#2c3e50",
-        "stroke-width": "2",
+        stroke: van.derive(() =>
+          nodeIsSelected.val === true ? /* "#159534" */ "#e2c912" : "#2c3e50",
+        ),
+        "stroke-width": van.derive(() =>
+          nodeIsSelected.val === true ? "5" : "2",
+        ),
         rx: "6",
         ry: "6",
         opacity: opacity,
@@ -283,6 +314,9 @@ function renderSvgNetwork(table: TableView): HTMLElement {
       const tooltip = createTooltip(formatNodeInfo(cell.node));
       tooltipContainer.appendChild(tooltip);
 
+      nodeRect.addEventListener("mousedown", (e: Event) => {
+        selectedNodePath.val = node.path;
+      });
       nodeRect.addEventListener("mouseenter", (e: Event) =>
         showTooltip(tooltip, e as MouseEvent),
       );
@@ -385,10 +419,15 @@ function renderPrototype(): HTMLElement {
       "width: 100%; margin: 10px 0; padding: 5px; font-family: monospace; font-size: 10px;",
   });
 
+  const selectedNodePath: State<string | null> = van.state(null);
+
   function updateVisualization() {
     try {
       const newTable: TableView = JSON.parse(inputEl.value);
-      const networkViz: HTMLElement = renderSvgNetwork(newTable);
+      const networkViz: HTMLElement = renderSvgNetwork(
+        newTable,
+        selectedNodePath,
+      );
 
       setContent(visualizationContainer, networkViz);
     } catch (e) {
@@ -402,8 +441,13 @@ function renderPrototype(): HTMLElement {
       createPlayerPlaceholder(),
       div("JSON Input:"),
       inputEl,
-      visualizationContainer,
-      createPlaceholderEditControls(),
+      div(
+        {
+          style: "display: flex",
+        },
+        visualizationContainer,
+        createPlaceholderEditControls(selectedNodePath),
+      ),
     ),
   );
 
