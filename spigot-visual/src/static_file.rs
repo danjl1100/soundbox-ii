@@ -46,6 +46,16 @@ impl StaticFile {
             .reply_to(request)?;
         Ok(())
     }
+    /// Replies with the file contents as CSS
+    ///
+    /// # Errors
+    /// Returns an error if the file load or reply fails
+    pub fn reply_css(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+        self.get_response(prefix)?
+            .content_type("text/css")
+            .reply_to(request)?;
+        Ok(())
+    }
     /// Replies with the file contents as JS
     ///
     /// # Errors
