@@ -132,9 +132,9 @@ function createPlayer(): HTMLElement {
         div({ style: "font-weight: bold;" }, "Track Name"),
         div({ style: "font-size: 11px; color: #7f8c8d;" }, "Artist - Album"),
       ),
-      button({ class: "control-button symbol" }, "⏮"),
-      button({ class: "control-button symbol" }, "⏸"),
-      button({ class: "control-button symbol" }, "⏭"),
+      button({ class: "control-button symbol" }, "\u23EE"),
+      button({ class: "control-button symbol" }, "\u23F8"),
+      button({ class: "control-button symbol" }, "\u23ED"),
     ),
   );
 }
