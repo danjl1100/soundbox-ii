@@ -88,6 +88,39 @@ fn status_cmd(
         format!("failed to run `{cmd}`")
     })
 }
+#[cfg(unix)]
+mod unix_exec {
+    //! On Unix, replace the current process instead of spawning a subprocess
+
+    use eyre::Context as _;
+    use std::process::Command;
+
+    pub fn exec_run_cargo(
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+    ) -> eyre::Result<std::convert::Infallible> {
+        let status = exec_status_cargo(args_fn)?;
+        match status {}
+    }
+    pub fn exec_status_cargo(
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+    ) -> eyre::Result<std::convert::Infallible> {
+        exec_run_cmd(env!("CARGO"), args_fn)
+    }
+    pub fn exec_run_cmd(
+        cmd: &str,
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+    ) -> eyre::Result<std::convert::Infallible> {
+        use std::os::unix::process::CommandExt as _;
+
+        let mut command = Command::new(cmd);
+        args_fn(&mut command);
+        let err = command.exec();
+        Err(err).with_context(|| {
+            dbg!(&command);
+            format!("failed to run `{cmd}`")
+        })
+    }
+}
 
 fn print_help() {
     eprintln!("{HELP_TEXT}");
@@ -195,17 +228,36 @@ mod spigot_visual {
     where
         S: AsRef<OsStr>,
     {
-        fmt_js()?;
-        dist_js(Some(WriteOutput))?;
-
-        run_cargo(|c| {
+        fn cmd_spigot_visual<S>(
+            c: &mut std::process::Command,
+            args: impl IntoIterator<Item = S>,
+        ) -> &mut std::process::Command
+        where
+            S: AsRef<OsStr>,
+        {
             c.args(["run", "--package", "spigot-visual", "--"])
                 //
                 .arg("--dev-path-prefix")
                 .arg(dist_dir())
                 //
                 .args(args)
-        })
+        }
+
+        fmt_js()?;
+        dist_js(Some(WriteOutput))?;
+
+        #[cfg(unix)]
+        {
+            // replace the current process
+            crate::unix_exec::exec_run_cargo(|c| cmd_spigot_visual(c, args))
+                .map(|never| match never {})
+        }
+
+        #[cfg(not(unix))]
+        {
+            // Fallback for non-Unix systems
+            run_cargo(|c| cmd_spigot_visual(c, args))
+        }
     }
 
     pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
