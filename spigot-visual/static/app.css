@@ -1,14 +1,13 @@
 html, body {
   margin: 0px;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  /* max-width: 100%; */
+  /* max-height: 100%; */
 }
 
-div#content {
+div.flex-column {
   display: flex;
   flex-flow: column;
-  height: 100%;
 }
 
 /* Hover tooltip */
@@ -24,11 +23,12 @@ div#content {
   pointer-events: none;
   white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  overflow: clip;
 }
 
 /* Controls */
 .controls {
-  margin: 20px 0;
+  /* margin: 20px 0; */
   padding: 15px;
   background: #ecf0f1;
   border-radius: 6px;
@@ -37,10 +37,16 @@ div#content {
   display: none;
 }
 
+.control-button.symbol {
+  margin: 0px;
+  padding: 0px 12px;
+  font-size: 2em;
+}
 .control-button {
   margin: 5px;
   padding: 8px 16px;
-  background: #3498db;
+  /* background: #3498db; */
+  background: #e74c3c;
   color: white;
   border: none;
   border-radius: 4px;
@@ -48,7 +54,8 @@ div#content {
 }
 
 .control-button:hover {
-  background: #2980b9;
+  /* background: #2980b9; */
+  background: #c34437;
 }
 
 .control-input {

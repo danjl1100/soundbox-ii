@@ -117,7 +117,7 @@ function createPlayer(): HTMLElement {
       class: "controls",
       style: "background: #d5dbdb; border-left: 4px solid #e74c3c;",
     },
-    div("Player UI:"),
+    div("Now Playing:"),
     div(
       { style: "display: flex; align-items: center; gap: 10px;" },
       div(
@@ -132,9 +132,9 @@ function createPlayer(): HTMLElement {
         div({ style: "font-weight: bold;" }, "Track Name"),
         div({ style: "font-size: 11px; color: #7f8c8d;" }, "Artist - Album"),
       ),
-      button({ class: "control-button", style: "background: #e74c3c;" }, "⏮"),
-      button({ class: "control-button", style: "background: #e74c3c;" }, "⏸"),
-      button({ class: "control-button", style: "background: #e74c3c;" }, "⏭"),
+      button({ class: "control-button symbol" }, "⏮"),
+      button({ class: "control-button symbol" }, "⏸"),
+      button({ class: "control-button symbol" }, "⏭"),
     ),
   );
 }
@@ -142,7 +142,7 @@ function createPlayer(): HTMLElement {
 function renderSvgNetwork(
   table: TableView,
   selectedNodePath: State<string | null>,
-): Array<Element> {
+): [Array<Element>, number] {
   const { div } = van.tags;
   const { svg, g, rect, text, line, circle } = van.tags(
     "http://www.w3.org/2000/svg",
@@ -220,7 +220,7 @@ function renderSvgNetwork(
         nodeWidth = bucketWidthModifier * CELL_WIDTH;
       }
       const nodeRect = rect({
-        x: x - CELL_WIDTH / 2,
+        x, // x: x - CELL_WIDTH / 2,
         y: cellY - nodeHeight / 2,
         width: nodeWidth,
         height: nodeHeight,
@@ -243,7 +243,7 @@ function renderSvgNetwork(
 
       const textEl = text(
         {
-          x: x - CELL_WIDTH / 4,
+          x: x + CELL_WIDTH / 4, // x: x - CELL_WIDTH / 4,
           y: cellY + 5,
           fill: "white",
           "text-anchor": "left",
@@ -260,7 +260,7 @@ function renderSvgNetwork(
       if (cell.node.weight) {
         const textWeight = text(
           {
-            x: x - CELL_WIDTH / 2 + 5,
+            x: x + 5, // x: x - CELL_WIDTH / 2 + 5,
             y: cellY + 5,
             fill: "white",
             "text-anchor": "left",
@@ -294,7 +294,7 @@ function renderSvgNetwork(
   }
 
   // Add root convergence point
-  const rootX = -10;
+  const rootX = -CELL_WIDTH / 2; // -10;
   const rootY = canvasHeight / 2;
 
   // Draw connections after all nodes are positioned
@@ -319,9 +319,9 @@ function renderSvgNetwork(
           if (parentPos) {
             // Direct line from parent to child
             const connectionLine = line({
-              x1: parentPos.x + CELL_WIDTH / 2,
+              x1: parentPos.x + CELL_WIDTH, // x1: parentPos.x + CELL_WIDTH / 2,
               y1: parentPos.y,
-              x2: childPos.x - CELL_WIDTH / 2,
+              x2: childPos.x, // x2: childPos.x - CELL_WIDTH / 2,
               y2: childPos.y,
               stroke: "#34495e",
               "stroke-width": "2",
@@ -351,11 +351,12 @@ function renderSvgNetwork(
   const viewBoxWidth = Math.max(canvasWidth, 800);
   const viewBoxHeight = canvasHeight;
 
+  const large_number = 99999999;
   const background = rect({
-    x: viewBoxX,
-    y: viewBoxY,
-    width: viewBoxWidth,
-    height: viewBoxHeight,
+    x: -large_number,
+    y: -large_number,
+    width: 2 * large_number,
+    height: 2 * large_number,
     opacity: 0.0,
   });
   background.addEventListener("mousedown", (e: Event) => {
@@ -368,20 +369,22 @@ function renderSvgNetwork(
     {
       // width: canvasWidth,
       // height: canvasHeight,
-      viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
+      // viewBox: `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`,
       style:
-        "border: 1px solid #bdc3c7; border-radius: 4px; background: white; width: 100%;",
+        "border: 1px solid #bdc3c7; border-radius: 4px; background: white; width: 100%; height: 100%;",
     },
     background,
     connectionsGroup,
     nodesGroup,
   );
 
-  return [svgEl, tooltipContainer];
+  const elements = [svgEl, tooltipContainer];
+  const height = canvasHeight;
+  return [elements, height];
 }
 
 function render(container: HTMLElement): Array<HTMLElement> {
-  const { div, h3, button, input, select, option } = van.tags;
+  const { div, p, button, input, select, option } = van.tags;
 
   // Parse the realistic sample data
   const table: TableView = JSON.parse(REALISTIC_TABLE_JSON);
@@ -390,21 +393,26 @@ function render(container: HTMLElement): Array<HTMLElement> {
     type: "text",
     value: REALISTIC_TABLE_JSON,
     style:
-      "width: 100%; margin: 10px 0; padding: 5px; font-family: monospace; font-size: 10px;",
+      "width: 80%; margin: 10px 0; padding: 5px; font-family: monospace; font-size: 10px;",
   });
 
   const selectedNodePath: State<string | null> = van.state(null);
 
   const visualizationContainer = div({
-    style: "width: 100%; height: 100%;",
+    style: "width: 99%; height: 99%;",
   });
   function updateVisualization() {
     try {
       const newTable: TableView = JSON.parse(inputEl.value);
       const children: Array<Element> = [];
+      const [svgElements, height] = renderSvgNetwork(
+        newTable,
+        selectedNodePath,
+      );
       children.push(createEditControls(selectedNodePath));
-      children.push(...renderSvgNetwork(newTable, selectedNodePath));
+      children.push(...svgElements);
       setContent(visualizationContainer, children);
+      visualizationContainer.style.height = `${height}px`;
     } catch (e) {
       console.error("Invalid JSON:", e);
     }
@@ -412,12 +420,30 @@ function render(container: HTMLElement): Array<HTMLElement> {
   // Initial render
   updateVisualization();
 
-  return [
-    h3("Bucket-Spigot Network Visualizer"),
-    createPlayer(),
-    div("JSON Input:", inputEl),
-    visualizationContainer,
-  ];
+  const toolbar = div(
+    {
+      class: "flex-column",
+      style:
+        "position: sticky; top: 0px; background: #fff; border-bottom: solid 2pt black;",
+    },
+    [
+      // fmt hint
+      p("Bucket-Spigot Network Visualizer"),
+      createPlayer(),
+    ],
+  );
+  const contentScrollable = div(
+    {
+      class: "flex-column",
+    },
+    [
+      // fmt hint
+      div("JSON Input:", inputEl),
+      visualizationContainer,
+    ],
+  );
+
+  return [toolbar, contentScrollable];
 }
 
 function setContent(container: HTMLElement, content: Array<Element>) {

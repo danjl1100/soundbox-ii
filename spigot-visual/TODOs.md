@@ -1,13 +1,3 @@
-- [x] define requirements by discussing details for the visualizer features, example high level items:
-    - display the bucket-spigot network
-    - display information about specific nodes, when hovered
-    - allow the user to modify the network (edit nodes, remove nodes, add nodes)
+- [ ] fix the inotify-build.sh script, to run the server in the background and kill it when files change
 
-- [ ] implement a few different prototype versions of the UI and node rendering. Note that the existing content in app.ts is completely throw-away: only the `vanjs` and general build system should stay unchanged, for lean dependencies (unless there is a strong compelling resion)
-- FEEDBACK from initial network visualization prototypes:
-    - The overall styling looks great!
-    - Let's ignore Canvas for now and focus on HTML and SVG options, since Canvas is more complicated while visually identical to SVG. (I moved it to app-trash.ts.txt file, just in case)
-    - [ ] both the HTML and SVG versions: currently shows rows one below the other, I'd prefer to swap the orientation to so the first row is on the left, and later rows follow as columns to the right (the "row" terminology is confusing this, it's actually columns now!)
-    - [ ] the HTML version doesn't have connecting lines (see `screenshot_2_HTML_render.png`).  is it realistic to add slanted/angled lines in HTML? or is this a reason to rule out HTML?
-    - [ ] the SVG version (see `screenshot_3_SVG_render.png`) has two lines to join the nodes, but I think it'd look more "network" / "graph" like with single lines, to show the fan-in  (line directly from the parent to the child, no right-angles imposed in the middle)
-    - [ ] the root node is missing from both visualizations, since it's implied (with no attributes) and not present in the JSON. Maybe it can be a point where the lines converge, but without any actual node rendered? (since there will be no hover for it)
+- [ ] change the values for the three "control-button symbol" class elements in app.ts to use hex codes instead
