@@ -12,3 +12,4 @@ clap = "4.5.48"
 eyre = "0.6.12"
 tiny_http = { version = "0.12.0", default-features = false }
 ts-rs = "11.0.1"
+tungstenite = "0.28.0"

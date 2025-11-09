@@ -139,6 +139,104 @@ function createPlayer(): HTMLElement {
   );
 }
 
+function createWebSocketDemo(): HTMLElement {
+  const { div, button, input, p } = van.tags;
+
+  const connectionStatus: State<string> = van.state("Disconnected");
+  const lastMessage: State<string> = van.state("");
+  let ws: WebSocket | null = null;
+
+  function connect() {
+    // Use ws:// for WebSocket (or wss:// for secure WebSocket)
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    connectionStatus.val = "Connecting...";
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      connectionStatus.val = "Connected";
+      console.log("WebSocket connected");
+    };
+
+    ws.onmessage = (event) => {
+      lastMessage.val = event.data;
+      console.log("Received:", event.data);
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      connectionStatus.val = "Error";
+    };
+
+    ws.onclose = () => {
+      connectionStatus.val = "Disconnected";
+      console.log("WebSocket disconnected");
+    };
+  }
+
+  function disconnect() {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  }
+
+  const messageInput = input({
+    type: "text",
+    placeholder: "Type a message...",
+    style: "flex: 1; padding: 5px;",
+  });
+
+  function sendMessage() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const message = messageInput.value;
+      if (message) {
+        ws.send(message);
+        console.log("Sent:", message);
+        messageInput.value = "";
+      }
+    }
+  }
+
+  // Allow Enter key to send message
+  messageInput.addEventListener("keypress", (e: Event) => {
+    const keyEvent = e as KeyboardEvent;
+    if (keyEvent.key === "Enter") {
+      sendMessage();
+    }
+  });
+
+  return div(
+    {
+      class: "controls",
+      style: "background: #ecf0f1; border-left: 4px solid #3498db;",
+    },
+    div("WebSocket Demo (Proof of Concept)"),
+    div(
+      { style: "display: flex; gap: 10px; margin: 5px 0;" },
+      button({ class: "control-button", onclick: connect }, "Connect"),
+      button({ class: "control-button", onclick: disconnect }, "Disconnect"),
+      p(
+        { style: "margin: 0; padding: 5px;" },
+        "Status: ",
+        van.derive(() => connectionStatus.val),
+      ),
+    ),
+    div(
+      { style: "display: flex; gap: 10px; margin: 5px 0;" },
+      messageInput,
+      button({ class: "control-button", onclick: sendMessage }, "Send"),
+    ),
+    div(
+      { style: "font-size: 11px; margin: 5px 0;" },
+      "Last received: ",
+      van.derive(() => lastMessage.val || "(none)"),
+    ),
+  );
+}
+
 function renderSvgNetwork(
   table: TableView,
   selectedNodePath: State<string | null>,
@@ -430,6 +528,7 @@ function render(container: HTMLElement): Array<HTMLElement> {
       // fmt hint
       p("Bucket-Spigot Network Visualizer"),
       createPlayer(),
+      createWebSocketDemo(),
     ],
   );
   const contentScrollable = div(
