@@ -3,10 +3,9 @@
 import type { Cell } from "./bucket-spigot-bindings/Cell.ts";
 import type { NodeDetails } from "./bucket-spigot-bindings/NodeDetails.ts";
 import type { TableView } from "./bucket-spigot-bindings/TableView.ts";
-import type { State, Van } from "./van-1.5.5.d.ts";
-import van from "./van-1.5.5.js";
-
 import { REALISTIC_TABLE_JSON } from "./sample-input.js";
+import type { State } from "./van-1.5.5.d.ts";
+import van from "./van-1.5.5.js";
 
 // TODO remove unused
 // function injectStyles() {
@@ -256,9 +255,9 @@ function renderSvgNetwork(
 
   // Calculate canvas dimensions
   const bucketWidthModifier = 2;
-  const rowCount = table.rows.length;
-  const canvasWidth =
-    CELL_X_STRIDE * (rowCount - 1 + bucketWidthModifier) /*+ 100*/;
+  // const rowCount = table.rows.length;
+  // const canvasWidth =
+  //   CELL_X_STRIDE * (rowCount - 1 + bucketWidthModifier) /*+ 100*/;
   const canvasHeight = CELL_Y_STRIDE * table.total_width /*+ 100*/;
 
   const tooltipContainer = div();
@@ -396,7 +395,7 @@ function renderSvgNetwork(
   const rootY = canvasHeight / 2;
 
   // Draw connections after all nodes are positioned
-  for (const [rowIndex, row] of table.rows.entries()) {
+  for (const row of table.rows.values()) {
     for (const cell of row) {
       if (cell.node && cell.node.path !== ".") {
         const node = cell.node;
@@ -444,10 +443,10 @@ function renderSvgNetwork(
     opacity: "0.8",
   });
 
-  const viewBoxX = rootX - 5;
-  const viewBoxY = 0;
-  const viewBoxWidth = Math.max(canvasWidth, 800);
-  const viewBoxHeight = canvasHeight;
+  // const viewBoxX = rootX - 5;
+  // const viewBoxY = 0;
+  // const viewBoxWidth = Math.max(canvasWidth, 800);
+  // const viewBoxHeight = canvasHeight;
 
   const large_number = 99999999;
   const background = rect({
@@ -457,7 +456,7 @@ function renderSvgNetwork(
     height: 2 * large_number,
     opacity: 0.0,
   });
-  background.addEventListener("mousedown", (e: Event) => {
+  background.addEventListener("mousedown", (_e: Event) => {
     selectedNodePath.val = null;
   });
 
@@ -481,11 +480,11 @@ function renderSvgNetwork(
   return [elements, height];
 }
 
-function render(container: HTMLElement): Array<HTMLElement> {
-  const { div, p, button, input, select, option } = van.tags;
+function render(): Array<HTMLElement> {
+  const { div, p, input } = van.tags;
 
   // Parse the realistic sample data
-  const table: TableView = JSON.parse(REALISTIC_TABLE_JSON);
+  const _table: TableView = JSON.parse(REALISTIC_TABLE_JSON);
 
   const inputEl = input({
     type: "text",
@@ -555,6 +554,6 @@ function setContent(container: HTMLElement, content: Array<Element>) {
 window.onload = async (): Promise<void> => {
   const content = document.getElementById("content");
   if (content != null) {
-    setContent(content, render(content));
+    setContent(content, render());
   }
 };

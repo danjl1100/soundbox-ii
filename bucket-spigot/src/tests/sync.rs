@@ -44,8 +44,11 @@ pub(crate) fn run_with_timeout<T: Send>(
         while !*finished && !handle.is_finished() {
             let elapsed = start.elapsed();
             if elapsed >= timeout {
-                let _never: Never = timeout_fn(elapsed);
-                unreachable!();
+                #[allow(unreachable_code)]
+                {
+                    // compiler complains about this uninhabited return type, unclear how to clearly silence
+                    match timeout_fn(elapsed) {}
+                }
             }
 
             let (new_finished, _wait_result) = cvar
