@@ -2,6 +2,7 @@
 //! Helper commands for the repo, following the
 //! [`cargo-xtask`](https://github.com/matklad/cargo-xtask/) template
 
+use crate::spigot_visual::HintAllowRustWorkspaceCalls;
 use eyre::Context as _;
 use std::{
     path::{Path, PathBuf},
@@ -52,7 +53,9 @@ fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         return Err(bail_unknown(extra));
     }
 
-    rust::checks(fix)?;
+    let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
+
+    rust::checks(fix, &hint)?;
     spigot_visual::checks(fix)?;
 
     Ok(())
@@ -151,9 +154,9 @@ fn project_root() -> PathBuf {
 }
 
 mod rust {
-    use crate::{Fix, run_cargo, status_cargo};
+    use crate::{Fix, run_cargo, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo};
 
-    pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
+    pub fn checks(fix: Option<Fix>, _hint: &HintAllowRustWorkspaceCalls) -> eyre::Result<()> {
         fmt(fix)?;
         clippy(fix)?;
         test()?;
@@ -162,7 +165,7 @@ mod rust {
         Ok(())
     }
 
-    pub fn fmt(fix: Option<Fix>) -> eyre::Result<()> {
+    fn fmt(fix: Option<Fix>) -> eyre::Result<()> {
         if fix.is_none() {
             // no fix = printing list
             eprintln!("Outstanding cargo fmt files:");
@@ -223,6 +226,87 @@ mod spigot_visual {
         fs::DirEntry,
         path::{Path, PathBuf},
     };
+
+    pub struct HintAllowRustWorkspaceCalls {}
+    impl HintAllowRustWorkspaceCalls {
+        pub fn check() -> eyre::Result<Result<Self, Need>> {
+            /// Generated files that are required for workspace-wide cargo invocations
+            const REQUIRED_DIST_DIR_FILES: &[&str] = &["app.js", "sample-input.js"];
+            let missing_files = REQUIRED_DIST_DIR_FILES
+                .iter()
+                .filter_map(|name| {
+                    let path = {
+                        let mut p = dist_dir();
+                        p.push(name);
+                        p
+                    };
+                    std::fs::exists(&path)
+                        .with_context(|| format!("failed to stat {}", path.display()))
+                        .map(|exists| (!exists).then_some(path))
+                        .transpose()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if !missing_files.is_empty() {
+                return Ok(Err(Need::DistJsWrite { missing_files }));
+            }
+            Ok(Ok(Self {}))
+        }
+        /// Automatically attempts to recover if [`Self::check()`] returns a [`Need`] (one time only)
+        pub fn check_and_run_once(fix: Option<Fix>) -> eyre::Result<Self> {
+            Self::check()?
+                .or_else(|need| {
+                    need.run(fix)?;
+                    match Self::check()? {
+                        Ok(v) => Ok(v),
+                        Err(need_next) => {
+                            eyre::bail!("too many needs: {need:?} --> {need_next:?}");
+                        }
+                    }
+                })
+                .context("failed to build files needed for rust workspace")
+        }
+    }
+    pub enum Need {
+        /// Need to run [`dist_js()`]
+        DistJsWrite { missing_files: Vec<PathBuf> },
+    }
+    impl Need {
+        pub fn run(&self, fix: Option<Fix>) -> eyre::Result<()> {
+            let Some(Fix) = fix else {
+                eyre::bail!(
+                    "argument `fix` not specified, refusing to write output files: {self:#?}"
+                )
+            };
+            println!(
+                "building source dependency for rust workpace calls:\n\t{:?}\n",
+                self.label()
+            );
+            match self {
+                Need::DistJsWrite {
+                    missing_files: _diagnostic_only,
+                } => dist_js(Some(WriteOutput)),
+            }
+        }
+        pub fn label(&self) -> &'static str {
+            match self {
+                Need::DistJsWrite { .. } => "cargo xtask spigot-visual-dist",
+            }
+        }
+    }
+    impl std::fmt::Debug for Need {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut debug = f.debug_struct("");
+
+            match self {
+                Need::DistJsWrite { missing_files } => {
+                    debug.field("missing_files", missing_files);
+                }
+            }
+
+            debug.field("add `fix` argument to automatically run", &self.label());
+            debug.finish()
+        }
+    }
 
     pub fn run<S>(args: impl IntoIterator<Item = S>) -> eyre::Result<()>
     where
