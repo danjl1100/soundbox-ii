@@ -4,12 +4,10 @@
 use tiny_http::{Header, Response};
 
 use clap::Parser as _;
-use spigot_visual::static_file;
+use spigot_visual::{
+    HTTP_CODE_301_MOVED, HTTP_CODE_404_NOT_FOUND, static_file, websocket::WebsocketUpgrade,
+};
 use std::net::SocketAddr;
-
-const HTTP_CODE_101_SWITCHING_PROTOCOLS: u32 = 101;
-const HTTP_CODE_301_MOVED: u32 = 301;
-const HTTP_CODE_404_NOT_FOUND: u32 = 404;
 
 #[derive(clap::Parser)]
 struct Config {
@@ -28,6 +26,11 @@ fn main() -> eyre::Result<()> {
         Err(e) => eyre::bail!(e),
     };
 
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        app_logic(cmd_rx);
+    });
+
     eprintln!("Listening on {}...", config.bind_address);
 
     loop {
@@ -38,7 +41,7 @@ fn main() -> eyre::Result<()> {
             }
         };
 
-        match handle_request(request, &config) {
+        match handle_request(request, &config, &cmd_tx) {
             Ok(()) => {}
             Err(e) => {
                 let e = eyre::eyre!(e);
@@ -48,139 +51,56 @@ fn main() -> eyre::Result<()> {
     }
 }
 
-struct WebsocketUpgrade {
-    ws_key: String,
-}
-
-impl WebsocketUpgrade {
-    /// Checks if a request is a valid WebSocket upgrade request and returns the key if valid
-    fn new(request: &tiny_http::Request) -> Option<Self> {
-        let true = request.headers().iter().any(|h| {
-            h.field.equiv("Upgrade") && h.value.as_str().eq_ignore_ascii_case("websocket")
-        }) else {
-            return None;
-        };
-
-        let true = request.headers().iter().any(|h| {
-            h.field.equiv("Connection")
-                && h.value
-                    .as_str()
-                    .split(',')
-                    .any(|s| s.trim().eq_ignore_ascii_case("Upgrade"))
-        }) else {
-            return None;
-        };
-
-        let ws_key = request
-            .headers()
-            .iter()
-            .find(|h| h.field.equiv("Sec-WebSocket-Key"))
-            .map(|h| h.value.as_str().to_string())?;
-
-        // Only return the key if all required headers are present
-        Some(Self { ws_key })
-    }
-
-    /// Handles WebSocket connections
-    fn spawn(self, request: tiny_http::Request) {
-        let Self { ws_key } = self;
-
-        eprintln!("WebSocket connection initiated");
-
-        // Compute the Sec-WebSocket-Accept value using tungstenite's helper
-        let ws_accept = tungstenite::handshake::derive_accept_key(ws_key.as_bytes());
-
-        // Build the WebSocket handshake response with proper headers
-        let response = Response::empty(HTTP_CODE_101_SWITCHING_PROTOCOLS)
-            .with_header(Header::from_bytes("Upgrade", "websocket").expect("valid header"))
-            .with_header(Header::from_bytes("Connection", "Upgrade").expect("valid header"))
-            .with_header(
-                Header::from_bytes("Sec-WebSocket-Accept", ws_accept.as_str())
-                    .expect("valid header"),
-            );
-
-        // Upgrade the HTTP connection to a WebSocket
-        let stream = request.upgrade("websocket", response);
-
-        // Spawn a thread to handle this WebSocket connection
-        // This allows the main server loop to continue accepting new connections
-        std::thread::spawn(move || {
-            handle_websocket_connection(stream);
-        });
+fn app_logic(cmd_rx: std::sync::mpsc::Receiver<SpigotCommand>) {
+    for cmd in cmd_rx {
+        let SpigotCommand { kind, response } = cmd;
+        let _ = response.send(app_logic_cmd(kind));
     }
 }
-
-/// Handles a WebSocket connection in a separate thread
-fn handle_websocket_connection(stream: Box<dyn tiny_http::ReadWrite + Send>) {
-    use tungstenite::{Message, WebSocket};
-
-    // Wrap the stream in a WebSocket without performing another handshake
-    let mut websocket =
-        WebSocket::from_raw_socket(stream, tungstenite::protocol::Role::Server, None);
-
-    eprintln!("WebSocket handshake completed");
-
-    // Simple echo server for proof-of-concept
-    loop {
-        match websocket.read() {
-            Ok(msg) => match msg {
-                Message::Text(text) => {
-                    eprintln!("Received: {text}");
-                    // Echo the message back with a prefix
-                    let response = format!("Server echo: {text}");
-                    match websocket.write(Message::Text(response.into())) {
-                        Ok(()) => {
-                            eprintln!("Sent echo response");
-                            // Flush to ensure the message is sent
-                            if let Err(e) = websocket.flush() {
-                                eprintln!("Error flushing websocket: {e}");
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error sending echo: {e}");
-                            break;
-                        }
-                    }
-                }
-                Message::Binary(data) => {
-                    eprintln!("Received binary data: {} bytes", data.len());
-                    if let Err(e) = websocket.write(Message::Binary(data)) {
-                        eprintln!("Error sending binary data: {e}");
-                        break;
-                    }
-                }
-                Message::Ping(data) => {
-                    if let Err(e) = websocket.write(Message::Pong(data)) {
-                        eprintln!("Error sending pong: {e}");
-                        break;
-                    }
-                }
-                Message::Pong(_) | Message::Frame(_) => {
-                    // Ignore pong messages and raw frames
-                }
-                Message::Close(_) => {
-                    eprintln!("WebSocket connection closed by client");
-                    break;
-                }
-            },
-            Err(e) => {
-                eprintln!("WebSocket error: {e}");
-                break;
-            }
+fn app_logic_cmd(kind: SpigotCommandKind) -> SpigotResponse {
+    match kind {
+        SpigotCommandKind::Echo { message } => {
+            let message = format!("Response to {message:?}");
+            SpigotResponse::EchoResponse { message }
         }
     }
-
-    eprintln!("WebSocket connection thread ending");
 }
 
-fn handle_request(request: tiny_http::Request, config: &Config) -> eyre::Result<()> {
+struct SpigotCommand {
+    kind: SpigotCommandKind,
+    response: std::sync::mpsc::SyncSender<SpigotResponse>,
+}
+impl spigot_visual::websocket::Command for SpigotCommand {
+    type Inner = SpigotCommandKind;
+    type Response = SpigotResponse;
+    fn new(kind: SpigotCommandKind) -> (Self, std::sync::mpsc::Receiver<SpigotResponse>) {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        (Self { kind, response: tx }, rx)
+    }
+}
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "kind")]
+enum SpigotCommandKind {
+    Echo { message: String },
+}
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "kind")]
+enum SpigotResponse {
+    EchoResponse { message: String },
+}
+
+fn handle_request(
+    request: tiny_http::Request,
+    config: &Config,
+    cmd_tx: &std::sync::mpsc::SyncSender<SpigotCommand>,
+) -> eyre::Result<()> {
     const INDEX: &str = "/index.html";
 
     // Check if this is a WebSocket upgrade request
     if request.url() == "/ws"
         && let Some(ws_upgrade) = WebsocketUpgrade::new(&request)
     {
-        ws_upgrade.spawn(request);
+        ws_upgrade.spawn(request, cmd_tx.clone());
         return Ok(());
     }
 
