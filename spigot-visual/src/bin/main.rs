@@ -5,7 +5,10 @@ use tiny_http::{Header, Response};
 
 use clap::Parser as _;
 use spigot_visual::{
-    HTTP_CODE_301_MOVED, HTTP_CODE_404_NOT_FOUND, static_file, websocket::WebsocketUpgrade,
+    HTTP_CODE_301_MOVED, HTTP_CODE_404_NOT_FOUND,
+    app::{SpigotCommand, app_logic},
+    static_file,
+    websocket::WebsocketUpgrade,
 };
 use std::net::SocketAddr;
 
@@ -49,44 +52,6 @@ fn main() -> eyre::Result<()> {
             }
         }
     }
-}
-
-fn app_logic(cmd_rx: std::sync::mpsc::Receiver<SpigotCommand>) {
-    for cmd in cmd_rx {
-        let SpigotCommand { kind, response } = cmd;
-        let _ = response.send(app_logic_cmd(kind));
-    }
-}
-fn app_logic_cmd(kind: SpigotCommandKind) -> SpigotResponse {
-    match kind {
-        SpigotCommandKind::Echo { message } => {
-            let message = format!("Response to {message:?}");
-            SpigotResponse::EchoResponse { message }
-        }
-    }
-}
-
-struct SpigotCommand {
-    kind: SpigotCommandKind,
-    response: std::sync::mpsc::SyncSender<SpigotResponse>,
-}
-impl spigot_visual::websocket::Command for SpigotCommand {
-    type Inner = SpigotCommandKind;
-    type Response = SpigotResponse;
-    fn new(kind: SpigotCommandKind) -> (Self, std::sync::mpsc::Receiver<SpigotResponse>) {
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        (Self { kind, response: tx }, rx)
-    }
-}
-#[derive(Debug, serde::Deserialize)]
-#[serde(tag = "kind")]
-enum SpigotCommandKind {
-    Echo { message: String },
-}
-#[derive(Debug, serde::Serialize)]
-#[serde(tag = "kind")]
-enum SpigotResponse {
-    EchoResponse { message: String },
 }
 
 fn handle_request(

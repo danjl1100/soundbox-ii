@@ -52,7 +52,7 @@ enum OrderType {
 struct Path(String);
 
 mod construction_proof {
-    //! Proof that the typescript types map one-to-one with the real types
+    //! Proof that the typescript types map as an OUTPUT of the the real types
 
     mod orig {
         pub(super) use super::super::super::{Cell, NodeDetails, Row, TableView};

@@ -12,3 +12,5 @@ pub const HTTP_CODE_404_NOT_FOUND: u32 = 404;
 pub mod static_file;
 
 pub mod websocket;
+
+pub mod app;
