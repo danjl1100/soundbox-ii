@@ -220,13 +220,9 @@ mod spigot_visual {
     //! Tasks for the `spigot_visual` crate
 
     use self::gen_bindings::gen_bindings_ts;
-    use crate::{Fix, WriteOutput, print_help_fix_checks, project_root, run_cargo, run_cmd};
+    use crate::{Fix, WriteOutput, print_help_fix_checks, project_root, run_cmd};
     use eyre::Context;
-    use std::{
-        ffi::OsStr,
-        fs::DirEntry,
-        path::{Path, PathBuf},
-    };
+    use std::{ffi::OsStr, path::PathBuf};
 
     pub struct HintAllowRustWorkspaceCalls {}
     impl HintAllowRustWorkspaceCalls {
@@ -381,58 +377,142 @@ mod spigot_visual {
     }
 
     mod gen_bindings {
-        use crate::{
-            run_cargo,
-            spigot_visual::{bucket_spigot_bindings_dir, bucket_spigot_dir, ts_src_dir},
-        };
         use eyre::Context as _;
-        use std::{fs::DirEntry, path::Path};
+        use std::{
+            fs::DirEntry,
+            path::{Path, PathBuf},
+        };
+
+        use self::ts_binding_set::TsBindingSet;
 
         /// files that are skipped for auto-removal (without any warnings)
         const IGNORE_FILE_NAMES: &[&str] = &[
             // rustfmt hint
             ".gitignore",
         ];
-        /// files that are auto-removed
-        const KNOWN_BINDING_NAMES: &[&str] = &[
-            "Cell",
-            "NodeDetails",
-            "NodeKind",
-            "OrderType",
-            "Path",
-            "Row",
-            "TableView",
-        ];
         const EXTENSION_BINDING: &str = "ts";
         const EXTENSION_DEST: &str = "d.ts";
 
         pub(super) fn gen_bindings_ts() -> eyre::Result<()> {
-            let binding_dir = bucket_spigot_bindings_dir();
-            let dest_dir = ts_src_dir().join("bucket-spigot-bindings");
-
-            // delete old files
-            remove_generated_dir(&binding_dir, EXTENSION_BINDING, known_binding_names)?;
-            remove_generated_dir(&dest_dir, EXTENSION_DEST)?;
-
-            // generate bindings
-            run_cargo(|c| {
-                c.args([
-                    "test",
-                    "--package",
+            TsBindingSet::new()
+                .add_package(
                     "bucket-spigot",
-                    "--package",
+                    &[
+                        "Cell",
+                        "NodeDetails",
+                        "NodeKind",
+                        "OrderType",
+                        "Path",
+                        "Row",
+                        "TableView",
+                    ],
+                )
+                .add_package(
                     "spigot-visual",
-                    "--features",
-                    "ts-rs",
-                    "export_bindings",
-                ])
-                .current_dir(bucket_spigot_dir())
-            })?;
+                    &[
+                        "NetworkModifyCmd",
+                        "OrderType",
+                        "Path",
+                        "SpigotCommandKind",
+                        "SpigotResponse",
+                    ],
+                )
+                .execute()
+        }
 
-            // copy bindings into place
-            copy_bindings_to_dest(KNOWN_BINDING_NAMES, &binding_dir, &dest_dir)?;
+        mod ts_binding_set {
+            use super::{EXTENSION_DEST, copy_bindings_to_dest, remove_generated_dir};
+            use crate::{project_root, run_cargo, spigot_visual::ts_src_dir};
+            use std::path::PathBuf;
 
-            Ok(())
+            #[derive(Default)]
+            pub(super) struct TsBindingSet {
+                package_names: Vec<&'static str>,
+                packages: Vec<Package>,
+            }
+            impl TsBindingSet {
+                pub fn new() -> Self {
+                    Self::default()
+                }
+                pub fn add_package(
+                    mut self,
+                    package_name: &'static str,
+                    known_binding_names: &'static [&'static str],
+                ) -> Self {
+                    let Self {
+                        package_names,
+                        packages,
+                    } = &mut self;
+                    package_names.push(package_name);
+
+                    packages.push(Package {
+                        binding_dir: project_root().join(format!("{package_name}/bindings")),
+                        dest_dir: ts_src_dir().join(format!("{package_name}-bindings")),
+                        known_binding_names,
+                    });
+
+                    self
+                }
+                pub fn execute(self) -> eyre::Result<()> {
+                    let Self {
+                        package_names,
+                        packages,
+                    } = self;
+
+                    // remove old generated (source) files
+                    for pkg in &packages {
+                        pkg.remove_generated_dir()?;
+                    }
+
+                    // TODO - do more in each package?
+                    // // delete old generated files (destination) files
+                    // remove_generated_dir(&binding_dir, EXTENSION_BINDING, known_binding_names)?;
+
+                    // generate bindings
+                    run_cargo(|c| {
+                        c.args(["test", "--features", "ts-rs", "export_bindings"]);
+                        for package in package_names {
+                            c.arg("--package").arg(package);
+                        }
+                        c.current_dir(project_root());
+                        c
+                    })?;
+
+                    // copy new generated files into destination
+                    for pkg in packages {
+                        pkg.copy_bindings_to_dest()?;
+                    }
+
+                    Ok(())
+                }
+            }
+
+            struct Package {
+                binding_dir: PathBuf,
+                dest_dir: PathBuf,
+                known_binding_names: &'static [&'static str],
+            }
+            impl Package {
+                fn remove_generated_dir(&self) -> eyre::Result<()> {
+                    let Self {
+                        binding_dir: _, // TODO unused? or remove files there too?
+                        dest_dir,
+                        known_binding_names,
+                    } = self;
+                    // delete old files
+                    remove_generated_dir(dest_dir, EXTENSION_DEST, known_binding_names)
+                }
+                fn copy_bindings_to_dest(self) -> eyre::Result<()> {
+                    let Self {
+                        binding_dir,
+                        dest_dir,
+                        known_binding_names,
+                    } = self;
+
+                    // copy bindings into place
+                    copy_bindings_to_dest(known_binding_names, &binding_dir, &dest_dir)
+                }
+            }
         }
 
         fn copy_bindings_to_dest(
@@ -481,10 +561,25 @@ mod spigot_visual {
             }
 
             // verify files removed
-            let listing: Result<Vec<DirEntry>, _> = std::fs::read_dir(dir)?.collect();
-            let listing = listing?;
-            if listing.len() > IGNORE_FILE_NAMES.len() {
-                eyre::bail!("extra files in folder {}: {listing:#?}", dir.display())
+            let extra_files = std::fs::read_dir(dir)?
+                .filter_map(|entry| {
+                    (|| {
+                        let entry = entry?;
+                        let path = entry.path();
+                        let name = entry.file_name();
+                        if let Some(name) = name.to_str()
+                            && IGNORE_FILE_NAMES.contains(&name)
+                        {
+                            Ok(None)
+                        } else {
+                            Ok(Some(path))
+                        }
+                    })()
+                    .transpose()
+                })
+                .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
+            if !extra_files.is_empty() {
+                eyre::bail!("extra files in folder {}: {extra_files:#?}", dir.display())
             }
             Ok(())
         }
@@ -512,21 +607,21 @@ mod spigot_visual {
             let Ok(full_name) = String::from_utf8(full_name.as_encoded_bytes().to_vec()) else {
                 eyre::bail!("non-utf8 filename: {}", full_name.display())
             };
-            let Some((name, extension_multi)) = full_name.split_once('.') else {
-                eyre::bail!("no filename extension")
-            };
+            let (name, extension_multi) = full_name
+                .split_once('.')
+                .map_or((&*full_name, None), |(n, ext)| (n, Some(ext)));
 
-            // ... with the expected extension
-            if extension != extension_multi {
-                eyre::bail!(
-                    "refusing to remove unknown file extension: {}",
-                    entry_path.display()
-                )
-            }
             // ... with any expected name
             if !known_binding_names.contains(&name) {
                 eyre::bail!(
                     "refusing to remove unknown file name: {}",
+                    entry_path.display()
+                )
+            }
+            // ... with the expected extension
+            if Some(extension) != extension_multi {
+                eyre::bail!(
+                    "refusing to remove unknown file extension: {}",
                     entry_path.display()
                 )
             }
@@ -536,16 +631,6 @@ mod spigot_visual {
 
             Ok(())
         }
-    }
-
-    fn bucket_spigot_dir() -> PathBuf {
-        project_root().join("bucket-spigot")
-    }
-    fn spigot_visual_bindings_dir() -> PathBuf {
-        project_root().join("spigot-visual/bindings")
-    }
-    fn bucket_spigot_bindings_dir() -> PathBuf {
-        project_root().join("bucket-spigot/bindings")
     }
 
     fn ts_src_dir() -> PathBuf {
