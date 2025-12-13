@@ -4,6 +4,10 @@ import type { Cell } from "./bucket-spigot-bindings/Cell.ts";
 import type { NodeDetails } from "./bucket-spigot-bindings/NodeDetails.ts";
 import type { TableView } from "./bucket-spigot-bindings/TableView.ts";
 import { REALISTIC_TABLE_JSON } from "./sample-input.js";
+import type {
+  NetworkModifyCmd,
+  SpigotCommandKind,
+} from "./spigot-visual-bindings/index.ts";
 import type { State } from "./van-1.5.5.d.ts";
 import van from "./van-1.5.5.js";
 
@@ -188,12 +192,20 @@ function createWebSocketDemo(): HTMLElement {
     style: "flex: 1; padding: 5px;",
   });
 
+  function send(ws: WebSocket, command_obj: SpigotCommandKind) {
+    const command = JSON.stringify(command_obj);
+    ws.send(command);
+    console.log("Sent:", command);
+  }
+
   function sendMessage() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const message = messageInput.value;
       if (message) {
-        ws.send(message);
-        console.log("Sent:", message);
+        send(ws, {
+          kind: "Echo",
+          message,
+        });
         messageInput.value = "";
       }
     }

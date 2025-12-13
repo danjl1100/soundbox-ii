@@ -2,21 +2,24 @@
 //! Typescript versions of [`super::TableView`] and all contained fields
 #![expect(dead_code)]
 
-#[derive(ts_rs::TS)]
+#[derive(ts_rs::TS, serde::Serialize)]
 #[ts(export)]
+#[serde(tag = "kind")]
 enum SpigotCommandKind {
     Echo { message: String },
     Network(NetworkModifyCmd),
 }
-#[derive(ts_rs::TS)]
+#[derive(ts_rs::TS, serde::Serialize)]
 #[ts(export)]
+#[serde(tag = "kind")]
 enum SpigotResponse {
     EchoResponse { message: String },
 }
 
 /// Subset of [`bucket_spigot::ModifyCmd`] for the client to control
-#[derive(ts_rs::TS)]
+#[derive(ts_rs::TS, serde::Serialize)]
 #[ts(export)]
+#[serde(tag = "kind")]
 enum NetworkModifyCmd {
     AddBucket {
         parent: Path,
@@ -41,7 +44,7 @@ enum NetworkModifyCmd {
     },
 }
 
-#[derive(ts_rs::TS)]
+#[derive(ts_rs::TS, serde::Serialize)]
 #[ts(export)]
 enum OrderType {
     InOrder,
@@ -49,7 +52,7 @@ enum OrderType {
     Shuffle,
 }
 
-#[derive(ts_rs::TS)]
+#[derive(ts_rs::TS, serde::Serialize)]
 #[ts(export)]
 struct Path(String);
 
