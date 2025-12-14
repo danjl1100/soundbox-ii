@@ -1,8 +1,10 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-import type { Cell } from "./bucket-spigot-bindings/Cell.ts";
-import type { NodeDetails } from "./bucket-spigot-bindings/NodeDetails.ts";
-import type { TableView } from "./bucket-spigot-bindings/TableView.ts";
+import type {
+  Cell,
+  NodeDetails,
+  TableView,
+} from "./bucket-spigot-bindings/index.ts";
 import { REALISTIC_TABLE_JSON } from "./sample-input.js";
 import type {
   NetworkModifyCmd,
