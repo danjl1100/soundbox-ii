@@ -12,7 +12,7 @@ use std::str::FromStr;
 pub trait ArgBounds:
     FromStr<Err: std::error::Error + Send + Sync + 'static>
     + Clone
-    + std::fmt::Debug
+    + std::fmt::Display
     + Send
     + Sync
     + 'static
@@ -20,7 +20,7 @@ pub trait ArgBounds:
 }
 impl<T> ArgBounds for T
 where
-    Self: FromStr + Clone + std::fmt::Debug + Send + Sync + 'static,
+    Self: FromStr + Clone + std::fmt::Display + Send + Sync + 'static,
     Self::Err: std::error::Error + Send + Sync + 'static,
 {
 }
@@ -193,19 +193,19 @@ where
                 check_fn: impl Fn(&str) -> U,
             ) -> Result<U, std::fmt::Error>
             where
-                T: std::fmt::Debug,
+                T: std::fmt::Display,
             {
                 use std::fmt::Write as _;
 
                 let Self(buf) = self;
-                write!(buf, "{value:?}")?;
+                write!(buf, "{value}")?;
                 let result = check_fn(buf);
                 buf.clear();
                 Ok(result)
             }
             fn check_dash_separator_needed<T>(values: &[T]) -> bool
             where
-                T: std::fmt::Debug,
+                T: std::fmt::Display,
             {
                 let mut inspector = Self::default();
                 values.iter().any(|item| {
@@ -241,7 +241,7 @@ where
                     } => {
                         write!(f, "fill-bucket {bucket}")?;
                         for item in new_contents {
-                            write!(f, " {item:?}")?;
+                            write!(f, " {item}")?;
                         }
                         Ok(())
                     }
@@ -252,7 +252,7 @@ where
                             write!(f, " --")?;
                         }
                         for filter in new_filters {
-                            write!(f, " {filter:?}")?;
+                            write!(f, " {filter}")?;
                         }
                         Ok(())
                     }
@@ -443,37 +443,41 @@ mod network_cmd_lines {
         /// # Errors
         /// Returns an error if parsing a command or applying the command fails
         ///
-        /// # Example
+        /// # Examples
         /// ```
-        /// use bucket_spigot::{Network, path::Path};
-        ///
-        /// // Define a `Debug` wrapper that works for single words (only)
-        /// #[derive(Clone, serde::Serialize)]
-        /// #[serde(transparent)]
-        /// struct StringDebugAsIs(String);
-        /// impl std::str::FromStr for StringDebugAsIs {
-        ///     type Err = std::convert::Infallible;
-        ///     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ///         Ok(Self(s.to_owned()))
-        ///     }
-        /// }
-        /// impl std::fmt::Debug for StringDebugAsIs {
-        ///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        ///         let Self(inner) = self;
-        ///         write!(f, "{inner}")
-        ///     }
-        /// }
+        /// use bucket_spigot::Network;
         ///
         /// let construction_string = r#"add-joint .
         /// add-bucket .0
         /// set-filters .0.0 filter values
         /// fill-bucket .0.0 item1 item2 item3"#;
-        /// let network: Network<StringDebugAsIs, StringDebugAsIs> =
+        /// let network: Network<String, String> =
         ///     Network::from_commands_str_whitespace(construction_string).unwrap();
         /// let command_lines = network.as_command_lines();
         /// assert_eq!(command_lines, construction_string);
         /// ```
-        // NOTE: Separate from `std::string::FromStr`, because a "string of commands" is not a canonical representation
+        ///
+        /// ```
+        /// use bucket_spigot::Network;
+        ///
+        /// struct SerdeVec(Vec<u8>);
+        /// impl std::fmt::Debug for SerdeVec {
+        ///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        ///         // debug as display
+        ///         let Self(list) = self;
+        ///         write!(f, "{list:?}")
+        ///     }
+        /// }
+        ///
+        /// let construction_string = r#"add-joint .
+        /// add-bucket .0
+        /// set-filters .0.0 [2,4,5,7]
+        /// fill-bucket .0.0 [2,54,6,3,3,2,0,40]"#;
+        /// let network: Network<String, String> =
+        ///     Network::from_commands_str_whitespace(construction_string).unwrap();
+        /// let command_lines = network.as_command_lines();
+        /// assert_eq!(command_lines, construction_string);
+        /// ```
         #[must_use]
         pub fn as_command_lines(&self) -> String {
             self.serialize_as_command_lines()

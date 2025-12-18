@@ -40,8 +40,8 @@ where
 
 fn cmds_script<T, U>(cmds: &[ModifyCmd<T, U>]) -> String
 where
-    T: ArgBounds + PartialEq,
-    U: ArgBounds + PartialEq,
+    T: ArgBounds + PartialEq + std::fmt::Debug,
+    U: ArgBounds + PartialEq + std::fmt::Debug,
 {
     use std::fmt::Write;
 
@@ -57,8 +57,8 @@ where
 
 fn assert_rebuilds<T, U>(cmds: Vec<crate::ModifyCmd<T, U>>, expected: &Network<T, U>)
 where
-    T: ArgBounds + PartialEq,
-    U: ArgBounds + PartialEq,
+    T: ArgBounds + PartialEq + std::fmt::Debug,
+    U: ArgBounds + PartialEq + std::fmt::Debug,
 {
     let mut network_rebuilt = Network::default();
     let cmds_is_empty = cmds.is_empty();
@@ -105,8 +105,8 @@ fn check_rebuilds_script(
 }
 impl<T, U> Network<T, U>
 where
-    T: ArgBounds + PartialEq + serde::Serialize + serde::de::DeserializeOwned,
-    U: ArgBounds + PartialEq + serde::Serialize + serde::de::DeserializeOwned,
+    T: ArgBounds + PartialEq + serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug,
+    U: ArgBounds + PartialEq + serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug,
 {
     fn check_ser(&self, inspect_fn: impl FnOnce(&[ModifyCmd<T, U>])) {
         let cmds = into_cmds(self.clone());
@@ -208,9 +208,9 @@ fn node_filters() -> eyre::Result<()> {
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
         add-bucket .
-        set-filters .0 "abc" "def"
+        set-filters .0 abc def
         add-joint .
-        set-filters .1 "ghi" "jkl"
+        set-filters .1 ghi jkl
         "###);
     });
 
@@ -229,7 +229,7 @@ fn node_items() -> eyre::Result<()> {
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
         add-bucket .
-        fill-bucket .0 "abc" "def"
+        fill-bucket .0 abc def
         "###);
     });
 
@@ -264,7 +264,8 @@ fn node_weight() -> eyre::Result<()> {
 #[test]
 fn check_arbitrary_network() {
     arbtest::arbtest(|u| {
-        let network: Network<_, arg_util::StringDebugSplit> = Network::arbitrary_no_items(u)?;
+        let network: Network<_, arg_util::DisplayAsDebug<arg_util::StringDebugSplit>> =
+            Network::arbitrary_no_items(u)?;
 
         network.check_ser(|_| ());
         Ok(())

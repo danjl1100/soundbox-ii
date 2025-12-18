@@ -194,6 +194,11 @@ mod never {
             Err(NeverErr)
         }
     }
+    impl std::fmt::Display for Arg {
+        fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match *self {}
+        }
+    }
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct NeverErr;
     impl std::fmt::Display for NeverErr {

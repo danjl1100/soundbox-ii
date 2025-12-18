@@ -146,9 +146,10 @@ fn parse_cli_exhaustive() {
 
 impl<T, U> crate::ModifyCmd<T, U>
 where
-    T: ArgBounds + PartialEq,
-    U: ArgBounds + PartialEq,
+    T: ArgBounds + PartialEq + std::fmt::Debug,
+    U: ArgBounds + PartialEq + std::fmt::Debug,
 {
+    #[track_caller]
     pub(crate) fn display_as_cmd_verified(&self) -> String {
         let cmd_string = self.as_ref().display_as_cmd().to_string();
 
@@ -202,7 +203,7 @@ fn clap_display_roundtrip() {
         CrateModifyCmd::SetFilters { .. } => {
             CrateModifyCmd::SetFilters {
                 path: path1.clone(),
-                new_filters: ["this one", "has some", "spaces     !"]
+                new_filters: ["this", "one", "cant", "have", "spaces", "!"]
                     .into_iter()
                     .map(str::to_owned)
                     .collect(),

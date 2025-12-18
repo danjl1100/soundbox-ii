@@ -142,7 +142,7 @@ impl Network<String, String> {
 
 impl<T, U> Network<T, U>
 where
-    T: crate::clap::ArgBounds + Eq,
+    T: crate::clap::ArgBounds + Eq + std::fmt::Debug,
     U: crate::clap::ArgBounds,
 {
     pub(super) fn run_script(&mut self, commands: &str) -> Result<Log<T, U>, ScriptError> {
