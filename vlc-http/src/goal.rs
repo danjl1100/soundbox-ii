@@ -195,7 +195,7 @@ pub enum Step<T> {
 }
 impl<T> Step<T> {
     /// Change the [`Self::Done`] type
-    fn map<U>(self, map_fn: impl FnOnce(T) -> U) -> Step<U> {
+    pub fn map<U>(self, map_fn: impl FnOnce(T) -> U) -> Step<U> {
         match self {
             Step::Done(value) => Step::Done(map_fn(value)),
             Step::Need(endpoint) => Step::Need(endpoint),

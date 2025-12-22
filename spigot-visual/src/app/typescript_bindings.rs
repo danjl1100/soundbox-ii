@@ -8,6 +8,7 @@
 enum SpigotCommandKind {
     Echo { message: String },
     Network(NetworkModifyCmd),
+    Shutdown,
 }
 #[derive(ts_rs::TS, serde::Serialize)]
 #[ts(export)]
@@ -84,6 +85,7 @@ mod construction_proof_input {
             let converted = match value {
                 Local::Echo { message } => Self::Echo { message },
                 Local::Network(inner) => Self::Network(inner.try_into()?),
+                Local::Shutdown => Self::Shutdown,
             };
             Ok(converted)
         }

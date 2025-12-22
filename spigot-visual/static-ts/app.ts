@@ -204,10 +204,14 @@ function createWebSocketDemo(): HTMLElement {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const message = messageInput.value;
       if (message) {
-        send(ws, {
-          kind: "Echo",
-          message,
-        });
+        if (message === "/shutdown") {
+          send(ws, { kind: "Shutdown" });
+        } else {
+          send(ws, {
+            kind: "Echo",
+            message,
+          });
+        }
         messageInput.value = "";
       }
     }

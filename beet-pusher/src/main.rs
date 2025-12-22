@@ -5,12 +5,10 @@
 //! Proof of concept for pushing a simple beet query to VLC, with id tracking
 
 use crate::config_file::ConfigFile;
-use beet_pusher::BeetPusher;
+use beet_pusher::{BeetItem, BeetPusher, fill_buckets};
 use clap::Parser;
 use eyre::Context as _;
 use std::{borrow::Cow, path::PathBuf};
-use todo_move_to_a_beet_lib::{BeetItem, query_beet};
-use tracing::{info, warn};
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -98,15 +96,15 @@ fn main() -> eyre::Result<()> {
         publish_id_file,
     } = config_file;
 
-    let now_playing_observer = |item: BeetItem| {
+    let now_playing_observer = move |item: &BeetItem| {
         let beet_id = item.get_beet_id();
-        let path = item.get_path();
+        let path = item.get_path().as_str();
 
         println!("Now playing id={beet_id}: {path}");
 
         publish_id_file
             .as_ref()
-            .map(|dest| now_playing_observer::write_now_playing_file(dest, &item))
+            .map(|dest| now_playing_observer::write_now_playing_file(dest, item))
             .transpose()?;
 
         Ok::<_, now_playing_observer::PublishError>(())
@@ -115,7 +113,9 @@ fn main() -> eyre::Result<()> {
     let rng = &mut rand::thread_rng();
     let spigot = setup_spigot(&script)?;
 
-    let mut pusher = BeetPusher::new(auth, rng, spigot, base_url, Some(now_playing_observer));
+    let mut pusher =
+        BeetPusher::new(auth, rng, spigot, base_url).set_now_playing_observer(now_playing_observer);
+    let mut client_state = vlc_http::ClientState::new();
 
     // TODO add a "determined holder" concept, to make it easy to:
     // 1. Peek a bunch, update spigot
@@ -125,7 +125,10 @@ fn main() -> eyre::Result<()> {
     // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
     loop {
         pusher.fill_determined()?;
-        pusher.push_playlist_update()?;
+
+        let action = pusher.get_playlist_update(&client_state);
+        let update = pusher.complete_plan(action, &mut client_state)?;
+        pusher.push_playlist_update(update)?;
 
         std::thread::sleep(SLEEP_DURATION);
     }
@@ -138,9 +141,23 @@ fn init_tracing() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 }
+fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
+    use bucket_spigot::Network;
+
+    let mut spigot = Network::from_commands_str_whitespace(script)?;
+    fill_buckets(&mut spigot)?;
+
+    if spigot.is_empty() {
+        eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
+    }
+
+    Ok(spigot)
+}
 
 mod now_playing_observer {
-    use super::BeetItem;
+    // TODO: rewrite, should be only 1 file open to check contents then overwrite if just a number
+
+    use beet_pusher::BeetItem;
 
     pub fn write_now_playing_file(
         publish_id_file: impl AsRef<std::path::Path>,
@@ -241,186 +258,8 @@ mod now_playing_observer {
     }
 }
 
-mod beet_pusher {
-    use crate::{determined::Determined, path_url::BaseUrl, todo_move_to_a_beet_lib::BeetItem};
-    use bucket_spigot::Network;
-    use tracing::debug;
-    use vlc_http::{Auth, goal::TargetPlaylistItems};
-
-    type UreqError = vlc_http::http_runner::ureq::Error;
-    type ExhaustResult<'a, T> =
-        Result<<T as vlc_http::Plan>::Output<'a>, vlc_http::sync::Error<T, UreqError>>;
-
-    pub struct BeetPusher<'a, R, F> {
-        spigot: bucket_spigot::Network<BeetItem, String>,
-        rng: &'a mut R,
-        client: Client,
-        http_runner: vlc_http::http_runner::ureq::HttpRunner,
-        determined: Determined<BeetItem>,
-        config: Config,
-        now_playing_observer: Option<F>,
-    }
-    pub struct Client {
-        state: vlc_http::ClientState,
-    }
-    impl Client {
-        pub fn new() -> Self {
-            let state = vlc_http::ClientState::new();
-            Self { state }
-        }
-    }
-    struct Config {
-        base_url: BaseUrl,
-    }
-    impl<'a, R, F> BeetPusher<'a, R, F> {
-        pub fn new(
-            auth: Auth,
-            rng: &'a mut R,
-            spigot: Network<BeetItem, String>,
-            base_url: BaseUrl,
-            now_playing_observer: Option<F>,
-        ) -> Self {
-            let http_runner = vlc_http::http_runner::ureq::HttpRunner::new(auth);
-
-            Self {
-                spigot,
-                rng,
-                client: Client::new(),
-                http_runner,
-                determined: Determined::default(),
-                config: Config { base_url },
-                now_playing_observer,
-            }
-        }
-    }
-    impl<R: rand::RngCore, F> BeetPusher<'_, R, F> {
-        fn complete_plan<T>(&mut self, query: T) -> ExhaustResult<'_, T>
-        where
-            T: vlc_http::Plan,
-        {
-            const MAX_ENDPOINTS_PER_ACTION: usize = 100;
-            let output = vlc_http::sync::complete_plan(
-                query,
-                &mut self.client.state,
-                &mut self.http_runner,
-                MAX_ENDPOINTS_PER_ACTION,
-            )?;
-            Ok(output)
-        }
-        pub fn fill_determined(&mut self) -> eyre::Result<()> {
-            if self.spigot.is_empty() {
-                let view = self.spigot.view_table_default();
-                eyre::bail!("spigot must be non-empty:\n{view}")
-            }
-
-            let peek_len = match self.determined.items().len() {
-                len @ 0..=0 => Some(1 - len),
-                1 => None,
-                2.. => unreachable!("determined should be 1 item or fewer"),
-            };
-
-            if let Some(peek_len) = peek_len {
-                let peeked = self.spigot.peek(self.rng, peek_len)?;
-                if peeked.items().len() != peek_len {
-                    let view = self.spigot.view_table_default();
-                    unreachable!(
-                        "insufficient items in spigot count = {found}, expected {expected}:\n{view}",
-                        found = peeked.items().len(),
-                        expected = peek_len,
-                    );
-                }
-                let () = self.determined.modify_gen_urls(
-                    &mut self.config.base_url,
-                    BeetItem::get_path,
-                    |dest| {
-                        dest.extend(peeked.items().iter().map(|&item| item.clone()));
-                    },
-                )?;
-                self.spigot.finalize_peeked(peeked.accept_into_inner());
-
-                debug!(
-                    items = ?self.determined.items(),
-                    "Selected new desired items",
-                );
-            }
-            assert_eq!(
-                self.determined.len(),
-                1,
-                "determine should be 1 item after peek"
-            );
-            Ok(())
-        }
-        pub fn push_playlist_update<E>(&mut self) -> eyre::Result<()>
-        where
-            F: FnMut(BeetItem) -> Result<(), E>,
-            E: std::error::Error + Send + Sync + 'static,
-        {
-            let target = TargetPlaylistItems::new()
-                .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
-                .set_keep_history(5);
-
-            let action = self
-                .client
-                .state
-                .build_plan()
-                .set_playlist_and_query_matched(target);
-
-            let output = self.complete_plan(action)?;
-            let output_len = output.len();
-            if output_len < self.determined.len() {
-                let () = self.determined.modify_gen_urls(
-                    &mut self.config.base_url,
-                    BeetItem::get_path,
-                    |dest| {
-                        // FIXME this would be terrible (~N^2?) if expected len >> 2
-                        while dest.len() > output_len {
-                            let removed = dest.remove(0);
-                            if let Some(now_playing_observer) = &mut self.now_playing_observer {
-                                now_playing_observer(removed)?;
-                            }
-                        }
-                        Ok::<_, E>(())
-                    },
-                )??;
-            }
-            Ok(())
-        }
-    }
-
-    impl<R, F> std::fmt::Debug for BeetPusher<'_, R, F> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            struct DebugAsDisplay<T>(T);
-            impl<T> std::fmt::Debug for DebugAsDisplay<T>
-            where
-                T: std::fmt::Display,
-            {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    <T as std::fmt::Display>::fmt(&self.0, f)
-                }
-            }
-
-            let Self {
-                spigot,
-                rng: _,
-                client: Client { state },
-                http_runner: _,
-                determined,
-                config: Config { base_url },
-                now_playing_observer: _,
-            } = self;
-            f.debug_struct("BeetPusher")
-                .field("spigot", &DebugAsDisplay(spigot.view_table_default()))
-                .field("client.state", state)
-                .field("determined.items", &determined.items())
-                .field("determined.urls", &determined.urls())
-                .field("config.base_url", base_url)
-                .finish()
-        }
-    }
-}
-
 mod config_file {
-    use crate::path_url::BaseUrl;
+    use beet_pusher::BaseUrl;
 
     #[derive(serde::Serialize, serde::Deserialize)]
     pub(super) struct ConfigFile {
@@ -546,456 +385,6 @@ mod config_file {
                 "{description} config file: {path}",
                 path = path.display()
             )
-        }
-    }
-}
-
-mod determined {
-    pub struct Determined<T> {
-        items: Vec<T>,
-        urls: Vec<url::Url>,
-    }
-    impl<T> Default for Determined<T> {
-        fn default() -> Self {
-            Self {
-                items: vec![],
-                urls: vec![],
-            }
-        }
-    }
-    impl<T> Determined<T> {
-        pub fn items(&self) -> &[T] {
-            &self.items
-        }
-        pub fn urls(&self) -> &[url::Url] {
-            &self.urls
-        }
-        pub fn len(&self) -> usize {
-            self.items.len()
-        }
-        pub fn modify_gen_urls<U, E>(
-            &mut self,
-            url_source: &mut impl UrlSource<Error = E>,
-            item_path_fn: impl Fn(&T) -> &str,
-            modify_fn: impl FnOnce(&mut Vec<T>) -> U,
-        ) -> Result<U, E> {
-            let mut result = Ok(modify_fn(&mut self.items));
-            match self
-                .items
-                .iter()
-                .map(|item| url_source.get_url(item_path_fn(item)))
-                .collect()
-            {
-                Ok(new_urls) => self.urls = new_urls,
-                Err(err) => {
-                    // failed to create URLs, clear items for consistent state
-                    self.items.clear();
-                    self.urls.clear();
-                    result = Err(err);
-                }
-            }
-            assert_eq!(
-                self.items.len(),
-                self.urls.len(),
-                "determined items/urls should match lengths"
-            );
-            result
-        }
-    }
-
-    pub trait UrlSource {
-        type Error;
-        fn get_url(&mut self, item_path: &str) -> Result<url::Url, Self::Error>;
-    }
-    impl<F, E> UrlSource for F
-    where
-        F: FnMut(&str) -> Result<url::Url, E>,
-    {
-        type Error = E;
-        fn get_url(&mut self, item_path: &str) -> Result<url::Url, Self::Error> {
-            (self)(item_path)
-        }
-    }
-}
-
-mod path_url {
-    use crate::determined::UrlSource;
-
-    // TODO add tests for Windows beet-path conversion to URL
-    #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-    #[serde(from = "url::Url")]
-    pub(super) struct BaseUrl(pub(super) url::Url);
-    impl BaseUrl {
-        // TODO delete if unused
-        // pub fn new(url: &str) -> Result<Self, ErrorBase> {
-        //     url.parse().map(Self).map_err(|error| ErrorBase {
-        //         base_url_str: url.to_string(),
-        //         error,
-        //     })
-        // }
-    }
-    impl From<url::Url> for BaseUrl {
-        fn from(value: url::Url) -> Self {
-            Self(value)
-        }
-    }
-
-    impl UrlSource for BaseUrl {
-        type Error = ErrorBeetPath;
-
-        fn get_url(&mut self, item_path: &str) -> Result<url::Url, ErrorBeetPath> {
-            // SOURCE `url::parser::PATH` not public, and somehow not used for `url::Url::join`
-            // <https://github.com/servo/rust-url/blob/7492360d4230b67fa0e62794b6fde276525e5f84/url/src/parser.rs#L23>
-            const PATH: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
-                .add(b' ')
-                .add(b'"')
-                .add(b'<')
-                .add(b'>')
-                .add(b'`')
-                //
-                .add(b'#')
-                .add(b'?')
-                .add(b'{')
-                .add(b'}');
-
-            let base_url = &self.0;
-
-            let path = item_path;
-            let path = path.strip_prefix('/').unwrap_or(path);
-            let path_percentencoded = percent_encoding::utf8_percent_encode(path, PATH).to_string();
-            let path = &path_percentencoded;
-
-            let url = base_url.join(path).map_err(|error| ErrorBeetPath {
-                item_path: item_path.to_owned(),
-                error,
-            })?;
-
-            Ok(url)
-        }
-    }
-
-    // TODO delete if unused
-    // #[derive(Debug)]
-    // pub(super) struct ErrorBase {
-    //     base_url_str: String,
-    //     error: url::ParseError,
-    // }
-    // impl std::error::Error for ErrorBase {
-    //     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //         Some(&self.error)
-    //     }
-    // }
-    // impl std::fmt::Display for ErrorBase {
-    //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    //         let Self {
-    //             base_url_str,
-    //             error: _,
-    //         } = self;
-    //         write!(f, "invalid base URL {base_url_str:?}")
-    //     }
-    // }
-    #[derive(Debug)]
-    pub(super) struct ErrorBeetPath {
-        item_path: String,
-        error: url::ParseError,
-    }
-    impl std::error::Error for ErrorBeetPath {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            Some(&self.error)
-        }
-    }
-    impl std::fmt::Display for ErrorBeetPath {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self {
-                item_path,
-                error: _,
-            } = self;
-            write!(f, "invalid beet URL: {item_path:?}")
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::BaseUrl;
-        use crate::{determined::UrlSource as _, todo_move_to_a_beet_lib::BeetItem};
-
-        #[test]
-        fn beet_path_not_fragment() {
-            for input in [
-                "/path/to/file_containing_#_sign.txt",
-                "/path/to/file that contains #hash tag signs and other symbols {},%$#%#$@#?!@",
-            ] {
-                let item = BeetItem::test_creation(0, input.to_string());
-                let mut base = BaseUrl("file:///some/base/".parse().expect("test base url valid"));
-
-                let result = base.get_url(item.get_path()).expect("test item url valid");
-                assert_eq!(
-                    result.fragment(),
-                    None,
-                    "should not have fragment for input: {input}"
-                );
-            }
-        }
-    }
-}
-
-fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
-    use bucket_spigot::{ModifyCmd, Network, path::PathRef};
-
-    let mut spigot = Network::from_commands_str_whitespace(script)?;
-
-    let buckets: Vec<_> = spigot
-        .get_buckets_needing_fill()
-        .map(PathRef::to_owned)
-        .collect();
-
-    let mut any_items = false;
-    for bucket in buckets {
-        let filters = spigot
-            .get_filters(bucket.as_ref())
-            .expect("path should be valid for bucket needing fill")
-            .into_iter()
-            .flat_map(|filter_set| filter_set.iter().cloned())
-            .collect::<Vec<_>>();
-        let new_contents = query_beet(filters.iter().cloned())?;
-        info!("fill bucket {bucket} with {} items", new_contents.len());
-        if new_contents.is_empty() {
-            warn!(?filters, "empty bucket");
-        } else {
-            any_items = true;
-        }
-        spigot.modify(ModifyCmd::FillBucket {
-            bucket,
-            new_contents,
-        })?;
-    }
-    if !any_items {
-        eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
-    }
-
-    Ok(spigot)
-}
-
-// TODO move to a beet lib, likely also with BeetItem.url -> url::Url logic as well (see `mod path_url`)
-mod todo_move_to_a_beet_lib {
-    pub use self::beet_item::BeetItem;
-    use std::{borrow::Cow, io::BufRead, process::Command};
-    use tracing::{debug, trace};
-
-    pub(super) fn query_beet(
-        filters: impl Iterator<Item = String>,
-    ) -> Result<Vec<BeetItem>, Error> {
-        let make_error = |kind| Error { kind };
-
-        debug!("spawn `beet` command");
-
-        let mut command = Command::new("beet");
-        command
-            //
-            .arg("ls")
-            .arg("-f")
-            .arg("$id=$path")
-            .args(filters);
-
-        trace!(?command);
-
-        let output = command
-            .output()
-            .map_err(ErrorKind::Spawn)
-            .map_err(make_error)?;
-
-        if !output.stderr.is_empty() {
-            return Err(make_error(ErrorKind::Stderr {
-                stderr_str: String::from_utf8_lossy(&output.stderr).to_string(),
-            }));
-        }
-
-        if !output.status.success() {
-            return Err(make_error(ErrorKind::ExitFail {
-                code: output.status.code(),
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            }));
-        }
-
-        debug!("parse `beet` output ({} bytes)", output.stdout.len());
-
-        // let output_len = output.stdout.len();
-        // let output_trim = String::from_utf8_lossy(if output_len > 100 {
-        //     &output.stdout[0..100]
-        // } else {
-        //     &output.stdout[..]
-        // });
-        // trace!(?output_trim, ?output_len);
-
-        output
-            .stdout
-            .lines()
-            .map(|line| {
-                let line = line.map_err(ErrorKind::Read)?;
-                line.parse()
-                    .map_err(|error| ErrorKind::InvalidLine { line, error })
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(make_error)
-    }
-
-    #[derive(Debug)]
-    pub(super) struct Error {
-        kind: ErrorKind,
-    }
-    #[derive(Debug)]
-    enum ErrorKind {
-        Spawn(std::io::Error),
-        Read(std::io::Error),
-        Stderr {
-            stderr_str: String,
-        },
-        ExitFail {
-            code: Option<i32>,
-            stdout: String,
-        },
-        InvalidLine {
-            line: String,
-            error: beet_item::Error,
-        },
-    }
-    impl std::error::Error for Error {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            use ErrorKind as E;
-            match &self.kind {
-                E::Spawn(error) | E::Read(error) => Some(error),
-                E::Stderr { stderr_str: _ } | E::ExitFail { .. } => None,
-                E::InvalidLine { error, .. } => Some(error),
-            }
-        }
-    }
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            #[rustfmt::skip]
-            fn funnel<'a, F: Fn(usize, &'a str) -> Cow<'a, str>>(f: F) -> F { f }
-            let max_len = funnel(|max, raw_input: &str| {
-                if raw_input.len() > max {
-                    Cow::Owned(format!("{} ...", &raw_input[..max]))
-                } else {
-                    Cow::Borrowed(raw_input)
-                }
-            });
-            let (description, details) = match &self.kind {
-                ErrorKind::Spawn(_) => ("failed to spawn", None),
-                ErrorKind::Read(_) => ("failed to read from", None),
-                ErrorKind::Stderr { stderr_str } => {
-                    ("stderr output from", Some(Cow::Borrowed(&**stderr_str)))
-                }
-                ErrorKind::ExitFail { code, stdout } => {
-                    let stdout = max_len(200, stdout);
-                    let details = match code {
-                        Some(code) => Cow::Owned(format!("[code {code}] {stdout}")),
-                        None => stdout,
-                    };
-                    ("failure status code from", Some(details))
-                }
-                ErrorKind::InvalidLine { line, error: _ } => {
-                    let line = max_len(80, line);
-                    ("invalid output line from", Some(line))
-                }
-            };
-            write!(f, "{description} beet command")?;
-            if let Some(details) = details {
-                write!(f, ": {details}")?;
-            }
-            Ok(())
-        }
-    }
-
-    mod beet_item {
-        const SEPARATOR: &str = "=";
-
-        #[derive(Clone, Debug, serde::Serialize)]
-        pub struct BeetItem {
-            beet_id: u64,
-            // NOTE: not `PathBuf` because we already entered UTF-8 land by parsing Beet output
-            //       The string may need further modifications to represent a real path
-            path: String,
-        }
-        impl BeetItem {
-            pub fn get_beet_id(&self) -> u64 {
-                self.beet_id
-            }
-            pub fn get_path(&self) -> &str {
-                &self.path
-            }
-            #[cfg(test)]
-            pub(crate) fn test_creation(beet_id: u64, path: String) -> Self {
-                Self { beet_id, path }
-            }
-            fn parse_id_path(s: &str) -> Result<Self, Error> {
-                let Some((beet_id, path)) = s.split_once(SEPARATOR) else {
-                    return Err(Error {
-                        kind: ErrorKind::MissingSeparator,
-                    });
-                };
-                let beet_id = beet_id
-                    .parse()
-                    .map_err(ErrorKind::InvalidId)
-                    .map_err(|kind| Error { kind })?;
-                let path = path.into();
-                Ok(Self { beet_id, path })
-            }
-        }
-        impl std::fmt::Display for BeetItem {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                let Self { beet_id, path } = self;
-                write!(f, "{beet_id}{SEPARATOR}{path}")
-            }
-        }
-
-        // TODO cannot easily feed in an "adapter type" to Network::from_commands_str_whitespace,
-        //    it makes the API too messy.
-        // pub struct BeetIdAndPath(BeetItem);
-        // impl std::str::FromStr for BeetIdAndPath {
-        //     type Err = Error;
-        //     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        //         BeetItem::parse_id_path(s).map(Self)
-        //     }
-        // }
-        // impl BeetIdAndPath {
-        //     fn into_inner(self) -> BeetItem {
-        //         let Self(inner) = self;
-        //         inner
-        //     }
-        // }
-        impl std::str::FromStr for BeetItem {
-            type Err = Error;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                BeetItem::parse_id_path(s)
-            }
-        }
-
-        #[derive(Debug)]
-        pub struct Error {
-            kind: ErrorKind,
-        }
-        #[derive(Debug)]
-        enum ErrorKind {
-            MissingSeparator,
-            InvalidId(std::num::ParseIntError),
-        }
-        impl std::error::Error for Error {
-            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-                match &self.kind {
-                    ErrorKind::MissingSeparator => None,
-                    ErrorKind::InvalidId(error) => Some(error),
-                }
-            }
-        }
-        impl std::fmt::Display for Error {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                let description = match self.kind {
-                    ErrorKind::MissingSeparator => "missing separator",
-                    ErrorKind::InvalidId(_) => "invalid id number",
-                };
-                write!(f, "{description}")
-            }
         }
     }
 }

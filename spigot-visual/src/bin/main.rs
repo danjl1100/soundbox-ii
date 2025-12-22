@@ -30,21 +30,33 @@ fn main() -> eyre::Result<()> {
     };
 
     let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        app_logic(cmd_rx);
-    });
 
     eprintln!("Listening on {}...", config.bind_address);
+    std::thread::spawn(move || {
+        let server_result = run_server(&server, &config, &cmd_tx);
+        match server_result {
+            Ok(never) => match never {},
+            Err(e) => cmd_tx.send(Err(e)),
+        }
+    });
 
+    app_logic(cmd_rx)
+}
+
+fn run_server(
+    server: &tiny_http::Server,
+    config: &Config,
+    cmd_tx: &std::sync::mpsc::SyncSender<eyre::Result<SpigotCommand>>,
+) -> eyre::Result<std::convert::Infallible> {
     loop {
         let request = match server.recv() {
             Ok(request) => request,
             Err(e) => {
-                eyre::bail!(e);
+                eyre::bail!(e)
             }
         };
 
-        match handle_request(request, &config, &cmd_tx) {
+        match handle_request(request, config, cmd_tx) {
             Ok(()) => {}
             Err(e) => {
                 let e = eyre::eyre!(e);
@@ -57,7 +69,7 @@ fn main() -> eyre::Result<()> {
 fn handle_request(
     request: tiny_http::Request,
     config: &Config,
-    cmd_tx: &std::sync::mpsc::SyncSender<SpigotCommand>,
+    cmd_tx: &std::sync::mpsc::SyncSender<eyre::Result<SpigotCommand>>,
 ) -> eyre::Result<()> {
     const INDEX: &str = "/index.html";
 
