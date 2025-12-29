@@ -6,5 +6,6 @@ in
     nativeBuildInputs = [
       pkgs.typescript
       pkgs.biome
+      pkgs.cargo-insta
     ];
   }

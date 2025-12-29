@@ -1,0 +1,4 @@
+harness items file:///a
+command playlist-play 0
+command playback-pause
+command playback-resume

@@ -23,6 +23,7 @@ pub struct Model {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 enum PlayState {
     Playing,
+    Paused,
 }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Item {
@@ -100,6 +101,8 @@ impl Model {
                     Some("pl_random") => Some(self.toggle_random()),
                     Some("pl_loop") => Some(self.toggle_loop_all()),
                     Some("pl_repeat") => Some(self.toggle_repeat_one()),
+                    Some("pl_forcepause") => Some(self.set_playing_paused()),
+                    Some("pl_forceresume") => Some(self.set_playing_resume()),
                     Some(_) => todo!("command {command:?} (no args)"),
                 }
             } else {
@@ -170,6 +173,24 @@ impl Model {
     }
     fn toggle_repeat_one(&mut self) -> String {
         self.is_repeat_one = !self.is_repeat_one;
+        self.get_playback_status()
+    }
+    fn set_playing_paused(&mut self) -> String {
+        if let Some((id, state)) = self.current_item_id {
+            let new_state = match state {
+                PlayState::Playing | PlayState::Paused => PlayState::Paused,
+            };
+            self.current_item_id = Some((id, new_state));
+        }
+        self.get_playback_status()
+    }
+    fn set_playing_resume(&mut self) -> String {
+        if let Some((id, state)) = self.current_item_id {
+            let new_state = match state {
+                PlayState::Playing | PlayState::Paused => PlayState::Playing,
+            };
+            self.current_item_id = Some((id, new_state));
+        }
         self.get_playback_status()
     }
 
