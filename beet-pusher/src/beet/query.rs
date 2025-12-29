@@ -3,30 +3,83 @@ use std::io::BufRead as _;
 use std::{borrow::Cow, process::Command};
 use tracing::{debug, trace};
 
+/// Abstraction point, with default of [`BeetCommand`]
+pub trait BeetRunner: std::fmt::Debug {
+    /// Error executing the beet command
+    type Error;
+    /// Executes the beet command with the specified arguments and returns the output
+    ///
+    /// # Errors
+    /// Returns an error if spawning or waiting for the command fails
+    fn run_beet_command<S>(
+        &self,
+        args: impl Iterator<Item = S>,
+    ) -> Result<std::process::Output, Self::Error>
+    where
+        S: AsRef<str>;
+}
+
+/// Executes the `beet` command from the system path
+#[derive(Debug)]
+pub struct BeetCommand<'a> {
+    cmd_name: &'a str,
+}
+impl Default for BeetCommand<'static> {
+    fn default() -> Self {
+        Self { cmd_name: "beet" }
+    }
+}
+impl BeetRunner for BeetCommand<'_> {
+    type Error = std::io::Error;
+
+    fn run_beet_command<S>(
+        &self,
+        args: impl Iterator<Item = S>,
+    ) -> Result<std::process::Output, Self::Error>
+    where
+        S: AsRef<str>,
+    {
+        let Self { cmd_name } = self;
+
+        let mut command = Command::new(cmd_name);
+        for arg in args {
+            command.arg(arg.as_ref());
+        }
+
+        trace!(?command);
+
+        command.output()
+    }
+}
+
 impl BeetItem {
     /// Lists the resulting items for a beet query
     ///
     /// # Errors
     /// Returns an error if the `beet` command fails or produces invalid output
-    pub fn list_from_beet_query(filters: impl Iterator<Item = String>) -> Result<Vec<Self>, Error> {
+    pub fn list_from_beet_query<T: BeetRunner>(
+        runner: &T,
+        filters: impl Iterator<Item = String>,
+    ) -> Result<Vec<Self>, Error<T::Error>> {
         let make_error = |kind| Error { kind };
 
         debug!("spawn `beet` command");
 
-        let mut command = Command::new("beet");
-        command
-            //
-            .arg("ls")
-            .arg("-f")
-            .arg("=")
-            .args(filters);
+        let output = runner.run_beet_command(
+            ["ls", "-f", "="]
+                .into_iter()
+                .map(std::borrow::Cow::Borrowed)
+                .chain(filters.map(std::borrow::Cow::Owned)),
+        );
+        // let mut command = Command::new("beet");
+        // command
+        //     //
+        //     .arg("ls")
+        //     .arg("-f")
+        //     .arg("=")
+        //     .args(filters);
 
-        trace!(?command);
-
-        let output = command
-            .output()
-            .map_err(ErrorKind::Spawn)
-            .map_err(make_error)?;
+        let output = output.map_err(ErrorKind::Spawn).map_err(make_error)?;
 
         if !output.stderr.is_empty() {
             return Err(make_error(ErrorKind::Stderr {
@@ -65,12 +118,12 @@ impl BeetItem {
 }
 
 #[derive(Debug)]
-pub struct Error {
-    kind: ErrorKind,
+pub struct Error<T> {
+    kind: ErrorKind<T>,
 }
 #[derive(Debug)]
-enum ErrorKind {
-    Spawn(std::io::Error),
+enum ErrorKind<T> {
+    Spawn(T),
     Read(std::io::Error),
     Stderr {
         stderr_str: String,
@@ -84,17 +137,24 @@ enum ErrorKind {
         error: super::item::Error,
     },
 }
-impl std::error::Error for Error {
+impl<T> std::error::Error for Error<T>
+where
+    T: std::error::Error + 'static,
+{
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         use ErrorKind as E;
         match &self.kind {
-            E::Spawn(error) | E::Read(error) => Some(error),
+            E::Spawn(error) => Some(error),
+            E::Read(error) => Some(error),
             E::Stderr { stderr_str: _ } | E::ExitFail { .. } => None,
             E::InvalidLine { error, .. } => Some(error),
         }
     }
 }
-impl std::fmt::Display for Error {
+impl<T> std::fmt::Display for Error<T>
+where
+    T: std::error::Error,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[rustfmt::skip]
         fn funnel<'a, F: Fn(usize, &'a str) -> Cow<'a, str>>(f: F) -> F { f }

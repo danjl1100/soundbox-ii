@@ -6,7 +6,7 @@ use crate::{ClientState, Endpoint, Plan, Response, goal::Step};
 /// IO portion that resolves [`Endpoint`]s into the [`Response`]
 pub trait EndpointRequestor {
     /// Error for sending the request and parsing the response
-    type Error;
+    type Error: std::error::Error;
     /// Request the specified [`Endpoint`] and return the parsed [`Response`]
     ///
     /// # Errors
@@ -16,6 +16,7 @@ pub trait EndpointRequestor {
 
 impl<F, E> EndpointRequestor for F
 where
+    E: std::error::Error,
     F: FnMut(Endpoint) -> Result<Response, E>,
 {
     type Error = E;

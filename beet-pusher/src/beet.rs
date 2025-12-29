@@ -1,19 +1,33 @@
 pub use self::item::BeetItem;
 pub use self::path::BeetPath;
+pub use self::query::{BeetCommand, BeetRunner};
+use crate::BeetPusher;
 use tracing::{info, warn};
 
 mod item;
 mod path;
 mod query;
 
+impl<R, T> BeetPusher<'_, R, T> {
+    /// Fills any pending buckets in the spigot using beet
+    ///
+    /// # Errors
+    /// Returns an error if the beet query fails or modifying the network fails
+    #[allow(clippy::missing_panics_doc)]
+    pub fn fill_buckets<U: BeetRunner>(&mut self, runner: &U) -> Result<(), FillError<U::Error>> {
+        fill_buckets(runner, self.get_spigot_mut())
+    }
+}
+
 /// Fills any pending buckets in the spigot using beet
 ///
 /// # Errors
 /// Returns an error if the beet query fails or modifying the network fails
 #[allow(clippy::missing_panics_doc)]
-pub fn fill_buckets(
+pub fn fill_buckets<U: BeetRunner>(
+    runner: &U,
     spigot: &mut bucket_spigot::Network<BeetItem, String>,
-) -> Result<(), FillError> {
+) -> Result<(), FillError<U::Error>> {
     use bucket_spigot::{ModifyCmd, path::PathRef};
 
     let make_err = |kind| FillError { kind };
@@ -31,7 +45,7 @@ pub fn fill_buckets(
             .flat_map(|filter_set| filter_set.iter().cloned())
             .collect::<Vec<_>>();
 
-        let new_contents = BeetItem::list_from_beet_query(filters.iter().cloned())
+        let new_contents = BeetItem::list_from_beet_query(runner, filters.iter().cloned())
             .map_err(FillErrorKind::Query)
             .map_err(make_err)?;
 
@@ -53,15 +67,19 @@ pub fn fill_buckets(
 }
 
 #[derive(Debug)]
-pub struct FillError {
-    kind: FillErrorKind,
+pub struct FillError<T> {
+    kind: FillErrorKind<T>,
 }
 #[derive(Debug)]
-enum FillErrorKind {
+enum FillErrorKind<T> {
     Modify(bucket_spigot::ModifyError),
-    Query(self::query::Error),
+    Query(self::query::Error<T>),
 }
-impl std::error::Error for FillError {
+impl<T> std::error::Error for FillError<T>
+where
+    T: std::fmt::Debug,
+    self::query::Error<T>: std::error::Error + 'static,
+{
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             FillErrorKind::Modify(inner) => Some(inner),
@@ -69,7 +87,7 @@ impl std::error::Error for FillError {
         }
     }
 }
-impl std::fmt::Display for FillError {
+impl<T> std::fmt::Display for FillError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { kind } = self;
         match kind {

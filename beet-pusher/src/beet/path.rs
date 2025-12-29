@@ -1,5 +1,5 @@
 /// Beet library path
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct BeetPath(
     // NOTE: not `PathBuf` because we already entered UTF-8 land by parsing Beet output
     //       The string may need further modifications to represent a real path

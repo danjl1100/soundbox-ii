@@ -48,7 +48,11 @@ fn main() -> eyre::Result<()> {
         spigot_script,
         debug_items,
     } = Args::parse();
-    let auth = vlc_http::Auth::new(auth.into())?;
+
+    let mut http_runner = {
+        let auth = vlc_http::Auth::new(auth.into())?;
+        vlc_http::http_runner::ureq::HttpRunner::new(auth)
+    };
 
     // TODO handle weirder requests like:
     // <file:///clone/wilbur_dan/beet/Music/Louie%20Zong/3%/01%20That%20Someone%20Is%20You.mp3>
@@ -114,8 +118,8 @@ fn main() -> eyre::Result<()> {
     let spigot = setup_spigot(&script)?;
 
     let mut pusher =
-        BeetPusher::new(auth, rng, spigot, base_url).set_now_playing_observer(now_playing_observer);
-    let mut client_state = vlc_http::ClientState::new();
+        BeetPusher::new(rng, spigot, base_url).set_now_playing_observer(now_playing_observer);
+    // let mut client_state = vlc_http::ClientState::new();
 
     // TODO add a "determined holder" concept, to make it easy to:
     // 1. Peek a bunch, update spigot
@@ -125,10 +129,11 @@ fn main() -> eyre::Result<()> {
     // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
     loop {
         pusher.fill_determined()?;
+        pusher.push_playlist_update(&mut http_runner)?;
 
-        let action = pusher.get_playlist_update(&client_state);
-        let update = pusher.complete_plan(action, &mut client_state)?;
-        pusher.push_playlist_update(update)?;
+        // let action = pusher.get_playlist_update();
+        // let update = pusher.complete_plan(action, &mut http_runner)?;
+        // pusher.push_playlist_update(update)?;
 
         std::thread::sleep(SLEEP_DURATION);
     }
@@ -145,7 +150,7 @@ fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, S
     use bucket_spigot::Network;
 
     let mut spigot = Network::from_commands_str_whitespace(script)?;
-    fill_buckets(&mut spigot)?;
+    fill_buckets(&beet_pusher::BeetCommand::default(), &mut spigot)?;
 
     if spigot.is_empty() {
         eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
