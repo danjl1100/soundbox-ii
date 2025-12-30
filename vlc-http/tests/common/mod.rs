@@ -2,6 +2,3 @@
 
 pub use harness::run_input;
 mod harness;
-
-pub use model::Model;
-pub mod model;

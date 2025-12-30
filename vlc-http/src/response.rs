@@ -80,19 +80,22 @@ impl From<ResponseJSON> for Response {
 /// Error in parsing a VLC response
 #[derive(Debug)]
 pub struct ParseError {
-    serde_json_err: serde_json::Error,
+    source: serde_json::Error,
 }
 impl From<serde_json::Error> for ParseError {
-    fn from(value: serde_json::Error) -> Self {
-        Self {
-            serde_json_err: value,
-        }
+    fn from(source: serde_json::Error) -> Self {
+        Self { source }
     }
 }
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self { serde_json_err } = self;
-        write!(f, "invalid json: {serde_json_err}")
+        let Self { source: _ } = self;
+        write!(f, "invalid VLC response json")
     }
 }
-impl std::error::Error for ParseError {}
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        let Self { source } = self;
+        Some(source)
+    }
+}

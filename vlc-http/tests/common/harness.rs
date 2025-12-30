@@ -1,10 +1,11 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::Model;
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
 use tracing::error;
-use vlc_http::{ClientState, Endpoint, Plan, client_state::PlanBuilder, goal::Step};
+use vlc_http::{
+    ClientState, Endpoint, Plan, client_state::PlanBuilder, goal::Step, testing::Model,
+};
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
     let mut runner = Runner::default();
@@ -99,8 +100,15 @@ impl Runner {
             }
             TestAction::Harness { override_command } => match override_command {
                 OverrideCommand::InitItems { items } => {
-                    self.model_logger
+                    let result = self
+                        .model_logger
                         .edit_model(|model| model.initialize_items(items));
+                    match result {
+                        Ok(()) => {}
+                        Err(e) => {
+                            panic!("{:?}", eyre::eyre!(e));
+                        }
+                    }
                 }
                 OverrideCommand::ActionStepLimit { step_count } => {
                     self.action_step_limit = Some(step_count);
@@ -277,7 +285,7 @@ mod model_logger {
     use super::Model;
     use std::str::FromStr;
     use tracing::info;
-    use vlc_http::{ClientState, Endpoint, Response};
+    use vlc_http::{ClientState, Endpoint, Response, testing::ModelResponse};
 
     #[derive(Debug, PartialEq, Eq, serde::Serialize)]
     pub enum LogEntry {
@@ -304,13 +312,27 @@ mod model_logger {
 
             let endpoint_str = endpoint.get_path_and_query();
 
-            let response_str = self.model.request(endpoint_str);
-            let response = match Response::from_str(&response_str) {
-                Ok(response) => response,
-                Err(e) => panic!("invalid response from model {response_str:?}: {e}"),
+            let response = match self.model.request(endpoint_str) {
+                Ok(r) => r,
+                Err(e) => {
+                    panic!("{:?}", eyre::eyre!(e));
+                }
+            };
+            let response = match response {
+                ModelResponse::Json(response_str) => {
+                    Some(Response::from_str(&response_str).unwrap_or_else(|e| {
+                        panic!(
+                            "invalid response from model {response_str:?}: {:?}",
+                            eyre::eyre!(e)
+                        )
+                    }))
+                }
+                ModelResponse::Art => None,
             };
 
-            target.update(response.clone());
+            if let Some(response) = response {
+                target.update(response);
+            }
 
             let log_entry = LogEntry::Endpoint(endpoint, self.model.clone());
 
