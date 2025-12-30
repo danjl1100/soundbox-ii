@@ -4,7 +4,7 @@
 use crate::Fix;
 use eyre::{Context, ContextCompat as _};
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     io::{BufRead as _, BufReader},
 };
 
@@ -38,10 +38,10 @@ pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
         let id = entry.id;
         let path = String::from_utf8(entry.path).context("non-UTF8 filename in index")?;
 
-        if !staged_files_list.remove(&path) {
+        let Some(status) = staged_files_list.remove(&path) else {
             // index entry is not an eligible change
             continue;
-        }
+        };
 
         let index_object = repo
             .find_object(id, None)
@@ -61,6 +61,12 @@ pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
                 };
 
                 if let Some(Fix) = fix {
+                    if has_worktree_changes(status) {
+                        eyre::bail!(
+                            "refusing to update file with unstaged changes: {path:?} (use `git add -p` first to stage changes)"
+                        )
+                    }
+
                     let path_absolute = workdir.join(&path);
 
                     eprintln!("rewriting {path} ...");
@@ -94,7 +100,7 @@ pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
             }
         }
 
-        files_need_update.push(path);
+        files_need_update.push((path, status));
     }
 
     if !staged_files_list.is_empty() {
@@ -106,8 +112,13 @@ pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
         let plural = if len == 1 { "" } else { "s" };
 
         eprintln!("Need copyright updated in {len} file{plural}:");
-        for file in &files_need_update {
-            eprintln!("\t{file}");
+        for (file, status) in &files_need_update {
+            let status_str = if has_worktree_changes(*status) {
+                "(unstaged changes) "
+            } else {
+                "                   "
+            };
+            eprintln!("{status_str}{file}");
         }
 
         eyre::bail!("Incorrect copyright in {len} file{plural} above");
@@ -116,13 +127,21 @@ pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
     Ok(())
 }
 
+fn has_worktree_changes(status: git2::Status) -> bool {
+    status.is_wt_new()
+        || status.is_wt_modified()
+        || status.is_wt_deleted()
+        || status.is_wt_typechange()
+        || status.is_wt_renamed()
+}
+
 fn find_staged_files_list(
     repo: &git2::Repository,
     filter_fn: impl Fn(&str) -> bool,
-) -> eyre::Result<HashSet<String>> {
+) -> eyre::Result<HashMap<String, git2::Status>> {
     let statuses = repo.statuses(Some(
         git2::StatusOptions::new()
-            .show(git2::StatusShow::Index)
+            .show(git2::StatusShow::IndexAndWorkdir)
             .no_refresh(true),
     ))?;
 
@@ -135,6 +154,15 @@ fn find_staged_files_list(
                 return None;
             }
 
+            if !(status.is_index_new()
+                || status.is_index_modified()
+                || status.is_index_renamed()
+                || status.is_index_typechange())
+            {
+                // not an index change (workdir only) - ignore
+                return None;
+            }
+
             let Some(path_in_workdir) = entry.path() else {
                 return Some(Err(eyre::eyre!(
                     "invalid (non-UTF8?) path in GIT status entry {:?}",
@@ -143,7 +171,7 @@ fn find_staged_files_list(
             };
 
             filter_fn(path_in_workdir)
-                .then(|| path_in_workdir.to_string())
+                .then(|| (path_in_workdir.to_string(), status))
                 .map(Ok)
         })
         .collect()
