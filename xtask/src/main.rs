@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
 };
+use xtask::{Fix, WriteOutput};
 
 const HELP_TEXT: &str = "Tasks:
 
@@ -28,14 +29,6 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-/// If present, attempt to fix the checks by writing to files (otherwise, run read-only checks)
-#[derive(Clone, Copy, Debug)]
-struct Fix;
-
-/// If present, write output files (otherwise, run read-only checks)
-#[derive(Clone, Copy, Debug)]
-struct WriteOutput;
-
 fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let bail_unknown = |arg| eyre::eyre!("unknown checks argument: {arg:?}");
     let fix = args
@@ -55,6 +48,7 @@ fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
 
     let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
 
+    xtask::copyright::checks(fix)?;
     rust::checks(fix, &hint)?;
     spigot_visual::checks(fix)?;
 

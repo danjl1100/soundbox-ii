@@ -9,3 +9,5 @@ workspace = true
 
 [dependencies]
 eyre = "0.6.12"
+git2 = { version = "0.20.3", default-features = false }
+jiff = "0.2.17"
