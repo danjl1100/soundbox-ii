@@ -81,6 +81,17 @@ pub enum Change {
     /// for obtaining the list of matched items
     PlaylistSet(TargetPlaylistItems),
 }
+impl From<PlaybackMode> for Change {
+    fn from(value: PlaybackMode) -> Self {
+        Self::PlaybackMode(value)
+    }
+}
+impl From<TargetPlaylistItems> for Change {
+    fn from(value: TargetPlaylistItems) -> Self {
+        Self::PlaylistSet(value)
+    }
+}
+
 /// Rule for selecting the next playback item in the VLC queue
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]

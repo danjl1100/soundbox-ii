@@ -13,7 +13,7 @@ use vlc_http::{
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
     #[clap(flatten)]
-    auth: vlc_http::clap::AuthInput,
+    auth: vlc_http::clap::ClapAuthInput,
     /// Print full response text for each request
     #[clap(long)]
     print_responses_http: bool,
@@ -33,8 +33,8 @@ struct CliArgs {
 #[derive(clap::Subcommand, Debug)]
 enum CliAction {
     Command {
-        #[command(subcommand)]
-        command: vlc_http::clap::Command,
+        #[command(flatten)]
+        command: vlc_http::clap::ClapCommand,
     },
     Query {
         #[command(subcommand)]
@@ -42,7 +42,7 @@ enum CliAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::Change,
+        action: vlc_http::clap::ClapChange,
     },
     #[clap(alias = "exit", alias = "q")]
     Quit,
@@ -50,8 +50,8 @@ enum CliAction {
 #[derive(clap::Subcommand, Debug)]
 enum OneshotAction {
     Command {
-        #[command(subcommand)]
-        command: vlc_http::clap::Command,
+        #[command(flatten)]
+        command: vlc_http::clap::ClapCommand,
     },
     Query {
         #[command(subcommand)]
@@ -59,7 +59,7 @@ enum OneshotAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::Change,
+        action: vlc_http::clap::ClapChange,
     },
 }
 impl From<OneshotAction> for CliAction {
@@ -76,7 +76,7 @@ impl From<OneshotAction> for CliAction {
 enum Query {
     Playlist,
     Playback,
-    PlaylistSet(vlc_http::clap::PlaylistSetQueryMatched),
+    PlaylistSet(vlc_http::clap::ClapPlaylistSetQueryMatched),
 }
 
 struct Shutdown;

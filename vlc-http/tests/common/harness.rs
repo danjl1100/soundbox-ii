@@ -389,8 +389,8 @@ struct TestInput {
 #[derive(clap::Subcommand, Debug)]
 enum TestAction {
     Command {
-        #[command(subcommand)]
-        command: vlc_http::clap::Command,
+        #[command(flatten)]
+        command: vlc_http::clap::ClapCommand,
     },
     Query {
         #[command(subcommand)]
@@ -398,7 +398,7 @@ enum TestAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::Change,
+        action: vlc_http::clap::ClapChange,
         /// Marks all cached data as valid, behaving as-if the action was created at the beginning of the program
         #[clap(long)]
         extend_cache: bool,
@@ -411,7 +411,7 @@ enum TestAction {
 #[derive(clap::Subcommand, Debug)]
 enum Query {
     Art { item_id: String },
-    PlaylistSetQueryMatched(vlc_http::clap::PlaylistSetQueryMatched),
+    PlaylistSetQueryMatched(vlc_http::clap::ClapPlaylistSetQueryMatched),
 }
 /// Overrides to simulate anomalies in VLC server behavior
 #[derive(clap::Subcommand, Debug)]

@@ -2,3 +2,5 @@
 
 pub use harness::run_input;
 mod harness;
+
+mod arbitrary_errors;

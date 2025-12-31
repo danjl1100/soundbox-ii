@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! [`clap`] compatible versions of types
 
 use crate::command::VolumeBoundsError;
@@ -11,9 +11,14 @@ use crate::request::AuthInput as CrateAuthInput;
 pub use ::clap as clap_crate;
 
 /// Low-level Control commands for VLC (correspond to a single API call)
+#[derive(Clone, clap::Args, Debug)]
+#[group(skip)]
+pub struct ClapCommand {
+    #[clap(subcommand)]
+    subcommand: ClapCommandInner,
+}
 #[derive(Clone, clap::Subcommand, Debug)]
-#[non_exhaustive]
-pub enum Command {
+enum ClapCommandInner {
     /// Add the specified item to the playlist
     PlaylistAdd {
         /// URL of the file to enqueue (for local files: `file:///path/to/file`)
@@ -72,40 +77,43 @@ pub enum Command {
         speed: f64,
     },
 }
-impl TryFrom<Command> for CrateCommand {
+impl TryFrom<ClapCommand> for CrateCommand {
     type Error = VolumeBoundsError;
-    fn try_from(value: Command) -> Result<Self, VolumeBoundsError> {
+    fn try_from(value: ClapCommand) -> Result<Self, VolumeBoundsError> {
+        use ClapCommandInner as Src;
         use CrateCommand as Dest;
-        Ok(match value {
-            Command::PlaylistAdd { url } => Dest::PlaylistAdd { url },
-            Command::PlaylistDelete { item_id } => Dest::PlaylistDelete { item_id },
-            Command::PlaylistPlay { item_id } => Dest::PlaylistPlay { item_id },
-            Command::ToggleRandom => Dest::ToggleRandom,
-            Command::ToggleRepeatOne => Dest::ToggleRepeatOne,
-            Command::ToggleLoopAll => Dest::ToggleLoopAll,
-            Command::PlaybackResume => Dest::PlaybackResume,
-            Command::PlaybackPause => Dest::PlaybackPause,
-            Command::PlaybackStop => Dest::PlaybackStop,
-            Command::SeekNext => Dest::SeekNext,
-            Command::SeekPrevious => Dest::SeekPrevious,
-            Command::SeekTo { seconds } => Dest::SeekTo { seconds },
-            Command::SeekRelative { seconds_delta } => Dest::SeekRelative {
+
+        let ClapCommand { subcommand } = value;
+        Ok(match subcommand {
+            Src::PlaylistAdd { url } => Dest::PlaylistAdd { url },
+            Src::PlaylistDelete { item_id } => Dest::PlaylistDelete { item_id },
+            Src::PlaylistPlay { item_id } => Dest::PlaylistPlay { item_id },
+            Src::ToggleRandom => Dest::ToggleRandom,
+            Src::ToggleRepeatOne => Dest::ToggleRepeatOne,
+            Src::ToggleLoopAll => Dest::ToggleLoopAll,
+            Src::PlaybackResume => Dest::PlaybackResume,
+            Src::PlaybackPause => Dest::PlaybackPause,
+            Src::PlaybackStop => Dest::PlaybackStop,
+            Src::SeekNext => Dest::SeekNext,
+            Src::SeekPrevious => Dest::SeekPrevious,
+            Src::SeekTo { seconds } => Dest::SeekTo { seconds },
+            Src::SeekRelative { seconds_delta } => Dest::SeekRelative {
                 seconds_delta: seconds_delta.into(),
             },
-            Command::Volume { percent } => Dest::Volume {
+            Src::Volume { percent } => Dest::Volume {
                 percent: percent.try_into()?,
             },
-            Command::VolumeRelative { percent_delta } => Dest::VolumeRelative {
+            Src::VolumeRelative { percent_delta } => Dest::VolumeRelative {
                 percent_delta: percent_delta.try_into()?,
             },
-            Command::PlaybackSpeed { speed } => Dest::PlaybackSpeed { speed },
+            Src::PlaybackSpeed { speed } => Dest::PlaybackSpeed { speed },
         })
     }
 }
 
 /// Input authentication parameters to the VLC instance
 #[derive(Clone, clap::Args, Debug)]
-pub struct AuthInput {
+pub struct ClapAuthInput {
     /// Password string (plaintext)
     #[clap(long, env = "VLC_PASSWORD")]
     pub password: String,
@@ -116,9 +124,9 @@ pub struct AuthInput {
     #[clap(long, env = "VLC_PORT")]
     pub port: u16,
 }
-impl From<AuthInput> for CrateAuthInput {
-    fn from(value: AuthInput) -> Self {
-        let AuthInput {
+impl From<ClapAuthInput> for CrateAuthInput {
+    fn from(value: ClapAuthInput) -> Self {
+        let ClapAuthInput {
             password,
             host,
             port,
@@ -134,24 +142,29 @@ impl From<AuthInput> for CrateAuthInput {
 /// High-level change to VLC state (dynamic API calls depending on the current state)
 #[derive(Clone, clap::Subcommand, Debug)]
 #[non_exhaustive]
-pub enum Change {
+pub enum ClapChange {
     /// Set the item selection mode
-    PlaybackMode {
-        /// Rule for repeating items
-        repeat_mode: RepeatMode,
-        /// Randomize the VLC playback order
-        #[clap(long)]
-        random: bool,
-    },
+    PlaybackMode(ClapChangePlaybackMode),
     /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
     ///
-    /// See also: [`PlaylistSetQueryMatched`] for obtaining the list of matched items
-    PlaylistSet(PlaylistSetQueryMatched),
+    /// See also: [`ClapPlaylistSetQueryMatched`] for obtaining the list of matched items
+    PlaylistSet(ClapPlaylistSetQueryMatched),
 }
+/// Set the item selection mode
+#[derive(Clone, clap::Args, Debug)]
+pub struct ClapChangePlaybackMode {
+    /// Rule for repeating items
+    repeat_mode: ClapRepeatMode,
+    /// Randomize the VLC playback order
+    #[clap(long)]
+    random: bool,
+}
+
 /// Rule for repeating items
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 #[must_use]
-pub enum RepeatMode {
+#[expect(clippy::enum_variant_names)] // common prefix is useful for positional clap naming
+enum ClapRepeatMode {
     /// Stop the VLC queue after playing all items
     RepeatOff,
     /// Repeat the VLC queue after playing all items
@@ -159,44 +172,44 @@ pub enum RepeatMode {
     /// Repeat only the current item
     RepeatOne,
 }
-impl From<RepeatMode> for crate::goal::RepeatMode {
-    fn from(value: RepeatMode) -> Self {
+impl From<ClapRepeatMode> for crate::goal::RepeatMode {
+    fn from(value: ClapRepeatMode) -> Self {
         match value {
-            RepeatMode::RepeatOff => Self::Off,
-            RepeatMode::RepeatAll => Self::All,
-            RepeatMode::RepeatOne => Self::One,
+            ClapRepeatMode::RepeatOff => Self::Off,
+            ClapRepeatMode::RepeatAll => Self::All,
+            ClapRepeatMode::RepeatOne => Self::One,
         }
     }
 }
-impl From<Change> for crate::Change {
-    fn from(value: Change) -> Self {
+impl From<ClapChange> for crate::Change {
+    fn from(value: ClapChange) -> Self {
         match value {
-            Change::PlaybackMode {
+            ClapChange::PlaybackMode(ClapChangePlaybackMode {
                 repeat_mode,
                 random,
-            } => {
+            }) => {
                 let mode = crate::goal::PlaybackMode::default()
                     .set_repeat(repeat_mode.into())
                     .set_random(random);
                 Self::PlaybackMode(mode)
             }
-            Change::PlaylistSet(target) => Self::PlaylistSet(target.into()),
+            ClapChange::PlaylistSet(target) => Self::PlaylistSet(target.into()),
         }
     }
 }
 
 /// Target for a playlist set goal
 #[derive(clap::Args, Clone, Debug)]
-pub struct PlaylistSetQueryMatched {
+pub struct ClapPlaylistSetQueryMatched {
     /// Path to the file(s) to queue next, starting with the current/past item
     urls: Vec<url::Url>,
     /// Minimum number of history (past-played) items to retain
     #[clap(long, default_value_t = 10)]
     keep_history: u16,
 }
-impl From<PlaylistSetQueryMatched> for crate::goal::TargetPlaylistItems {
-    fn from(value: PlaylistSetQueryMatched) -> Self {
-        let PlaylistSetQueryMatched { urls, keep_history } = value;
+impl From<ClapPlaylistSetQueryMatched> for crate::goal::TargetPlaylistItems {
+    fn from(value: ClapPlaylistSetQueryMatched) -> Self {
+        let ClapPlaylistSetQueryMatched { urls, keep_history } = value;
         Self::new()
             .set_urls(urls) //
             .set_keep_history(keep_history)

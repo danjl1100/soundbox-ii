@@ -25,8 +25,9 @@ enum PlayState {
     Playing,
     Paused,
 }
+/// Item in the [`Model`] playlist
 #[derive(Clone, PartialEq, Eq)]
-struct Item {
+pub struct Item {
     id: u32,
     uri: String,
 }
@@ -46,6 +47,12 @@ impl Model {
             self.push_uri(item.to_string());
         }
         Ok(())
+    }
+
+    /// Returns a view of the current playlist items
+    #[must_use]
+    pub fn get_items(&self) -> &[Item] {
+        &self.items
     }
 }
 /// Error from [`Model::initialize_items`]
@@ -69,6 +76,7 @@ impl std::fmt::Display for ItemsCreatedError {
 }
 
 /// Response from [`Model::request`]
+#[derive(Debug)]
 pub enum ModelResponse {
     /// Raw JSON simulated VLC response
     Json(String),
