@@ -11,8 +11,8 @@ use url::Url;
 use vlc_http::{Change, ClientState, goal::TargetPlaylistItems};
 
 #[derive(arbitrary::Arbitrary)]
-struct ArbChangesList {
-    changes: Vec<ArbChange>,
+struct ArbChangesList<T> {
+    changes: Vec<(ArbChange, T)>,
 }
 #[derive(arbitrary::Arbitrary)]
 enum ArbChange {
@@ -160,23 +160,39 @@ mod model_endpoint_caller {
         testing::{Model, ModelResponse},
     };
 
-    pub struct ModelEndpointCaller(Model);
+    pub struct ModelEndpointCaller {
+        model: Model,
+        glitches: Box<dyn Iterator<Item = Option<super::Glitch>>>,
+    }
     impl ModelEndpointCaller {
         pub fn new() -> Self {
-            Self(Model::default())
+            Self {
+                model: Model::default(),
+                glitches: Box::new(std::iter::empty()),
+            }
         }
         pub fn get_model(&self) -> &Model {
-            let Self(model) = self;
-            model
+            &self.model
+        }
+
+        pub fn replace_glitch_source(
+            &mut self,
+            glitches: impl IntoIterator<Item = Option<super::Glitch>> + 'static,
+        ) {
+            self.glitches = Box::new(glitches.into_iter());
         }
     }
     impl EndpointRequestor for ModelEndpointCaller {
         type Error = Error;
 
         fn request(&mut self, endpoint: Endpoint) -> Result<vlc_http::Response, Self::Error> {
-            let Self(model) = self;
+            let Self { model, glitches } = self;
 
             let make_err = |kind| Error { kind };
+
+            let glitch = glitches.next().flatten();
+            // TODO
+            match glitch {}
 
             let response = model
                 .request(endpoint.get_path_and_query())
@@ -240,21 +256,30 @@ mod model_endpoint_caller {
     }
 }
 
-#[test]
-fn arb_commands_perfect() {
-    arbtest::arbtest(|u| {
-        let mut client_state = ClientState::new();
+#[derive(Debug, arbitrary::Arbitrary)]
+enum Glitch {
+    DropRequest,
+    DelayRequest,
+}
 
+impl<T> ArbChangesList<T>
+where
+    T: IntoIterator<Item = Option<Glitch>> + 'static,
+{
+    fn run_changes_list(self) {
+        let mut client_state = ClientState::new();
         let mut endpoint_caller = ModelEndpointCaller::new();
 
-        let ArbChangesList { changes } = u.arbitrary()?;
-        for change in changes {
+        let ArbChangesList { changes } = self;
+        for (change, glitches) in changes {
             let current_len = endpoint_caller.get_model().get_items().len();
             let complexity = change.get_complexity(current_len);
 
             let change = change.into();
             dbg!((&change, complexity));
             let plan = client_state.build_plan().apply(change);
+
+            endpoint_caller.replace_glitch_source(glitches);
 
             let max_iter_count = complexity;
             vlc_http::sync::complete_plan(
@@ -265,7 +290,43 @@ fn arb_commands_perfect() {
             )
             .expect("complete plan success");
         }
+    }
+}
 
+#[test]
+fn arb_commands_perfect() {
+    #[derive(Debug, arbitrary::Arbitrary)]
+    struct NoGlitches;
+    impl IntoIterator for NoGlitches {
+        type Item = Option<Glitch>;
+        type IntoIter = std::iter::Empty<Self::Item>;
+        fn into_iter(self) -> Self::IntoIter {
+            std::iter::empty()
+        }
+    }
+
+    arbtest::arbtest(|u| {
+        u.arbitrary::<ArbChangesList<NoGlitches>>()?
+            .run_changes_list();
+        Ok(())
+    });
+}
+
+#[test]
+fn arb_commands_glitches() {
+    #[derive(Debug, arbitrary::Arbitrary)]
+    struct Glitches(Vec<Option<Glitch>>);
+    impl IntoIterator for Glitches {
+        type Item = Option<Glitch>;
+        type IntoIter = std::vec::IntoIter<Self::Item>;
+        fn into_iter(self) -> Self::IntoIter {
+            self.0.into_iter()
+        }
+    }
+
+    arbtest::arbtest(|u| {
+        u.arbitrary::<ArbChangesList<Glitches>>()?
+            .run_changes_list();
         Ok(())
     });
 }

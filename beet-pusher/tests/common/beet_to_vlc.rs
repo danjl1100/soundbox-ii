@@ -152,7 +152,7 @@ fn new_test_beet_pusher(
 }
 
 #[test]
-#[ignore = "TODO"]
+#[ignore = "TODO - after vlc_http test runner is established"]
 fn queries_beet_for_buckets() -> eyre::Result<()> {
     let spigot = bucket_spigot::Network::<BeetItem, String>::from_commands_str_whitespace(
         "
