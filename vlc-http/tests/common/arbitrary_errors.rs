@@ -2,19 +2,22 @@
 //! Injects imperfections between the `vlc-http` logic and the simulated VLC instance
 
 use self::alphanum_string::AlphanumString;
-use self::arb_mode::ArbRepeatMode;
+use self::arb_repeat_mode::ArbRepeatMode;
 use self::ascii_string::AsciiString;
 use self::model_endpoint_caller::ModelEndpointCaller;
 
-use std::str::FromStr as _;
+use eyre::Context as _;
+use std::{collections::VecDeque, str::FromStr};
 use url::Url;
 use vlc_http::{Change, ClientState, goal::TargetPlaylistItems};
 
-#[derive(arbitrary::Arbitrary)]
-struct ArbChangesList<T> {
-    changes: Vec<(ArbChange, T)>,
-}
-#[derive(arbitrary::Arbitrary)]
+mod alphanum_string;
+mod ascii_string;
+
+mod arb_repeat_mode;
+
+/// Arbitrary high level [`Change`] to apply to VLC
+#[derive(Clone, Debug, arbitrary::Arbitrary)]
 enum ArbChange {
     PlaybackMode {
         repeat: ArbRepeatMode,
@@ -28,6 +31,7 @@ enum ArbChange {
 }
 
 impl ArbChange {
+    /// Measure the expected number of steps for the change
     fn get_complexity(&self, current_len: usize) -> usize {
         match self {
             ArbChange::PlaybackMode {
@@ -35,101 +39,6 @@ impl ArbChange {
                 is_random: _,
             } => 4,
             ArbChange::PlaylistSet { items } => 2 * items.len() + current_len + 4,
-        }
-    }
-}
-
-mod ascii_string {
-    #[derive(Debug)]
-    pub struct AsciiString(String);
-    impl<'a> arbitrary::Arbitrary<'a> for AsciiString {
-        fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-            let string: Result<_, _> = u
-                .arbitrary_iter()?
-                .map(|byte: Result<u8, _>| {
-                    let ascii_byte = byte? & 0x7F;
-                    Ok(ascii_byte as char)
-                })
-                .collect();
-            string.map(Self)
-        }
-    }
-    impl std::ops::Deref for AsciiString {
-        type Target = String;
-        fn deref(&self) -> &Self::Target {
-            let Self(inner) = self;
-            inner
-        }
-    }
-    impl std::fmt::Display for AsciiString {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self(inner) = self;
-            write!(f, "{inner}")
-        }
-    }
-}
-mod alphanum_string {
-    #[derive(Debug)]
-    pub struct AlphanumString(String);
-    impl<'a> arbitrary::Arbitrary<'a> for AlphanumString {
-        fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-            let string: Result<_, _> = u
-                .arbitrary_iter()?
-                .map(|byte: Result<u8, _>| {
-                    let ascii_byte = match byte? & 63 {
-                        v @ 0..26 => b'a' + v,
-                        v @ 26..52 => b'A' + (v - 26),
-                        v @ 52..62 => b'0' + (v - 52),
-                        62 => b'_',
-                        63 => b'.',
-                        _ => unreachable!(),
-                    };
-                    Ok(ascii_byte as char)
-                })
-                .collect();
-            string.map(Self)
-        }
-    }
-    impl std::ops::Deref for AlphanumString {
-        type Target = String;
-        fn deref(&self) -> &Self::Target {
-            let Self(inner) = self;
-            inner
-        }
-    }
-    impl std::fmt::Display for AlphanumString {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self(inner) = self;
-            write!(f, "{inner}")
-        }
-    }
-}
-
-mod arb_mode {
-    use vlc_http::goal::RepeatMode;
-
-    #[derive(arbitrary::Arbitrary)]
-    pub enum ArbRepeatMode {
-        Off,
-        All,
-        One,
-    }
-    impl From<RepeatMode> for ArbRepeatMode {
-        fn from(value: RepeatMode) -> Self {
-            match value {
-                RepeatMode::Off => Self::Off,
-                RepeatMode::All => Self::All,
-                RepeatMode::One => Self::One,
-            }
-        }
-    }
-    impl From<ArbRepeatMode> for RepeatMode {
-        fn from(value: ArbRepeatMode) -> Self {
-            match value {
-                ArbRepeatMode::Off => Self::Off,
-                ArbRepeatMode::All => Self::All,
-                ArbRepeatMode::One => Self::One,
-            }
         }
     }
 }
@@ -152,7 +61,71 @@ impl From<ArbChange> for Change {
     }
 }
 
+#[derive(Clone, Copy, Debug, arbitrary::Arbitrary)]
+enum Glitch {
+    DropRequest,
+    DelayRequest,
+}
+impl Glitch {
+    /// Returns how much complexity this glitch adds for the specified [`Change`]
+    fn get_added_complexity(self, change: &ArbChange, current_items_len: usize) -> usize {
+        match self {
+            Glitch::DropRequest => 1,
+            Glitch::DelayRequest => match change {
+                // delay is likely to repeat actions
+                ArbChange::PlaybackMode { .. } => 2,
+                // includes playback mode, above
+                ArbChange::PlaylistSet { items } => 2,
+            },
+        }
+    }
+}
+
+enum GlitchSource {
+    Once(VecDeque<Option<Glitch>>),
+    // TODO
+    // Repeat(Vec<Option<Glitch>>),
+}
+impl GlitchSource {
+    pub fn empty() -> Self {
+        Self::once(vec![])
+    }
+    pub fn once(value: Vec<Option<Glitch>>) -> Self {
+        Self::Once(value.into())
+    }
+
+    /// Returns the how much complexity is added by the run of [`Glitch`]es for the specified
+    /// [`Change`]
+    fn get_added_complexity(&self, change: &ArbChange, current_items_len: usize) -> usize {
+        match self {
+            GlitchSource::Once(glitches) => glitches
+                .iter()
+                .copied()
+                .filter_map(|opt| Some(opt?.get_added_complexity(change, current_items_len)))
+                .sum(),
+        }
+    }
+    // TODO
+    // pub fn repeat(pattern: Vec<Option<Glitch>>) -> Self {
+    //     Self::Repeat(pattern)
+    // }
+}
+impl Default for GlitchSource {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+impl Iterator for GlitchSource {
+    type Item = Option<Glitch>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            GlitchSource::Once(glitches) => glitches.pop_front(),
+        }
+    }
+}
+
 mod model_endpoint_caller {
+    use super::{Glitch, GlitchSource};
     use std::str::FromStr as _;
     use vlc_http::{
         Endpoint,
@@ -160,42 +133,86 @@ mod model_endpoint_caller {
         testing::{Model, ModelResponse},
     };
 
+    /// Applies [`Endpoint`] request to a [`Model`], with optional interference from a determined
+    /// [`GlitchSource`]
+    #[derive(Default)]
     pub struct ModelEndpointCaller {
         model: Model,
-        glitches: Box<dyn Iterator<Item = Option<super::Glitch>>>,
+        glitch_source: GlitchSource,
+        /// State for [`Glitch::DelayRequest`]
+        delayed_endpoint: Option<Endpoint>,
     }
     impl ModelEndpointCaller {
+        /// Creates the [`Model`] with no [`Glitch`]es present
         pub fn new() -> Self {
-            Self {
-                model: Model::default(),
-                glitches: Box::new(std::iter::empty()),
-            }
+            Self::default()
         }
         pub fn get_model(&self) -> &Model {
             &self.model
         }
 
-        pub fn replace_glitch_source(
-            &mut self,
-            glitches: impl IntoIterator<Item = Option<super::Glitch>> + 'static,
-        ) {
-            self.glitches = Box::new(glitches.into_iter());
+        /// Sets the list of determined [`Glitch`]es
+        pub fn replace_glitch_source(&mut self, glitch_source: GlitchSource) {
+            self.glitch_source = glitch_source;
         }
     }
     impl EndpointRequestor for ModelEndpointCaller {
         type Error = Error;
 
         fn request(&mut self, endpoint: Endpoint) -> Result<vlc_http::Response, Self::Error> {
-            let Self { model, glitches } = self;
+            let Self {
+                model,
+                glitch_source,
+                delayed_endpoint,
+            } = self;
 
             let make_err = |kind| Error { kind };
 
-            let glitch = glitches.next().flatten();
-            // TODO
-            match glitch {}
+            if let Some(old) = delayed_endpoint.take() {
+                let _hidden_response = model
+                    .request(old.get_path_and_query())
+                    .map_err(|source| ErrorKind::Request {
+                        source,
+                        endpoint: old,
+                    })
+                    .map_err(make_err)?;
+            };
+
+            let request = if let Some(glitch) = glitch_source.next().flatten() {
+                const PATH_STATUS_JSON: &str = "/requests/status.json";
+                const PATH_PLAYLIST_JSON: &str = "/requests/playlist.json";
+
+                let path_and_query = endpoint.get_path_and_query();
+                let Some(request_base_path) = [PATH_PLAYLIST_JSON, PATH_STATUS_JSON]
+                    .into_iter()
+                    .find(|path| path_and_query.starts_with(path))
+                else {
+                    panic!("unrecognized base path {path_and_query:?}");
+                };
+
+                match glitch {
+                    Glitch::DropRequest => {
+                        // respond correctly, but do not apply the command
+                        request_base_path
+                    }
+                    Glitch::DelayRequest => {
+                        // queue the currnet endpoint to apply next cycle
+                        assert_eq!(
+                            delayed_endpoint.replace(endpoint.clone()),
+                            None,
+                            "delayed_endpoint must be applied/emptied already"
+                        );
+                        // respond with the status (before the delayed command runs)
+                        request_base_path
+                    }
+                }
+            } else {
+                // execute as-is
+                endpoint.get_path_and_query()
+            };
 
             let response = model
-                .request(endpoint.get_path_and_query())
+                .request(request)
                 .map_err(|source| ErrorKind::Request { source, endpoint })
                 .map_err(make_err)?;
             let response = match &response {
@@ -256,77 +273,188 @@ mod model_endpoint_caller {
     }
 }
 
-#[derive(Debug, arbitrary::Arbitrary)]
-enum Glitch {
-    DropRequest,
-    DelayRequest,
+/// List of changes to apply to VLC, with extra metadata `T` for each change
+#[derive(Clone, Debug, arbitrary::Arbitrary)]
+struct ArbChangesList<T> {
+    changes: Vec<(ArbChange, T)>,
+}
+
+impl<T> Default for ArbChangesList<T> {
+    fn default() -> Self {
+        Self { changes: vec![] }
+    }
+}
+impl<T> ArbChangesList<T> {
+    fn push_glitches(&mut self, change: ArbChange, glitches: T) {
+        let Self { changes } = self;
+        changes.push((change, glitches));
+    }
+    fn map_inner<U>(self, map_fn: impl Fn(T) -> U) -> ArbChangesList<U> {
+        let Self { changes } = self;
+        let changes = changes
+            .into_iter()
+            .map(|(change, elem)| (change, map_fn(elem)))
+            .collect();
+        ArbChangesList { changes }
+    }
+}
+impl ArbChangesList<Once<Glitches>> {
+    fn push(&mut self, change: ArbChange) {
+        self.push_glitches(change, Once(Glitches(vec![])));
+    }
+}
+impl ArbChangesList<NoGlitches> {
+    fn push(&mut self, change: ArbChange) {
+        self.push_glitches(change, NoGlitches);
+    }
 }
 
 impl<T> ArbChangesList<T>
 where
-    T: IntoIterator<Item = Option<Glitch>> + 'static,
+    T: Into<GlitchSource> + std::fmt::Debug,
 {
-    fn run_changes_list(self) {
+    fn run_changes_list(self) -> eyre::Result<()> {
         let mut client_state = ClientState::new();
         let mut endpoint_caller = ModelEndpointCaller::new();
+
+        eprintln!("{:-<80}", "");
+        dbg!(&self);
 
         let ArbChangesList { changes } = self;
         for (change, glitches) in changes {
             let current_len = endpoint_caller.get_model().get_items().len();
-            let complexity = change.get_complexity(current_len);
+            let change_complexity = change.get_complexity(current_len);
 
-            let change = change.into();
-            dbg!((&change, complexity));
-            let plan = client_state.build_plan().apply(change);
+            let glitches = glitches.into();
+            let glitch_complexity = glitches.get_added_complexity(&change, current_len);
+
+            let change = Change::from(change);
+
+            dbg!((&change, change_complexity, glitch_complexity));
+
+            let plan = client_state.build_plan().apply(change.clone());
 
             endpoint_caller.replace_glitch_source(glitches);
 
-            let max_iter_count = complexity;
+            let max_iter_count = change_complexity + glitch_complexity;
             vlc_http::sync::complete_plan(
                 plan,
                 &mut client_state,
                 &mut endpoint_caller,
                 max_iter_count,
             )
-            .expect("complete plan success");
+            .with_context(|| format!("failed to complete plan for {change:?}"))?;
         }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, arbitrary::Arbitrary)]
+struct NoGlitches;
+impl From<NoGlitches> for GlitchSource {
+    fn from(_: NoGlitches) -> Self {
+        GlitchSource::empty()
+    }
+}
+
+#[derive(Clone, arbitrary::Arbitrary)]
+struct Glitches(Vec<Option<Glitch>>);
+impl std::fmt::Debug for Glitches {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(inner) = self;
+
+        let mut first = Some(());
+        write!(f, "[")?;
+        for elem in inner {
+            if first.take().is_none() {
+                write!(f, ", ")?;
+            }
+            let short = match elem {
+                Some(Glitch::DropRequest) => "Drop",
+                Some(Glitch::DelayRequest) => "Delay",
+                None => "_",
+            };
+            write!(f, "{short}")?;
+        }
+        write!(f, "]")
+    }
+}
+impl FromStr for Glitches {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.split(", ")
+            .map(|part| {
+                let elem = match part {
+                    "_" => None,
+                    "Delay" => Some(Glitch::DelayRequest),
+                    "Drop" => Some(Glitch::DropRequest),
+                    unknown => return Err(format!("unknown part {unknown:?}")),
+                };
+                Ok(elem)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self)
+    }
+}
+
+#[derive(Clone, Debug, arbitrary::Arbitrary)]
+struct Once<T>(T);
+impl From<Once<Glitches>> for GlitchSource {
+    fn from(value: Once<Glitches>) -> Self {
+        let Once(Glitches(inner)) = value;
+        GlitchSource::once(inner)
     }
 }
 
 #[test]
 fn arb_commands_perfect() {
-    #[derive(Debug, arbitrary::Arbitrary)]
-    struct NoGlitches;
-    impl IntoIterator for NoGlitches {
-        type Item = Option<Glitch>;
-        type IntoIter = std::iter::Empty<Self::Item>;
-        fn into_iter(self) -> Self::IntoIter {
-            std::iter::empty()
-        }
-    }
-
     arbtest::arbtest(|u| {
         u.arbitrary::<ArbChangesList<NoGlitches>>()?
-            .run_changes_list();
+            .run_changes_list()
+            .expect("changes should pass with no glitches");
         Ok(())
     });
 }
 
 #[test]
 fn arb_commands_glitches() {
-    #[derive(Debug, arbitrary::Arbitrary)]
-    struct Glitches(Vec<Option<Glitch>>);
-    impl IntoIterator for Glitches {
-        type Item = Option<Glitch>;
-        type IntoIter = std::vec::IntoIter<Self::Item>;
-        fn into_iter(self) -> Self::IntoIter {
-            self.0.into_iter()
-        }
-    }
-
     arbtest::arbtest(|u| {
-        u.arbitrary::<ArbChangesList<Glitches>>()?
-            .run_changes_list();
+        let list = u.arbitrary::<ArbChangesList<Once<Glitches>>>()?;
+
+        list.clone()
+            .map_inner(|_| NoGlitches)
+            .run_changes_list()
+            .expect("changes should pass with no glitches");
+
+        // run with the full glitches list
+        list.run_changes_list()
+            .expect("changes should pass WITH glitches too");
+
         Ok(())
+    })
+    // .seed(0x34dc7a9a00010000)
+    ;
+}
+
+#[test]
+fn commands_glitches_case() -> eyre::Result<()> {
+    use ArbChange::{PlaybackMode, PlaylistSet};
+    use ArbRepeatMode::{All, One};
+
+    let mut list = ArbChangesList::<Once<Glitches>>::default();
+    list.push(PlaybackMode {
+        repeat: One,
+        is_random: true,
     });
+    list.push_glitches(
+        PlaybackMode {
+            repeat: All,
+            is_random: true,
+        },
+        Once("_, Delay, Drop, Delay, Delay".parse().unwrap()),
+    );
+    list.push(PlaylistSet { items: vec![] });
+
+    list.run_changes_list()
 }

@@ -4,6 +4,7 @@
 
 // yes panic, it's tests!
 #![allow(clippy::panic)]
+#![allow(clippy::unwrap_used)]
 
 use test_log::test;
 use tracing::{trace_span, warn_span};
