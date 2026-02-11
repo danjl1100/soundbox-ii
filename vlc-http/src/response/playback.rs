@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 /// Status of the current playback
 #[must_use]
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Clone, PartialEq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Status {
     /// version of the VLC-HTTP interface api
@@ -46,7 +46,7 @@ pub enum Mode {
     Stopped,
 }
 /// Information about the current (playing/paused) item
-#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Default, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Info {
     pub title: String,
@@ -130,6 +130,119 @@ impl From<InfoJSON> for Info {
             extra,
             playlist_item_id,
         }
+    }
+}
+macro_rules! debug_field_if {
+    (
+        $debug:ident, |$value:ident| $condition:expr => { $($name:ident),+ $(,)? }
+    ) => {
+        $(
+            {
+                let $value = $name;
+                if $condition {
+                    $debug .field(stringify!($name), $name);
+                }
+            }
+        )+
+    };
+}
+impl std::fmt::Debug for Info {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            title,
+            artist,
+            album,
+            date,
+            track_number,
+            track_total,
+            extra,
+            playlist_item_id,
+        } = self;
+
+        let mut debug = f.debug_struct("Info");
+
+        debug_field_if!(debug, |s| !s.is_empty() => {
+            title,
+            artist,
+            album,
+            date,
+            track_number,
+            track_total,
+            extra,
+        });
+
+        if let Some(playlist_item_id) = playlist_item_id {
+            debug.field("playlist_item_id", playlist_item_id);
+        }
+
+        debug.finish()
+    }
+}
+impl std::fmt::Debug for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const KNOWN_VERSIONS: &[&str] = &["3.0.20 Vetinari"];
+
+        let Self {
+            apiversion,
+            information,
+            is_loop_all,
+            is_random,
+            is_repeat_one,
+            version,
+            volume_percent,
+            mode,
+            duration_secs,
+            position_secs,     // OK if 0
+            position_fraction, // OK if 0.0
+            rate_ratio,
+        } = self;
+
+        let mut debug = f.debug_struct("Status");
+
+        debug.field("api", apiversion);
+
+        if let Some(info) = information {
+            debug.field("info", info);
+        }
+
+        {
+            use std::fmt::Write as _;
+
+            let kind_loop = is_loop_all.then_some("all");
+            let kind_repeat = is_repeat_one.then_some("one");
+            let kind_random = is_random.then_some("random");
+            let mut kinds = String::new();
+            for kind in [kind_loop, kind_repeat, kind_random].into_iter().flatten() {
+                let separator = if kinds.is_empty() { "" } else { " " };
+                write!(&mut kinds, "{separator}{kind}").expect("infallible");
+            }
+            debug.field("ordering", &kinds);
+        }
+
+        debug_field_if!(debug, |s| !KNOWN_VERSIONS.contains(&&**s) => {
+            version,
+        });
+
+        debug.field("vol", volume_percent);
+
+        debug_field_if!(debug, |v| *v != 0 => {
+            duration_secs,
+        });
+
+        {
+            let rate = if (rate_ratio - 1.0).abs() < 1e-8 {
+                String::new()
+            } else {
+                format!(" @ {rate_ratio}x")
+            };
+
+            debug.field(
+                "position",
+                &format!("{mode:?} {position_secs}s, {position_fraction:.2}{rate}"),
+            );
+        }
+
+        debug.finish()
     }
 }
 

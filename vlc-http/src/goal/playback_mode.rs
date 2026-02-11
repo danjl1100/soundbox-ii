@@ -41,7 +41,7 @@ impl Plan for Set {
 
         if status.is_repeat_one != self.target.is_repeat_one() {
             debug!(
-                is_loop_all = status.is_repeat_one,
+                is_repeat_one = status.is_repeat_one,
                 target = self.target.is_repeat_one(),
                 "want to toggle repeat-one",
             );

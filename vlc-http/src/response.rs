@@ -13,12 +13,12 @@ pub mod playlist;
 mod tests;
 
 /// Parsed response from VLC
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct Response {
     pub(crate) inner: ResponseInner,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(serde::Serialize))]
 pub(crate) enum ResponseInner {
     PlaylistInfo(PlaylistInfo),
@@ -30,6 +30,16 @@ pub(crate) enum ResponseInner {
 enum ResponseJSON {
     PlaylistInfo(playlist::InfoJSON),
     PlaybackStatus(Box<playback::StatusJSON>),
+}
+
+impl std::fmt::Debug for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { inner } = self;
+        match inner {
+            ResponseInner::PlaylistInfo(info) => <_ as std::fmt::Debug>::fmt(info, f),
+            ResponseInner::PlaybackStatus(status) => <_ as std::fmt::Debug>::fmt(status, f),
+        }
+    }
 }
 
 impl std::str::FromStr for Response {

@@ -2,6 +2,7 @@
 //! Convenience functions for [`Plan`]s in a synchronous (blocking) context
 
 use crate::{ClientState, Endpoint, Plan, Response, goal::Step};
+use tracing::trace;
 
 /// IO portion that resolves [`Endpoint`]s into the [`Response`]
 pub trait EndpointRequestor {
@@ -53,9 +54,13 @@ where
             let Step::Need(endpoint) = source.next(client_state).map_err(ErrorKind::Poll)? else {
                 break; // final output borrow occurs below
             };
+            trace!(?endpoint);
+
             let response = endpoint_caller
                 .request(endpoint)
                 .map_err(ErrorKind::EndpointFn)?;
+
+            trace!(?response);
 
             client_state.update(response);
         }

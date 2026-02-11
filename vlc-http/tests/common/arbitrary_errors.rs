@@ -7,7 +7,8 @@ use self::ascii_string::AsciiString;
 use self::model_endpoint_caller::ModelEndpointCaller;
 
 use eyre::Context as _;
-use std::{collections::VecDeque, str::FromStr};
+use std::{collections::VecDeque, str::FromStr, sync::LazyLock};
+use tracing::{debug, info};
 use url::Url;
 use vlc_http::{Change, ClientState, goal::TargetPlaylistItems};
 
@@ -68,14 +69,18 @@ enum Glitch {
 }
 impl Glitch {
     /// Returns how much complexity this glitch adds for the specified [`Change`]
-    fn get_added_complexity(self, change: &ArbChange, current_items_len: usize) -> usize {
+    fn get_added_complexity(
+        self,
+        change: &ArbChange,
+        // current_items_len: usize,
+    ) -> usize {
         match self {
             Glitch::DropRequest => 1,
             Glitch::DelayRequest => match change {
                 // delay is likely to repeat actions
                 ArbChange::PlaybackMode { .. } => 2,
                 // includes playback mode, above
-                ArbChange::PlaylistSet { items } => 2,
+                ArbChange::PlaylistSet { items: _ } => 2,
             },
         }
     }
@@ -96,12 +101,16 @@ impl GlitchSource {
 
     /// Returns the how much complexity is added by the run of [`Glitch`]es for the specified
     /// [`Change`]
-    fn get_added_complexity(&self, change: &ArbChange, current_items_len: usize) -> usize {
+    fn get_added_complexity(
+        &self,
+        change: &ArbChange,
+        // current_items_len: usize,
+    ) -> usize {
         match self {
             GlitchSource::Once(glitches) => glitches
                 .iter()
                 .copied()
-                .filter_map(|opt| Some(opt?.get_added_complexity(change, current_items_len)))
+                .filter_map(|opt| Some(opt?.get_added_complexity(change)))
                 .sum(),
         }
     }
@@ -303,11 +312,11 @@ impl ArbChangesList<Once<Glitches>> {
         self.push_glitches(change, Once(Glitches(vec![])));
     }
 }
-impl ArbChangesList<NoGlitches> {
-    fn push(&mut self, change: ArbChange) {
-        self.push_glitches(change, NoGlitches);
-    }
-}
+// impl ArbChangesList<NoGlitches> {
+//     fn push(&mut self, change: ArbChange) {
+//         self.push_glitches(change, NoGlitches);
+//     }
+// }
 
 impl<T> ArbChangesList<T>
 where
@@ -318,15 +327,24 @@ where
         let mut endpoint_caller = ModelEndpointCaller::new();
 
         eprintln!("{:-<80}", "");
-        dbg!(&self);
+        info!(?self);
 
         let ArbChangesList { changes } = self;
         for (change, glitches) in changes {
             let current_len = endpoint_caller.get_model().get_items().len();
             let change_complexity = change.get_complexity(current_len);
 
+            debug!(?change);
+            debug!(?glitches);
+
             let glitches = glitches.into();
-            let glitch_complexity = glitches.get_added_complexity(&change, current_len);
+            let glitch_complexity = glitches.get_added_complexity(
+                &change,
+                // current_len,
+            );
+
+            let max_iter_count = change_complexity + glitch_complexity;
+            debug!(max_iter_count);
 
             let change = Change::from(change);
 
@@ -336,7 +354,6 @@ where
 
             endpoint_caller.replace_glitch_source(glitches);
 
-            let max_iter_count = change_complexity + glitch_complexity;
             vlc_http::sync::complete_plan(
                 plan,
                 &mut client_state,
@@ -437,10 +454,39 @@ fn arb_commands_glitches() {
     ;
 }
 
+fn init_tracing() {
+    static ONCE: LazyLock<()> = LazyLock::new(|| {
+        use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().compact())
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    });
+    *ONCE
+}
+
+#[test]
+fn playlist_set_from_wrong_state() -> eyre::Result<()> {
+    use ArbChange::{PlaybackMode, PlaylistSet};
+    use ArbRepeatMode::All;
+
+    init_tracing();
+
+    let mut list = ArbChangesList::<Once<Glitches>>::default();
+    list.push(PlaybackMode {
+        repeat: All,
+        is_random: true,
+    });
+    list.push(PlaylistSet { items: vec![] });
+
+    list.run_changes_list()
+}
 #[test]
 fn commands_glitches_case() -> eyre::Result<()> {
     use ArbChange::{PlaybackMode, PlaylistSet};
     use ArbRepeatMode::{All, One};
+
+    init_tracing();
 
     let mut list = ArbChangesList::<Once<Glitches>>::default();
     list.push(PlaybackMode {

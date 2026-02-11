@@ -10,6 +10,7 @@ const HELP_TEXT: &str = "Tasks:
 checks [fix]            run all linting checks
 spigot-visual-run       runs spigot-visual with the compiled typescript
 spigot-visual-dist      compiles the spigot-visual typescript
+vlc                     runs VLC with required arguments for the web interface
 ";
 
 fn main() -> eyre::Result<()> {
@@ -19,6 +20,7 @@ fn main() -> eyre::Result<()> {
         Some("checks") => all_checks(args)?,
         Some("spigot-visual-run") => xtask::spigot_visual::run(args)?,
         Some("spigot-visual-dist") => xtask::spigot_visual::dist_js(Some(WriteOutput))?,
+        Some("vlc") => xtask::vlc::run_web(args)?,
         _ => print_help(),
     }
     Ok(())

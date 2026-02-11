@@ -31,5 +31,6 @@ clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
 insta = { version = "1.38.0", features = ["ron", "glob"] }
 test-log = { version = "0.2.16", default-features = false, features = ["color", "trace"] }
+tracing-subscriber = "0.3.22"
 ureq = { version = "2.9.7", features = [], default-features = false }
 

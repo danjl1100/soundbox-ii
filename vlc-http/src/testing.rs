@@ -2,23 +2,41 @@
 //! Utilities for testing the VLC HTTP interface
 
 /// Model of a VLC client instance, receiving raw commands from HTTP
-#[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Model {
+    items_created: u32,
+    items: Vec<Item>,
+    repeat_mode: RepeatMode,
+    is_random: bool,
+    art_endpoints: Vec<String>,
+    current_item_id: Option<(u16, PlayState)>,
+}
+/// Serializable representation of [`Model`]
+#[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename = "Model")]
+pub struct ModelJson<'a> {
     #[serde(skip)]
     items_created: u32,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    #[serde(serialize_with = "serialize_items_vec")]
-    items: Vec<Item>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    #[serde(serialize_with = "serialize_items_slice")]
+    items: std::borrow::Cow<'a, [Item]>,
     #[serde(skip_serializing_if = "bool_is_false")]
     is_loop_all: bool,
     #[serde(skip_serializing_if = "bool_is_false")]
     is_repeat_one: bool,
     #[serde(skip_serializing_if = "bool_is_false")]
     is_random: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    art_endpoints: Vec<String>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    art_endpoints: std::borrow::Cow<'a, [String]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     current_item_id: Option<(u16, PlayState)>,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+enum RepeatMode {
+    #[default]
+    None,
+    LoopAll,
+    RepeatOne,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 enum PlayState {
@@ -53,6 +71,51 @@ impl Model {
     #[must_use]
     pub fn get_items(&self) -> &[Item] {
         &self.items
+    }
+
+    /// Returns a serializable view
+    pub fn as_json(&self) -> ModelJson<'_> {
+        let Self {
+            items_created,
+            ref items,
+            repeat_mode: _, // accessor methods used instead
+            is_random,
+            ref art_endpoints,
+            current_item_id,
+        } = *self;
+        ModelJson {
+            items_created,
+            items: items.into(),
+            is_loop_all: self.is_loop_all(),
+            is_repeat_one: self.is_repeat_one(),
+            is_random,
+            art_endpoints: art_endpoints.into(),
+            current_item_id,
+        }
+    }
+}
+impl ModelJson<'_> {
+    /// Converts to an owned (`'static`) view
+    #[must_use]
+    pub fn clone_to_owned(&self) -> ModelJson<'static> {
+        let ModelJson {
+            items_created,
+            ref items,
+            is_loop_all,
+            is_repeat_one,
+            is_random,
+            ref art_endpoints,
+            current_item_id,
+        } = *self;
+        ModelJson {
+            items_created,
+            items: items.clone().into_owned().into(),
+            is_loop_all,
+            is_repeat_one,
+            is_random,
+            art_endpoints: art_endpoints.clone().into_owned().into(),
+            current_item_id,
+        }
     }
 }
 /// Error from [`Model::initialize_items`]
@@ -322,16 +385,31 @@ impl Model {
         Ok(self.get_playback_status())
     }
 
+    fn is_loop_all(&self) -> bool {
+        matches!(self.repeat_mode, RepeatMode::LoopAll)
+    }
+    fn is_repeat_one(&self) -> bool {
+        matches!(self.repeat_mode, RepeatMode::RepeatOne)
+    }
+
     fn toggle_random(&mut self) -> String {
         self.is_random = !self.is_random;
         self.get_playback_status()
     }
     fn toggle_loop_all(&mut self) -> String {
-        self.is_loop_all = !self.is_loop_all;
+        self.repeat_mode = if self.is_loop_all() {
+            RepeatMode::None
+        } else {
+            RepeatMode::LoopAll
+        };
         self.get_playback_status()
     }
     fn toggle_repeat_one(&mut self) -> String {
-        self.is_repeat_one = !self.is_repeat_one;
+        self.repeat_mode = if self.is_repeat_one() {
+            RepeatMode::None
+        } else {
+            RepeatMode::RepeatOne
+        };
         self.get_playback_status()
     }
     fn set_playing_paused(&mut self) -> String {
@@ -382,8 +460,8 @@ impl Model {
         serde_json::json!({
             "rate":1,
             "time":0,
-            "repeat": self.is_repeat_one,
-            "loop": self.is_loop_all,
+            "repeat": self.is_repeat_one(),
+            "loop": self.is_loop_all(),
             "length":0,
             "random": self.is_random,
             "apiversion":3,
@@ -410,7 +488,7 @@ impl std::fmt::Debug for Item {
         write!(f, "{id}: {uri}")
     }
 }
-fn serialize_items_vec<S>(items: &Vec<Item>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_items_slice<S>(items: &[Item], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {

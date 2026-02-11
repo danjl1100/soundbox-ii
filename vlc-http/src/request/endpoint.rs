@@ -11,7 +11,7 @@ use std::borrow::Cow;
 mod tests;
 
 /// VLC HTTP endpoint information to execute a [`Command`]
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct Endpoint {
     path_and_query: Cow<'static, str>,
@@ -27,6 +27,16 @@ impl Endpoint {
     pub fn get_method(&self) -> http::Method {
         // NOTE: this is a function for future expansion purposes
         http::Method::GET
+    }
+}
+impl std::fmt::Debug for Endpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { path_and_query } = self;
+
+        f.debug_tuple("Endpoint")
+            .field(&self.get_method())
+            .field(path_and_query)
+            .finish()
     }
 }
 

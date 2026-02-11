@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [[bin]]
-name = "main"
+name = "xtask"
 doc = false
 
 [lints]

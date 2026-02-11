@@ -285,16 +285,19 @@ mod model_logger {
     use super::Model;
     use std::str::FromStr;
     use tracing::info;
-    use vlc_http::{ClientState, Endpoint, Response, testing::ModelResponse};
+    use vlc_http::{
+        ClientState, Endpoint, Response,
+        testing::{ModelJson, ModelResponse},
+    };
 
     #[derive(Debug, PartialEq, Eq, serde::Serialize)]
     pub enum LogEntry {
         #[serde(rename = "LogEntry")]
-        Endpoint(Endpoint, Model),
+        Endpoint(Endpoint, ModelJson<'static>),
         #[serde(rename = "Harness")]
         HarnessEndpoint(Endpoint),
         #[serde(rename = "Harness")]
-        HarnessModel(Model),
+        HarnessModel(ModelJson<'static>),
         Output(serde_json::Value),
     }
 
@@ -334,7 +337,7 @@ mod model_logger {
                 target.update(response);
             }
 
-            let log_entry = LogEntry::Endpoint(endpoint, self.model.clone());
+            let log_entry = LogEntry::Endpoint(endpoint, self.model.as_json().clone_to_owned());
 
             if !self.log.is_empty()
                 && self
@@ -371,7 +374,9 @@ mod model_logger {
         }
         pub fn edit_model<R>(&mut self, modify_fn: impl FnOnce(&mut Model) -> R) -> R {
             let result = modify_fn(&mut self.model);
-            self.log.push(LogEntry::HarnessModel(self.model.clone()));
+            self.log.push(LogEntry::HarnessModel(
+                self.model.as_json().clone_to_owned(),
+            ));
             result
         }
         pub fn into_log(self) -> Vec<LogEntry> {
