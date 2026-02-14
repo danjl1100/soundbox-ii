@@ -2,7 +2,9 @@
 //! Tasks for the `spigot_visual` crate
 
 use self::gen_bindings::gen_bindings_ts;
-use crate::{Fix, WriteOutput, print_help_fix_checks, project_root, run_cmd};
+use crate::{
+    Fix, TypedErr, TypedResult, WriteOutput, print_help_fix_checks, project_root, run_cmd,
+};
 use eyre::Context;
 use std::{ffi::OsStr, path::PathBuf};
 
@@ -39,18 +41,20 @@ impl HintAllowRustWorkspaceCalls {
     ///
     /// # Errors
     /// Returns an error if the check or need fails
-    pub fn check_and_run_once(fix: Option<Fix>) -> eyre::Result<Self> {
+    pub fn check_and_run_once(fix: Option<Fix>) -> TypedResult<Self> {
         Self::check()?
             .or_else(|need| {
                 need.run(fix)?;
                 match Self::check()? {
                     Ok(v) => Ok(v),
                     Err(need_next) => {
-                        eyre::bail!("too many needs: {need:?} --> {need_next:?}");
+                        crate::bail!("too many needs: {need:?} --> {need_next:?}")
                     }
                 }
             })
-            .context("failed to build files needed for rust workspace")
+            .map_err(|e: TypedErr| {
+                e.map_eyre_only(|e| e.context("failed to build files needed for rust workspace"))
+            })
     }
 }
 /// Required action for prerequisite of the cargo workspace
@@ -66,9 +70,9 @@ impl Need {
     ///
     /// # Errors
     /// Returns an error if `fix` is not specified, or the file generation fails
-    pub fn run(&self, fix: Option<Fix>) -> eyre::Result<()> {
+    pub fn run(&self, fix: Option<Fix>) -> TypedResult<()> {
         let Some(Fix) = fix else {
-            eyre::bail!("argument `fix` not specified, refusing to write output files: {self:#?}")
+            crate::bail!("argument `fix` not specified, refusing to write output files: {self:#?}")
         };
         println!(
             "building source prerequisite for rust workpace calls:\n\t{:?}\n",
@@ -105,7 +109,7 @@ impl std::fmt::Debug for Need {
 ///
 /// # Errors
 /// Returns any errors from I/O or spawned subprocesses
-pub fn run<S>(args: impl IntoIterator<Item = S>) -> eyre::Result<()>
+pub fn run<S>(args: impl IntoIterator<Item = S>) -> TypedResult<()>
 where
     S: AsRef<OsStr>,
 {
@@ -130,7 +134,8 @@ where
     #[cfg(unix)]
     {
         // replace the current process
-        crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args)).map(|never| match never {})
+        let never = crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
+        match never {}
     }
 
     #[cfg(not(unix))]
@@ -144,27 +149,24 @@ where
 ///
 /// # Errors
 /// Returns any fatal errors with the checks
-pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
+pub fn checks(fix: Option<Fix>) -> TypedResult<()> {
     check_js(fix)?;
     dist_js(None)?;
     Ok(())
 }
-fn check_js(fix: Option<Fix>) -> eyre::Result<()> {
-    let result = run_cmd("biome", |c| {
+fn check_js(fix: Option<Fix>) -> TypedResult<()> {
+    run_cmd("biome", |c| {
         c.arg("check");
         if let Some(Fix) = fix {
             c.arg("--write");
         }
         c.current_dir(ts_src_dir())
-    });
-    if result.is_err() && fix.is_none() {
-        print_help_fix_checks();
-    }
-    result
+    })
+    .inspect_err(|e| print_help_fix_checks(e, &fix))
 }
 
 /// Formats the JavaScript sources
-fn fmt_js() -> eyre::Result<()> {
+fn fmt_js() -> TypedResult<()> {
     // `biome format --write` also works, but format is a subset of `biome check --write`
     check_js(Some(Fix))
 }
@@ -173,7 +175,7 @@ fn fmt_js() -> eyre::Result<()> {
 ///
 /// # Errors
 /// Returns an error if any subprocesses fail
-pub fn dist_js(write: Option<WriteOutput>) -> eyre::Result<()> {
+pub fn dist_js(write: Option<WriteOutput>) -> TypedResult<()> {
     gen_bindings_ts()?;
 
     run_cmd("tsc", |c| {
@@ -192,6 +194,7 @@ mod gen_bindings {
     };
 
     use self::ts_binding_set::TsBindingSet;
+    use crate::TypedResult;
 
     /// files that are skipped for auto-removal (without any warnings)
     const IGNORE_FILE_NAMES: &[&str] = &[
@@ -204,7 +207,7 @@ mod gen_bindings {
     const EXTENSION_BINDING: &str = "ts";
     const EXTENSION_DEST: &str = "d.ts";
 
-    pub(super) fn gen_bindings_ts() -> eyre::Result<()> {
+    pub(super) fn gen_bindings_ts() -> TypedResult<()> {
         TsBindingSet::new()
             .add_package(
                 "bucket-spigot",
@@ -233,7 +236,7 @@ mod gen_bindings {
 
     mod ts_binding_set {
         use super::{EXTENSION_DEST, copy_bindings_to_dest, remove_generated_dir};
-        use crate::{project_root, run_cargo, spigot_visual::ts_src_dir};
+        use crate::{TypedResult, project_root, run_cargo, spigot_visual::ts_src_dir};
         use std::path::PathBuf;
 
         #[derive(Default)]
@@ -264,7 +267,7 @@ mod gen_bindings {
 
                 self
             }
-            pub fn execute(self) -> eyre::Result<()> {
+            pub fn execute(self) -> TypedResult<()> {
                 let Self {
                     package_names,
                     packages,

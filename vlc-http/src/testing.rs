@@ -74,6 +74,7 @@ impl Model {
     }
 
     /// Returns a serializable view
+    #[must_use]
     pub fn as_json(&self) -> ModelJson<'_> {
         let Self {
             items_created,

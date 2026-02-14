@@ -1,7 +1,9 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Logic for the `xtask` functionality
 
-use eyre::Context as _;
+use self::run_cmd::run_cmd;
+use self::status_cmd::{SpawnFail, status_cmd};
+pub use self::typed_err::{TypedErr, TypedResult};
 use std::{
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
@@ -23,57 +25,196 @@ pub struct Fix;
 #[derive(Clone, Copy, Debug)]
 pub struct WriteOutput;
 
+mod typed_err {
+    use super::SpawnFail;
+
+    /// Adapter for [`eyre::bail!`] that adapts the error type (e.g. into [`TypedErr`])
+    #[macro_export]
+    macro_rules! bail {
+        ($($arg:tt)*) => {
+            return Err(eyre::eyre!($($arg)*).into())
+        };
+    }
+
+    /// Result with distinct [`SpawnFail`] case
+    pub type TypedResult<T> = Result<T, TypedErr>;
+
+    /// Typed error for [`SpawnFail`] and others
+    pub struct TypedErr(TypedErrKind);
+    enum TypedErrKind {
+        /// Error spawning a command
+        Spawn(SpawnFail),
+        /// Other errors
+        Eyre(eyre::Error),
+    }
+    impl TypedErr {
+        // NOTE: [`eyre::Context`] requires `Result<_, E>`, so provide that type for `map_fn`
+        pub(crate) fn map_eyre_only(
+            self,
+            map_fn: impl FnOnce(
+                eyre::Result<std::convert::Infallible>,
+            ) -> eyre::Result<std::convert::Infallible>,
+        ) -> Self {
+            let Self(kind) = self;
+            match kind {
+                TypedErrKind::Spawn(_) => Self(kind),
+                TypedErrKind::Eyre(e) => {
+                    let e = match map_fn(Err(e)) {
+                        Ok(never) => match never {},
+                        Err(e) => e,
+                    };
+                    Self(TypedErrKind::Eyre(e))
+                }
+            }
+        }
+
+        pub(crate) fn is_spawn_error(&self) -> bool {
+            matches!(self, Self(TypedErrKind::Spawn(_)))
+        }
+
+        /// Extracts the [`eyre::Error`], meant to be called only in the final report location
+        /// to avoid collapsing [`SpawnFail`] errors into generic [`eyre::Error`]s
+        pub fn into_eyre_in_final_main_error_report_location(self) -> eyre::Error {
+            let Self(kind) = self;
+            match kind {
+                TypedErrKind::Spawn(inner) => inner.into_eyre_in_final_main_error_report_location(),
+                TypedErrKind::Eyre(inner) => inner,
+            }
+        }
+    }
+    impl From<SpawnFail> for TypedErr {
+        fn from(value: SpawnFail) -> Self {
+            Self(TypedErrKind::Spawn(value))
+        }
+    }
+    impl From<eyre::Error> for TypedErr {
+        fn from(value: eyre::Error) -> Self {
+            Self(TypedErrKind::Eyre(value))
+        }
+    }
+}
+
 /// Runs the specified `cargo` command
 ///
 /// # Errors
 /// Returns an error if the command fails
-pub fn run_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<()> {
+pub fn run_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> TypedResult<()> {
     let status = status_cargo(args_fn)?;
     if !status.success() {
-        eyre::bail!("cargo command failed");
+        crate::bail!("cargo command failed")
     }
     Ok(())
 }
 /// Statuses the specified `cargo` command
 ///
 /// # Errors
-/// Returns an error if the command fails
-pub fn status_cargo(
-    args_fn: impl FnOnce(&mut Command) -> &mut Command,
-) -> eyre::Result<ExitStatus> {
-    status_cmd(env!("CARGO"), args_fn)
+/// Returns an error if spawning the command fails
+pub fn status_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> TypedResult<ExitStatus> {
+    let status = status_cmd(env!("CARGO"), args_fn)?;
+    Ok(status)
 }
-/// Runs the specified command
-///
-/// # Errors
-/// Returns an error if the command fails
-pub fn run_cmd(cmd: &str, args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<()> {
-    let status = status_cmd(cmd, args_fn)?;
-    if !status.success() {
-        // dbg!(&command);
-        eyre::bail!("`{cmd}` failed");
+
+mod run_cmd {
+    use super::TypedResult;
+    use std::process::Command;
+
+    /// Runs the specified command
+    ///
+    /// # Errors
+    /// Returns an error if the command fails
+    pub fn run_cmd(
+        cmd: &str,
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+    ) -> TypedResult<()> {
+        let status = super::status_cmd(cmd, args_fn)?;
+        if !status.success() {
+            // dbg!(&command);
+            crate::bail!("`{cmd}` failed")
+        }
+
+        Ok(())
+    }
+}
+
+mod status_cmd {
+    //! Low-level execution of commands
+
+    use std::process::{Command, ExitStatus};
+
+    /// Runs the specified command and returns the [`ExitStatus`]
+    ///
+    /// # Errors
+    /// Returns an error only if spawning the command fails
+    pub fn status_cmd(
+        cmd: &str,
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+    ) -> Result<ExitStatus, SpawnFail> {
+        let mut command = Command::new(cmd);
+        args_fn(&mut command);
+        command.status().map_err(|source| {
+            // dbg!(command);
+
+            let err = SpawnError { source, command };
+            // convert to `eyre::Error` to preserve the backtrace (if any)
+            SpawnFail(eyre::eyre!(err))
+        })
     }
 
-    Ok(())
-}
-/// Statuses the specified command
-///
-/// # Errors
-/// Returns an error if the command fails
-pub fn status_cmd(
-    cmd: &str,
-    args_fn: impl FnOnce(&mut Command) -> &mut Command,
-) -> eyre::Result<ExitStatus> {
-    let mut command = Command::new(cmd);
-    args_fn(&mut command);
-    command.status().with_context(|| {
-        dbg!(&command);
-        format!("failed to run `{cmd}`")
-    })
+    /// Wrapper around [`Error`] that will not easily collapse into [`eyre::Error`], until the
+    /// awkwardly named call to [`Self::into_eyre_in_final_main_error_report_location`]
+    ///
+    /// NOTE: The distinction (not collapsing this error into [`eyre::Error`] immediately) is
+    /// intended help only show hints when the command spawns successfuly (e.g. but exits with a errors)
+    #[derive(Debug)]
+    pub struct SpawnFail(eyre::Error);
+    impl SpawnFail {
+        pub fn into_eyre_in_final_main_error_report_location(self) -> eyre::Error {
+            let Self(inner) = self;
+            inner
+        }
+    }
+
+    /// Wrapper for [`std::io::Error`] from spawning a command
+    #[derive(Debug)]
+    pub struct SpawnError {
+        source: std::io::Error,
+        command: Command,
+    }
+    impl std::error::Error for SpawnError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            let Self { source, .. } = self;
+            Some(source)
+        }
+    }
+    impl std::fmt::Display for SpawnError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self { source: _, command } = self;
+            #[expect(clippy::unnecessary_debug_formatting)]
+            write!(
+                f,
+                "failed to run {program:?} with args {args:?}",
+                program = command.get_program(),
+                args = command.get_args(),
+            )?;
+            if let Some(dir) = command.get_current_dir() {
+                write!(f, " in {}", dir.display())?;
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Prints the help note for applying fixes
-pub fn print_help_fix_checks() {
+pub fn print_help_fix_checks(source: &TypedErr, fix: &Option<Fix>) {
+    if fix.is_some() {
+        // don't print the hint, already in fix mode
+        return;
+    }
+    if source.is_spawn_error() {
+        // don't print the hint if spawning a tool failed (e.g. no `tsc` or `biome`)
+        return;
+    }
+
     let args = ["cargo xtask".to_owned()]
         .into_iter()
         .chain(std::env::args().skip(1))

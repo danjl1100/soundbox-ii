@@ -1,13 +1,15 @@
 // Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks for the rust source code as a whole
 
-use crate::{Fix, run_cargo, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo};
+use crate::{
+    Fix, TypedResult, run_cargo, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo,
+};
 
 /// Checks the rust source as a whole
 ///
 /// # Errors
 /// Returns an error if any subprocesses fail
-pub fn checks(fix: Option<Fix>, _hint: &HintAllowRustWorkspaceCalls) -> eyre::Result<()> {
+pub fn checks(fix: Option<Fix>, _hint: &HintAllowRustWorkspaceCalls) -> TypedResult<()> {
     fmt(fix)?;
     clippy(fix)?;
     test()?;
@@ -16,7 +18,7 @@ pub fn checks(fix: Option<Fix>, _hint: &HintAllowRustWorkspaceCalls) -> eyre::Re
     Ok(())
 }
 
-fn fmt(fix: Option<Fix>) -> eyre::Result<()> {
+fn fmt(fix: Option<Fix>) -> TypedResult<()> {
     if fix.is_none() {
         // no fix = printing list
         eprintln!("Outstanding cargo fmt files:");
@@ -39,12 +41,12 @@ fn fmt(fix: Option<Fix>) -> eyre::Result<()> {
     }
 
     if !status.success() {
-        eyre::bail!("cargo fmt failed");
+        crate::bail!("cargo fmt failed")
     }
     Ok(())
 }
 
-fn clippy(fix: Option<Fix>) -> eyre::Result<()> {
+fn clippy(fix: Option<Fix>) -> TypedResult<()> {
     run_cargo(|c| {
         c.args([
             "clippy",
@@ -59,9 +61,9 @@ fn clippy(fix: Option<Fix>) -> eyre::Result<()> {
         c
     })
 }
-fn test() -> eyre::Result<()> {
+fn test() -> TypedResult<()> {
     run_cargo(|c| c.args(["test", "--workspace", "--color", "always"]))
 }
-fn doc() -> eyre::Result<()> {
+fn doc() -> TypedResult<()> {
     run_cargo(|c| c.args(["doc", "--workspace", "--no-deps", "--color", "always"]))
 }

@@ -3,7 +3,7 @@
 //! [`cargo-xtask`](https://github.com/matklad/cargo-xtask/) template
 
 use xtask::spigot_visual::HintAllowRustWorkspaceCalls;
-use xtask::{Fix, WriteOutput};
+use xtask::{Fix, TypedResult, WriteOutput};
 
 const HELP_TEXT: &str = "Tasks:
 
@@ -14,6 +14,10 @@ vlc                     runs VLC with required arguments for the web interface
 ";
 
 fn main() -> eyre::Result<()> {
+    #[expect(clippy::redundant_closure_for_method_calls)]
+    main_inner().map_err(|e| e.into_eyre_in_final_main_error_report_location())
+}
+fn main_inner() -> TypedResult<()> {
     let mut args = std::env::args().skip(1);
     let task = args.next();
     match task.as_deref() {
@@ -26,7 +30,7 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+fn all_checks(mut args: impl Iterator<Item = String>) -> TypedResult<()> {
     let bail_unknown = |arg| eyre::eyre!("unknown checks argument: {arg:?}");
     let fix = args
         .next()
@@ -40,7 +44,7 @@ fn all_checks(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         .transpose()?;
 
     if let Some(extra) = args.next() {
-        return Err(bail_unknown(extra));
+        return Err(bail_unknown(extra).into());
     }
 
     let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
