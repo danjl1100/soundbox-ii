@@ -76,12 +76,15 @@ impl Glitch {
     ) -> usize {
         match self {
             Glitch::DropRequest => 1,
-            Glitch::DelayRequest => match change {
-                // delay is likely to repeat actions
-                ArbChange::PlaybackMode { .. } => 2,
-                // includes playback mode, above
-                ArbChange::PlaylistSet { items: _ } => 2,
-            },
+            Glitch::DelayRequest => {
+                #[expect(clippy::match_same_arms)]
+                match change {
+                    // delay is likely to repeat actions
+                    ArbChange::PlaybackMode { .. } => 2,
+                    // includes playback mode, above
+                    ArbChange::PlaylistSet { items: _ } => 2,
+                }
+            }
         }
     }
 }

@@ -1,8 +1,9 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Logic for the `xtask` functionality
 
 use self::run_cmd::run_cmd;
-use self::status_cmd::{SpawnFail, status_cmd};
+use self::status_cmd::status_cmd;
+pub use self::status_cmd::{SpawnError, SpawnFail};
 pub use self::typed_err::{TypedErr, TypedResult};
 use std::{
     path::{Path, PathBuf},
@@ -136,9 +137,30 @@ mod run_cmd {
     }
 }
 
+struct DisplayCommand<'a>(&'a Command);
+impl std::fmt::Display for DisplayCommand<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(command) = self;
+
+        let program = command.get_program();
+        let args = std::fmt::from_fn(|f| f.debug_list().entries(command.get_args()).finish());
+
+        #[expect(clippy::unnecessary_debug_formatting)]
+        write!(f, "{program:?} with args {args:?}",)?;
+        if let Some(dir) = command.get_current_dir() {
+            write!(f, " in {}", dir.display())?;
+        }
+        Ok(())
+    }
+}
+fn dbg_command_run(command: &Command) {
+    eprintln!("--> {}", DisplayCommand(command));
+}
+
 mod status_cmd {
     //! Low-level execution of commands
 
+    use crate::{DisplayCommand, dbg_command_run};
     use std::process::{Command, ExitStatus};
 
     /// Runs the specified command and returns the [`ExitStatus`]
@@ -151,6 +173,8 @@ mod status_cmd {
     ) -> Result<ExitStatus, SpawnFail> {
         let mut command = Command::new(cmd);
         args_fn(&mut command);
+        dbg_command_run(&command);
+
         command.status().map_err(|source| {
             // dbg!(command);
 
@@ -160,7 +184,7 @@ mod status_cmd {
         })
     }
 
-    /// Wrapper around [`Error`] that will not easily collapse into [`eyre::Error`], until the
+    /// Wrapper around [`SpawnError`] that will not easily collapse into [`eyre::Error`], until the
     /// awkwardly named call to [`Self::into_eyre_in_final_main_error_report_location`]
     ///
     /// NOTE: The distinction (not collapsing this error into [`eyre::Error`] immediately) is
@@ -168,6 +192,8 @@ mod status_cmd {
     #[derive(Debug)]
     pub struct SpawnFail(eyre::Error);
     impl SpawnFail {
+        /// Extracts the [`eyre::Error`], meant to be called only in the final report location
+        /// to avoid collapsing [`SpawnFail`] errors into generic [`eyre::Error`]s
         pub fn into_eyre_in_final_main_error_report_location(self) -> eyre::Error {
             let Self(inner) = self;
             inner
@@ -189,17 +215,7 @@ mod status_cmd {
     impl std::fmt::Display for SpawnError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let Self { source: _, command } = self;
-            #[expect(clippy::unnecessary_debug_formatting)]
-            write!(
-                f,
-                "failed to run {program:?} with args {args:?}",
-                program = command.get_program(),
-                args = command.get_args(),
-            )?;
-            if let Some(dir) = command.get_current_dir() {
-                write!(f, " in {}", dir.display())?;
-            }
-            Ok(())
+            write!(f, "failed to run {}", DisplayCommand(command))
         }
     }
 }
