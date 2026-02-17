@@ -1,9 +1,8 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Injects imperfections between the `vlc-http` logic and the simulated VLC instance
 
 use self::alphanum_string::AlphanumString;
 use self::arb_repeat_mode::ArbRepeatMode;
-use self::ascii_string::AsciiString;
 use self::model_endpoint_caller::ModelEndpointCaller;
 
 use eyre::Context as _;
@@ -188,7 +187,7 @@ mod model_endpoint_caller {
                         endpoint: old,
                     })
                     .map_err(make_err)?;
-            };
+            }
 
             let request = if let Some(glitch) = glitch_source.next().flatten() {
                 const PATH_STATUS_JSON: &str = "/requests/status.json";
@@ -465,7 +464,7 @@ fn init_tracing() {
             .with(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     });
-    *ONCE
+    *ONCE;
 }
 
 #[test]

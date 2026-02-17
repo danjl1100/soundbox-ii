@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Pushes tracks from `beet` to VLC, with a minimal (read "nonexistent") user interface
 //!
@@ -100,7 +100,7 @@ fn main() -> eyre::Result<()> {
         publish_id_file,
     } = config_file;
 
-    let now_playing_observer = move |item: &BeetItem| {
+    let mut now_playing_observer = move |item: &BeetItem| {
         let beet_id = item.get_beet_id();
         let path = item.get_path().as_str();
 
@@ -117,8 +117,7 @@ fn main() -> eyre::Result<()> {
     let rng = &mut rand::thread_rng();
     let spigot = setup_spigot(&script)?;
 
-    let mut pusher =
-        BeetPusher::new(rng, spigot, base_url).set_now_playing_observer(now_playing_observer);
+    let mut pusher = BeetPusher::new(rng, spigot, base_url);
     // let mut client_state = vlc_http::ClientState::new();
 
     // TODO add a "determined holder" concept, to make it easy to:
@@ -129,7 +128,7 @@ fn main() -> eyre::Result<()> {
     // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
     loop {
         pusher.fill_determined()?;
-        pusher.push_playlist_update(&mut http_runner)?;
+        pusher.push_playlist_update(&mut http_runner, Some(&mut now_playing_observer))?;
 
         // let action = pusher.get_playlist_update();
         // let update = pusher.complete_plan(action, &mut http_runner)?;

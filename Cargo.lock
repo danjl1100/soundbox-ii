@@ -120,6 +120,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "urlencoding",
  "vlc-http",
 ]
 

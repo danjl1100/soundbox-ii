@@ -1,22 +1,22 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Utilities for testing the VLC HTTP interface
 
 /// Model of a VLC client instance, receiving raw commands from HTTP
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Model {
-    items_created: u32,
+    items_created: u16,
     items: Vec<Item>,
     repeat_mode: RepeatMode,
     is_random: bool,
     art_endpoints: Vec<String>,
-    current_item_id: Option<(u16, PlayState)>,
+    current_item_id: Option<(i32, PlayState)>,
 }
 /// Serializable representation of [`Model`]
 #[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename = "Model")]
 pub struct ModelJson<'a> {
     #[serde(skip)]
-    items_created: u32,
+    items_created: u16,
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     #[serde(serialize_with = "serialize_items_slice")]
     items: std::borrow::Cow<'a, [Item]>,
@@ -29,7 +29,7 @@ pub struct ModelJson<'a> {
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     art_endpoints: std::borrow::Cow<'a, [String]>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    current_item_id: Option<(u16, PlayState)>,
+    current_item_id: Option<(i32, PlayState)>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 enum RepeatMode {
@@ -39,15 +39,17 @@ enum RepeatMode {
     RepeatOne,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-enum PlayState {
+#[expect(missing_docs)]
+pub enum PlayState {
     Playing,
     Paused,
 }
 /// Item in the [`Model`] playlist
 #[derive(Clone, PartialEq, Eq)]
+#[expect(missing_docs)]
 pub struct Item {
-    id: u32,
-    uri: String,
+    pub id: i32,
+    pub uri: String,
 }
 
 impl Model {
@@ -65,6 +67,16 @@ impl Model {
             self.push_uri(item.to_string());
         }
         Ok(())
+    }
+
+    /// Returns the current items
+    #[must_use]
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+    /// Sets the current playing item
+    pub fn set_current_playing(&mut self, item_id: i32, state: PlayState) {
+        self.current_item_id = Some((item_id, state));
     }
 
     /// Returns a view of the current playlist items
@@ -122,7 +134,7 @@ impl ModelJson<'_> {
 /// Error from [`Model::initialize_items`]
 #[derive(Debug)]
 pub struct ItemsCreatedError {
-    items_created: u32,
+    items_created: u16,
 }
 impl std::error::Error for ItemsCreatedError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
@@ -348,8 +360,9 @@ impl Model {
         Ok(self.get_playlist_info())
     }
     fn push_uri(&mut self, uri: String) {
-        let id = self.items_created;
-        self.items_created += 1;
+        let items_created: u16 = self.items_created;
+        let id: i32 = items_created.into();
+        self.items_created = self.items_created.checked_add(1).expect("max URIs pushed");
 
         self.items.push(Item { id, uri });
     }
@@ -358,8 +371,8 @@ impl Model {
             return Err(RequestErrorKind::invalid_args("delete", args));
         };
 
-        let id: u32 = val
-            .parse::<u32>()
+        let id: i32 = val
+            .parse::<i32>()
             .map_err(|source| RequestErrorKind::InvalidId {
                 id_str: val.to_string(),
                 source,
@@ -374,8 +387,8 @@ impl Model {
             return Err(RequestErrorKind::invalid_args("play", args));
         };
 
-        let id: u16 = val
-            .parse::<u16>()
+        let id: i32 = val
+            .parse::<i32>()
             .map_err(|source| RequestErrorKind::InvalidId {
                 id_str: val.to_string(),
                 source,
@@ -467,7 +480,7 @@ impl Model {
             "random": self.is_random,
             "apiversion":3,
             "version":"3.0.20 Vetinari",
-            "currentplid":self.current_item_id.map_or(-1, |(id, _)| i32::from(id)),
+            "currentplid":self.current_item_id.map_or(-1, |(id, _)| id),
             "position":0.0,
             "volume":256,
             "state":"playing", // TODO: paused, stopped, playing test them all!

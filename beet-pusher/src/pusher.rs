@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::{BaseUrl, BeetItem, Determined};
 use bucket_spigot::Network;
 
@@ -22,17 +23,8 @@ where
     }
 }
 
-pub enum NoObserver {}
-impl NowPlayingObserver for NoObserver {
-    type Error = std::convert::Infallible;
-
-    fn now_playing(&mut self, _: &BeetItem) -> Result<(), Self::Error> {
-        match *self {}
-    }
-}
-
 /// Sends [`bucket_spigot::Network`] items to VLC
-pub struct BeetPusher<'a, R, T = NoObserver> {
+pub struct BeetPusher<'a, R> {
     spigot: bucket_spigot::Network<BeetItem, String>,
     rng: &'a mut R,
     client_state: vlc_http::ClientState,
@@ -40,7 +32,6 @@ pub struct BeetPusher<'a, R, T = NoObserver> {
     // http_runner: vlc_http::http_runner::ureq::HttpRunner,
     determined: Determined<BeetItem>,
     config: Config,
-    now_playing_observer: Option<T>,
 }
 // struct Client {
 //     state: vlc_http::ClientState,
@@ -54,7 +45,7 @@ pub struct BeetPusher<'a, R, T = NoObserver> {
 struct Config {
     base_url: BaseUrl,
 }
-impl<'a, R> BeetPusher<'a, R, NoObserver>
+impl<'a, R> BeetPusher<'a, R>
 where
     R: rand::RngCore,
 {
@@ -75,37 +66,10 @@ where
             // http_runner,
             determined: Determined::default(),
             config: Config { base_url },
-            now_playing_observer: None,
         }
     }
 }
-impl<'a, R, T> BeetPusher<'a, R, T> {
-    /// Replaces the [`NowPlayingObserver`]
-    pub fn set_now_playing_observer<U>(self, now_playing_observer: U) -> BeetPusher<'a, R, U>
-    where
-        U: NowPlayingObserver,
-    {
-        let Self {
-            spigot,
-            rng,
-            client_state,
-            // client,
-            // http_runner,
-            determined,
-            config,
-            now_playing_observer: _, // replace
-        } = self;
-        BeetPusher {
-            spigot,
-            rng,
-            client_state,
-            // client,
-            // http_runner,
-            determined,
-            config,
-            now_playing_observer: Some(now_playing_observer),
-        }
-    }
+impl<R> BeetPusher<'_, R> {
     /// Allows mutation of the inner [`Network`]
     pub fn get_spigot_mut(&mut self) -> &mut Network<BeetItem, String> {
         &mut self.spigot
@@ -119,7 +83,7 @@ mod sync {
     type ExhaustResult<'a, T, E> =
         Result<<T as vlc_http::Plan>::Output<'a>, vlc_http::sync::Error<T, E>>;
 
-    impl<R, T> BeetPusher<'_, R, T>
+    impl<R> BeetPusher<'_, R>
     where
         R: rand::RngCore,
     {
@@ -154,7 +118,7 @@ mod fill_determined {
     use crate::BeetItem;
     use tracing::debug;
 
-    impl<R: rand::RngCore, T> BeetPusher<'_, R, T> {
+    impl<R: rand::RngCore> BeetPusher<'_, R> {
         /// Updates the determined playlist items
         ///
         /// # Errors
@@ -277,21 +241,20 @@ mod push_playlist {
     //     }
     // }
 
-    impl<R: rand::RngCore, T> BeetPusher<'_, R, T>
-    where
-        T: NowPlayingObserver,
-    {
+    impl<R: rand::RngCore> BeetPusher<'_, R> {
         /// Pushes the determined track list to VLC and notifies the `now_playing_observer`
         /// for the current track if it changed
         ///
         /// # Errors
         /// Returns an error if updating the determined list fails, or the [`NowPlayingObserver`]
         /// fails (if any)
-        pub fn push_playlist_update<E>(
+        pub fn push_playlist_update<T, E>(
             &mut self,
             http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
+            now_playing_observer: Option<&mut T>,
         ) -> Result<(), Error<T::Error, E>>
         where
+            T: NowPlayingObserver,
             E: std::error::Error + 'static,
         {
             let make_err = |kind| Error { kind };
@@ -316,7 +279,7 @@ mod push_playlist {
                     .determined
                     .modify(&self.config.base_url, |determined| {
                         let removed = determined.splice(0..excess_at_start, std::iter::empty());
-                        if let Some(observer) = &mut self.now_playing_observer {
+                        if let Some(observer) = now_playing_observer {
                             for item in removed {
                                 // TODO only notify of only the last one?
                                 //
@@ -373,7 +336,7 @@ mod push_playlist {
     }
 }
 
-impl<R, T> std::fmt::Debug for BeetPusher<'_, R, T> {
+impl<R> std::fmt::Debug for BeetPusher<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         struct DebugAsDisplay<T>(T);
         impl<T> std::fmt::Debug for DebugAsDisplay<T>
@@ -393,7 +356,6 @@ impl<R, T> std::fmt::Debug for BeetPusher<'_, R, T> {
             // http_runner: _,
             determined,
             config: Config { base_url },
-            now_playing_observer: _,
         } = self;
         f.debug_struct("BeetPusher")
             .field("spigot", &DebugAsDisplay(spigot.view_table_default()))

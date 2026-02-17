@@ -1,9 +1,14 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Tests the logic from fake injected beet responses up to the VLC http requests
 
 use self::expect_beet::ExpectBeet;
 use self::expect_http::ExpectHttp;
 use beet_pusher::{BeetItem, BeetPusher, NowPlayingObserver};
-use std::sync::{Arc, Mutex};
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
+use vlc_http::testing::{Model, PlayState};
 
 struct PanicRng;
 impl rand::RngCore for PanicRng {
@@ -87,42 +92,92 @@ mod expect_beet {
 }
 
 mod expect_http {
-    use vlc_http::sync::EndpointRequestor;
+    use vlc_http::{
+        sync::EndpointRequestor,
+        testing::{Model, ModelResponse},
+    };
 
-    pub struct ExpectHttp {}
-    impl ExpectHttp {
-        pub fn new() -> Self {
-            Self {}
+    pub struct ExpectHttp<'a> {
+        model: &'a mut Model,
+        requests: Vec<String>,
+    }
+    impl<'a> ExpectHttp<'a> {
+        pub fn new(model: &'a mut Model) -> Self {
+            Self {
+                model,
+                requests: vec![],
+            }
         }
-        pub fn assert_empty(self) {
-            todo!()
+        #[track_caller]
+        pub fn assert_requests(self, expected_requests: &[&str]) {
+            let Self { model: _, requests } = self;
+            assert_eq!(requests, expected_requests);
         }
     }
-    impl EndpointRequestor for ExpectHttp {
-        type Error = std::convert::Infallible;
+    impl EndpointRequestor for ExpectHttp<'_> {
+        type Error = vlc_http::testing::RequestError;
 
         fn request(
             &mut self,
             endpoint: vlc_http::Endpoint,
         ) -> Result<vlc_http::Response, Self::Error> {
-            dbg!(endpoint);
-            todo!()
+            let Self { model, requests } = self;
+
+            let request = endpoint.get_path_and_query();
+            requests.push(request.to_string());
+
+            let response = model.request(request)?;
+            let response = match response {
+                ModelResponse::Json(response) => response,
+                ModelResponse::Art => unimplemented!(),
+            };
+            let response = vlc_http::Response::from_slice(response.as_bytes())
+                .expect("Model gives valid response");
+            Ok(response)
         }
     }
 }
 
-#[derive(Clone, Debug, Default)]
+struct TestBeetItems<'a>(std::borrow::Cow<'a, [BeetItem]>);
+impl TestBeetItems<'_> {
+    fn as_slice(&self) -> &[BeetItem] {
+        &self.0
+    }
+}
+impl<'a, const N: usize> From<&'a [BeetItem; N]> for TestBeetItems<'a> {
+    fn from(value: &'a [BeetItem; N]) -> Self {
+        (&value[..]).into()
+    }
+}
+impl<'a> From<&'a [BeetItem]> for TestBeetItems<'a> {
+    fn from(value: &'a [BeetItem]) -> Self {
+        Self(value.into())
+    }
+}
+impl FromStr for TestBeetItems<'static> {
+    type Err = <BeetItem as FromStr>::Err;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let items = s
+            .lines()
+            .map(str::parse)
+            .collect::<Result<Vec<BeetItem>, _>>()?;
+        Ok(Self(items.into()))
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct NowPlaying {
+    // TODO change to Vec<BeetItem>
     items: Arc<Mutex<Vec<BeetItem>>>,
 }
 impl NowPlaying {
     #[track_caller]
-    fn assert_and_clear(&self, expected: &str) {
-        let expected = expected
-            .lines()
-            .map(str::parse)
-            .collect::<Result<Vec<BeetItem>, _>>()
-            .expect("valid expected beet items string");
+    fn assert_and_clear<'a, T>(&self, expected: T)
+    where
+        T: Into<TestBeetItems<'a>>,
+    {
+        let expected = expected.into();
+        let expected = expected.as_slice();
 
         let mut items = self.items.lock().expect("mutex lock");
         assert_eq!(*items, expected);
@@ -138,21 +193,17 @@ impl NowPlayingObserver for NowPlaying {
     }
 }
 
+/// Returns a [`BeetPusher`] that panics if requesting randomization (useful for tests)
 fn new_test_beet_pusher(
     spigot: bucket_spigot::Network<BeetItem, String>,
-) -> (BeetPusher<'static, PanicRng, NowPlaying>, NowPlaying) {
+) -> BeetPusher<'static, PanicRng> {
     let base_url = beet_pusher::BaseUrl("file://host/".parse().expect("valid URL"));
     let rng = Box::leak(Box::new(PanicRng));
 
-    let now_playing = NowPlaying::default();
-    let pusher =
-        BeetPusher::new(rng, spigot, base_url).set_now_playing_observer(now_playing.clone());
-
-    (pusher, now_playing)
+    BeetPusher::new(rng, spigot, base_url)
 }
 
 #[test]
-#[ignore = "TODO - after vlc_http test runner is established"]
 fn queries_beet_for_buckets() -> eyre::Result<()> {
     let spigot = bucket_spigot::Network::<BeetItem, String>::from_commands_str_whitespace(
         "
@@ -161,34 +212,74 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
     )
     .expect("valid script");
 
-    let (mut pusher, now_playing) = new_test_beet_pusher(spigot);
+    let beet_items_str = "1=first
+2=second
+3=third";
+
+    let file_urls = [
+        //
+        "file://host/first",
+        "file://host/second",
+        "file://host/third",
+    ];
+
+    let mut pusher = new_test_beet_pusher(spigot);
+    let mut now_playing = NowPlaying::default();
+    let mut model = Model::default();
 
     {
-        let runner = ExpectBeet::new(&[(
-            &["ls", "-f", "="],
-            "1=first
-2=second",
-        )]);
+        let runner = ExpectBeet::new(&[(&["ls", "-f", "="], beet_items_str)]);
         pusher.fill_buckets(&runner)?;
         runner.assert_empty();
     }
 
-    // TODO: when is this necessary???
-    // pusher.fill_determined()?;
+    let beet_items: TestBeetItems = beet_items_str.parse().unwrap();
+    let beet_items = beet_items.as_slice();
 
-    {
-        let mut runner = ExpectHttp::new();
-        pusher.push_playlist_update(&mut runner)?;
-        runner.assert_empty();
+    for (loop_index, file_url) in file_urls.iter().copied().enumerate() {
+        let file_url_encoded = urlencoding::encode(file_url).to_string();
+
+        let expected_beet_items = &beet_items[loop_index..=loop_index];
+
+        pusher.fill_determined()?;
+
+        {
+            let mut runner = ExpectHttp::new(&mut model);
+            pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+            runner.assert_requests(&[
+                "/requests/status.json",
+                "/requests/playlist.json",
+                &format!("/requests/playlist.json?command=in_enqueue&input={file_url_encoded}"),
+            ]);
+            now_playing.assert_and_clear(&[]);
+        }
+
+        let items = model.get_items();
+        let Some(set_playing_id) = items
+            .iter()
+            .find_map(|item| (item.uri == file_url).then_some(item.id))
+        else {
+            panic!("current file_url {file_url:?} not found in model items {items:?}");
+        };
+
+        let item_urls: Vec<_> = items.iter().map(|item| &item.uri).collect();
+        assert_eq!(&item_urls, &file_urls[0..=loop_index]);
+
+        model.set_current_playing(set_playing_id, PlayState::Playing);
+
+        {
+            let mut runner = ExpectHttp::new(&mut model);
+            pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+            runner.assert_requests(&[
+                // rustfmt hint
+                "/requests/status.json",
+                "/requests/playlist.json",
+            ]);
+            now_playing.assert_and_clear(expected_beet_items);
+        }
     }
 
-    now_playing.assert_and_clear(
-        "1=first
-2=secondd
-3=S.I.C.",
-    );
-
-    todo!()
+    Ok(())
 }
 
 #[test]
