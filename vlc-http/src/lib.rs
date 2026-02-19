@@ -31,30 +31,63 @@
 //!
 //! The illustration below shows the general flow for an application using this library:
 //!
+// see `vlc-http/diagram/overview.mono` for the <monosketch.io> diagram source
 //! ```text
-//!
-//!    (*) START: application wants to control or query VLC
-//!     v
-//!   ----------------
-//!  | 0. ClientState |
-//!   ----------------
-//!     v
-//!     v < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < <
-//!     v                                                                             ^
-//!   ---------      ------------      -------------                                  ^
-//!  | 1. Plan | -> | 2. Command | -> | 3. Endpoint |                                 ^
-//!   ---------  |   ------------      -------------                                  ^
-//!             [OR]                         v                                        ^
-//!              |                          (*) application sends HTTP request        ^
-//!              -> (*) Query result         v                                        ^
-//!                                       [ VLC ]                                     ^
-//!                                          v                                        ^
-//!                                         (*) application receives HTTP response    ^
-//!                                          v                                        ^
-//!                                    -------------      --------------------        ^
-//!                                   | 4. Response | -> | update ClientState | -> repeat
-//!                                    -------------      --------------------
+//! ┌─┐
+//! │*│ START: application wants to control or query VLC
+//! └┬┘
+//!  │
+//! ┌▼──────────────┐
+//! │0. ClientState │
+//! └┬──────────────┘
+//!  │
+//!  │◀──────────────────────────────────────────────────────────────────────────────────┐
+//!  │                                                                                   │
+//!  │ ┌─────────┐    ┌────────────┐   ┌─────────────┐                                   │
+//!  └─▶ 1. Plan ├─┬──▶ 2. Command ├───▶ 3. Endpoint │                                   │
+//!    └─────────┘ │  └────────────┘   └─┬───────────┘                                   │
+//!                OR                    │                                               │
+//!                │                    ┌▼┐                                              │
+//!                └──▶Query result     │*│ application sends HTTP request               │
+//!                                     └┬┘                                              │
+//!                                      │                                               │
+//!                                   ┌──▼──┐                                            │
+//!                                   │ VLC │                                            │
+//!                                   └──┬──┘                                            │
+//!                                      │                                               │
+//!                                     ┌▼┐                                              │
+//!                                     │*│ application receives HTTP response           │
+//!                                     └┬┘                                              │
+//!                                      │                                               │
+//!                                      │ ┌─────────────┐   ┌────────────────────┐      │
+//!                                      └─▶ 4. Response ├───▶ update ClientState ├──▶ repeat
+//!                                        └─────────────┘   └────────────────────┘
 //! ```
+//!
+// ```text
+//
+//    (*) START: application wants to control or query VLC
+//     v
+//   ----------------
+//  | 0. ClientState |
+//   ----------------
+//     v
+//     v < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < < <
+//     v                                                                             ^
+//   ---------      ------------      -------------                                  ^
+//  | 1. Plan | -> | 2. Command | -> | 3. Endpoint |                                 ^
+//   ---------  |   ------------      -------------                                  ^
+//             [OR]                         v                                        ^
+//              |                          (*) application sends HTTP request        ^
+//              -> (*) Query result         v                                        ^
+//                                       [ VLC ]                                     ^
+//                                          v                                        ^
+//                                         (*) application receives HTTP response    ^
+//                                          v                                        ^
+//                                    -------------      --------------------        ^
+//                                   | 4. Response | -> | update ClientState | -> repeat
+//                                    -------------      --------------------
+// ```
 //!
 //! The components are described in detail below:
 //!
