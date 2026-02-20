@@ -14,7 +14,6 @@ impl<R> BeetPusher<'_, R> {
     ///
     /// # Errors
     /// Returns an error if the beet query fails or modifying the network fails
-    #[allow(clippy::missing_panics_doc)]
     pub fn fill_buckets<U: BeetRunner>(&mut self, runner: &U) -> Result<(), FillError<U::Error>> {
         fill_buckets(runner, self.get_spigot_mut())
     }
@@ -24,7 +23,7 @@ impl<R> BeetPusher<'_, R> {
 ///
 /// # Errors
 /// Returns an error if the beet query fails or modifying the network fails
-#[allow(clippy::missing_panics_doc)]
+#[expect(clippy::missing_panics_doc)]
 pub fn fill_buckets<U: BeetRunner>(
     runner: &U,
     spigot: &mut bucket_spigot::Network<BeetItem, String>,

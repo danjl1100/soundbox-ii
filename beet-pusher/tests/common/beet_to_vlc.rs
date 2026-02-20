@@ -4,10 +4,7 @@
 use self::expect_beet::ExpectBeet;
 use self::expect_http::ExpectHttp;
 use beet_pusher::{BeetItem, BeetPusher, NowPlayingObserver};
-use std::{
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::str::FromStr;
 use vlc_http::testing::{Model, PlayState};
 
 struct PanicRng;
@@ -167,28 +164,25 @@ impl FromStr for TestBeetItems<'static> {
 
 #[derive(Debug, Default)]
 pub struct NowPlaying {
-    // TODO change to Vec<BeetItem>
-    items: Arc<Mutex<Vec<BeetItem>>>,
+    items: Vec<BeetItem>,
 }
 impl NowPlaying {
     #[track_caller]
-    fn assert_and_clear<'a, T>(&self, expected: T)
+    fn assert_playing<'a, T>(self, expected: T)
     where
         T: Into<TestBeetItems<'a>>,
     {
         let expected = expected.into();
         let expected = expected.as_slice();
 
-        let mut items = self.items.lock().expect("mutex lock");
-        assert_eq!(*items, expected);
-        items.clear();
+        assert_eq!(self.items, expected);
     }
 }
 impl NowPlayingObserver for NowPlaying {
     type Error = std::convert::Infallible;
 
     fn now_playing(&mut self, item: &BeetItem) -> Result<(), Self::Error> {
-        self.items.lock().expect("mutex lock").push(item.clone());
+        self.items.push(item.clone());
         Ok(())
     }
 }
@@ -223,9 +217,8 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
         "file://host/third",
     ];
 
-    let mut pusher = new_test_beet_pusher(spigot);
-    let mut now_playing = NowPlaying::default();
-    let mut model = Model::default();
+    let pusher = &mut new_test_beet_pusher(spigot);
+    let model = &mut Model::default();
 
     {
         let runner = ExpectBeet::new(&[(&["ls", "-f", "="], beet_items_str)]);
@@ -244,14 +237,13 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
         pusher.fill_determined()?;
 
         {
-            let mut runner = ExpectHttp::new(&mut model);
-            pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+            let (runner, now_playing) = push_playlist_update(pusher, model)?;
             runner.assert_requests(&[
                 "/requests/status.json",
                 "/requests/playlist.json",
                 &format!("/requests/playlist.json?command=in_enqueue&input={file_url_encoded}"),
             ]);
-            now_playing.assert_and_clear(&[]);
+            now_playing.assert_playing(&[]);
         }
 
         let items = model.get_items();
@@ -268,18 +260,27 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
         model.set_current_playing(set_playing_id, PlayState::Playing);
 
         {
-            let mut runner = ExpectHttp::new(&mut model);
-            pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+            let (runner, now_playing) = push_playlist_update(pusher, model)?;
             runner.assert_requests(&[
                 // rustfmt hint
                 "/requests/status.json",
                 "/requests/playlist.json",
             ]);
-            now_playing.assert_and_clear(expected_beet_items);
+            now_playing.assert_playing(expected_beet_items);
         }
     }
 
     Ok(())
+}
+
+fn push_playlist_update<'a>(
+    pusher: &mut BeetPusher<'_, PanicRng>,
+    model: &'a mut Model,
+) -> eyre::Result<(ExpectHttp<'a>, NowPlaying)> {
+    let mut runner = ExpectHttp::new(model);
+    let mut now_playing = NowPlaying::default();
+    pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+    Ok((runner, now_playing))
 }
 
 #[test]

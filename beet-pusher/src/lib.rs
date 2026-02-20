@@ -1,4 +1,4 @@
-//! Implements `beet` <--> `VLC` logic using a [`bucket_spigot::Network`]:
+//! [`BeetPusher`] implements `beet` <--> `VLC` logic using a [`bucket_spigot::Network`]:
 //! 1. queryies [`BeetItem`]s from beet to fill a [`bucket_spigot::Network`]
 //! 2. pushes items from the spigot to [`vlc_http`]
 
