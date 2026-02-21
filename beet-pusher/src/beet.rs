@@ -10,22 +10,25 @@ mod path;
 mod query;
 
 impl<R> BeetPusher<'_, R> {
-    /// Fills any pending buckets in the spigot using beet
+    /// Fills any pending buckets in the inner spigot using the specified [`BeetRunner`]
     ///
     /// # Errors
     /// Returns an error if the beet query fails or modifying the network fails
-    pub fn fill_buckets<U: BeetRunner>(&mut self, runner: &U) -> Result<(), FillError<U::Error>> {
+    pub fn fill_buckets<U: BeetRunner>(
+        &mut self,
+        runner: &mut U,
+    ) -> Result<(), FillError<U::Error>> {
         fill_buckets(runner, self.get_spigot_mut())
     }
 }
 
-/// Fills any pending buckets in the spigot using beet
+/// Fills any pending buckets in the spigot using the specified [`BeetRunner`]
 ///
 /// # Errors
 /// Returns an error if the beet query fails or modifying the network fails
 #[expect(clippy::missing_panics_doc)]
 pub fn fill_buckets<U: BeetRunner>(
-    runner: &U,
+    runner: &mut U,
     spigot: &mut bucket_spigot::Network<BeetItem, String>,
 ) -> Result<(), FillError<U::Error>> {
     use bucket_spigot::{ModifyCmd, path::PathRef};

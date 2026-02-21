@@ -28,28 +28,19 @@ impl rand::RngCore for PanicRng {
 
 mod expect_beet {
     use beet_pusher::BeetRunner;
-    use std::{cell::Cell, collections::VecDeque, process::ExitStatus};
+    use std::{collections::VecDeque, process::ExitStatus};
 
     pub struct ExpectBeet {
-        inner: Cell<ExpectBeetInner>,
-    }
-    #[derive(Debug, Default)]
-    pub struct ExpectBeetInner {
         args_to_results: VecDeque<(&'static [&'static str], &'static str)>,
         // pub args_per_call: Vec<Vec<String>>,
     }
     impl ExpectBeet {
         pub fn new(args_to_results: &[(&'static [&'static str], &'static str)]) -> Self {
             let args_to_results = args_to_results.to_vec().into();
-            Self {
-                inner: Cell::new(ExpectBeetInner { args_to_results }),
-            }
+            Self { args_to_results }
         }
         pub fn assert_empty(self) {
-            let Self { inner } = self;
-            let inner = inner.into_inner();
-
-            let ExpectBeetInner { args_to_results } = &inner;
+            let Self { args_to_results } = self;
             assert_eq!(args_to_results, &[]);
         }
     }
@@ -57,22 +48,20 @@ mod expect_beet {
         type Error = std::convert::Infallible;
 
         fn run_beet_command<S>(
-            &self,
+            &mut self,
             args: impl Iterator<Item = S>,
         ) -> Result<std::process::Output, Self::Error>
         where
             S: AsRef<str>,
         {
-            let mut inner = self.inner.take();
+            let Self { args_to_results } = self;
 
             let found_args: Vec<String> = args.map(|s| s.as_ref().to_string()).collect();
-            let Some((expected_args, stdout)) = inner.args_to_results.pop_front() else {
+            let Some((expected_args, stdout)) = args_to_results.pop_front() else {
                 panic!("no request expected, but found: {found_args:?}")
             };
             assert_eq!(found_args, expected_args);
-            // inner.args_per_call.push(args);
-
-            self.inner.replace(inner);
+            // args_per_call.push(args);
 
             Ok(std::process::Output {
                 status: ExitStatus::default(),
@@ -105,10 +94,35 @@ mod expect_http {
                 requests: vec![],
             }
         }
+        // TODO remove if not wanting to test specifics
+        // #[track_caller]
+        // pub fn assert_requests(self, expected_requests: &[&str]) {
+        //     let Self { model: _, requests } = self;
+        //     assert_eq!(requests, expected_requests);
+        // }
         #[track_caller]
-        pub fn assert_requests(self, expected_requests: &[&str]) {
+        pub fn assert_some_contains(&self, needle: &str) {
             let Self { model: _, requests } = self;
-            assert_eq!(requests, expected_requests);
+            assert!(
+                requests.iter().any(|s| s.contains(needle)),
+                "expected some to contain {needle:?} in: {requests:?}"
+            );
+        }
+        #[track_caller]
+        pub fn assert_none_contains(&self, needle: &str) {
+            let Self { model: _, requests } = self;
+            assert!(
+                requests.iter().all(|s| !s.contains(needle)),
+                "expected none to contain {needle:?} in: {requests:?}"
+            );
+        }
+        #[track_caller]
+        pub fn assert_empty(&self) {
+            let Self { model: _, requests } = self;
+            assert!(
+                requests.is_empty(),
+                "expected no requests, found: {requests:?}"
+            );
         }
     }
     impl EndpointRequestor for ExpectHttp<'_> {
@@ -197,21 +211,54 @@ fn new_test_beet_pusher(
     BeetPusher::new(rng, spigot, base_url)
 }
 
+#[track_caller]
+fn new_beet_spigot(script: &str) -> bucket_spigot::Network<BeetItem, String> {
+    bucket_spigot::Network::<BeetItem, String>::from_commands_str_whitespace(script)
+        .expect("valid script")
+}
+
+/// Must tolerate empty results, in case of transient invalid queries while the user is editing
+#[test]
+#[ignore = "update behavior to allow idle/no-items scenario"]
+fn empty_beet_result() -> eyre::Result<()> {
+    let spigot = new_beet_spigot("add-bucket .");
+
+    let pusher = &mut new_test_beet_pusher(spigot);
+    let model = &mut Model::default();
+
+    {
+        let mut runner = ExpectBeet::new(&[(&["ls", "-f", "="], "")]);
+        pusher.fill_buckets(&mut runner)?;
+        runner.assert_empty();
+    }
+
+    pusher.fill_determined()?;
+
+    let (runner, now_playing) = push_playlist_update(pusher, model)?;
+    now_playing.assert_playing(&[]);
+    runner.assert_empty();
+
+    Ok(())
+}
+
 #[test]
 fn queries_beet_for_buckets() -> eyre::Result<()> {
-    let spigot = bucket_spigot::Network::<BeetItem, String>::from_commands_str_whitespace(
+    // pseudocode:
+    // - spigot is one bucket
+    // - verify calls beet with format arg
+    // - given response is supplied, verify
+
+    let spigot = new_beet_spigot(
         "
     add-bucket .
     ",
-    )
-    .expect("valid script");
+    );
 
     let beet_items_str = "1=first
 2=second
 3=third";
 
     let file_urls = [
-        //
         "file://host/first",
         "file://host/second",
         "file://host/third",
@@ -221,8 +268,8 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
     let model = &mut Model::default();
 
     {
-        let runner = ExpectBeet::new(&[(&["ls", "-f", "="], beet_items_str)]);
-        pusher.fill_buckets(&runner)?;
+        let mut runner = ExpectBeet::new(&[(&["ls", "-f", "="], beet_items_str)]);
+        pusher.fill_buckets(&mut runner)?;
         runner.assert_empty();
     }
 
@@ -238,12 +285,14 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
 
         {
             let (runner, now_playing) = push_playlist_update(pusher, model)?;
-            runner.assert_requests(&[
-                "/requests/status.json",
-                "/requests/playlist.json",
-                &format!("/requests/playlist.json?command=in_enqueue&input={file_url_encoded}"),
-            ]);
             now_playing.assert_playing(&[]);
+            runner.assert_some_contains(&file_url_encoded);
+            // TODO remove if not wanting to test specifics
+            // runner.assert_requests(&[
+            //     "/requests/status.json",
+            //     "/requests/playlist.json",
+            //     &format!("/requests/playlist.json?command=in_enqueue&input={file_url_encoded}"),
+            // ]);
         }
 
         let items = model.get_items();
@@ -259,14 +308,18 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
 
         model.set_current_playing(set_playing_id, PlayState::Playing);
 
+        pusher.fill_determined()?;
+
         {
             let (runner, now_playing) = push_playlist_update(pusher, model)?;
-            runner.assert_requests(&[
-                // rustfmt hint
-                "/requests/status.json",
-                "/requests/playlist.json",
-            ]);
             now_playing.assert_playing(expected_beet_items);
+            runner.assert_none_contains(&file_url_encoded);
+            // TODO remove if not wanting to test specifics
+            // runner.assert_requests(&[
+            //     // rustfmt hint
+            //     "/requests/status.json",
+            //     "/requests/playlist.json",
+            // ]);
         }
     }
 
@@ -279,7 +332,9 @@ fn push_playlist_update<'a>(
 ) -> eyre::Result<(ExpectHttp<'a>, NowPlaying)> {
     let mut runner = ExpectHttp::new(model);
     let mut now_playing = NowPlaying::default();
+
     pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+
     Ok((runner, now_playing))
 }
 

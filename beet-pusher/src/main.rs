@@ -149,7 +149,7 @@ fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, S
     use bucket_spigot::Network;
 
     let mut spigot = Network::from_commands_str_whitespace(script)?;
-    fill_buckets(&beet_pusher::BeetCommand::default(), &mut spigot)?;
+    fill_buckets(&mut beet_pusher::BeetCommand::new_beet(), &mut spigot)?;
 
     if spigot.is_empty() {
         eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");

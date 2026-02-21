@@ -1,5 +1,5 @@
 // soundbox-ii/filter-buckets Item accumulations for sequencing *don't keep your sounds boxed up*
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! A [`Network`] provides a sequence of items, first tentatively then permanently.
 //!
@@ -599,19 +599,8 @@ mod modify_cmd_ref {
         },
     }
     impl<T, U> ModifyCmd<T, U> {
-        #[expect(missing_docs)]
+        /// Takes a reference to the inner [`Path`](`super::Path`) (if any)
         pub fn as_ref(&self) -> ModifyCmdRef<'_, T, U> {
-            self.into()
-        }
-    }
-    impl<T, U> ModifyCmdRef<'_, T, U>
-    where
-        T: Clone,
-        U: Clone,
-    {
-        #[expect(missing_docs)]
-        #[must_use]
-        pub fn to_owned(self) -> ModifyCmd<T, U> {
             self.into()
         }
     }
@@ -652,41 +641,43 @@ mod modify_cmd_ref {
             }
         }
     }
-    impl<'a, T, U> From<ModifyCmdRef<'a, T, U>> for ModifyCmd<T, U>
+    impl<T, U> ModifyCmdRef<'_, T, U>
     where
         T: Clone,
         U: Clone,
     {
-        fn from(value: ModifyCmdRef<'a, T, U>) -> Self {
-            match value {
-                ModifyCmdRef::AddBucket { parent } => Self::AddBucket {
+        /// Converts the inner [`PathRef`] to an owned path (if any)
+        #[must_use]
+        pub fn to_owned(self) -> ModifyCmd<T, U> {
+            match self {
+                Self::AddBucket { parent } => ModifyCmd::AddBucket {
                     parent: parent.to_owned(),
                 },
-                ModifyCmdRef::AddJoint { parent } => Self::AddJoint {
+                Self::AddJoint { parent } => ModifyCmd::AddJoint {
                     parent: parent.to_owned(),
                 },
-                ModifyCmdRef::DeleteEmpty { path } => Self::DeleteEmpty {
+                Self::DeleteEmpty { path } => ModifyCmd::DeleteEmpty {
                     path: path.to_owned(),
                 },
-                ModifyCmdRef::FillBucket {
+                Self::FillBucket {
                     bucket,
                     new_contents,
-                } => Self::FillBucket {
+                } => ModifyCmd::FillBucket {
                     bucket: bucket.to_owned(),
                     new_contents: new_contents.to_vec(),
                 },
-                ModifyCmdRef::SetFilters { path, new_filters } => Self::SetFilters {
+                Self::SetFilters { path, new_filters } => ModifyCmd::SetFilters {
                     path: path.to_owned(),
                     new_filters: new_filters.to_vec(),
                 },
-                ModifyCmdRef::SetWeight { path, new_weight } => Self::SetWeight {
+                Self::SetWeight { path, new_weight } => ModifyCmd::SetWeight {
                     path: path.to_owned(),
                     new_weight,
                 },
-                ModifyCmdRef::SetOrderType {
+                Self::SetOrderType {
                     path,
                     new_order_type,
-                } => Self::SetOrderType {
+                } => ModifyCmd::SetOrderType {
                     path: path.to_owned(),
                     new_order_type,
                 },

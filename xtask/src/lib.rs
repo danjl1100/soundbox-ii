@@ -100,9 +100,12 @@ mod typed_err {
 /// # Errors
 /// Returns an error if the command fails
 pub fn run_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> TypedResult<()> {
-    let status = status_cargo(args_fn)?;
+    let mut with_args = InterceptArgs::default();
+
+    let status = status_cargo(|cmd| with_args.args_fn(args_fn, cmd))?;
+
     if !status.success() {
-        crate::bail!("cargo command failed")
+        crate::bail!("cargo command failed{with_args}")
     }
     Ok(())
 }
@@ -257,4 +260,40 @@ pub fn project_root() -> PathBuf {
         .nth(1)
         .expect("CARGO_MANIFEST_DIR should have at least one ancestor")
         .to_path_buf()
+}
+
+#[derive(Default)]
+struct InterceptArgs {
+    args_opt: Option<Vec<std::ffi::OsString>>,
+}
+impl InterceptArgs {
+    fn args_fn<'a>(
+        &mut self,
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+        cmd: &'a mut Command,
+    ) -> &'a mut Command {
+        let Self { args_opt } = self;
+
+        let cmd = args_fn(cmd);
+
+        let args: Vec<_> = cmd.get_args().map(Into::into).collect();
+        args_opt.replace(args);
+
+        cmd
+    }
+}
+impl std::fmt::Display for InterceptArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { args_opt } = self;
+        let Some(args) = args_opt else {
+            // for diagnostics only, so omit info if not available
+            return Ok(());
+        };
+        write!(f, " with args:")?;
+        for arg in args {
+            #[allow(clippy::unnecessary_debug_formatting)]
+            write!(f, " {arg:?}")?;
+        }
+        Ok(())
+    }
 }

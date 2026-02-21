@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::BeetItem;
 use std::io::BufRead as _;
 use std::{borrow::Cow, process::Command};
@@ -12,7 +13,7 @@ pub trait BeetRunner: std::fmt::Debug {
     /// # Errors
     /// Returns an error if spawning or waiting for the command fails
     fn run_beet_command<S>(
-        &self,
+        &mut self,
         args: impl Iterator<Item = S>,
     ) -> Result<std::process::Output, Self::Error>
     where
@@ -24,16 +25,25 @@ pub trait BeetRunner: std::fmt::Debug {
 pub struct BeetCommand<'a> {
     cmd_name: &'a str,
 }
-impl Default for BeetCommand<'static> {
-    fn default() -> Self {
-        Self { cmd_name: "beet" }
+impl BeetCommand<'static> {
+    /// Creates a command runner for the default `"beet"` executable name
+    #[must_use]
+    pub fn new_beet() -> Self {
+        Self::new("beet")
+    }
+}
+impl<'a> BeetCommand<'a> {
+    /// Creates a command runner with the specified path to the `beet` executable
+    #[must_use]
+    pub fn new(cmd_name: &'a str) -> Self {
+        Self { cmd_name }
     }
 }
 impl BeetRunner for BeetCommand<'_> {
     type Error = std::io::Error;
 
     fn run_beet_command<S>(
-        &self,
+        &mut self,
         args: impl Iterator<Item = S>,
     ) -> Result<std::process::Output, Self::Error>
     where
@@ -58,7 +68,7 @@ impl BeetItem {
     /// # Errors
     /// Returns an error if the `beet` command fails or produces invalid output
     pub fn list_from_beet_query<T: BeetRunner>(
-        runner: &T,
+        runner: &mut T,
         filters: impl Iterator<Item = String>,
     ) -> Result<Vec<Self>, Error<T::Error>> {
         let make_error = |kind| Error { kind };
