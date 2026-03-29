@@ -25,7 +25,7 @@ struct Args {
 }
 
 fn main() -> eyre::Result<()> {
-    const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_millis(1000);
+    const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
 
     // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
     const DEFAULT_SCRIPT: &str = "
