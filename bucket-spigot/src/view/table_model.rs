@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use crate::{
     order::OrderType,
@@ -112,10 +112,10 @@ impl Row {
     pub(super) fn push(&mut self, cell: Cell) {
         self.0.push(cell);
     }
-    #[allow(unused)] // TODO remove if removing `crate::view::table::experiment_non_recursive`
-    pub(super) fn last_mut(&mut self) -> Option<&mut Cell> {
-        self.0.last_mut()
-    }
+    // TODO remove if removing `crate::view::table::experiment_non_recursive`
+    // pub(super) fn last_mut(&mut self) -> Option<&mut Cell> {
+    //     self.0.last_mut()
+    // }
 }
 impl Cell {
     /// Returns the width for displaying the [`Cell`]

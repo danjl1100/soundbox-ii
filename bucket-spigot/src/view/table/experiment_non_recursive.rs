@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::TableParams;
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-#[allow(clippy::missing_panics_doc, clippy::unwrap_used)] // TODO remove the test-only panics
+#[allow(clippy::missing_panics_doc, reason = "report bug in implementation")]
 pub(super) fn run<T, U>(
     table_params: TableParams,
     trees: &Trees<T, U>,
@@ -26,9 +26,11 @@ pub(super) fn run<T, U>(
     // let view = TableView::new(rows.clone(), total_width);
 
     #[cfg(test)]
+    #[allow(clippy::missing_panics_doc, reason = "panics in test-only code")]
     {
-        let expected_rows_json = serde_json::to_string_pretty(&expected_rows).unwrap();
-        let rows_2_json = serde_json::to_string_pretty(&rows).unwrap();
+        let expected_rows_json =
+            serde_json::to_string_pretty(&expected_rows).expect("serialize for test");
+        let rows_2_json = serde_json::to_string_pretty(&rows).expect("serialize for test");
         let first_mismatch_line = expected_rows_json
             .lines()
             .zip(rows_2_json.lines())
@@ -129,7 +131,7 @@ impl TableBuilderVisitor<'_> {
     }
 }
 impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
-    #[allow(clippy::too_many_lines)] // TODO geez
+    #[allow(clippy::too_many_lines, reason = "experiment, work in progress")] // TODO geez
     fn visit(
         &mut self,
         elem: TraversalElem<'_, crate::order::OrderNode, T, U>,

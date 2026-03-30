@@ -1,6 +1,6 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Typescript versions of [`super::TableView`] and all contained fields
-#![expect(dead_code)]
+#![expect(dead_code, reason = "types for bindings generation")]
 
 #[derive(ts_rs::TS)]
 #[ts(export)]

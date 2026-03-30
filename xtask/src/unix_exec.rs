@@ -6,14 +6,14 @@ use eyre::Context as _;
 use std::process::Command;
 
 /// Runs the specified `cargo` command, replacing the current process
-#[expect(clippy::missing_errors_doc)] // infallible
+#[expect(clippy::missing_errors_doc, reason = "infallible")]
 pub fn exec_cargo(
     args_fn: impl FnOnce(&mut Command) -> &mut Command,
 ) -> eyre::Result<std::convert::Infallible> {
     exec_cmd(env!("CARGO"), args_fn)
 }
 /// Runs the specified command, replacing the current process
-#[expect(clippy::missing_errors_doc)] // infallible
+#[expect(clippy::missing_errors_doc, reason = "infallible")]
 pub fn exec_cmd(
     cmd: &str,
     args_fn: impl FnOnce(&mut Command) -> &mut Command,

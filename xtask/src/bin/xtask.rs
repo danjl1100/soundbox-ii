@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Helper commands for the repo, following the
 //! [`cargo-xtask`](https://github.com/matklad/cargo-xtask/) template
 
@@ -14,8 +14,7 @@ vlc                     runs VLC with required arguments for the web interface
 ";
 
 fn main() -> eyre::Result<()> {
-    #[expect(clippy::redundant_closure_for_method_calls)]
-    main_inner().map_err(|e| e.into_eyre_in_final_main_error_report_location())
+    main_inner().map_err(xtask::TypedErr::into_eyre_in_final_main_error_report_location)
 }
 fn main_inner() -> TypedResult<()> {
     let mut args = std::env::args().skip(1);

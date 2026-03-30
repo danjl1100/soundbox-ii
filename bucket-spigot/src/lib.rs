@@ -40,7 +40,7 @@ pub mod order {
     pub(crate) use node::{Root, UnknownOrderPath};
     pub use peek::Peeked;
     use source::Order;
-    #[allow(clippy::module_name_repetitions)]
+    #[expect(clippy::module_name_repetitions, reason = "name for re-export")]
     pub use source::OrderType;
 
     mod counts_remaining;
@@ -56,7 +56,7 @@ pub mod view {
     //! Views for a [`Network`](`crate::Network`)
 
     use table_model::NodeKind;
-    #[allow(clippy::module_name_repetitions)]
+    #[expect(clippy::module_name_repetitions, reason = "name for re-export")]
     pub use table_model::TableView;
     pub use table_model::{Cell, NodeDetails, Row};
     mod table_model;
@@ -568,7 +568,7 @@ mod modify_cmd_ref {
     ///
     /// See [`ModifyCmd`] for documentation on specific fields
     #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-    #[expect(missing_docs)]
+    #[expect(missing_docs, reason = "duplicate of `ModifyCmd`")]
     #[non_exhaustive]
     #[must_use]
     pub enum ModifyCmdRef<'a, T, U> {
@@ -811,7 +811,7 @@ pub(crate) struct CannotDeleteNonempty(Path);
 
 #[cfg(test)]
 #[allow(clippy::panic)] // TODO use actual error handling for tests, `eyre` prints good details!
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used)] // TODO
 mod tests {
     pub(crate) use arb_rng::{PanicRng, assert_arb_error, decode_hex, fake_rng};
     pub(crate) use sync::run_with_timeout;

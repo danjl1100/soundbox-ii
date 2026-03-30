@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmdRef`]s
 
@@ -148,7 +148,10 @@ impl<T, U> Network<T, U> {
         U: Clone,
     {
         // TODO minimze the example, why is the closure needed for type inference?
-        #[expect(clippy::redundant_closure_for_method_calls)]
+        #[expect(
+            clippy::redundant_closure_for_method_calls,
+            reason = "closure helps for inference (why?)"
+        )]
         let visitor = vec_visitor::VecVisitor::new(|modify_cmd_ref| modify_cmd_ref.to_owned());
         self.serialize(visitor)
             .unwrap_or_else(|never| match never {})
@@ -318,7 +321,7 @@ impl<T, U> FromIterator<ModifyCmd<T, U>> for Result<Network<T, U>, ModifyError> 
 
 #[cfg(test)]
 mod proof_serde_integration {
-    #![allow(dead_code)]
+    #![allow(dead_code, reason = "proof of conversion")]
 
     use crate::Network;
 

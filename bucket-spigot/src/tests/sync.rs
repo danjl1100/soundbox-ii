@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Clunky thread-related utilities
 
@@ -44,11 +44,7 @@ pub(crate) fn run_with_timeout<T: Send>(
         while !*finished && !handle.is_finished() {
             let elapsed = start.elapsed();
             if elapsed >= timeout {
-                #[allow(unreachable_code)]
-                {
-                    // compiler complains about this uninhabited return type, unclear how to clearly silence
-                    match timeout_fn(elapsed) {}
-                }
+                match timeout_fn(elapsed) {}
             }
 
             let (new_finished, _wait_result) = cvar

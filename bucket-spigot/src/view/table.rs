@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{Cell, NodeDetails, NodeKind, Row, TableView, error::ViewError, error::count};
 use crate::{
@@ -15,7 +15,7 @@ impl<T, U> Network<T, U> {
     /// Creates a [`TableView`] with default parameters
     ///
     /// See [`Self::view_table`] for details
-    #[allow(clippy::missing_panics_doc)]
+    #[allow(clippy::missing_panics_doc, reason = "report bug in Network view")]
     pub fn view_table_default(&self) -> TableView {
         self.view_table(TableParams::default())
             .expect("table_view with default params should succeed")
@@ -350,7 +350,7 @@ impl TableBuilder {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions, reason = "name for re-export")]
 /// Owned version of [`TableParams`] for use in serializing view requests
 pub struct TableParamsOwned {
     max_depth: Option<u32>,
@@ -360,7 +360,7 @@ pub struct TableParamsOwned {
 }
 /// Parameters for constructing a table view
 #[derive(Clone, Copy, Debug)]
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions, reason = "name for re-export")]
 #[must_use]
 pub struct TableParams<'a> {
     max_depth: Option<u32>,

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{CountsRemaining, OrderNode, RandResult, Root, source::OrderSource as _};
 use crate::{BucketId, Child, Network, child_vec::ChildVec};
@@ -29,9 +29,19 @@ impl<T, U> Network<T, U> {
         let mut items = Vec::with_capacity(capacity);
         let mut source_buckets = Vec::with_capacity(capacity);
         for _ in 0..peek_len {
-            let (elem_bucket_id, effort) =
-                peek_inner(rng, root, &mut root_order, &mut root_remaining)?;
-            effort_count += effort;
+            let PeekResult {
+                elem_bucket_id,
+                effort_count: effort_this_peek,
+            } = match peek_inner(rng, root, &mut root_order, &mut root_remaining)? {
+                Ok(v) => v,
+                Err(e) => {
+                    #[expect(clippy::panic, reason = "report bug in `Order` implementation")]
+                    {
+                        panic!("{e}")
+                    }
+                }
+            };
+            effort_count += effort_this_peek;
             if let Some((elem, bucket_id)) = elem_bucket_id {
                 items.push(elem);
                 source_buckets.push(bucket_id);
@@ -54,12 +64,36 @@ impl<T, U> Network<T, U> {
     }
 }
 
+struct OrderIndexError {
+    order: super::Order,
+    child_index: usize,
+    target_len: usize,
+}
+impl std::fmt::Display for OrderIndexError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            order,
+            child_index,
+            target_len,
+        } = self;
+        write!(
+            f,
+            "invalid order_children index ({child_index}) for target len ({target_len}) from order: {order:?}"
+        )
+    }
+}
+
+struct PeekResult<'a, T> {
+    elem_bucket_id: Option<(&'a T, BucketId)>,
+    effort_count: u64,
+}
+
 fn peek_inner<'a, R, T, U>(
     rng: &mut R,
     current: &'a ChildVec<Child<T, U>>,
     order_node: &mut OrderNode,
     current_remaining: &mut CountsRemaining,
-) -> RandResult<(Option<(&'a T, BucketId)>, u64)>
+) -> RandResult<Result<PeekResult<'a, T>, OrderIndexError>>
 where
     R: rand::Rng + ?Sized,
 {
@@ -82,13 +116,19 @@ where
             continue;
         }
 
-        #[allow(clippy::panic)]
-        let Some(child_node) = current.children().get(child_index) else {
-            panic!("valid current.children index ({child_index}) from order")
+        let order_index_err = || {
+            Ok(Err(OrderIndexError {
+                order: order_current.clone(),
+                child_index,
+                target_len: current.len(),
+            }))
         };
-        #[allow(clippy::panic)]
+
+        let Some(child_node) = current.children().get(child_index) else {
+            return order_index_err();
+        };
         let Some(child_order) = order_children.get_mut(child_index) else {
-            panic!("valid order_children index ({child_index}) from order")
+            return order_index_err();
         };
 
         // effort: lookup child_node and child_order
@@ -100,13 +140,16 @@ where
                 if bucket_items.is_empty() {
                     None
                 } else {
-                    let elem_index = Rc::make_mut(child_order)
-                        .order
+                    let child_order = &mut Rc::make_mut(child_order).order;
+                    let elem_index = child_order
                         .next_in_equal(rng, bucket_items)
                         .expect("bucket should not be empty")?;
-                    #[allow(clippy::panic)]
                     let Some(elem) = bucket_items.get(elem_index) else {
-                        panic!("valid bucket_items index ({elem_index}) from order")
+                        return Ok(Err(OrderIndexError {
+                            order: child_order.clone(),
+                            child_index,
+                            target_len: bucket_items.len(),
+                        }));
                     };
 
                     // effort: lookup bucket element
@@ -119,12 +162,19 @@ where
                 if joint.next.is_empty() {
                     None
                 } else if let Some(remaining) = remaining_slot {
-                    let (elem_bucket_id, child_effort_count) = peek_inner(
+                    let peek_result = peek_inner(
                         rng,
                         &joint.next,
                         Rc::make_mut(child_order),
                         remaining.as_mut_or_init(|| CountsRemaining::new(joint.next.len())),
                     )?;
+                    let PeekResult {
+                        elem_bucket_id,
+                        effort_count: child_effort_count,
+                    } = match peek_result {
+                        Ok(v) => v,
+                        Err(e) => return Ok(Err(e)),
+                    };
 
                     // effort: recursion effort
                     effort_count += child_effort_count;
@@ -136,11 +186,17 @@ where
             }
         };
         if let Some(elem) = elem {
-            return Ok((Some(elem), effort_count));
+            return Ok(Ok(PeekResult {
+                elem_bucket_id: Some(elem),
+                effort_count,
+            }));
         }
         current_remaining.set_empty(child_index);
     }
-    Ok((None, effort_count))
+    Ok(Ok(PeekResult {
+        elem_bucket_id: None,
+        effort_count,
+    }))
 }
 
 /// Resulting items and tentative ordering state from [`Network::peek`]
@@ -148,6 +204,7 @@ pub struct Peeked<'a, T> {
     items: Vec<&'a T>,
     source_buckets: Vec<BucketId>,
     root_order: Root,
+    #[allow(dead_code, reason = "counter for tests")]
     effort_count: u64,
 }
 impl<'a, T> Peeked<'a, T> {
@@ -172,7 +229,7 @@ impl<'a, T> Peeked<'a, T> {
             new_root_order: self.root_order,
         }
     }
-    #[allow(unused)]
+    #[allow(dead_code, reason = "counter for tests")]
     /// For tests only, return the amount of effort required for this peek result
     pub(crate) fn get_effort_count(&self) -> u64 {
         self.effort_count
@@ -181,7 +238,6 @@ impl<'a, T> Peeked<'a, T> {
 /// Resulting tentative ordering state from [`Network::peek`] to apply in
 /// [`Network::finalize_peeked`]
 #[must_use]
-#[allow(clippy::module_name_repetitions)]
 pub struct PeekAccepted {
     new_root_order: Root,
 }

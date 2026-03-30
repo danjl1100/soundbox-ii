@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::BeetPath;
 
 /// `Vec<T>` where each modification re-creates a URL cache
@@ -18,20 +19,28 @@ where
     T: AsRef<BeetPath>,
 {
     /// Returns the items
-    #[allow(clippy::must_use_candidate)]
+    #[allow(clippy::must_use_candidate, reason = "accessor")]
     pub fn items(&self) -> &[T] {
         &self.items
     }
     /// Returns the cached URLs
-    #[allow(clippy::must_use_candidate)]
+    #[allow(clippy::must_use_candidate, reason = "accessor")]
     pub fn urls(&self) -> &[url::Url] {
         &self.urls
     }
-    #[allow(clippy::must_use_candidate, missing_docs)]
+    #[allow(
+        clippy::must_use_candidate,
+        missing_docs,
+        reason = "self explanatory accessor"
+    )]
     pub fn len(&self) -> usize {
         self.items.len()
     }
-    #[allow(clippy::must_use_candidate, missing_docs)]
+    #[allow(
+        clippy::must_use_candidate,
+        missing_docs,
+        reason = "self explanatory accessor"
+    )]
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
@@ -40,7 +49,10 @@ where
     ///
     /// # Errors
     /// Returns an error if the [`UrlSource`] conversion fails
-    #[allow(clippy::missing_panics_doc)]
+    #[allow(
+        clippy::missing_panics_doc,
+        reason = "report bug in internal items/urls pairing"
+    )]
     pub fn modify<U, E>(
         &mut self,
         url_source: &impl UrlSource<Error = E>,

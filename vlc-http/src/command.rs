@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 //! Low-level control command types for VLC (correspond to a single API call)
 
@@ -79,6 +79,10 @@ pub use volume::Percent as VolumePercent;
 pub use volume::PercentDelta as VolumePercentDelta;
 mod volume {
     //! Encapsulation boundary for the numeric limits on the volume types
+    //!
+    //! Invariants:
+    //! - [`Percent`] value is within 0 to 300 (inclusive)
+    //! - [`PercentDelta`] value is within -300 to 300 (inclusive)
 
     use super::VolumeBoundsError;
 
@@ -140,7 +144,7 @@ mod volume {
                 })
         }
         /// Equivalent to [`i16::unsigned_abs`]
-        #[expect(clippy::missing_panics_doc)]
+        #[expect(clippy::missing_panics_doc, reason = "invariant of type")]
         #[must_use]
         pub fn unsigned_abs(self) -> Percent {
             let magnitude = self.value().unsigned_abs();
@@ -163,8 +167,11 @@ mod volume {
 
             // result is 0-768 (inclusive), comfortably fits in u16
             let based_256 = f32::from(percent) * Self::PERCENT_TO_256;
-            #[expect(clippy::cast_possible_truncation)] // target size comfortably fits 0-768 (inclusive)
-            #[expect(clippy::cast_sign_loss)] // value is always non-negative
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "target size comfortably fits 0-768 (inclusive)"
+            )]
+            #[expect(clippy::cast_sign_loss, reason = "value is always non-negative")]
             {
                 Self(based_256.round() as u16)
             }
@@ -213,8 +220,8 @@ impl VolumePercent256 {
     /// Convert the 256-based value into the equivalent precentage
     pub(crate) fn unchecked_to_percent(based_256: u16) -> u16 {
         let percent = f32::from(based_256) / Self::PERCENT_TO_256;
-        #[expect(clippy::cast_possible_truncation)] // guaranteed, conversion factor is <1.0
-        #[expect(clippy::cast_sign_loss)] // value is always non-negative
+        #[expect(clippy::cast_possible_truncation, reason = "conversion factor is <1.0")]
+        #[expect(clippy::cast_sign_loss, reason = "u16 is always non-negative")]
         {
             percent.round() as u16
         }

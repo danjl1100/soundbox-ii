@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! NOTE: "fair dice roll" is an homage to <https://xkcd.com/221/>
 
@@ -114,7 +114,7 @@ fn random_looks_decent() {
     "###);
     assert_eq!(u.len(), 0);
 }
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, reason = "snapshot test inline")]
 #[test]
 fn shuffle_looks_decent() -> eyre::Result<()> {
     let determined = decode_hex(&[

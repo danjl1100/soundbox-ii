@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 //! High-level actions for VLC, requiring multiple steps to reach the desired state
 
@@ -122,11 +122,11 @@ impl PlaybackMode {
         self.is_random = is_random;
         self
     }
-    #[expect(missing_docs)] // self-explanatory
+    #[expect(missing_docs, reason = "self-explanatory")]
     pub const fn get_repeat(self) -> RepeatMode {
         self.repeat
     }
-    #[expect(missing_docs)] // self-explanatory
+    #[expect(missing_docs, reason = "self-explanatory")]
     #[must_use]
     pub const fn is_random(self) -> bool {
         self.is_random

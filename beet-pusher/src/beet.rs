@@ -26,7 +26,10 @@ impl<R> BeetPusher<'_, R> {
 ///
 /// # Errors
 /// Returns an error if the beet query fails or modifying the network fails
-#[expect(clippy::missing_panics_doc)]
+#[expect(
+    clippy::missing_panics_doc,
+    reason = "report bug in spigot bucket ref generator"
+)]
 pub fn fill_buckets<U: BeetRunner>(
     runner: &mut U,
     spigot: &mut bucket_spigot::Network<BeetItem, String>,

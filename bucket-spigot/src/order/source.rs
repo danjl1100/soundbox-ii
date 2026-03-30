@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use self::rand_exact::choose_index;
 use super::RandResult;
@@ -59,7 +59,7 @@ impl std::fmt::Display for OrderType {
 }
 
 #[derive(Clone, Debug)]
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "names match inner types")]
 pub(super) enum Order {
     InOrder(InOrder),
     Random(Random),

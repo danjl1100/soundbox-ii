@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{ClientState, Endpoint, Error, Plan, PlanConstructor, Sequence, Step, response};
 use crate::client_state::ClientStateSequence;
@@ -31,7 +31,7 @@ impl PlanConstructor for QueryPlaylist {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used, reason = "allow panic in tests")]
 mod tests {
     use super::*;
     use crate::Response;

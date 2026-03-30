@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Defines the application logic (ignoring all HTTP / websocket framework specifics)
 
 use crate::websocket;
@@ -133,7 +133,7 @@ impl websocket::Command for SpigotCommand {
 pub enum SpigotCommandKind {
     /// Simple ping/pong check
     Echo {
-        #[allow(missing_docs)]
+        /// Request message
         message: String,
     },
     /// Modify the `bucket_spigot` network
@@ -147,13 +147,13 @@ pub enum SpigotCommandKind {
 pub enum SpigotResponse {
     /// Response for [`SpigotCommandKind::Echo`]
     EchoResponse {
-        #[allow(missing_docs)]
+        /// Response message
         message: String,
     },
 }
 
 /// Subset of [`bucket_spigot::ModifyCmd`] for the client to control
-#[allow(missing_docs)] // see linked source type for details
+#[allow(missing_docs, reason = "subset of `bucket_spigot::ModifyCmd`")]
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "cmd")]
 pub enum NetworkModifyCmd {

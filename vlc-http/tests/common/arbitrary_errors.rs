@@ -76,7 +76,7 @@ impl Glitch {
         match self {
             Glitch::DropRequest => 1,
             Glitch::DelayRequest => {
-                #[expect(clippy::match_same_arms)]
+                #[expect(clippy::match_same_arms, reason = "clarify logic difference")]
                 match change {
                     // delay is likely to repeat actions
                     ArbChange::PlaybackMode { .. } => 2,

@@ -148,8 +148,7 @@ impl std::fmt::Display for DisplayCommand<'_> {
         let program = command.get_program();
         let args = std::fmt::from_fn(|f| f.debug_list().entries(command.get_args()).finish());
 
-        #[expect(clippy::unnecessary_debug_formatting)]
-        write!(f, "{program:?} with args {args:?}")?;
+        write!(f, "{} with args {args:?}", program.display())?;
         if let Some(dir) = command.get_current_dir() {
             write!(f, " in {}", dir.display())?;
         }
@@ -291,8 +290,7 @@ impl std::fmt::Display for InterceptArgs {
         };
         write!(f, " with args:")?;
         for arg in args {
-            #[allow(clippy::unnecessary_debug_formatting)]
-            write!(f, " {arg:?}")?;
+            write!(f, " {}", arg.display())?;
         }
         Ok(())
     }

@@ -1,6 +1,7 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-#![allow(clippy::panic)]
+#![allow(clippy::panic, reason = "expect panic in tests")]
+#![allow(clippy::unwrap_used, reason = "allow panic in tests")]
 
 use super::RandResult;
 use super::source::{InOrder, Order, OrderSource as _, OrderType};
@@ -364,7 +365,6 @@ fn in_order_equal() {
     assert_eq!(next(0), 0);
 }
 #[test]
-#[allow(clippy::unwrap_used)]
 fn in_order_decrease_weights() {
     let rng = &mut crate::tests::PanicRng;
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Location-dependent identifier for nodes
 
 use serde::Deserialize;
@@ -21,7 +21,7 @@ pub struct Path(
 /// Borrow of a [`Path`]
 #[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(transparent)]
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions, reason = "re-export name fits")]
 pub struct PathRef<'a>(#[serde(serialize_with = "path_elems_serialize")] &'a [usize]);
 
 impl Path {
@@ -65,7 +65,7 @@ impl Path {
 
         let mut this = self.0.iter_mut().peekable();
         let mut other = removed.iter().peekable();
-        #[expect(clippy::needless_continue)]
+        #[expect(clippy::needless_continue, reason = "idiomatic continue placement")]
         while let Some((this_elem, other_elem)) = this.next().zip(other.next()) {
             let other_ended = other.peek().is_none();
             match other_elem.cmp(this_elem) {
@@ -103,7 +103,7 @@ impl PathRef<'static> {
     /// Constructs an immutable reference to the root path
     ///
     /// NOTE: Must [convert to owned](`PathRef::to_owned`) to append elements
-    #[allow(clippy::must_use_candidate)]
+    #[allow(clippy::must_use_candidate, reason = "does not allocate")]
     pub const fn empty() -> Self {
         Self(&[])
     }

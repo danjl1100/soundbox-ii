@@ -1,5 +1,5 @@
 // soundbox-ii/vlc-http VLC communication library *don't keep your sounds boxed up*
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -127,19 +127,6 @@
 //! [`PlaybackPause`]: `Command::PlaybackPause`
 //! [`SeekNext`]: `Command::SeekNext`
 //! [`SeekPrevious`]: `Command::SeekPrevious`
-
-// teach me
-#![deny(clippy::pedantic)]
-#![allow(clippy::bool_to_int_with_if)] // except this confusing pattern
-// no unsafe
-#![forbid(unsafe_code)]
-// no unwrap
-#![deny(clippy::unwrap_used)]
-// no panic
-#![deny(clippy::panic)]
-// docs!
-#![deny(missing_docs)]
-#![deny(rustdoc::broken_intra_doc_links)]
 
 mod fmt;
 

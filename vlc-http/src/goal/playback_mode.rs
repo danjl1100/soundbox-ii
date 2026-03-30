@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{
     ClientState, Error, Plan, PlanConstructor, PlaybackMode, Step, query_playback::QueryPlayback,
@@ -69,7 +69,7 @@ impl std::fmt::Debug for Set {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used, reason = "allow panic in tests")]
 mod tests {
     use super::*;
     use crate::{Change, Response, goal::RepeatMode};

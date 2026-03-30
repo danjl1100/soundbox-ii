@@ -1,10 +1,10 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Test case runner for `vlc_http`
 
 // yes panic, it's tests!
-#![allow(clippy::panic)]
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::panic, reason = "expect panic in tests")]
+#![allow(clippy::unwrap_used, reason = "allow panic in tests")]
 
 use test_log::test;
 use tracing::{trace_span, warn_span};

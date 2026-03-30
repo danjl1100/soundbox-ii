@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Framework for upgrading HTTP connections to websocket connections ([`WebsocketUpgrade`]), and running specific
 //! [`Command`]s each returning a response.
 
@@ -47,7 +48,10 @@ impl<T: Command> WebsocketUpgrade<T> {
     }
 
     /// Spawns a server to handle WebSocket connections
-    #[allow(clippy::must_use_candidate)]
+    #[expect(
+        clippy::must_use_candidate,
+        reason = "reasonable to drop handle on spawned thread"
+    )]
     pub fn spawn(
         self,
         request: tiny_http::Request,
@@ -62,7 +66,7 @@ impl<T: Command> WebsocketUpgrade<T> {
 
         // Build the WebSocket handshake response with proper headers
         let response = {
-            #[allow(clippy::missing_panics_doc)]
+            #[allow(clippy::missing_panics_doc, reason = "report bug in socket impl")]
             let (h1, h2, h3) = (
                 Header::from_bytes("Upgrade", "websocket").expect("valid hard-coded header"),
                 Header::from_bytes("Connection", "Upgrade").expect("valid hard-coded header"),

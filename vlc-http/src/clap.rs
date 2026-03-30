@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! [`clap`] compatible versions of types
 
 use crate::command::VolumeBoundsError;
@@ -7,7 +7,7 @@ use crate::Command as CrateCommand;
 use crate::request::AuthInput as CrateAuthInput;
 
 // re-export `clap`
-#[expect(clippy::module_name_repetitions)]
+#[expect(clippy::module_name_repetitions, reason = "re-export `clap`")]
 pub use ::clap as clap_crate;
 
 /// Low-level Control commands for VLC (correspond to a single API call)
@@ -163,7 +163,10 @@ pub struct ClapChangePlaybackMode {
 /// Rule for repeating items
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 #[must_use]
-#[expect(clippy::enum_variant_names)] // common prefix is useful for positional clap naming
+#[expect(
+    clippy::enum_variant_names,
+    reason = "common prefix is useful for positional clap naming"
+)]
 enum ClapRepeatMode {
     /// Stop the VLC queue after playing all items
     RepeatOff,

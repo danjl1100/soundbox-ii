@@ -39,14 +39,14 @@ enum RepeatMode {
     RepeatOne,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
-#[expect(missing_docs)]
+#[expect(missing_docs, reason = "self-explanatory")]
 pub enum PlayState {
     Playing,
     Paused,
 }
 /// Item in the [`Model`] playlist
 #[derive(Clone, PartialEq, Eq)]
-#[expect(missing_docs)]
+#[expect(missing_docs, reason = "self-explanatory")]
 pub struct Item {
     pub id: i32,
     pub uri: String,
@@ -490,7 +490,10 @@ impl Model {
     }
 }
 
-#[expect(clippy::trivially_copy_pass_by_ref)] // signature required by serde
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "signature required by serde"
+)]
 fn bool_is_false(value: &bool) -> bool {
     !(*value)
 }
