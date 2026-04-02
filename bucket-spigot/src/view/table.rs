@@ -7,7 +7,7 @@ use crate::{
     order::OrderNode,
     path::{Path, PathRef},
 };
-use std::rc::Rc;
+use std::{ops::ControlFlow, rc::Rc};
 
 mod experiment_non_recursive;
 
@@ -121,52 +121,10 @@ impl TableBuilder {
             return Ok(1);
         };
 
-        let display_len = {
-            let child_len = u32::try_from(item_nodes.len()).unwrap_or(u32::MAX);
-            child_len.min(u32_limit(params.max_width))
-        };
-        self.node_count += display_len;
-        let trim_to_len = params.max_node_count.and_then(|max_node_count| {
-            if let Some(excess) = self.node_count.checked_sub(max_node_count) {
-                if excess == 0 {
-                    // TODO debug
-                    // println!(
-                    //     "excess is 0, node_count {node_count}, max_node_count {max_node_count}",
-                    //     node_count = self.node_count
-                    // );
-                    None
-                } else {
-                    // NOTE:
-                    // excess = node_count - max_node_count
-                    //
-                    // trim_to_len = display_len - excess
-                    // trim_to_len = display_len - (node_count - max_node_count)
-                    // trim_to_len = display_len - node_count + max_node_count
-                    Some(display_len.checked_sub(excess))
-                }
-            } else {
-                // TODO debug
-                // println!(
-                //     "excess is negative, node_count {node_count}, max_node_count {max_node_count}",
-                //     node_count = self.node_count
-                // );
-                None
-            }
-        });
-
-        match trim_to_len {
-            Some(None) => return Ok(0),
-            Some(Some(trim_to_len)) => {
-                // dbg!(("before", &params));
-                params.max_width = Some(trim_to_len);
-                params.max_depth = if trim_to_len == 0 {
-                    Some(0)
-                } else {
-                    Some(u32_limit(state.depth.try_into().ok()))
-                };
-                // dbg!(("after", trim_to_len, &params));
-            }
-            None => {}
+        let result = params.trim_to_len(&mut self.node_count, item_nodes, state.depth);
+        match result {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(result) => return Ok(result),
         }
 
         assert!(dest_cells.len() >= state.depth);
@@ -463,5 +421,44 @@ impl Default for TableParams<'_> {
             max_node_count: None,
             base_path: PathRef::empty(),
         }
+    }
+}
+
+impl TableParams<'_> {
+    fn trim_to_len<T, U>(
+        &mut self,
+        node_count: &mut u32,
+        item_nodes: &ChildVec<Child<T, U>>,
+        state_depth: usize,
+    ) -> ControlFlow<u32> {
+        let display_len = {
+            let child_len = u32::try_from(item_nodes.len()).unwrap_or(u32::MAX);
+            child_len.min(u32_limit(self.max_width))
+        };
+        *node_count += display_len;
+
+        // NOTE:
+        // excess = node_count - max_node_count
+        //
+        // trim_to_len = display_len - excess
+        // trim_to_len = display_len - (node_count - max_node_count)
+        // trim_to_len = display_len - node_count + max_node_count
+        if let Some(max_node_count) = self.max_node_count
+            && let Some(excess) = node_count.checked_sub(max_node_count)
+            && excess != 0
+        {
+            let Some(trim_to_len) = display_len.checked_sub(excess) else {
+                return ControlFlow::Break(0);
+            };
+
+            self.max_width = Some(trim_to_len);
+            self.max_depth = if trim_to_len == 0 {
+                Some(0)
+            } else {
+                Some(u32_limit(state_depth.try_into().ok()))
+            };
+        }
+
+        ControlFlow::Continue(())
     }
 }
