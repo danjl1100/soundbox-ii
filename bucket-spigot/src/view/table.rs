@@ -60,15 +60,15 @@ impl<T, U> Network<T, U> {
             0
         } else {
             TableBuilder::default().find_child_nodes(
-                table_params,
                 item_node,
                 order_node,
-                &mut rows,
-                &mut path,
                 State {
                     depth: 0,
                     position: 0,
                     parent_active,
+                    dest_cells: &mut rows,
+                    params: table_params,
+                    path_buf: &mut path,
                 },
                 child_start_index,
             )?
@@ -82,11 +82,14 @@ impl<T, U> Network<T, U> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct State {
+#[derive(Debug)]
+struct State<'a, 'b, 'c> {
     depth: usize,
     position: u32,
     parent_active: bool,
+    dest_cells: &'a mut Vec<Row>,
+    params: TableParams<'b>,
+    path_buf: &'c mut Path,
 }
 
 fn u32_limit(len: Option<u32>) -> u32 {
@@ -99,16 +102,11 @@ struct TableBuilder {
 }
 
 impl TableBuilder {
-    #[allow(clippy::too_many_lines)] // TODO yikes..
-    #[allow(clippy::too_many_arguments)] // TODO double yikes, arg..
     fn find_child_nodes<T, U>(
         &mut self,
-        mut params: TableParams<'_>,
         item_nodes: &ChildVec<Child<T, U>>,
         order_nodes: &[Rc<OrderNode>],
-        dest_cells: &mut Vec<Row>,
-        path_buf: &mut Path,
-        state: State,
+        mut state: State<'_, '_, '_>,
         child_start_index: Option<usize>,
     ) -> Result<u32, ViewError> {
         assert_eq!(
@@ -121,18 +119,24 @@ impl TableBuilder {
             return Ok(1);
         };
 
-        let result = params.trim_to_len(&mut self.node_count, item_nodes, state.depth);
+        let result = state
+            .params
+            .trim_to_len(&mut self.node_count, item_nodes, state.depth);
         match result {
             ControlFlow::Continue(()) => {}
             ControlFlow::Break(result) => return Ok(result),
         }
 
-        assert!(dest_cells.len() >= state.depth);
-        if dest_cells.len() == state.depth {
-            // add row for this depth
-            dest_cells.push(Row::default());
+        {
+            let dest_cells = &mut *state.dest_cells;
+
+            assert!(dest_cells.len() >= state.depth);
+            if dest_cells.len() == state.depth {
+                // add row for this depth
+                dest_cells.push(Row::default());
+            }
+            assert!(dest_cells.len() > state.depth);
         }
-        assert!(dest_cells.len() > state.depth);
 
         let weights = item_nodes.weights();
         if let Some(weights) = &weights {
@@ -141,7 +145,10 @@ impl TableBuilder {
 
         let parent_position = state.position;
         {
-            let dest_row = dest_cells.get_mut(state.depth).expect("row pushed above");
+            let dest_row = state
+                .dest_cells
+                .get_mut(state.depth)
+                .expect("row pushed above");
             let assumed_start = dest_row
                 .get_cells()
                 .iter()
@@ -167,7 +174,8 @@ impl TableBuilder {
             // skip to start
             let skip = child_start_index;
             // only take `max_width`
-            let take = params
+            let take = state
+                .params
                 .max_width
                 .and_then(|v| usize::try_from(v).ok().map(|x| x + 1));
             (skip, take)
@@ -188,8 +196,9 @@ impl TableBuilder {
         //  --> SEE module [`experiment_non_recursive`]
         let mut state = state;
         for ((index, child), order) in item_and_order {
-            if matches!(params.max_width, Some(max_width) if state.position >= max_width) {
-                let dest_row = dest_cells
+            if matches!(state.params.max_width, Some(max_width) if state.position >= max_width) {
+                let dest_row = state
+                    .dest_cells
                     .get_mut(state.depth)
                     .expect("row pushed by caller, above");
                 dest_row.push(Cell {
@@ -201,46 +210,36 @@ impl TableBuilder {
                 break;
             }
 
-            // START - push index
-            path_buf.push(index);
-
-            let display_width = self.add_child_node(
-                params,
-                dest_cells,
-                path_buf,
-                state,
-                parent_position,
-                weights,
-                ((index, child), order),
-            )?;
-
-            state.position += display_width;
-
-            // END - pop index
-            path_buf.pop();
+            state.add_child_node(self, parent_position, weights, ((index, child), order))?;
         }
         let total_width = state.position - parent_position;
         Ok(total_width)
     }
-    #[allow(clippy::too_many_arguments)] // TODO double yikes, arg..
+}
+impl State<'_, '_, '_> {
     fn add_child_node<'a, T, U>(
         &mut self,
-        params: TableParams<'_>,
-        dest_cells: &mut Vec<Row>,
-        path_buf: &mut Path,
-        State {
-            depth,
-            position,
-            parent_active,
-        }: State,
+        table_builder: &mut TableBuilder,
         parent_position: u32,
         weights: Option<Weights<'_>>,
         ((index, child), order): ((usize, &'a Child<T, U>), &'a Rc<OrderNode>),
-    ) -> Result<u32, ViewError>
+    ) -> Result<(), ViewError>
     where
         T: 'a,
         U: 'a,
     {
+        // START - push index
+        self.path_buf.push(index);
+
+        let State {
+            depth,
+            position,
+            parent_active,
+            dest_cells: _,
+            params,
+            path_buf: _,
+        } = *self;
+
         let weight = match weights {
             Some(weights) if weights.is_unity() => None,
             Some(weights) => Some(weights[index]),
@@ -273,24 +272,20 @@ impl TableBuilder {
                 depth: depth + 1,
                 position,
                 parent_active: active,
-            };
-            self.find_child_nodes(
+                dest_cells: self.dest_cells,
                 params,
-                item_nodes,
-                order_nodes,
-                dest_cells,
-                path_buf,
-                state,
-                None,
-            )?
-            .max(1)
+                path_buf: self.path_buf,
+            };
+            table_builder
+                .find_child_nodes(item_nodes, order_nodes, state, None)?
+                .max(1)
         } else {
             1
         };
 
-        let dest_row = dest_cells.get_mut(depth).expect("row pushed above");
+        let dest_row = self.dest_cells.get_mut(depth).expect("row pushed above");
         let node_details = NodeDetails {
-            path: path_buf.clone(),
+            path: self.path_buf.clone(),
             active,
             weight,
             kind,
@@ -303,7 +298,12 @@ impl TableBuilder {
             node: Some(node_details),
         });
 
-        Ok(display_width)
+        self.position += display_width;
+
+        // END - pop index
+        self.path_buf.pop();
+
+        Ok(())
     }
 }
 
