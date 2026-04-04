@@ -55,24 +55,19 @@ impl<T, U> Network<T, U> {
             }
         }
 
-        let total_width = if item_node.is_empty() {
-            // TODO why does this need to be a special case?  maybe adjust empty definition?
-            0
-        } else {
-            TableBuilder::default().find_child_nodes(
-                item_node,
-                order_node,
-                State {
-                    depth: 0,
-                    position: 0,
-                    parent_active,
-                    dest_cells: &mut rows,
-                    params: table_params,
-                    path_buf: &mut path,
-                },
-                child_start_index,
-            )?
-        };
+        let total_width = TableBuilder::default().find_child_nodes(
+            item_node,
+            order_node,
+            State {
+                depth: 0,
+                position: 0,
+                parent_active,
+                dest_cells: &mut rows,
+                params: table_params,
+                path_buf: &mut path,
+            },
+            child_start_index,
+        )?;
 
         if false {
             let _ = experiment_non_recursive::run(table_params, &self.trees, (&rows, total_width));
@@ -116,7 +111,7 @@ impl TableBuilder {
         );
 
         let Some(item_nodes_max_index) = item_nodes.len().checked_sub(1) else {
-            return Ok(1);
+            return Ok(0);
         };
 
         let result = state
