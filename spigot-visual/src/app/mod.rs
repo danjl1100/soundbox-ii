@@ -10,20 +10,20 @@ mod typescript_bindings;
 ///
 /// # Errors
 /// Returns an error if the `cmd_rx` source sends an error
-pub fn app_logic(
-    cmd_rx: std::sync::mpsc::Receiver<eyre::Result<SpigotCommand>>,
-) -> eyre::Result<()> {
-    AppLogic::new(cmd_rx)?.run()
+pub fn app_logic<E>(
+    cmd_rx: std::sync::mpsc::Receiver<Result<SpigotCommand, E>>,
+) -> Result<(), Error<E>> {
+    AppLogic::new(cmd_rx).map_err(Error::App)?.run()
 }
 
-struct AppLogic {
-    cmd_rx: std::sync::mpsc::Receiver<eyre::Result<SpigotCommand>>,
+struct AppLogic<E> {
+    cmd_rx: std::sync::mpsc::Receiver<Result<SpigotCommand, E>>,
     // TODO
     // state_file: StateFile,
     // spigot: Network<BeetItem, String>,
 }
-impl AppLogic {
-    fn new(cmd_rx: std::sync::mpsc::Receiver<eyre::Result<SpigotCommand>>) -> eyre::Result<Self> {
+impl<E> AppLogic<E> {
+    fn new(cmd_rx: std::sync::mpsc::Receiver<Result<SpigotCommand, E>>) -> eyre::Result<Self> {
         // let (state_file, _script) = StateFile::new("state.txt".into())?;
         if false {
             eyre::bail!("")
@@ -75,10 +75,10 @@ impl AppLogic {
     //     // TODO move beet-pusher function to a common beet-spigot lib crate
     //     Ok(())
     // }
-    fn run(self) -> eyre::Result<()> {
+    fn run(self) -> Result<(), Error<E>> {
         for cmd in self.cmd_rx {
-            let SpigotCommand { kind, response } = cmd?;
-            let _ = response.send(app_logic_cmd(kind)?);
+            let SpigotCommand { kind, response } = cmd.map_err(Error::Server)?;
+            let _ = response.send(app_logic_cmd(kind).map_err(Error::App)?);
 
             // self.update_spigot()?;
 
@@ -98,6 +98,18 @@ impl AppLogic {
         Ok(())
     }
 }
+
+/// Error from the app logic, or the external server (`E` error)
+pub enum Error<E> {
+    /// External server error
+    Server(E),
+    /// Internal app error
+    //
+    // TODO change from `eyre` to a more structured error
+    // (only use `eyre` in the binary, not the lib)
+    App(eyre::Report),
+}
+
 fn app_logic_cmd(kind: SpigotCommandKind) -> eyre::Result<SpigotResponse> {
     let response = match kind {
         SpigotCommandKind::Echo { message } => {

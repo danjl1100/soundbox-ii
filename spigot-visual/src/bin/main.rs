@@ -21,6 +21,25 @@ struct Config {
     dev_path_prefix: Option<String>,
 }
 
+#[derive(Debug)]
+enum ServerFatalError {
+    Recv(std::io::Error),
+}
+impl std::error::Error for ServerFatalError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ServerFatalError::Recv(source) => Some(source),
+        }
+    }
+}
+impl std::fmt::Display for ServerFatalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerFatalError::Recv(_source) => write!(f, "failed to receive HTTP request"),
+        }
+    }
+}
+
 fn main() -> eyre::Result<()> {
     let config = Config::parse();
 
@@ -29,32 +48,48 @@ fn main() -> eyre::Result<()> {
         Err(e) => eyre::bail!(e),
     };
 
-    let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel(1);
+    let (cmd_err_tx, cmd_err_rx) = std::sync::mpsc::sync_channel(1);
 
     eprintln!("Listening on {}...", config.bind_address);
+    let (cmd_tx, _handle) = spawn_narrower_sender(cmd_err_tx.clone(), Ok);
     std::thread::spawn(move || {
-        let server_result = run_server(&server, &config, &cmd_tx);
-        match server_result {
-            Ok(never) => match never {},
-            Err(e) => cmd_tx.send(Err(e)),
-        }
+        let Err(fatal_error) = run_server(&server, &config, &cmd_tx);
+        cmd_err_tx.send(Err(fatal_error))
     });
 
-    app_logic(cmd_rx)
+    app_logic(cmd_err_rx).map_err(|e| match e {
+        spigot_visual::app::Error::Server(e) => eyre::eyre!(e),
+        spigot_visual::app::Error::App(e) => e,
+    })
+}
+
+/// Spawns a thread and returns a [`std::sync::mpsc::SyncSender`] that accepts narrower inputs,
+/// using the provided `map_fn` to widen back to send via the input sender
+fn spawn_narrower_sender<T: Send + 'static, U: Send + 'static>(
+    tx: std::sync::mpsc::SyncSender<U>,
+    map_fn: impl Fn(T) -> U + Send + 'static,
+) -> (std::sync::mpsc::SyncSender<T>, std::thread::JoinHandle<()>) {
+    let (narrow_tx, narrow_rx) = std::sync::mpsc::sync_channel(0);
+
+    let handle = std::thread::spawn(move || {
+        while let Ok(value) = narrow_rx.recv() {
+            let mapped = map_fn(value);
+
+            let Ok(()) = tx.send(mapped) else {
+                break;
+            };
+        }
+    });
+    (narrow_tx, handle)
 }
 
 fn run_server(
     server: &tiny_http::Server,
     config: &Config,
-    cmd_tx: &std::sync::mpsc::SyncSender<eyre::Result<SpigotCommand>>,
-) -> eyre::Result<std::convert::Infallible> {
+    cmd_tx: &std::sync::mpsc::SyncSender<SpigotCommand>,
+) -> Result<std::convert::Infallible, ServerFatalError> {
     loop {
-        let request = match server.recv() {
-            Ok(request) => request,
-            Err(e) => {
-                eyre::bail!(e)
-            }
-        };
+        let request = server.recv().map_err(ServerFatalError::Recv)?;
 
         match handle_request(request, config, cmd_tx) {
             Ok(()) => {}
@@ -69,7 +104,7 @@ fn run_server(
 fn handle_request(
     request: tiny_http::Request,
     config: &Config,
-    cmd_tx: &std::sync::mpsc::SyncSender<eyre::Result<SpigotCommand>>,
+    cmd_tx: &std::sync::mpsc::SyncSender<SpigotCommand>,
 ) -> eyre::Result<()> {
     const INDEX: &str = "/index.html";
 

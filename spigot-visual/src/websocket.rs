@@ -55,7 +55,7 @@ impl<T: Command> WebsocketUpgrade<T> {
     pub fn spawn(
         self,
         request: tiny_http::Request,
-        cmd_tx: std::sync::mpsc::SyncSender<eyre::Result<T>>,
+        cmd_tx: std::sync::mpsc::SyncSender<T>,
     ) -> std::thread::JoinHandle<()> {
         let Self { ws_key, _marker } = self;
 
@@ -115,7 +115,7 @@ impl<T: Command> WebsocketUpgrade<T> {
     /// Disconnects the websocket and returns an error if the communication channel or de/serialization fails
     pub fn handle_connection(
         stream: Box<dyn tiny_http::ReadWrite + Send>,
-        cmd_tx: &std::sync::mpsc::SyncSender<eyre::Result<T>>,
+        cmd_tx: &std::sync::mpsc::SyncSender<T>,
     ) -> eyre::Result<()> {
         use tungstenite::{Message, WebSocket};
 
@@ -136,9 +136,7 @@ impl<T: Command> WebsocketUpgrade<T> {
                         .with_context(|| format!("failed to deserialize: {text}"))?;
 
                     let (cmd, response_rx) = T::new(kind);
-                    cmd_tx
-                        .send(Ok(cmd))
-                        .context("failed to send logic command")?;
+                    cmd_tx.send(cmd).context("failed to send logic command")?;
 
                     let response = response_rx
                         .recv()
