@@ -14,3 +14,5 @@ pub mod static_file;
 pub mod websocket;
 
 pub mod app;
+
+pub mod mpsc_channel;

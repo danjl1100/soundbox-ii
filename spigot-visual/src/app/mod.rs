@@ -6,24 +6,34 @@ use bucket_spigot::{order::OrderType, path::Path};
 
 mod typescript_bindings;
 
+/// Option, but `None` is a heartbeat
+pub enum MsgOrHeartbeat<T> {
+    /// Message sent from the user
+    Msg(T),
+    /// Heartbeat that time has passed
+    Heartbeat,
+}
+
 /// Runs the client commands until the channel is disconnected
 ///
 /// # Errors
 /// Returns an error if the `cmd_rx` source sends an error
 pub fn app_logic<E>(
-    cmd_rx: std::sync::mpsc::Receiver<Result<SpigotCommand, E>>,
+    cmd_rx: std::sync::mpsc::Receiver<Result<MsgOrHeartbeat<SpigotCommand>, E>>,
 ) -> Result<(), Error<E>> {
     AppLogic::new(cmd_rx).map_err(Error::App)?.run()
 }
 
 struct AppLogic<E> {
-    cmd_rx: std::sync::mpsc::Receiver<Result<SpigotCommand, E>>,
+    cmd_rx: std::sync::mpsc::Receiver<Result<MsgOrHeartbeat<SpigotCommand>, E>>,
     // TODO
     // state_file: StateFile,
     // spigot: Network<BeetItem, String>,
 }
 impl<E> AppLogic<E> {
-    fn new(cmd_rx: std::sync::mpsc::Receiver<Result<SpigotCommand, E>>) -> eyre::Result<Self> {
+    fn new(
+        cmd_rx: std::sync::mpsc::Receiver<Result<MsgOrHeartbeat<SpigotCommand>, E>>,
+    ) -> eyre::Result<Self> {
         // let (state_file, _script) = StateFile::new("state.txt".into())?;
         if false {
             eyre::bail!("")
@@ -77,8 +87,23 @@ impl<E> AppLogic<E> {
     // }
     fn run(self) -> Result<(), Error<E>> {
         for cmd in self.cmd_rx {
-            let SpigotCommand { kind, response } = cmd.map_err(Error::Server)?;
-            let _ = response.send(app_logic_cmd(kind).map_err(Error::App)?);
+            let cmd = cmd.map_err(Error::Server)?;
+            match cmd {
+                MsgOrHeartbeat::Msg(cmd) => {
+                    let SpigotCommand { kind, response } = cmd;
+                    let _ = response.send(app_logic_cmd(kind).map_err(Error::App)?);
+                }
+                MsgOrHeartbeat::Heartbeat => {
+                    // heartbeat - sent regularly from main
+                    {
+                        // debug print "."
+                        use std::io::Write as _;
+                        let mut stdout = std::io::stdout().lock();
+                        write!(&mut stdout, ".").expect("stdout write");
+                        stdout.flush().expect("stdout flush");
+                    }
+                }
+            }
 
             // self.update_spigot()?;
 

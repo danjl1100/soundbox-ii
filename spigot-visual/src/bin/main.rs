@@ -7,6 +7,7 @@ use clap::Parser as _;
 use spigot_visual::{
     HTTP_CODE_301_MOVED, HTTP_CODE_404_NOT_FOUND,
     app::{SpigotCommand, app_logic},
+    mpsc_channel::{heartbeat_sender, spawn_narrower_sender},
     static_file,
     websocket::WebsocketUpgrade,
 };
@@ -51,7 +52,18 @@ fn main() -> eyre::Result<()> {
     let (cmd_err_tx, cmd_err_rx) = std::sync::mpsc::sync_channel(1);
 
     eprintln!("Listening on {}...", config.bind_address);
-    let (cmd_tx, _handle) = spawn_narrower_sender(cmd_err_tx.clone(), Ok);
+    let (cmd_tx, _handle) = spawn_narrower_sender(cmd_err_tx.clone(), |msg| {
+        Ok(spigot_visual::app::MsgOrHeartbeat::Msg(msg))
+    });
+    std::thread::spawn({
+        let cmd_err_tx = cmd_err_tx.clone();
+        move || {
+            let interval = std::time::Duration::from_secs(1);
+            let Err(_) = heartbeat_sender(&cmd_err_tx, interval, || {
+                Ok(spigot_visual::app::MsgOrHeartbeat::Heartbeat)
+            });
+        }
+    });
     std::thread::spawn(move || {
         let Err(fatal_error) = run_server(&server, &config, &cmd_tx);
         cmd_err_tx.send(Err(fatal_error))
@@ -61,26 +73,6 @@ fn main() -> eyre::Result<()> {
         spigot_visual::app::Error::Server(e) => eyre::eyre!(e),
         spigot_visual::app::Error::App(e) => e,
     })
-}
-
-/// Spawns a thread and returns a [`std::sync::mpsc::SyncSender`] that accepts narrower inputs,
-/// using the provided `map_fn` to widen back to send via the input sender
-fn spawn_narrower_sender<T: Send + 'static, U: Send + 'static>(
-    tx: std::sync::mpsc::SyncSender<U>,
-    map_fn: impl Fn(T) -> U + Send + 'static,
-) -> (std::sync::mpsc::SyncSender<T>, std::thread::JoinHandle<()>) {
-    let (narrow_tx, narrow_rx) = std::sync::mpsc::sync_channel(0);
-
-    let handle = std::thread::spawn(move || {
-        while let Ok(value) = narrow_rx.recv() {
-            let mapped = map_fn(value);
-
-            let Ok(()) = tx.send(mapped) else {
-                break;
-            };
-        }
-    });
-    (narrow_tx, handle)
 }
 
 fn run_server(
