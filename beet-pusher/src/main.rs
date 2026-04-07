@@ -5,6 +5,7 @@
 //! Proof of concept for pushing a simple beet query to VLC, with id tracking
 
 use crate::config_file::ConfigFile;
+use arg_util::ConfigFileOpen as _;
 use beet_pusher::{BeetItem, BeetPusher, fill_buckets};
 use clap::Parser;
 use eyre::Context as _;
@@ -263,6 +264,7 @@ mod now_playing_observer {
 }
 
 mod config_file {
+    use arg_util::ConfigFileWrite as _;
     use beet_pusher::BaseUrl;
 
     #[derive(serde::Serialize, serde::Deserialize)]
@@ -271,124 +273,20 @@ mod config_file {
         // If specified, writes the "now playing" ID to a text file for other scripts to pickup
         pub publish_id_file: Option<std::path::PathBuf>,
     }
-    impl ConfigFile {
-        pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self, ErrorOpen> {
-            let path = path.as_ref();
-
-            let make_error = |kind| ErrorOpen {
-                path: path.to_path_buf(),
-                kind,
-            };
-
-            let file_contents = std::fs::read_to_string(path)
-                .map_err(ErrorOpenKind::Read)
-                .map_err(make_error)?;
-
-            toml::from_str(&file_contents)
-                .map_err(ErrorOpenKind::Parse)
-                .map_err(make_error)
-        }
-    }
-
-    #[derive(Debug)]
-    pub(super) struct ErrorOpen {
-        path: std::path::PathBuf,
-        kind: ErrorOpenKind,
-    }
-    #[derive(Debug)]
-    enum ErrorOpenKind {
-        Read(std::io::Error),
-        Parse(toml::de::Error),
-    }
-    impl ErrorOpen {
-        pub fn is_missing_file(&self) -> bool {
-            matches!(&self.kind, ErrorOpenKind::Read(err) if matches!(err.kind(), std::io::ErrorKind::NotFound))
-        }
-    }
-    impl std::error::Error for ErrorOpen {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            use ErrorOpenKind as Kind;
-            match &self.kind {
-                Kind::Read(error) => Some(error),
-                Kind::Parse(error) => Some(error),
-            }
-        }
-    }
-    impl std::fmt::Display for ErrorOpen {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            use ErrorOpenKind as Kind;
-            let Self { path, kind } = self;
-            let description = match kind {
-                Kind::Read(_) => "failed to read",
-                Kind::Parse(_) => "failed to parse",
-            };
-
-            write!(
-                f,
-                "{description} config file: {path}",
-                path = path.display()
-            )
-        }
-    }
 
     impl ConfigFile {
         pub fn write_template_for_file(
             path: impl AsRef<std::path::Path>,
-        ) -> Result<std::path::PathBuf, ErrorWrite> {
-            let path = path.as_ref().to_path_buf();
-            let template_file = path.with_extension("toml.template");
-
-            let make_error = |kind| ErrorWrite {
-                path: template_file.clone(),
-                kind,
-            };
-
-            let default_config = Self {
+        ) -> Result<std::path::PathBuf, arg_util::config_file::ErrorWrite> {
+            Self {
                 base_url: BaseUrl(
                     "file:///path/to/beets/folder/"
                         .parse()
                         .expect("default base_url should parse"),
                 ),
                 publish_id_file: Some(std::path::PathBuf::from("current_item_id.txt")),
-            };
-            let contents =
-                toml::to_string(&default_config).expect("default config should serialize");
-
-            std::fs::write(&template_file, contents.as_bytes())
-                .map_err(ErrorWriteKind::Write)
-                .map_err(make_error)?;
-
-            Ok(template_file)
-        }
-    }
-
-    #[derive(Debug)]
-    pub(super) struct ErrorWrite {
-        path: std::path::PathBuf,
-        kind: ErrorWriteKind,
-    }
-    #[derive(Debug)]
-    enum ErrorWriteKind {
-        Write(std::io::Error),
-    }
-    impl std::error::Error for ErrorWrite {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            match &self.kind {
-                ErrorWriteKind::Write(error) => Some(error),
             }
-        }
-    }
-    impl std::fmt::Display for ErrorWrite {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self { path, kind } = self;
-            let description = match kind {
-                ErrorWriteKind::Write(_) => "failed to write",
-            };
-            write!(
-                f,
-                "{description} config file: {path}",
-                path = path.display()
-            )
+            .write_template_for_file(path)
         }
     }
 }

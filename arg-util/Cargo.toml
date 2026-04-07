@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 arbitrary = { version = "1.4.1", features = ["derive"] }
 serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.8.19"
 
 [dev-dependencies]
 arbtest = "0.3.2"

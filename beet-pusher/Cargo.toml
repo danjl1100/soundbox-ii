@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [dependencies]
+arg_util = { version = "0.1.0", path = "../arg-util" }
 bucket-spigot = { version = "0.1.0", path = "../bucket-spigot" }
 clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
