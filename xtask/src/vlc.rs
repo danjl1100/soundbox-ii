@@ -1,17 +1,27 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Tasks for the external `VLC` application
 use std::process::Command;
 
-/// Executes `VLC` with standard arguments for HTTP control
-///
-/// # Errors
-/// Returns an error if the arguments are missing/invalid, or executing VLC fails
-pub fn run_web(input_args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let args = {
-        let mut builder = ArgsBuilder::from_env()?;
-        builder.fill_from_args(input_args).transpose()?;
-        builder.finish()?
-    };
-    run(args)
+/// Runs VLC with required arguments for the web interface
+#[derive(Debug, clap::Args)]
+pub struct RunWeb {
+    input_args: Vec<String>,
+}
+impl RunWeb {
+    /// Executes `VLC` with standard arguments for HTTP control
+    ///
+    /// # Errors
+    /// Returns an error if the arguments are missing/invalid, or executing VLC fails
+    pub fn run_web(self) -> eyre::Result<()> {
+        let Self { input_args } = self;
+
+        let args = {
+            let mut builder = ArgsBuilder::from_env()?;
+            builder.fill_from_args(input_args.into_iter()).transpose()?;
+            builder.finish()?
+        };
+        run(args)
+    }
 }
 
 fn run(args: Args) -> eyre::Result<()> {

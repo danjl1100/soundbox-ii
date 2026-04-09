@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Tasks for the `spigot_visual` crate
 
 use self::gen_bindings::gen_bindings_ts;
@@ -6,7 +6,10 @@ use crate::{
     Fix, TypedErr, TypedResult, WriteOutput, print_help_fix_checks, project_root, run_cmd,
 };
 use eyre::Context;
-use std::{ffi::OsStr, path::PathBuf};
+use std::{
+    ffi::{OsStr, OsString},
+    path::PathBuf,
+};
 
 /// Hint that prerequisite files for the `cargo` workspace are present
 pub struct HintAllowRustWorkspaceCalls {}
@@ -59,7 +62,7 @@ impl HintAllowRustWorkspaceCalls {
 }
 /// Required action for prerequisite of the cargo workspace
 pub enum Need {
-    /// Need to run [`dist_js()`]
+    /// Need to run [`DistJs::dist_js()`]
     DistJsWrite {
         /// Prerequisite files that are missing
         missing_files: Vec<PathBuf>,
@@ -71,7 +74,7 @@ impl Need {
     /// # Errors
     /// Returns an error if `fix` is not specified, or the file generation fails
     pub fn run(&self, fix: Option<Fix>) -> TypedResult<()> {
-        let Some(Fix) = fix else {
+        let Some(Fix::Fix) = fix else {
             crate::bail!("argument `fix` not specified, refusing to write output files: {self:#?}")
         };
         println!(
@@ -81,7 +84,7 @@ impl Need {
         match self {
             Need::DistJsWrite {
                 missing_files: _diagnostic_only,
-            } => dist_js(Some(WriteOutput)),
+            } => DistJs::default().dist_js(),
         }
     }
     fn label(&self) -> &'static str {
@@ -105,43 +108,50 @@ impl std::fmt::Debug for Need {
     }
 }
 
-/// Generates prerequisit files and executes the `spigot-visual` main entrypoint
-///
-/// # Errors
-/// Returns any errors from I/O or spawned subprocesses
-pub fn run<S>(args: impl IntoIterator<Item = S>) -> TypedResult<()>
-where
-    S: AsRef<OsStr>,
-{
-    fn cmd_spigot_visual<S>(
-        c: &mut std::process::Command,
-        args: impl IntoIterator<Item = S>,
-    ) -> &mut std::process::Command
-    where
-        S: AsRef<OsStr>,
-    {
-        c.args(["run", "--package", "spigot-visual", "--"])
-            //
-            .arg("--dev-path-prefix")
-            .arg(dist_dir())
-            //
-            .args(args)
-    }
+/// Runs spigot-visual with the compiled typescript
+#[derive(Debug, clap::Args)]
+pub struct Run {
+    args: Vec<OsString>,
+}
+impl Run {
+    /// Generates prerequisit files and executes the `spigot-visual` main entrypoint
+    ///
+    /// # Errors
+    /// Returns any errors from I/O or spawned subprocesses
+    pub fn run(self) -> TypedResult<()> {
+        fn cmd_spigot_visual<S>(
+            c: &mut std::process::Command,
+            args: impl IntoIterator<Item = S>,
+        ) -> &mut std::process::Command
+        where
+            S: AsRef<OsStr>,
+        {
+            c.args(["run", "--package", "spigot-visual", "--"])
+                //
+                .arg("--dev-path-prefix")
+                .arg(dist_dir())
+                //
+                .args(args)
+        }
 
-    fmt_js()?;
-    dist_js(Some(WriteOutput))?;
+        let Self { args } = self;
 
-    #[cfg(unix)]
-    {
-        // replace the current process
-        let never = crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
-        match never {}
-    }
+        fmt_js()?;
 
-    #[cfg(not(unix))]
-    {
-        // Fallback for non-Unix systems
-        run_cargo(|c| cmd_spigot_visual(c, args))
+        DistJs::default().dist_js()?;
+
+        #[cfg(unix)]
+        {
+            // replace the current process
+            let never = crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
+            match never {}
+        }
+
+        #[cfg(not(unix))]
+        {
+            // Fallback for non-Unix systems
+            run_cargo(|c| cmd_spigot_visual(c, args))
+        }
     }
 }
 
@@ -151,13 +161,13 @@ where
 /// Returns any fatal errors with the checks
 pub fn checks(fix: Option<Fix>) -> TypedResult<()> {
     check_js(fix)?;
-    dist_js(None)?;
+    DistJs { write: None }.dist_js()?;
     Ok(())
 }
 fn check_js(fix: Option<Fix>) -> TypedResult<()> {
     run_cmd("biome", |c| {
         c.arg("check");
-        if let Some(Fix) = fix {
+        if let Some(Fix::Fix) = fix {
             c.arg("--write");
         }
         c.current_dir(ts_src_dir())
@@ -168,22 +178,39 @@ fn check_js(fix: Option<Fix>) -> TypedResult<()> {
 /// Formats the JavaScript sources
 fn fmt_js() -> TypedResult<()> {
     // `biome format --write` also works, but format is a subset of `biome check --write`
-    check_js(Some(Fix))
+    check_js(Some(Fix::Fix))
 }
 
-/// Generates the JavaScript sources
-///
-/// # Errors
-/// Returns an error if any subprocesses fail
-pub fn dist_js(write: Option<WriteOutput>) -> TypedResult<()> {
-    gen_bindings_ts()?;
-
-    run_cmd("tsc", |c| {
-        if write.is_none() {
-            c.arg("--noEmit");
+/// Compiles the spigot-visual typescript
+#[derive(Clone, Copy, Debug, clap::Args)]
+pub struct DistJs {
+    #[clap(subcommand)]
+    write: Option<WriteOutput>,
+}
+impl Default for DistJs {
+    fn default() -> Self {
+        Self {
+            write: Some(WriteOutput::Write),
         }
-        c.current_dir(ts_src_dir())
-    })
+    }
+}
+impl DistJs {
+    /// Generates the JavaScript sources
+    ///
+    /// # Errors
+    /// Returns an error if any subprocesses fail
+    pub fn dist_js(self) -> TypedResult<()> {
+        let Self { write } = self;
+
+        gen_bindings_ts()?;
+
+        run_cmd("tsc", |c| {
+            if write.is_none() {
+                c.arg("--noEmit");
+            }
+            c.current_dir(ts_src_dir())
+        })
+    }
 }
 
 mod gen_bindings {

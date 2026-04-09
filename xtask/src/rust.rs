@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks for the rust source code as a whole
 
 use crate::{
@@ -55,7 +55,7 @@ fn clippy(fix: Option<Fix>) -> TypedResult<()> {
             "--color",
             "always",
         ]);
-        if let Some(Fix) = fix {
+        if let Some(Fix::Fix) = fix {
             c.args(["--fix", "--allow-dirty"]);
         }
         c

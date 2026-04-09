@@ -2,8 +2,9 @@
 //! Helper commands for the repo, following the
 //! [`cargo-xtask`](https://github.com/matklad/cargo-xtask/) template
 
+use clap::Parser as _;
 use xtask::spigot_visual::HintAllowRustWorkspaceCalls;
-use xtask::{Fix, TypedResult, WriteOutput};
+use xtask::{Fix, TypedResult};
 
 const HELP_TEXT: &str = "Tasks:
 
@@ -13,46 +14,53 @@ spigot-visual-dist      compiles the spigot-visual typescript
 vlc                     runs VLC with required arguments for the web interface
 ";
 
+#[derive(Debug, clap::Parser)]
+struct Args {
+    #[clap(subcommand)]
+    subcommand: Option<Subcommand>,
+}
+#[derive(Debug, clap::Subcommand)]
+enum Subcommand {
+    Checks(AllChecks),
+    SpigotVisualRun(xtask::spigot_visual::Run),
+    /// Compiles the spigot-visual typescript
+    SpigotVisualDist,
+    Vlc(xtask::vlc::RunWeb),
+}
+
 fn main() -> eyre::Result<()> {
     main_inner().map_err(xtask::TypedErr::into_eyre_in_final_main_error_report_location)
 }
 fn main_inner() -> TypedResult<()> {
-    let mut args = std::env::args().skip(1);
-    let task = args.next();
-    match task.as_deref() {
-        Some("checks") => all_checks(args)?,
-        Some("spigot-visual-run") => xtask::spigot_visual::run(args)?,
-        Some("spigot-visual-dist") => xtask::spigot_visual::dist_js(Some(WriteOutput))?,
-        Some("vlc") => xtask::vlc::run_web(args)?,
-        _ => print_help(),
+    let Args { subcommand } = Args::parse();
+    match subcommand {
+        Some(Subcommand::Checks(checks)) => checks.all_checks()?,
+        Some(Subcommand::SpigotVisualRun(run)) => run.run()?,
+        Some(Subcommand::SpigotVisualDist) => xtask::spigot_visual::DistJs::default().dist_js()?,
+        Some(Subcommand::Vlc(run_web)) => run_web.run_web()?,
+        None => print_help(),
     }
     Ok(())
 }
 
-fn all_checks(mut args: impl Iterator<Item = String>) -> TypedResult<()> {
-    let bail_unknown = |arg| eyre::eyre!("unknown checks argument: {arg:?}");
-    let fix = args
-        .next()
-        .map(|arg| {
-            if arg == "fix" {
-                Ok(Fix)
-            } else {
-                Err(bail_unknown(arg))
-            }
-        })
-        .transpose()?;
+/// Runs all linting checks
+#[derive(Debug, clap::Args)]
+struct AllChecks {
+    #[clap(subcommand)]
+    fix: Option<Fix>,
+}
+impl AllChecks {
+    fn all_checks(self) -> TypedResult<()> {
+        let AllChecks { fix } = self;
 
-    if let Some(extra) = args.next() {
-        return Err(bail_unknown(extra).into());
+        let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
+
+        xtask::copyright::checks(fix)?;
+        xtask::rust::checks(fix, &hint)?;
+        xtask::spigot_visual::checks(fix)?;
+
+        Ok(())
     }
-
-    let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
-
-    xtask::copyright::checks(fix)?;
-    xtask::rust::checks(fix, &hint)?;
-    xtask::spigot_visual::checks(fix)?;
-
-    Ok(())
 }
 
 fn print_help() {

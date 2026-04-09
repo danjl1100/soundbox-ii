@@ -18,13 +18,19 @@ pub mod vlc;
 #[cfg(unix)]
 pub mod unix_exec;
 
-/// If present, attempt to fix the checks by writing to files (otherwise, run read-only checks)
-#[derive(Clone, Copy, Debug)]
-pub struct Fix;
+/// Attempt to fix checks by writing to files (otherwise, run read-only checks)
+#[derive(Clone, Copy, Debug, clap::Subcommand)]
+pub enum Fix {
+    /// Attempt to fix checks by writing to files (otherwise, run read-only checks)
+    Fix,
+}
 
 /// If present, write output files (otherwise, run read-only checks)
-#[derive(Clone, Copy, Debug)]
-pub struct WriteOutput;
+#[derive(Clone, Copy, Debug, clap::Subcommand)]
+pub enum WriteOutput {
+    /// Write output files (otherwise, run read-only checks)
+    Write,
+}
 
 mod typed_err {
     use super::SpawnFail;
