@@ -1,13 +1,13 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::arb_rng::{assert_arb_error, fake_rng};
+use super::arb_rng::fake_rng;
 use crate::{ModifyErr, ModifyError, Network, path::RemovedSelf, tests::script::NetworkStrings};
 
 #[test]
 fn empty() {
     let network = Network::<(), ()>::default();
     arbtest::arbtest(|u| {
-        let peeked = assert_arb_error(network.peek(&mut fake_rng(u), usize::MAX))?;
+        let peeked = network.peek(&mut fake_rng(u), usize::MAX)?;
         assert_eq!(peeked.cancel_into_items(), Vec::<&()>::new());
         Ok(())
     });

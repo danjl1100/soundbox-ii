@@ -4,6 +4,7 @@
 
 use super::NONEMPTY_WEIGHTS;
 use crate::Weights;
+use crate::order::ArbitrarySource;
 use crate::order::source::{OrderSource, Random, Shuffle};
 use crate::tests::decode_hex;
 use arbtest::arbitrary::Unstructured;
@@ -20,7 +21,7 @@ macro_rules! fake_rng {
     };
 }
 
-fn fmt_chunks<R: rand::Rng + ?Sized>(
+fn fmt_chunks<R: ArbitrarySource + ?Sized>(
     uut: &mut impl OrderSource<R>,
     weights: Weights<'_>,
     rng: &mut R,
@@ -39,12 +40,12 @@ fn fmt_chunks<R: rand::Rng + ?Sized>(
     }
     output
 }
-fn fmt_chunks_spatial<R: rand::Rng + ?Sized>(
+fn fmt_chunks_spatial<R: ArbitrarySource + ?Sized>(
     uut: &mut impl OrderSource<R>,
     weights: Weights<'_>,
     rng: &mut R,
     (len, repetitions): (usize, usize),
-) -> Result<String, rand::Error> {
+) -> Result<String, R::Error> {
     use std::fmt::Write as _;
     let mut iter = std::iter::repeat_with(|| uut.next(rng, weights));
 
@@ -286,7 +287,7 @@ fn calculate_shuffle_equal(
         let (rng, u) = &determined;
     }
     let result = fmt_chunks_spatial(&mut uut, weights, rng, (weights_sum, 1))
-        .map_err(CalculateShuffleError::Rand)?;
+        .map_err(CalculateShuffleError::Arbitrary)?;
 
     // ensure we used all entropy (to not specify more than needed)
     let len = u.len();
@@ -298,13 +299,13 @@ fn calculate_shuffle_equal(
 }
 #[derive(Debug)]
 enum CalculateShuffleError {
-    Rand(rand::Error),
+    Arbitrary(arbitrary::Error),
     ExcessEntropy { len: usize },
 }
 impl std::error::Error for CalculateShuffleError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            CalculateShuffleError::Rand(error) => Some(error),
+            CalculateShuffleError::Arbitrary(error) => Some(error),
             CalculateShuffleError::ExcessEntropy { len: _ } => None,
         }
     }
@@ -312,7 +313,7 @@ impl std::error::Error for CalculateShuffleError {
 impl std::fmt::Display for CalculateShuffleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CalculateShuffleError::Rand(_) => write!(f, "rand::Error failure reported"),
+            CalculateShuffleError::Arbitrary(_) => write!(f, "arbitrary::Error failure reported"),
             CalculateShuffleError::ExcessEntropy { len } => {
                 write!(f, "{len} bytes of excess entropy created")
             }

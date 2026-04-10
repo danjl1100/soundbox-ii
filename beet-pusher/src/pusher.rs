@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::{BaseUrl, BeetItem, Determined};
-use bucket_spigot::Network;
+use bucket_spigot::{Network, order::ArbitrarySource};
 
 /// Listener for the current playing item
 pub trait NowPlayingObserver {
@@ -47,7 +47,7 @@ struct Config {
 }
 impl<'a, R> BeetPusher<'a, R>
 where
-    R: rand::RngCore,
+    R: ArbitrarySource,
 {
     /// Creates a new VLC client fed by the specified Network
     pub fn new(
@@ -78,6 +78,7 @@ impl<R> BeetPusher<'_, R> {
 
 mod sync {
     use super::BeetPusher;
+    use bucket_spigot::order::ArbitrarySource;
 
     // type UreqError = vlc_http::http_runner::ureq::Error;
     type ExhaustResult<'a, T, E> =
@@ -85,7 +86,7 @@ mod sync {
 
     impl<R> BeetPusher<'_, R>
     where
-        R: rand::RngCore,
+        R: ArbitrarySource,
     {
         /// Thin wrapper around [`vlc_http::sync::complete_plan`] with sane defaults
         ///
@@ -116,9 +117,10 @@ mod sync {
 mod fill_determined {
     use super::BeetPusher;
     use crate::BeetItem;
+    use bucket_spigot::order::ArbitrarySource;
     use tracing::debug;
 
-    impl<R: rand::RngCore> BeetPusher<'_, R> {
+    impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Updates the determined playlist items
         ///
         /// # Errors
@@ -126,7 +128,7 @@ mod fill_determined {
         ///
         /// # Panics
         /// Panics if the determined logic does not yield 1 item (TODO!!!)
-        pub fn fill_determined(&mut self) -> Result<(), Error> {
+        pub fn fill_determined(&mut self) -> Result<(), Error<R::Error>> {
             use ErrorKind;
             let make_err = |kind| Error { kind };
 
@@ -147,7 +149,7 @@ mod fill_determined {
                 let peeked = self
                     .spigot
                     .peek(self.rng, peek_len)
-                    .map_err(ErrorKind::Rand)
+                    .map_err(ErrorKind::Arbitrary)
                     .map_err(make_err)?;
 
                 if peeked.items().len() != peek_len {
@@ -183,33 +185,36 @@ mod fill_determined {
     }
 
     #[derive(Debug)]
-    pub struct Error {
-        kind: ErrorKind,
+    pub struct Error<E> {
+        kind: ErrorKind<E>,
     }
     #[derive(Debug)]
-    enum ErrorKind {
+    enum ErrorKind<E> {
         SpigotEmptyError { view: String },
-        Rand(rand::Error),
+        Arbitrary(E),
         BeetPath(crate::path_url::ErrorBeetPath),
     }
-    impl std::error::Error for Error {
+    impl<E> std::error::Error for Error<E>
+    where
+        E: std::error::Error + 'static,
+    {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             let Self { kind } = self;
             match kind {
                 ErrorKind::SpigotEmptyError { .. } => None,
-                ErrorKind::Rand(source) => Some(source),
+                ErrorKind::Arbitrary(source) => Some(source),
                 ErrorKind::BeetPath(source) => Some(source),
             }
         }
     }
-    impl std::fmt::Display for Error {
+    impl<E> std::fmt::Display for Error<E> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let Self { kind } = self;
             match kind {
                 ErrorKind::SpigotEmptyError { view } => {
                     write!(f, "bucket-spigot network must be non-empty:\n{view}")
                 }
-                ErrorKind::Rand(_source) => write!(f, "failed to get randomness"),
+                ErrorKind::Arbitrary(_source) => write!(f, "failed to get randomness"),
                 ErrorKind::BeetPath(_source) => write!(f, "failed to convert beet paths"),
             }
         }
@@ -218,6 +223,7 @@ mod fill_determined {
 
 mod push_playlist {
     use super::{BeetPusher, NowPlayingObserver};
+    use bucket_spigot::order::ArbitrarySource;
     use vlc_http::goal::TargetPlaylistItems;
 
     // TODO remove if unused
@@ -241,7 +247,7 @@ mod push_playlist {
     //     }
     // }
 
-    impl<R: rand::RngCore> BeetPusher<'_, R> {
+    impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Pushes the determined track list to VLC and notifies the `now_playing_observer`
         /// for the current track if it changed
         ///

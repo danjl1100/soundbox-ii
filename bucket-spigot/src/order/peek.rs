@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use super::{CountsRemaining, OrderNode, RandResult, Root, source::OrderSource as _};
-use crate::{BucketId, Child, Network, child_vec::ChildVec};
+use super::{CountsRemaining, OrderNode, Root, source::OrderSource as _};
+use crate::{BucketId, Child, Network, child_vec::ChildVec, order::ArbitrarySource};
 use std::rc::Rc;
 impl<T, U> Network<T, U> {
     /// Returns a proposed sequence of items leaving the spigot.
@@ -14,11 +14,11 @@ impl<T, U> Network<T, U> {
     ///
     /// # Panics
     /// Panics if the internal order state does not match the item node structure
-    pub fn peek<'a, R: rand::Rng + ?Sized>(
+    pub fn peek<'a, R: ArbitrarySource>(
         &'a self,
         rng: &mut R,
         peek_len: usize,
-    ) -> RandResult<Peeked<'a, T>> {
+    ) -> Result<Peeked<'a, T>, R::Error> {
         let root = &self.trees.item;
         let mut root_order = self.trees.order.0.clone();
         let mut root_remaining = CountsRemaining::new(root.len());
@@ -93,9 +93,9 @@ fn peek_inner<'a, R, T, U>(
     current: &'a ChildVec<Child<T, U>>,
     order_node: &mut OrderNode,
     current_remaining: &mut CountsRemaining,
-) -> RandResult<Result<PeekResult<'a, T>, OrderIndexError>>
+) -> Result<Result<PeekResult<'a, T>, OrderIndexError>, R::Error>
 where
-    R: rand::Rng + ?Sized,
+    R: ArbitrarySource + ?Sized,
 {
     let order_current = &mut order_node.order;
     let order_children = &mut order_node.children;

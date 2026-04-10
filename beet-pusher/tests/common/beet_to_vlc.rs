@@ -4,24 +4,15 @@
 use self::expect_beet::ExpectBeet;
 use self::expect_http::ExpectHttp;
 use beet_pusher::{BeetItem, BeetPusher, NowPlayingObserver};
+use bucket_spigot::order::ArbitrarySource;
 use std::str::FromStr;
 use vlc_http::testing::{Model, PlayState};
 
 struct PanicRng;
-impl rand::RngCore for PanicRng {
-    fn next_u32(&mut self) -> u32 {
-        unimplemented!("PanicRng")
-    }
+impl ArbitrarySource for PanicRng {
+    type Error = std::convert::Infallible;
 
-    fn next_u64(&mut self) -> u64 {
-        unimplemented!("PanicRng")
-    }
-
-    fn fill_bytes(&mut self, _: &mut [u8]) {
-        unimplemented!("PanicRng")
-    }
-
-    fn try_fill_bytes(&mut self, _: &mut [u8]) -> Result<(), rand::Error> {
+    fn try_fill(&mut self, _dest: &mut [u8]) -> Result<(), Self::Error> {
         unimplemented!("PanicRng")
     }
 }

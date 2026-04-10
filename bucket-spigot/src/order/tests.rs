@@ -3,10 +3,9 @@
 #![allow(clippy::panic, reason = "expect panic in tests")]
 #![allow(clippy::unwrap_used, reason = "allow panic in tests")]
 
-use super::RandResult;
 use super::source::{InOrder, Order, OrderSource as _, OrderType};
 use crate::Weights;
-use crate::tests::{assert_arb_error, fake_rng, run_with_timeout};
+use crate::tests::{fake_rng, run_with_timeout};
 use arbtest::arbitrary::Unstructured;
 use std::time::Duration;
 
@@ -61,7 +60,7 @@ impl<'a> Validator<'a> {
     /// [`OrderType`]
     fn validate_next<'b>(
         &'b mut self,
-        mut next_fn: impl FnMut(&mut Unstructured) -> RandResult<usize> + Send + Sync + 'b,
+        mut next_fn: impl FnMut(&mut Unstructured) -> arbitrary::Result<usize> + Send + Sync + 'b,
         // TODO type alias for arbtest::arbitrary::Result<ControlFlow<()>>
     ) -> impl FnMut(&mut Unstructured) -> arbtest::arbitrary::Result<std::ops::ControlFlow<()>>
     + Captures<&'a &'b ()> {
@@ -70,7 +69,7 @@ impl<'a> Validator<'a> {
         let mut prev = None;
         move |u| {
             let next = run_with_timeout(
-                || assert_arb_error(next_fn(u)),
+                || next_fn(u),
                 TIMEOUT,
                 |elapsed| {
                     // FIXME no way of reporting a "failure" seed if `next_fn` is stuck,

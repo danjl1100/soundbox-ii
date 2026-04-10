@@ -1,23 +1,22 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use self::rand_exact::choose_index;
-use super::RandResult;
-use crate::{ChildVec, Weights};
+use crate::{ChildVec, Weights, order::ArbitrarySource};
 use std::num::NonZeroUsize;
 
-pub(super) trait OrderSource<R: rand::Rng + ?Sized> {
+pub(super) trait OrderSource<R: ArbitrarySource + ?Sized> {
     /// Returns the next index in the order, within the range `0..=max_index`
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize>;
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> Result<usize, R::Error>;
     /// Returns the next index in the order to index the specified target slice
     /// or `None` if the specified `target` is empty.
-    fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<RandResult<usize>> {
+    fn next_in_equal<T>(&mut self, rng: &mut R, target: &[T]) -> Option<Result<usize, R::Error>> {
         let weights = Weights::new_equal(target.len())?;
         let next = self.next(rng, weights);
         Some(next)
     }
     /// Returns the next index in the order to index the specified target [`ChildVec`],
     /// or `None` if the specified `target` is empty.
-    fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<RandResult<usize>> {
+    fn next_in<T>(&mut self, rng: &mut R, target: &ChildVec<T>) -> Option<Result<usize, R::Error>> {
         let weights = target.weights()?;
         let next = self.next(rng, weights);
         Some(next)
@@ -86,25 +85,25 @@ impl Order {
         }
     }
 }
-impl<R: rand::Rng + ?Sized> OrderSource<R> for Order {
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+impl<R: ArbitrarySource + ?Sized> OrderSource<R> for Order {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> Result<usize, R::Error> {
         match self {
-            Order::InOrder(inner) => inner.next(rng, weights),
-            Order::Random(inner) => inner.next(rng, weights),
-            Order::Shuffle(inner) => inner.next(rng, weights),
+            Order::InOrder(inner) => OrderSource::next(inner, rng, weights),
+            Order::Random(inner) => OrderSource::next(inner, rng, weights),
+            Order::Shuffle(inner) => OrderSource::next(inner, rng, weights),
         }
     }
 }
 
 mod rand_exact {
-    use super::RandResult;
+    use crate::order::ArbitrarySource;
     use std::num::{NonZeroU32, NonZeroUsize};
 
-    pub(super) fn choose_index<R: rand::Rng + ?Sized>(
+    pub(super) fn choose_index<R: ArbitrarySource + ?Sized>(
         rng: &mut R,
         buf: &mut Vec<u8>,
         len: NonZeroUsize,
-    ) -> RandResult<usize> {
+    ) -> Result<usize, R::Error> {
         let required_bits = len
             .get()
             .checked_next_power_of_two()
@@ -137,12 +136,12 @@ mod rand_exact {
         })
     }
 
-    fn with_arbitrary_bytes<T, R: rand::Rng + ?Sized>(
+    fn with_arbitrary_bytes<T, R: ArbitrarySource + ?Sized>(
         rng: &mut R,
         buf: &mut Vec<u8>,
         count: NonZeroUsize,
         f: impl FnOnce(&mut nonempty::UnstructuredWrap) -> T,
-    ) -> RandResult<T> {
+    ) -> Result<T, R::Error> {
         buf.resize(count.get(), 0);
         rng.try_fill(&mut buf[..])?;
         let mut wrapped = nonempty::UnstructuredWrap::new(buf);
@@ -194,8 +193,8 @@ pub(super) struct InOrder {
     next_index: usize,
     count: usize,
 }
-impl<R: rand::Rng + ?Sized> OrderSource<R> for InOrder {
-    fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+impl<R: ArbitrarySource + ?Sized> OrderSource<R> for InOrder {
+    fn next(&mut self, _rng: &mut R, weights: Weights<'_>) -> Result<usize, R::Error> {
         // PRECONDITION: There exists an index where weights.get_as_usize(index) > 0,
         //               by the definition of `Weights<'_>`
         loop {
@@ -251,8 +250,8 @@ impl Shuffle {
         }
     }
 }
-impl<R: rand::Rng + ?Sized> OrderSource<R> for Shuffle {
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+impl<R: ArbitrarySource + ?Sized> OrderSource<R> for Shuffle {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> Result<usize, R::Error> {
         // NOTE: Take care to only use 'index' to name the class of return values
 
         let items_count = weights.get_max_index() + 1;
@@ -295,8 +294,8 @@ struct Choice {
     index: usize,
     weight_range_max: usize,
 }
-impl<R: rand::Rng + ?Sized> OrderSource<R> for Random {
-    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> RandResult<usize> {
+impl<R: ArbitrarySource + ?Sized> OrderSource<R> for Random {
+    fn next(&mut self, rng: &mut R, weights: Weights<'_>) -> Result<usize, R::Error> {
         let max_index = weights.get_max_index();
         let (breakpoints, max_choice) = if weights.is_unity() {
             (None, max_index)

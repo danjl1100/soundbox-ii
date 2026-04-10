@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::{
     arb_rng::{PanicRng, RngHolder},
@@ -268,7 +268,7 @@ where
             Command::Peek { flags, count } => {
                 let (effort, peeked, bucket_ids) = self
                     .run_peek(count, flags, rng_holder)
-                    .map_err(Kind::Rand)?;
+                    .map_err(Kind::Arbitrary)?;
                 let entry = if flags.apply {
                     Entry::Pop(effort, peeked)
                 } else {
@@ -280,7 +280,7 @@ where
                 let count = expected.len();
                 let (effort, peeked, bucket_ids) = self
                     .run_peek(count, flags, rng_holder)
-                    .map_err(Kind::Rand)?;
+                    .map_err(Kind::Arbitrary)?;
                 assert_eq!(peeked, expected);
 
                 let entry_items = flags
@@ -320,7 +320,7 @@ where
         count: usize,
         flags: PeekFlags,
         rng_holder: &mut RngHolder,
-    ) -> Result<PeekOutput<T, U>, rand::Error> {
+    ) -> arbitrary::Result<PeekOutput<T, U>> {
         let peeked = self.peek_test_rng(count, rng_holder)?;
 
         let items = peeked
@@ -347,10 +347,11 @@ where
         &mut self,
         count: usize,
         rng_holder: &mut RngHolder,
-    ) -> Result<crate::order::Peeked<'_, T>, rand::Error> {
+    ) -> arbitrary::Result<crate::order::Peeked<'_, T>> {
         let bytes = rng_holder.get_bytes();
         if bytes.is_empty() {
-            self.peek(&mut PanicRng, count)
+            let Ok(peeked) = self.peek(&mut PanicRng, count);
+            Ok(peeked)
         } else {
             let mut u = Unstructured::new(bytes);
             let mut rng = fake_rng(&mut u);
@@ -424,7 +425,7 @@ pub(super) struct ScriptError {
 #[derive(Debug)]
 enum ScriptErrorKind {
     Clap(::clap::Error),
-    Rand(::rand::Error),
+    Arbitrary(::arbitrary::Error),
     Modify(crate::ModifyError),
     DuplicateRngInit,
     ParseHex {
@@ -449,7 +450,7 @@ impl std::error::Error for ScriptError {
                 // NOTE: Clap errors are pass-thru for display, so no source here
                 None
             }
-            Kind::Rand(error) => Some(error),
+            Kind::Arbitrary(error) => Some(error),
             Kind::Modify(error) => Some(error),
             Kind::DuplicateRngInit
             | Kind::ExpectErrorMissingCommand
@@ -476,7 +477,7 @@ impl std::fmt::Display for ScriptError {
         } = self;
         match kind {
             Kind::Clap(error) => write!(f, "{error}"),
-            Kind::Rand(_) => write!(f, "failed to simulate random number generator"),
+            Kind::Arbitrary(_) => write!(f, "failed to simulate random number generator"),
             Kind::Modify(_) => write!(f, "failed to modify network"),
             Kind::DuplicateRngInit => {
                 write!(f, "random number generator (RNG) can only be enabled once")

@@ -75,7 +75,7 @@ fn main() -> eyre::Result<()> {
         let mut spigot = setup_spigot(&script)?;
         let view = spigot.view_table_default();
         println!("{view}");
-        let rng = &mut rand::thread_rng();
+        let rng = &mut bucket_spigot::order::ErrorRng(&mut rand::thread_rng());
         for _ in 0..50 {
             let peeked = spigot.peek(rng, 1)?;
             println!("{:?}", peeked.items());
@@ -115,7 +115,7 @@ fn main() -> eyre::Result<()> {
         Ok::<_, now_playing_observer::PublishError>(())
     };
 
-    let rng = &mut rand::thread_rng();
+    let rng = &mut bucket_spigot::order::ErrorRng(&mut rand::thread_rng());
     let spigot = setup_spigot(&script)?;
 
     let mut pusher = BeetPusher::new(rng, spigot, base_url);

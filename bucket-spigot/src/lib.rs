@@ -33,17 +33,17 @@ pub mod order {
     //! Ordering for selecting child nodes and child items throughout the
     //! [`Network`](`crate::Network`)
 
-    type RandResult<T> = Result<T, rand::Error>;
-
-    use counts_remaining::CountsRemaining;
-    pub(crate) use node::Node as OrderNode;
-    pub(crate) use node::{Root, UnknownOrderPath};
-    pub use peek::Peeked;
-    use source::Order;
+    use self::counts_remaining::CountsRemaining;
+    pub use self::fallible_rng::{ArbitrarySource, ErrorRng, PanicRng};
+    pub(crate) use self::node::Node as OrderNode;
+    pub(crate) use self::node::{Root, UnknownOrderPath};
+    pub use self::peek::Peeked;
+    use self::source::Order;
     #[expect(clippy::module_name_repetitions, reason = "name for re-export")]
-    pub use source::OrderType;
+    pub use self::source::OrderType;
 
     mod counts_remaining;
+    mod fallible_rng;
     mod node;
     mod peek;
     mod source;
@@ -813,7 +813,7 @@ pub(crate) struct CannotDeleteNonempty(Path);
 #[allow(clippy::panic)] // TODO use actual error handling for tests, `eyre` prints good details!
 #[allow(clippy::unwrap_used)] // TODO
 mod tests {
-    pub(crate) use arb_rng::{PanicRng, assert_arb_error, decode_hex, fake_rng};
+    pub(crate) use arb_rng::{PanicRng, decode_hex, fake_rng};
     pub(crate) use sync::run_with_timeout;
 
     // utils
