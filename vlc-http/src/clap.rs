@@ -4,7 +4,6 @@
 use crate::command::VolumeBoundsError;
 // avoid local name conflicts
 use crate::Command as CrateCommand;
-use crate::request::AuthInput as CrateAuthInput;
 
 // re-export `clap`
 #[expect(clippy::module_name_repetitions, reason = "re-export `clap`")]
@@ -108,34 +107,6 @@ impl TryFrom<ClapCommand> for CrateCommand {
             },
             Src::PlaybackSpeed { speed } => Dest::PlaybackSpeed { speed },
         })
-    }
-}
-
-/// Input authentication parameters to the VLC instance
-#[derive(Clone, clap::Args, Debug)]
-pub struct ClapAuthInput {
-    /// Password string (plaintext)
-    #[clap(long, env = "VLC_PASSWORD")]
-    pub password: String,
-    /// Host string
-    #[clap(long, env = "VLC_HOST")]
-    pub host: String,
-    /// Port number
-    #[clap(long, env = "VLC_PORT")]
-    pub port: u16,
-}
-impl From<ClapAuthInput> for CrateAuthInput {
-    fn from(value: ClapAuthInput) -> Self {
-        let ClapAuthInput {
-            password,
-            host,
-            port,
-        } = value;
-        Self {
-            password,
-            host,
-            port,
-        }
     }
 }
 

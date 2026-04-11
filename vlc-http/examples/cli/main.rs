@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Proof-of-concept for using the [`vlc_http`] crate without an async runtime
 //!
 //! For the experiment to succeed, this binary crate should be simple and tiny
@@ -13,7 +13,7 @@ use vlc_http::{
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
     #[clap(flatten)]
-    auth: vlc_http::clap::ClapAuthInput,
+    auth: vlc_http_auth_clap::ClapAuthInput,
     /// Print full response text for each request
     #[clap(long)]
     print_responses_http: bool,

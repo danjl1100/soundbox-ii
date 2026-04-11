@@ -14,7 +14,7 @@ use std::{borrow::Cow, path::PathBuf};
 #[derive(clap::Parser, Debug)]
 struct Args {
     #[clap(flatten)]
-    auth: vlc_http::clap::ClapAuthInput,
+    auth: vlc_http_auth_clap::ClapAuthInput,
     #[clap(long)]
     config_file: Option<std::path::PathBuf>,
     /// Script file to use for the bucket spigot sequencer

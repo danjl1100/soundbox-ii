@@ -1,0 +1,11 @@
+[package]
+name = "vlc-http-auth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.22.1"
+http = "1.1.0"
+
+[lints]
+workspace = true

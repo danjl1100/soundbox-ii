@@ -1,9 +1,10 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP-level primitives (interchange for test purposes)
 
 use crate::{
     Command,
     command::{VolumePercent256, VolumePercentDelta256},
+    http,
 };
 use std::borrow::Cow;
 

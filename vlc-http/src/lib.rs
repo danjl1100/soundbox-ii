@@ -128,6 +128,9 @@
 //! [`SeekNext`]: `Command::SeekNext`
 //! [`SeekPrevious`]: `Command::SeekPrevious`
 
+pub use vlc_http_auth::Auth;
+use vlc_http_auth::http;
+
 mod fmt;
 
 // --------------------------------------------------
@@ -140,7 +143,7 @@ pub mod command;
 pub use goal::{Change, Plan};
 pub mod goal;
 
-pub use request::{Auth, Endpoint};
+pub use request::Endpoint;
 pub mod request;
 
 // --------------------------------------------------
