@@ -3,7 +3,7 @@
 ///
 /// This allows for reporting custom errors (e.g. [`arbitrary::Error`]) for tests.
 ///
-/// Users generally provide [`rand::RngCore`] by wrapping in the [`PanicRng`] struct
+/// Users generally provide [`rand::RngCore`] by wrapping in the [`ErrorRng`] struct
 pub trait ArbitrarySource {
     /// Error generating arbitrary values
     type Error: std::error::Error;
@@ -30,17 +30,19 @@ where
     }
 }
 
-/// Random Number Generator (RNG) wrapper for a panicking version of [`rand_next`]
-pub struct PanicRng<'a, R: ?Sized>(pub &'a mut R);
-impl<R: ?Sized> ArbitrarySource for PanicRng<'_, R>
-where
-    R: rand_next::Rng,
-{
-    type Error = std::convert::Infallible;
-
-    fn try_fill(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
-        let Self(rng) = self;
-        rand_next::Fill::fill_slice(dest, rng);
-        Ok(())
-    }
-}
+// TODO: pending removal of non-optional WASI dependencies,
+// see <https://github.com/rust-random/getrandom/pull/830>
+// /// Random Number Generator (RNG) wrapper for a panicking version of [`rand_next`]
+// pub struct PanicRng<'a, R: ?Sized>(pub &'a mut R);
+// impl<R: ?Sized> ArbitrarySource for PanicRng<'_, R>
+// where
+//     R: rand_next::Rng,
+// {
+//     type Error = std::convert::Infallible;
+//
+//     fn try_fill(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+//         let Self(rng) = self;
+//         rand_next::Fill::fill_slice(dest, rng);
+//         Ok(())
+//     }
+// }

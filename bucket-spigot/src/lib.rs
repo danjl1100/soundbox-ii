@@ -34,7 +34,7 @@ pub mod order {
     //! [`Network`](`crate::Network`)
 
     use self::counts_remaining::CountsRemaining;
-    pub use self::fallible_rng::{ArbitrarySource, ErrorRng, PanicRng};
+    pub use self::fallible_rng::{ArbitrarySource, ErrorRng};
     pub(crate) use self::node::Node as OrderNode;
     pub(crate) use self::node::{Root, UnknownOrderPath};
     pub use self::peek::Peeked;

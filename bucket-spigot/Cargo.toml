@@ -14,7 +14,9 @@ workspace = true
 
 [dependencies]
 rand = "0.8.5"
-rand_next = { version = "0.10.0", package = "rand" }
+# TODO: pending removal of non-optional WASI dependencies,
+# see <https://github.com/rust-random/getrandom/pull/830>
+# rand_next = { version = "0.10.0", package = "rand" }
 clap = { version = "4.5.4", features = ["derive"] }
 serde = { version = "1.0.199", features = ["derive"] }
 arbitrary = "1.3.2"
