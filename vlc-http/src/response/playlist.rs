@@ -1,5 +1,7 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Playlist response types
+
+use crate::url::Url;
 
 use serde::{Deserialize, Deserializer};
 
@@ -46,6 +48,7 @@ pub use item::Item;
 pub(crate) use item::ItemBuilder;
 mod item {
     use crate::fmt::DebugUrl;
+    use crate::url::Url;
 
     /// Item in the playlist (track, playlist, folder, etc.)
     #[derive(Clone, PartialEq, Eq, serde::Serialize)]
@@ -75,12 +78,12 @@ mod item {
         }
         /// Returns the URL
         #[must_use]
-        pub fn get_url(&self) -> &url::Url {
+        pub fn get_url(&self) -> &Url {
             self.as_ref()
         }
     }
-    impl AsRef<url::Url> for Item {
-        fn as_ref(&self) -> &url::Url {
+    impl AsRef<Url> for Item {
+        fn as_ref(&self) -> &Url {
             self.url.as_ref()
         }
     }
@@ -91,7 +94,7 @@ mod item {
     }
 
     pub(crate) struct ItemBuilder {
-        pub url: url::Url,
+        pub url: Url,
         pub id: u64,
         pub name: String,
         pub duration_secs: Option<u64>,
@@ -157,7 +160,7 @@ struct ItemJSON {
     id: u64,
     name: String,
     #[serde(rename = "uri")]
-    url: url::Url,
+    url: Url,
 }
 impl std::fmt::Debug for Info {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

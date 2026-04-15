@@ -2,9 +2,8 @@
 //! HTTP-level primitives (interchange for test purposes)
 
 use crate::{
-    Command,
-    command::{VolumePercent256, VolumePercentDelta256},
-    http,
+    Command, http,
+    volume_256::{VolumePercent256, VolumePercentDelta256},
 };
 use std::borrow::Cow;
 
@@ -43,6 +42,7 @@ impl std::fmt::Debug for Endpoint {
 
 mod endpoint_args {
     use super::Endpoint;
+    use crate::url::Url;
     use std::borrow::Cow;
     use std::fmt::Write;
 
@@ -103,7 +103,7 @@ mod endpoint_args {
             let value = urlencoding::encode(value);
             self.append_raw(&key, &value)
         }
-        pub fn append_url(self, key: &str, value: &url::Url) -> Self {
+        pub fn append_url(self, key: &str, value: &Url) -> Self {
             // NOTE: While URLs (esp. file://) technically work without urlencoding,
             //       a proper URL-encoded URL will be improperly decoded by VLC.
             //
@@ -138,14 +138,10 @@ mod endpoint_args {
     }
 }
 
-impl Command {
+impl Endpoint {
     /// Creates a request endpoint for the current art
     pub fn art_endpoint(id: &str) -> Endpoint {
         endpoint_args::EndpointArgs::new_art(id).finish()
-    }
-    /// Creates a request endpoint for the command
-    pub fn into_endpoint(self) -> Endpoint {
-        self.into()
     }
 }
 impl From<Command> for Endpoint {

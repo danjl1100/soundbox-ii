@@ -7,6 +7,10 @@ use crate::{
     client_state::{ClientStateSequence, InvalidClientInstance, Sequence},
     response,
 };
+pub use vlc_http_cmd::{
+    command::{VolumePercent, VolumePercentDelta},
+    goal::{Change, PlaybackMode, RepeatMode, TargetPlaylistItems},
+};
 
 mod playback_mode;
 mod playlist_items;
@@ -55,127 +59,6 @@ mod builders {
             };
             ActionPlan(inner)
         }
-    }
-}
-
-/// High-level change to VLC state (dynamic API calls depending on the current state), with no output.
-/// (think `Result<(), Error>`)
-///
-/// Used with [`PlanBuilder::apply`](`crate::client_state::PlanBuilder::apply`)
-/// to create a [`Plan`] to execute.
-///
-/// See also: [`Command`](`crate::Command`)s for simple changes that do not rely on the current
-/// client state.
-///
-/// See also: Query methods on [`ClientState`] for obtain non-empty data results.
-///
-#[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Change {
-    /// Set the item selection mode
-    PlaybackMode(PlaybackMode),
-    /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
-    ///
-    /// See also:
-    /// [`PlanBuilder::set_playlist_and_query_matched`](`crate::client_state::PlanBuilder::set_playlist_and_query_matched`)
-    /// for obtaining the list of matched items
-    PlaylistSet(TargetPlaylistItems),
-}
-impl From<PlaybackMode> for Change {
-    fn from(value: PlaybackMode) -> Self {
-        Self::PlaybackMode(value)
-    }
-}
-impl From<TargetPlaylistItems> for Change {
-    fn from(value: TargetPlaylistItems) -> Self {
-        Self::PlaylistSet(value)
-    }
-}
-
-/// Rule for selecting the next playback item in the VLC queue
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[must_use]
-pub struct PlaybackMode {
-    repeat: RepeatMode,
-    is_random: bool,
-}
-impl Default for PlaybackMode {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl PlaybackMode {
-    /// Creates the default playback mode
-    pub const fn new() -> Self {
-        Self {
-            repeat: RepeatMode::Off,
-            is_random: false,
-        }
-    }
-    /// Sets the VLC playback repeat strategy
-    pub const fn set_repeat(mut self, repeat: RepeatMode) -> Self {
-        self.repeat = repeat;
-        self
-    }
-    /// Randomizes the VLC playback order when `true`
-    pub const fn set_random(mut self, is_random: bool) -> Self {
-        self.is_random = is_random;
-        self
-    }
-    #[expect(missing_docs, reason = "self-explanatory")]
-    pub const fn get_repeat(self) -> RepeatMode {
-        self.repeat
-    }
-    #[expect(missing_docs, reason = "self-explanatory")]
-    #[must_use]
-    pub const fn is_random(self) -> bool {
-        self.is_random
-    }
-    fn is_loop_all(self) -> bool {
-        self.repeat == RepeatMode::All
-    }
-    fn is_repeat_one(self) -> bool {
-        self.repeat == RepeatMode::One
-    }
-}
-
-/// Rule for repeating items
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[must_use]
-pub enum RepeatMode {
-    /// Stop the VLC queue after playing all items
-    #[default]
-    Off,
-    /// Repeat the VLC queue after playing all items
-    All,
-    /// Repeat only the current item
-    One,
-}
-
-/// Target parameters for [`Change::PlaylistSet`]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[must_use]
-pub struct TargetPlaylistItems {
-    urls: Vec<url::Url>,
-    max_history_count: u16,
-}
-impl TargetPlaylistItems {
-    /// Constructs the default target, no items and removing all history items from the playlist
-    pub fn new() -> Self {
-        Self::default()
-    }
-    /// Set the path to the file(s) to queue next, starting with the current/past item
-    ///
-    /// NOTE: When an item is already playing, the first element in `urls` is only matched **at** or
-    /// **after** the currently playing item
-    pub fn set_urls(mut self, urls: Vec<url::Url>) -> Self {
-        self.urls = urls;
-        self
-    }
-    /// Set the number of history (past-played) items to retain before the specified `urls`
-    pub fn set_keep_history(mut self, keep_items: u16) -> Self {
-        self.max_history_count = keep_items;
-        self
     }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2025  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
@@ -58,14 +58,14 @@ impl Runner {
                     Ok(endpoint) => endpoint,
                     Err(e) => panic!("invalid command {line:?}: {e}"),
                 }
-                .into_endpoint();
+                .into();
 
                 self.run_endpoint(endpoint);
             }
             TestAction::Query {
                 query: Query::Art { item_id },
             } => {
-                let endpoint = vlc_http::Command::art_endpoint(&item_id);
+                let endpoint = vlc_http::Endpoint::art_endpoint(&item_id);
                 self.run_endpoint(endpoint);
             }
             TestAction::Query {
@@ -395,7 +395,7 @@ struct TestInput {
 enum TestAction {
     Command {
         #[command(flatten)]
-        command: vlc_http::clap::ClapCommand,
+        command: vlc_http_cmd_clap::command::ClapCommand,
     },
     Query {
         #[command(subcommand)]
@@ -403,7 +403,7 @@ enum TestAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::ClapChange,
+        action: vlc_http_cmd_clap::goal::ClapChange,
         /// Marks all cached data as valid, behaving as-if the action was created at the beginning of the program
         #[clap(long)]
         extend_cache: bool,
@@ -416,7 +416,7 @@ enum TestAction {
 #[derive(clap::Subcommand, Debug)]
 enum Query {
     Art { item_id: String },
-    PlaylistSetQueryMatched(vlc_http::clap::ClapPlaylistSetQueryMatched),
+    PlaylistSetQueryMatched(vlc_http_cmd_clap::goal::ClapPlaylistSetQueryMatched),
 }
 /// Overrides to simulate anomalies in VLC server behavior
 #[derive(clap::Subcommand, Debug)]

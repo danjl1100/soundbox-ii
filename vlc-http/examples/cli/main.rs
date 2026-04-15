@@ -4,11 +4,8 @@
 //! For the experiment to succeed, this binary crate should be simple and tiny
 //! (e.g. main.rs ~200 lines, or so)
 
-use vlc_http::{
-    clap::clap_crate::{self as clap, Parser},
-    http_runner::ureq::HttpRunner,
-    sync::EndpointRequestor,
-};
+use vlc_http::{http_runner::ureq::HttpRunner, sync::EndpointRequestor};
+use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
 
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
@@ -34,7 +31,7 @@ struct CliArgs {
 enum CliAction {
     Command {
         #[command(flatten)]
-        command: vlc_http::clap::ClapCommand,
+        command: vlc_http_cmd_clap::command::ClapCommand,
     },
     Query {
         #[command(subcommand)]
@@ -42,7 +39,7 @@ enum CliAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::ClapChange,
+        action: vlc_http_cmd_clap::goal::ClapChange,
     },
     #[clap(alias = "exit", alias = "q")]
     Quit,
@@ -51,7 +48,7 @@ enum CliAction {
 enum OneshotAction {
     Command {
         #[command(flatten)]
-        command: vlc_http::clap::ClapCommand,
+        command: vlc_http_cmd_clap::command::ClapCommand,
     },
     Query {
         #[command(subcommand)]
@@ -59,7 +56,7 @@ enum OneshotAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http::clap::ClapChange,
+        action: vlc_http_cmd_clap::goal::ClapChange,
     },
 }
 impl From<OneshotAction> for CliAction {
@@ -76,7 +73,7 @@ impl From<OneshotAction> for CliAction {
 enum Query {
     Playlist,
     Playback,
-    PlaylistSet(vlc_http::clap::ClapPlaylistSetQueryMatched),
+    PlaylistSet(vlc_http_cmd_clap::goal::ClapPlaylistSetQueryMatched),
 }
 
 struct Shutdown;
@@ -153,8 +150,8 @@ impl Client {
     fn run_action(&mut self, action: CliAction) -> eyre::Result<Option<Shutdown>> {
         match action {
             CliAction::Command { command } => {
-                let endpoint = vlc_http::Command::try_from(command)?.into_endpoint();
-                let _response = self.runner.request(endpoint);
+                let command = vlc_http::Command::try_from(command)?;
+                let _response = self.runner.request(command.into());
                 Ok(None)
             }
             CliAction::Query {

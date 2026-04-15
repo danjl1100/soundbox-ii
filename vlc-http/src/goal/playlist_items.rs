@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 //! Sets the playlist to the specified items
 //!
@@ -83,8 +83,8 @@ pub(super) struct Update {
 }
 #[derive(Clone, Debug)]
 struct Target<T> {
-    pub urls: Vec<T>,
-    pub max_history_count: u16,
+    urls: Vec<T>,
+    max_history_count: u16,
 }
 
 impl Plan for Update {
@@ -142,10 +142,10 @@ impl PlanConstructor for Update {
             .set_repeat(crate::goal::RepeatMode::Off)
             .set_random(false);
         let target = {
-            let super::TargetPlaylistItems {
+            let vlc_http_cmd::goal::TargetPlaylistItemsIntoParts {
                 urls,
                 max_history_count,
-            } = target;
+            } = target.into_parts();
             Target {
                 urls: urls.into_iter().map(DebugUrl).collect(),
                 max_history_count,

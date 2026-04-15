@@ -3,6 +3,8 @@
 
 use vlc_http_auth::AuthInput;
 
+pub use ::clap as clap_crate;
+
 /// Creates [`AuthInput`] from [`clap`] inputs
 #[derive(Clone, clap::Args, Debug)]
 pub struct ClapAuthInput {

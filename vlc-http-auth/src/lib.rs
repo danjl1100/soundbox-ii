@@ -1,11 +1,13 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Separates the authentication input layer from the core `vlc-http` logic
+//!
+//! Provides a reexport of [`http`] (intrinsic to authentication)
 
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use std::str::FromStr as _;
 
 /// Re-export the HTTP crate used in [`Auth::authority`]
-pub use http;
+pub use ::http;
 
 /// Input authentication parameters to the VLC instance
 #[derive(Clone)]

@@ -22,7 +22,7 @@
 //! # Philosophy
 //!
 //! Where possible, this library chooses to use *data* for commands and goals instead of function
-//! calls.  This allows for easier RPC, and even cli debugging using the [`crate::clap`] helpers.
+//! calls.  This allows for easier RPC, and even cli debugging using [`vlc_http_cmd`] helpers.
 //!
 //! Who needs "mocks" for testing when the business-logic control flow is plan old data?
 //!
@@ -128,17 +128,19 @@
 //! [`SeekNext`]: `Command::SeekNext`
 //! [`SeekPrevious`]: `Command::SeekPrevious`
 
-pub use vlc_http_auth::Auth;
-use vlc_http_auth::http;
+// re-export crates
+pub use ::vlc_http_auth::http;
+pub use ::vlc_http_cmd::url;
 
-mod fmt;
+pub use ::vlc_http_auth::Auth;
+use ::vlc_http_cmd::fmt;
 
 // --------------------------------------------------
 // Requests sent to VLC
 // --------------------------------------------------
 
 pub use command::{Command, VolumePercent, VolumePercentDelta};
-pub mod command;
+pub use vlc_http_cmd::command;
 
 pub use goal::{Change, Plan};
 pub mod goal;
@@ -160,8 +162,7 @@ pub mod client_state;
 // Utilities
 // --------------------------------------------------
 
-#[cfg(feature = "clap")]
-pub mod clap;
+mod volume_256;
 
 /// Helpers for specific HTTP client implementations
 pub mod http_runner {

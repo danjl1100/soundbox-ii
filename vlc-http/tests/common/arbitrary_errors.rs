@@ -8,8 +8,7 @@ use self::model_endpoint_caller::ModelEndpointCaller;
 use eyre::Context as _;
 use std::{collections::VecDeque, str::FromStr, sync::LazyLock};
 use tracing::{debug, info};
-use url::Url;
-use vlc_http::{Change, ClientState, goal::TargetPlaylistItems};
+use vlc_http::{Change, ClientState, goal::TargetPlaylistItems, url::Url};
 
 mod alphanum_string;
 mod ascii_string;

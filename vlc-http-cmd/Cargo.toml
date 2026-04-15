@@ -1,0 +1,11 @@
+[package]
+name = "vlc-http-cmd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.199", features = ["derive"] }
+url = { version = "2.5.0", features = ["serde"] }
+
+[lints]
+workspace = true

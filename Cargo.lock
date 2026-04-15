@@ -1281,10 +1281,11 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ureq",
- "url",
  "urlencoding",
  "vlc-http-auth",
  "vlc-http-auth-clap",
+ "vlc-http-cmd",
+ "vlc-http-cmd-clap",
 ]
 
 [[package]]
@@ -1301,6 +1302,22 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "vlc-http-auth",
+]
+
+[[package]]
+name = "vlc-http-cmd"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "url",
+]
+
+[[package]]
+name = "vlc-http-cmd-clap"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "vlc-http-cmd",
 ]
 
 [[package]]

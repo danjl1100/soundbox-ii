@@ -5,9 +5,6 @@
 /// Low-level control commands that correspond to a single API call to VLC.
 ///
 /// See also: [`crate::goal`] provides higher-level controls
-///
-/// [`Endpoint`]: `crate::Endpoint`
-#[non_exhaustive]
 #[derive(Clone, PartialEq)]
 pub enum Command {
     /// Add the specified item to the playlist
@@ -98,7 +95,7 @@ mod volume {
         /// Returns an error if the percent is out of bounds
         ///
         /// ```
-        /// use vlc_http::VolumePercent;
+        /// use vlc_http_cmd::command::VolumePercent;
         /// assert!(VolumePercent::new(300).is_ok());
         ///
         /// assert!(VolumePercent::new(301).is_err());
@@ -128,7 +125,7 @@ mod volume {
         /// Returns an error if the percent delta is out of bounds
         ///
         /// ```
-        /// use vlc_http::VolumePercentDelta;
+        /// use vlc_http_cmd::command::VolumePercentDelta;
         /// assert!(VolumePercentDelta::new(300).is_ok());
         /// assert!(VolumePercentDelta::new(-300).is_ok());
         ///
@@ -154,27 +151,6 @@ mod volume {
         #[must_use]
         pub fn value(self) -> i16 {
             self.0
-        }
-    }
-
-    impl super::VolumePercent256 {
-        pub(super) const PERCENT_TO_256: f32 = (256.0 / 100.0);
-    }
-    impl From<Percent> for super::VolumePercent256 {
-        fn from(percent: Percent) -> Self {
-            // VolumePercent enforces bounds 0-300 (inclusive)
-            let percent = percent.value();
-
-            // result is 0-768 (inclusive), comfortably fits in u16
-            let based_256 = f32::from(percent) * Self::PERCENT_TO_256;
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "target size comfortably fits 0-768 (inclusive)"
-            )]
-            #[expect(clippy::cast_sign_loss, reason = "value is always non-negative")]
-            {
-                Self(based_256.round() as u16)
-            }
         }
     }
 }
@@ -208,56 +184,6 @@ impl TryFrom<i16> for VolumePercentDelta {
     type Error = VolumeBoundsError;
     fn try_from(value: i16) -> Result<Self, Self::Error> {
         Self::new(value)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct VolumePercent256(u16);
-impl VolumePercent256 {
-    pub fn value(self) -> u16 {
-        self.0
-    }
-    /// Convert the 256-based value into the equivalent precentage
-    pub(crate) fn unchecked_to_percent(based_256: u16) -> u16 {
-        let percent = f32::from(based_256) / Self::PERCENT_TO_256;
-        #[expect(clippy::cast_possible_truncation, reason = "conversion factor is <1.0")]
-        #[expect(clippy::cast_sign_loss, reason = "u16 is always non-negative")]
-        {
-            percent.round() as u16
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct VolumePercentDelta256 {
-    is_negative: bool,
-    magnitude: VolumePercent256,
-}
-impl From<VolumePercentDelta> for VolumePercentDelta256 {
-    fn from(delta: VolumePercentDelta) -> Self {
-        Self {
-            is_negative: delta.value() < 0,
-            magnitude: delta.unsigned_abs().into(),
-        }
-    }
-}
-
-impl std::fmt::Display for VolumePercent256 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let value = self.value();
-        write!(f, "{value}")
-    }
-}
-impl std::fmt::Display for VolumePercentDelta256 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self {
-            is_negative,
-            magnitude,
-        } = *self;
-
-        let sign_char = if is_negative { '-' } else { '+' };
-        let magnitude = VolumePercent256::value(magnitude);
-        write!(f, "{sign_char}{magnitude}")
     }
 }
 

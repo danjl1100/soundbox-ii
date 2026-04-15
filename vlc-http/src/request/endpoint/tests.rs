@@ -1,4 +1,4 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
 use super::*;
 use test_log::test;
@@ -7,7 +7,8 @@ use test_log::test;
 fn playlist_add() {
     let normal_url = "file://this/is/a/url.mp4".parse().expect("url");
     let small_url = "file://.".parse().expect("url");
-    let weird_url = url::Url::parse("file:///SENTINEL_%20_URL_%20%5E%24").expect("valid url");
+    let weird_url =
+        crate::url::Url::parse("file:///SENTINEL_%20_URL_%20%5E%24").expect("valid url");
 
     insta::assert_ron_snapshot!(Endpoint::from(Command::PlaylistAdd {
         url: normal_url
