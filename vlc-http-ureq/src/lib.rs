@@ -1,7 +1,9 @@
-// Copyright (C) 2021-2024  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-//! HTTP runner using [`ureq`]
-use crate::{Auth, Endpoint, Response, sync::EndpointRequestor};
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! HTTP runner using [`ureq`] for [`vlc_http`]
 use std::str::FromStr as _;
+use vlc_http::{Auth, Endpoint, Response, sync::EndpointRequestor};
+
+pub use ::ureq as ureq_crate;
 
 type ResponseStrObserver = dyn FnMut(&str);
 type ResponseObserver = dyn FnMut(&Response);
@@ -83,7 +85,7 @@ pub struct Error {
 enum ErrorKind {
     RequestCall(Box<ureq::Error>),
     ResponseBody(std::io::Error),
-    ResponseParse(crate::response::ParseError),
+    ResponseParse(vlc_http::response::ParseError),
 }
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {

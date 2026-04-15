@@ -1,5 +1,5 @@
 [workspace]
-members = [ "arg-util", "beet-pusher", "bucket-spigot", "shared", "spigot-visual", "vlc-http", "vlc-http-auth", "vlc-http-auth-clap", "vlc-http-cmd", "vlc-http-cmd-clap", "xtask" ]
+members = [ "arg-util", "beet-pusher", "bucket-spigot", "shared", "spigot-visual", "vlc-http", "vlc-http-auth", "vlc-http-auth-clap", "vlc-http-cmd", "vlc-http-cmd-clap", "vlc-http-ureq", "xtask" ]
 resolver = "2"
 
 

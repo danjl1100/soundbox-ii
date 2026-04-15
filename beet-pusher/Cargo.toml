@@ -22,6 +22,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 url = "2.5.3"
 vlc-http = { version = "0.1.0", path = "../vlc-http" }
 vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }
+vlc-http-ureq = { version = "0.1.0", path = "../vlc-http-ureq" }
 
 [dev-dependencies]
 urlencoding = "2.1.3"

@@ -164,12 +164,6 @@ pub mod client_state;
 
 mod volume_256;
 
-/// Helpers for specific HTTP client implementations
-pub mod http_runner {
-    #[cfg(feature = "ureq")]
-    pub mod ureq;
-}
-
 pub mod sync;
 
 pub mod testing;

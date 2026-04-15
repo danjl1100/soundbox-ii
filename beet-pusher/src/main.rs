@@ -52,7 +52,7 @@ fn main() -> eyre::Result<()> {
 
     let mut http_runner = {
         let auth = vlc_http::Auth::new(auth.into())?;
-        vlc_http::http_runner::ureq::HttpRunner::new(auth)
+        vlc_http_ureq::HttpRunner::new(auth)
     };
 
     // TODO handle weirder requests like:

@@ -4,8 +4,9 @@
 //! For the experiment to succeed, this binary crate should be simple and tiny
 //! (e.g. main.rs ~200 lines, or so)
 
-use vlc_http::{http_runner::ureq::HttpRunner, sync::EndpointRequestor};
+use vlc_http::sync::EndpointRequestor;
 use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
+use vlc_http_ureq::HttpRunner;
 
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
@@ -198,7 +199,7 @@ impl Client {
     fn complete_plan<T>(&mut self, plan: T) -> eyre::Result<T::Output<'_>>
     where
         T: vlc_http::Plan,
-        eyre::Report: From<vlc_http::sync::Error<T, vlc_http::http_runner::ureq::Error>>,
+        eyre::Report: From<vlc_http::sync::Error<T, vlc_http_ureq::Error>>,
     {
         const MAX_ITER_COUNT: usize = 100;
         let output = vlc_http::sync::complete_plan(
