@@ -1273,6 +1273,7 @@ version = "0.1.0"
 dependencies = [
  "arbitrary",
  "arbtest",
+ "arg_util",
  "clap",
  "eyre",
  "insta",
@@ -1295,6 +1296,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "http",
+ "serde",
 ]
 
 [[package]]

@@ -4,14 +4,19 @@
 //! For the experiment to succeed, this binary crate should be simple and tiny
 //! (e.g. main.rs ~200 lines, or so)
 
+use arg_util::ConfigFileWrite;
 use vlc_http::sync::EndpointRequestor;
+use vlc_http_auth::AuthInput;
 use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
 use vlc_http_ureq::HttpRunner;
 
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
     #[clap(flatten)]
-    auth: vlc_http_auth_clap::ClapAuthInput,
+    auth_args: vlc_http_auth_clap::ClapAuthInputOptional,
+    /// TOML file containing VLC authentication
+    #[clap(long)]
+    auth_file: Option<std::path::PathBuf>,
     /// Print full response text for each request
     #[clap(long)]
     print_responses_http: bool,
@@ -81,13 +86,15 @@ struct Shutdown;
 
 fn main() -> eyre::Result<()> {
     let GlobalArgs {
-        auth,
+        auth_args,
+        auth_file,
         print_responses_http,
         print_responses,
         oneshot_action,
     } = GlobalArgs::parse();
 
-    let auth = vlc_http::Auth::new(auth.into())?;
+    let auth_input = get_auth_with_file(auth_args.into(), auth_file)?;
+    let auth = vlc_http::Auth::new(auth_input)?;
 
     let mut client = Client {
         runner: HttpRunner::new(auth),
@@ -141,6 +148,42 @@ fn main() -> eyre::Result<()> {
         }
         Ok(())
     }
+}
+
+fn get_auth_with_file(
+    auth_args: vlc_http_auth::optional::AuthInputOptional,
+    auth_file: Option<std::path::PathBuf>,
+) -> eyre::Result<AuthInput> {
+    let (partial_args, auth_file) = match (auth_args.try_into(), auth_file) {
+        (Ok(complete_args), _) => {
+            // args are complete, no need to check the file
+            return Ok(complete_args);
+        }
+        (Err(e), Some(auth_file)) => (e.into_inner(), auth_file),
+        (Err(e), None) => eyre::bail!(e),
+    };
+
+    // check for more args in the file
+    let result: Result<AuthInput, _> = arg_util::config_file::ConfigFileOpen::open(&auth_file);
+    let auth_file = match result {
+        Ok(auth) => auth,
+        Err(e) if e.is_missing_file() => {
+            let template_file = AuthInput {
+                vlc_password: vlc_http_auth::Password("password".into()),
+                vlc_host: vlc_http_auth::Host("host".into()),
+                vlc_port: vlc_http_auth::Port(80),
+            }
+            .write_template_for_file(&auth_file)?;
+            eyre::bail!(
+                "file not found ({auth_file}), created VLC HTTP auth template file at: {template_file}",
+                auth_file = auth_file.display(),
+                template_file = template_file.display(),
+            )
+        }
+        Err(e) => Err(e)?,
+    };
+    let auth = partial_args.unwrap_or(auth_file);
+    Ok(auth)
 }
 
 struct Client {

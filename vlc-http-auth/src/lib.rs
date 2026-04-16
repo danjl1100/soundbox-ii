@@ -9,15 +9,57 @@ use std::str::FromStr as _;
 /// Re-export the HTTP crate used in [`Auth::authority`]
 pub use ::http;
 
+pub use self::newtype::{Host, Password, Port};
+
+pub mod optional;
+
+mod newtype {
+    // avoid mix-ups, easier to audit line-by-line
+
+    /// Newtype for the `vlc_password` in [`crate::AuthInput`]
+    #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(transparent)]
+    pub struct Password(pub String);
+
+    /// Newtype for the `vlc_host` in [`crate::AuthInput`]
+    #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(transparent)]
+    pub struct Host(pub String);
+
+    /// Newtype for the `vlc_port` in [`crate::AuthInput`]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    #[serde(transparent)]
+    pub struct Port(pub u16);
+
+    impl std::fmt::Display for Password {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self(inner) = self;
+            write!(f, "{inner}")
+        }
+    }
+    impl std::fmt::Display for Host {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self(inner) = self;
+            write!(f, "{inner}")
+        }
+    }
+    impl std::fmt::Display for Port {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self(inner) = self;
+            write!(f, "{inner}")
+        }
+    }
+}
+
 /// Input authentication parameters to the VLC instance
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct AuthInput {
     /// Password string (plaintext)
-    pub password: String,
+    pub vlc_password: Password,
     /// Host string
-    pub host: String,
+    pub vlc_host: Host,
     /// Port number
-    pub port: u16,
+    pub vlc_port: Port,
 }
 /// Authentication information to reach a VLC instance
 #[derive(Clone)]
@@ -34,9 +76,9 @@ impl Auth {
     /// Returns an error if the host URI is invalid
     pub fn new(input: AuthInput) -> Result<Self, InvalidHostUri> {
         let AuthInput {
-            password,
-            host,
-            port,
+            vlc_password: password,
+            vlc_host: host,
+            vlc_port: port,
         } = input;
 
         // username is blank

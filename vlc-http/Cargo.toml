@@ -19,6 +19,7 @@ vlc-http-cmd = { version = "0.1.0", path = "../vlc-http-cmd" }
 [dev-dependencies]
 arbitrary = { version = "1.4.2", features = ["derive"] }
 arbtest = "0.3.2"
+arg_util = { path = "../arg-util" }
 clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
 insta = { version = "1.38.0", features = ["ron", "glob"] }
