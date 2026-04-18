@@ -5,6 +5,7 @@
 //! (e.g. main.rs ~200 lines, or so)
 
 use arg_util::ConfigFileWrite;
+use eyre::Context as _;
 use vlc_http::sync::EndpointRequestor;
 use vlc_http_auth::AuthInput;
 use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
@@ -15,8 +16,10 @@ struct GlobalArgs {
     #[clap(flatten)]
     auth_args: vlc_http_auth_clap::ClapAuthInputOptional,
     /// TOML file containing VLC authentication
+    // NOTE: Even though the scope of this example is VLC only,
+    // still include the `vlc-` prefix to show it's related to the other `vlc-` long args above
     #[clap(long)]
-    auth_file: Option<std::path::PathBuf>,
+    vlc_auth_file: Option<std::path::PathBuf>,
     /// Print full response text for each request
     #[clap(long)]
     print_responses_http: bool,
@@ -87,13 +90,13 @@ struct Shutdown;
 fn main() -> eyre::Result<()> {
     let GlobalArgs {
         auth_args,
-        auth_file,
+        vlc_auth_file,
         print_responses_http,
         print_responses,
         oneshot_action,
     } = GlobalArgs::parse();
 
-    let auth_input = get_auth_with_file(auth_args.into(), auth_file)?;
+    let auth_input = get_auth_with_file(auth_args.into(), vlc_auth_file)?;
     let auth = vlc_http::Auth::new(auth_input)?;
 
     let mut client = Client {
@@ -168,12 +171,14 @@ fn get_auth_with_file(
     let auth_file = match result {
         Ok(auth) => auth,
         Err(e) if e.is_missing_file() => {
-            let template_file = AuthInput {
-                vlc_password: vlc_http_auth::Password("password".into()),
-                vlc_host: vlc_http_auth::Host("host".into()),
-                vlc_port: vlc_http_auth::Port(80),
-            }
-            .write_template_for_file(&auth_file)?;
+            let template_file = AuthInput::sample_for_templates()
+                .write_template_for_file(&auth_file)
+                .with_context(|| {
+                    format!(
+                        "file not found ({auth_file}), then failed to create VLC HTTP auth template file",
+                        auth_file = auth_file.display(),
+                    )
+                })?;
             eyre::bail!(
                 "file not found ({auth_file}), created VLC HTTP auth template file at: {template_file}",
                 auth_file = auth_file.display(),

@@ -102,6 +102,18 @@ impl std::fmt::Display for Auth {
     }
 }
 
+impl AuthInput {
+    /// Returns a sample value for use in creating template files
+    #[must_use]
+    pub fn sample_for_templates() -> Self {
+        AuthInput {
+            vlc_password: Password("password".into()),
+            vlc_host: Host("host".into()),
+            vlc_port: Port(80),
+        }
+    }
+}
+
 /// Error from an invalid `host` in the [`AuthInput`]
 #[derive(Debug)]
 pub struct InvalidHostUri {

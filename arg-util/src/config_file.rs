@@ -115,28 +115,65 @@ mod write {
             let contents =
                 toml::to_string(&default_config).expect("default config should serialize");
 
-            std::fs::write(&template_file, contents.as_bytes())
-                .map_err(ErrorWriteKind::Write)
+            write_create_new(&template_file, contents.as_bytes())
+                .map_err(ErrorKind::from)
                 .map_err(make_error)?;
 
             Ok(template_file)
         }
     }
 
+    /// Like [`std::fs::write`], but uses [`std::fs::File::create_new`]
+    /// instead of [`std::fs::File::create`]
+    fn write_create_new(
+        path: &std::path::Path,
+        content: &[u8],
+    ) -> Result<(), (std::io::Error, ErrorReason)> {
+        use std::io::Write as _;
+
+        let mut file = std::fs::File::create_new(path).map_err(|e| {
+            use std::io::ErrorKind as Kind;
+            let reason = match e.kind() {
+                Kind::AlreadyExists => ErrorReason::AlreadyExists,
+                _ => ErrorReason::default(),
+            };
+            (e, reason)
+        })?;
+
+        file.write_all(content)
+            .map_err(|e| (e, ErrorReason::default()))
+    }
+    #[derive(Default)]
+    enum ErrorReason {
+        AlreadyExists,
+        #[default]
+        Other,
+    }
+
     /// Error from [`ConfigFileWrite::write_template_for_file`]
     #[derive(Debug)]
     pub struct ErrorWrite {
         path: std::path::PathBuf,
-        kind: ErrorWriteKind,
+        kind: ErrorKind,
     }
     #[derive(Debug)]
-    enum ErrorWriteKind {
+    enum ErrorKind {
+        AlreadyExists(std::io::Error),
         Write(std::io::Error),
+    }
+    impl From<(std::io::Error, ErrorReason)> for ErrorKind {
+        fn from((e, kind): (std::io::Error, ErrorReason)) -> Self {
+            let map_fn = match kind {
+                ErrorReason::AlreadyExists => Self::AlreadyExists,
+                ErrorReason::Other => Self::Write,
+            };
+            map_fn(e)
+        }
     }
     impl std::error::Error for ErrorWrite {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             match &self.kind {
-                ErrorWriteKind::Write(error) => Some(error),
+                ErrorKind::AlreadyExists(error) | ErrorKind::Write(error) => Some(error),
             }
         }
     }
@@ -144,7 +181,8 @@ mod write {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let Self { path, kind } = self;
             let description = match kind {
-                ErrorWriteKind::Write(_) => "failed to write",
+                ErrorKind::AlreadyExists(_) => "cannot overwrite existing",
+                ErrorKind::Write(_) => "failed to write",
             };
             write!(
                 f,
