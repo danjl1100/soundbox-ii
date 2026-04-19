@@ -2,6 +2,7 @@
 //! Provides traits for opening and writing TOML config files
 
 pub use self::open::{ConfigFileOpen, ErrorOpen};
+pub use self::open_or_write_template::ConfigOpenOrWriteTemplate;
 pub use self::write::{ConfigFileWrite, ErrorWrite};
 
 mod open {
@@ -79,6 +80,110 @@ mod open {
                 "{description} config file: {path}",
                 path = path.display()
             )
+        }
+    }
+}
+mod open_or_write_template {
+    use crate::{
+        ConfigFileOpen, ConfigFileWrite,
+        config_file::{ErrorOpen, ErrorWrite},
+    };
+
+    /// Chains [`ConfigFileOpen`] or else [`ConfigFileWrite`] with the provided template value
+    pub trait ConfigOpenOrWriteTemplate: Sized {
+        /// Attempts to open the config file at the specified `path`
+        ///
+        /// If the file path does not exist, returns an error after attempting to write a template file.
+        /// This template file error message uses `template_err_label` (noun) to clarify context to
+        /// the user.
+        /// Example `template_err_label` (noun):
+        ///     - "VLC HTTP auth template file"
+        ///     - "retro-encabulator cross-reluctance template file"
+        ///
+        /// # Errors
+        /// Returns an error if the [`ConfigFileOpen`] fails, the destination template file already
+        /// exists, or an error indicating that the template file was created and requires user
+        /// interaction to populate the config file.
+        fn open_or_write_template(
+            path: &impl AsRef<std::path::Path>,
+            template_err_label: &str,
+            template_value_fn: impl FnOnce() -> Self,
+        ) -> Result<Self, ErrorOpenWrite>;
+    }
+    impl<T> ConfigOpenOrWriteTemplate for T
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        fn open_or_write_template(
+            path: &impl AsRef<std::path::Path>,
+            template_err_label: &str,
+            template_value_fn: impl FnOnce() -> Self,
+        ) -> Result<Self, ErrorOpenWrite> {
+            let path = path.as_ref();
+
+            let make_err = |kind| ErrorOpenWrite {
+                template_err_label: template_err_label.to_string(),
+                source_file: path.to_path_buf(),
+                kind,
+            };
+
+            match ConfigFileOpen::open(path) {
+                Ok(value) => Ok(value),
+                Err(e) if e.is_missing_file() => {
+                    let template_file = template_value_fn()
+                        .write_template_for_file(path)
+                        .map_err(Box::new)
+                        .map_err(|source| ErrorKind::Write { source })
+                        .map_err(make_err)?;
+                    Err(make_err(ErrorKind::Created { template_file }))
+                }
+                Err(e) => Err(make_err(ErrorKind::Open {
+                    inner_transparent: Box::new(e),
+                })),
+            }
+        }
+    }
+    #[derive(Debug)]
+    pub struct ErrorOpenWrite {
+        template_err_label: String,
+        source_file: std::path::PathBuf,
+        kind: ErrorKind,
+    }
+    #[derive(Debug)]
+    enum ErrorKind {
+        Open { inner_transparent: Box<ErrorOpen> },
+        Write { source: Box<ErrorWrite> },
+        Created { template_file: std::path::PathBuf },
+    }
+    impl std::error::Error for ErrorOpenWrite {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match &self.kind {
+                ErrorKind::Open { inner_transparent } => inner_transparent.source(),
+                ErrorKind::Write { source } => Some(source),
+                ErrorKind::Created { template_file: _ } => None,
+            }
+        }
+    }
+    impl std::fmt::Display for ErrorOpenWrite {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let Self {
+                kind,
+                template_err_label,
+                source_file,
+            } = self;
+            let source_file = source_file.display();
+            match kind {
+                ErrorKind::Open { inner_transparent } => write!(f, "{inner_transparent}"),
+                ErrorKind::Write { source: _ } => write!(
+                    f,
+                    "file not found ({source_file}), then failed to create {template_err_label}",
+                ),
+                ErrorKind::Created { template_file } => write!(
+                    f,
+                    "file not found ({source_file}), created {template_err_label} at: {template_file}",
+                    template_file = template_file.display(),
+                ),
+            }
         }
     }
 }

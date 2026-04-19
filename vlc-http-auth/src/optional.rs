@@ -4,7 +4,7 @@
 use crate::{AuthInput, Host, Password, Port};
 
 /// Option parts to be combined to form a whole [`AuthInput`]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct AuthInputOptional {
     /// Password string (plaintext)
     pub vlc_password: Option<Password>,
@@ -131,6 +131,6 @@ impl std::fmt::Display for MissingPartsError {
             MissingParts::Password => "password",
             MissingParts::Port => "port",
         };
-        write!(f, "incomplete VLC auth, missing {parts}")
+        write!(f, "incomplete VLC auth, missing: {parts}")
     }
 }

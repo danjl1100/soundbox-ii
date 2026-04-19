@@ -95,10 +95,29 @@ impl Auth {
         })
     }
 }
+
 impl std::fmt::Display for Auth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // describe the "host:port" only (skip base64-encoded password)
-        write!(f, "{}", self.authority.as_str())
+        let Self {
+            bearer_credential_plaintext: _, // redact (plaintext, base64-encoded)
+            authority,
+        } = self;
+        // describe the "host:port" only
+        write!(f, "{}", authority.as_str())
+    }
+}
+impl std::fmt::Debug for AuthInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            vlc_password: _, // redact (plaintext)
+            vlc_host,
+            vlc_port,
+        } = self;
+        f.debug_struct("AuthInput")
+            .field("vlc_password", &"[redacted]")
+            .field("vlc_host", &vlc_host)
+            .field("vlc_port", &vlc_port)
+            .finish()
     }
 }
 

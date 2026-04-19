@@ -12,5 +12,5 @@ mod arg_join;
 pub use self::multi_source::{Input, Source, Value};
 pub mod multi_source;
 
-pub use config_file::{ConfigFileOpen, ConfigFileWrite};
+pub use config_file::{ConfigFileOpen, ConfigFileWrite, ConfigOpenOrWriteTemplate};
 pub mod config_file;

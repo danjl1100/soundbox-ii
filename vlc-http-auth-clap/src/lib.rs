@@ -47,6 +47,14 @@ pub struct ClapAuthInputOptional {
     #[clap(long, env = "VLC_PORT")]
     pub vlc_port: Option<u16>,
 }
+impl ClapAuthInputOptional {
+    /// Helpful to guide inference through a series of conversions, for example:
+    /// [`ClapAuthInput`] -> `into_common()` -> [`AuthInputOptional`] -> `try_into()` -> [`AuthInput`]
+    #[must_use]
+    pub fn into_common(self) -> AuthInputOptional {
+        self.into()
+    }
+}
 impl From<ClapAuthInputOptional> for AuthInputOptional {
     fn from(value: ClapAuthInputOptional) -> Self {
         let ClapAuthInputOptional {

@@ -4,20 +4,21 @@
 //! For the experiment to succeed, this binary crate should be simple and tiny
 //! (e.g. main.rs ~200 lines, or so)
 
-use arg_util::ConfigFileWrite;
-use eyre::Context as _;
 use vlc_http::sync::EndpointRequestor;
 use vlc_http_auth::AuthInput;
 use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
 use vlc_http_ureq::HttpRunner;
+
+// NOTE: Even though the scope of this example is VLC only,
+// still include the `vlc-` prefix to show it's related to the other `vlc-` long args above
+const ARG_VLC_AUTH_FILE: &str = "--vlc-auth-file";
 
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
     #[clap(flatten)]
     auth_args: vlc_http_auth_clap::ClapAuthInputOptional,
     /// TOML file containing VLC authentication
-    // NOTE: Even though the scope of this example is VLC only,
-    // still include the `vlc-` prefix to show it's related to the other `vlc-` long args above
+    // NOTE: keep name in sync with `ARG_VLC_AUTH_FILE`
     #[clap(long)]
     vlc_auth_file: Option<std::path::PathBuf>,
     /// Print full response text for each request
@@ -96,7 +97,7 @@ fn main() -> eyre::Result<()> {
         oneshot_action,
     } = GlobalArgs::parse();
 
-    let auth_input = get_auth_with_file(auth_args.into(), vlc_auth_file)?;
+    let auth_input = combine_vlc_auth_args_and_file(auth_args, vlc_auth_file)?;
     let auth = vlc_http::Auth::new(auth_input)?;
 
     let mut client = Client {
@@ -153,42 +154,38 @@ fn main() -> eyre::Result<()> {
     }
 }
 
-fn get_auth_with_file(
-    auth_args: vlc_http_auth::optional::AuthInputOptional,
+fn combine_vlc_auth_args_and_file(
+    auth_args: vlc_http_auth_clap::ClapAuthInputOptional,
     auth_file: Option<std::path::PathBuf>,
 ) -> eyre::Result<AuthInput> {
-    let (partial_args, auth_file) = match (auth_args.try_into(), auth_file) {
-        (Ok(complete_args), _) => {
-            // args are complete, no need to check the file
-            return Ok(complete_args);
-        }
-        (Err(e), Some(auth_file)) => (e.into_inner(), auth_file),
-        (Err(e), None) => eyre::bail!(e),
+    //! NOTE: This could be a shared utility function, but the error message customization and
+    //! specific config file type (e.g. where `vlc_auth` is a nested field) negate the benefit.
+
+    use arg_util::ConfigOpenOrWriteTemplate as _;
+    use eyre::Context as _;
+
+    // incomplete args?
+    let args_err = match AuthInput::try_from(auth_args.into_common()) {
+        // skip config file if args are complete
+        Ok(complete_args) => return Ok(complete_args),
+        Err(e) => e,
+    };
+    // config file available?
+    let Some(auth_file) = auth_file else {
+        return Err(args_err).with_context(|| {
+            format!("incomplete VLC HTTP auth args, and no {ARG_VLC_AUTH_FILE} provided")
+        });
     };
 
-    // check for more args in the file
-    let result: Result<AuthInput, _> = arg_util::config_file::ConfigFileOpen::open(&auth_file);
-    let auth_file = match result {
-        Ok(auth) => auth,
-        Err(e) if e.is_missing_file() => {
-            let template_file = AuthInput::sample_for_templates()
-                .write_template_for_file(&auth_file)
-                .with_context(|| {
-                    format!(
-                        "file not found ({auth_file}), then failed to create VLC HTTP auth template file",
-                        auth_file = auth_file.display(),
-                    )
-                })?;
-            eyre::bail!(
-                "file not found ({auth_file}), created VLC HTTP auth template file at: {template_file}",
-                auth_file = auth_file.display(),
-                template_file = template_file.display(),
-            )
-        }
-        Err(e) => Err(e)?,
-    };
-    let auth = partial_args.unwrap_or(auth_file);
-    Ok(auth)
+    // read config file
+    let auth_file = AuthInput::open_or_write_template(
+        &auth_file,
+        "VLC HTTP auth template file",
+        AuthInput::sample_for_templates,
+    )?;
+
+    // combine args with config file
+    Ok(args_err.into_inner().unwrap_or(auth_file))
 }
 
 struct Client {
