@@ -1,0 +1,26 @@
+
+# cargo-vet audits file
+
+[[audits.bstr]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.12.1 -> 1.12.0"
+notes = "Docs change and inconsequential lifetime annotation"
+
+[[audits.idna]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.0 -> 0.4.0"
+notes = "Clippy-style updates, and reworking features for std/core"
+
+[[audits.version_check]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.9.4 -> 0.9.5"
+notes = "Docs-only change"
+
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-08-15"
+end = "2027-04-19"
