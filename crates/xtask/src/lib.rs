@@ -13,6 +13,7 @@ use std::{
 pub mod copyright;
 pub mod rust;
 pub mod spigot_visual;
+pub mod supply_chain;
 pub mod vlc;
 
 #[cfg(unix)]

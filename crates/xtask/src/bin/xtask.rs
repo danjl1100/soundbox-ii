@@ -6,18 +6,10 @@ use clap::Parser as _;
 use xtask::spigot_visual::HintAllowRustWorkspaceCalls;
 use xtask::{Fix, TypedResult};
 
-const HELP_TEXT: &str = "Tasks:
-
-checks [fix]            run all linting checks
-spigot-visual-run       runs spigot-visual with the compiled typescript
-spigot-visual-dist      compiles the spigot-visual typescript
-vlc                     runs VLC with required arguments for the web interface
-";
-
 #[derive(Debug, clap::Parser)]
 struct Args {
     #[clap(subcommand)]
-    subcommand: Option<Subcommand>,
+    subcommand: Subcommand,
 }
 #[derive(Debug, clap::Subcommand)]
 enum Subcommand {
@@ -34,11 +26,10 @@ fn main() -> eyre::Result<()> {
 fn main_inner() -> TypedResult<()> {
     let Args { subcommand } = Args::parse();
     match subcommand {
-        Some(Subcommand::Checks(checks)) => checks.all_checks()?,
-        Some(Subcommand::SpigotVisualRun(run)) => run.run()?,
-        Some(Subcommand::SpigotVisualDist) => xtask::spigot_visual::DistJs::default().dist_js()?,
-        Some(Subcommand::Vlc(run_web)) => run_web.run_web()?,
-        None => print_help(),
+        Subcommand::Checks(checks) => checks.all_checks()?,
+        Subcommand::SpigotVisualRun(run) => run.run()?,
+        Subcommand::SpigotVisualDist => xtask::spigot_visual::DistJs::default().dist_js()?,
+        Subcommand::Vlc(run_web) => run_web.run_web()?,
     }
     Ok(())
 }
@@ -56,13 +47,10 @@ impl AllChecks {
         let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
 
         xtask::copyright::checks(fix)?;
+        xtask::supply_chain::checks(&hint)?;
         xtask::rust::checks(fix, &hint)?;
         xtask::spigot_visual::checks(fix)?;
 
         Ok(())
     }
-}
-
-fn print_help() {
-    eprintln!("{HELP_TEXT}");
 }
