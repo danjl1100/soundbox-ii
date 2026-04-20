@@ -1,5 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Tasks for the external `VLC` application
+use crate::confirm_until_yes;
 use std::process::Command;
 use vlc_http_auth::AuthInput;
 
@@ -38,6 +39,12 @@ struct ArbitratedInput {
 impl ArbitratedInput {
     fn run(self) -> eyre::Result<()> {
         let cmd = "vlc";
+
+        println!();
+        confirm_until_yes(
+            &"ACKNOWLEDGE: Once launched, you must manually click View > Add Interface > Web",
+        )?;
+        println!();
 
         #[cfg(unix)]
         {

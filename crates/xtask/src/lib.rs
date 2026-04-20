@@ -5,6 +5,7 @@ use self::run_cmd::run_cmd;
 use self::status_cmd::status_cmd;
 pub use self::status_cmd::{SpawnError, SpawnFail};
 pub use self::typed_err::{TypedErr, TypedResult};
+use eyre::Context as _;
 use std::{
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
@@ -300,5 +301,44 @@ impl std::fmt::Display for InterceptArgs {
             write!(f, " {}", arg.display())?;
         }
         Ok(())
+    }
+}
+
+/// Repeats the prompt until the user responds with yes (with a hint to Ctrl+C to exit)
+///
+/// # Errors
+/// Returns if the I/O fails to the user prompt
+fn confirm_until_yes(prompt: &impl std::fmt::Display) -> eyre::Result<()> {
+    loop {
+        match confirm(prompt).context("I/O for prompt failed")? {
+            Ok(()) => return Ok(()),
+            Err(response) => {
+                println!("Expected \"y\" or \"yes\", not: {response:?} (Ctrl+C to exit)");
+            }
+        }
+    }
+}
+/// Prompts the specified question, returning `Ok(Ok(()))` on "y" or "yes" (ascii case insensitive),
+/// or `Ok(Err(response))` on all other responses.
+///
+/// # Errors
+/// Returns an error if writing stdout or reading stdin fails
+fn confirm(prompt: &impl std::fmt::Display) -> std::io::Result<Result<(), String>> {
+    use std::io::Write as _;
+
+    {
+        let mut stdout = std::io::stdout().lock();
+        write!(&mut stdout, "{prompt} [y/N]: ")?;
+        stdout.flush()?;
+    }
+
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line)?;
+
+    let line = line.trim();
+
+    match &*line.to_ascii_lowercase() {
+        "y" | "yes" => Ok(Ok(())),
+        _ => Ok(Err(line.to_string())),
     }
 }
