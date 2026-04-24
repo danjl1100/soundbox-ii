@@ -47,7 +47,7 @@ impl AllChecks {
         let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
 
         xtask::copyright::checks(fix)?;
-        xtask::supply_chain::checks(&hint)?;
+        xtask::supply_chain::checks(fix, &hint)?;
         xtask::rust::checks(fix, &hint)?;
         xtask::spigot_visual::checks(fix)?;
 

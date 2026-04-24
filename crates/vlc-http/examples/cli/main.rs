@@ -5,7 +5,6 @@
 //! (e.g. main.rs ~200 lines, or so)
 
 use vlc_http::sync::EndpointRequestor;
-use vlc_http_auth::AuthInput;
 use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
 use vlc_http_ureq::HttpRunner;
 
