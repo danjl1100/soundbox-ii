@@ -14,7 +14,7 @@ use std::{borrow::Cow, path::PathBuf};
 #[derive(clap::Parser, Debug)]
 struct Args {
     #[clap(flatten)]
-    auth: vlc_http_auth_clap::ClapAuthInput,
+    auth_args_and_file: vlc_http_auth_clap::ClapAuthInputAndFile,
     #[clap(long)]
     config_file: Option<std::path::PathBuf>,
     /// Script file to use for the bucket spigot sequencer
@@ -44,14 +44,15 @@ fn main() -> eyre::Result<()> {
     init_tracing();
 
     let Args {
-        auth,
+        auth_args_and_file,
         config_file,
         spigot_script,
         debug_items,
     } = Args::parse();
 
     let mut http_runner = {
-        let auth = vlc_http::Auth::new(auth.into())?;
+        let auth = auth_args_and_file.merge()?;
+        let auth = vlc_http::Auth::new(auth)?;
         vlc_http_ureq::HttpRunner::new(auth)
     };
 

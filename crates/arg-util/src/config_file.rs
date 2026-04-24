@@ -2,7 +2,7 @@
 //! Provides traits for opening and writing TOML config files
 
 pub use self::open::{ConfigFileOpen, ErrorOpen};
-pub use self::open_or_write_template::ConfigOpenOrWriteTemplate;
+pub use self::open_or_write_template::{ConfigOpenOrWriteTemplate, ErrorOpenWrite};
 pub use self::write::{ConfigFileWrite, ErrorWrite};
 
 mod open {
@@ -143,6 +143,7 @@ mod open_or_write_template {
             }
         }
     }
+    /// Error opening a config file or writing the template file
     #[derive(Debug)]
     pub struct ErrorOpenWrite {
         template_err_label: String,

@@ -1304,6 +1304,7 @@ dependencies = [
 name = "vlc-http-auth-clap"
 version = "0.1.0"
 dependencies = [
+ "arg_util",
  "clap",
  "vlc-http-auth",
 ]
