@@ -3,8 +3,8 @@
 
 use self::gen_bindings::gen_bindings_ts;
 use crate::{
-    TypedErr, TypedResult, WriteOutput, print_help_fix_checks, project_root, run_cmd,
-    write_output::ArgFixJsFmt,
+    ArgsCmdSettings, CmdSettings, TypedErr, TypedResult, WriteOutput, print_help_fix_checks,
+    project_root, write_output::ArgFixJsFmt,
 };
 use eyre::Context;
 use std::{
@@ -45,10 +45,10 @@ impl HintAllowRustWorkspaceCalls {
     ///
     /// # Errors
     /// Returns an error if the check or need fails
-    pub fn check_and_run_once(fix: Option<WriteOutput>) -> TypedResult<Self> {
+    pub fn check_and_run_once(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<Self> {
         Self::check()?
             .or_else(|need| {
-                need.run(fix)?;
+                need.run(cmd, fix)?;
                 match Self::check()? {
                     Ok(v) => Ok(v),
                     Err(need_next) => {
@@ -74,7 +74,7 @@ impl Need {
     ///
     /// # Errors
     /// Returns an error if `fix` is not specified, or the file generation fails
-    pub fn run(&self, fix: Option<WriteOutput>) -> TypedResult<()> {
+    pub fn run(&self, cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
         let Some(write) = fix else {
             crate::bail!("argument `fix` not specified, refusing to write output files: {self:#?}")
         };
@@ -85,7 +85,7 @@ impl Need {
         match self {
             Need::DistJsWrite {
                 missing_files: _diagnostic_only,
-            } => DistJs::dist_js(write),
+            } => DistJs::dist_js(cmd, write),
         }
     }
     fn label(&self) -> &'static str {
@@ -113,6 +113,8 @@ impl std::fmt::Debug for Need {
 #[derive(Debug, clap::Args)]
 pub struct Run {
     #[clap(flatten)]
+    cmd_args: ArgsCmdSettings,
+    #[clap(flatten)]
     fix_js_fmt: ArgFixJsFmt,
     args: Vec<OsString>,
 }
@@ -137,17 +139,22 @@ impl Run {
                 .args(args)
         }
 
-        let Self { fix_js_fmt, args } = self;
+        let Self {
+            cmd_args,
+            fix_js_fmt,
+            args,
+        } = self;
+        let cmd = &cmd_args.into_inner();
 
         if let Some(fix) = fix_js_fmt.into_inner() {
-            fmt_js(fix)?;
+            fmt_js(cmd, fix)?;
         }
 
         {
             // NOTE: Writing auto-generated files is required for running per the user request
             let write_autogen = WriteOutput::unchecked_user_wants_to_write_files();
 
-            DistJs::dist_js(write_autogen)?;
+            DistJs::dist_js(cmd, write_autogen)?;
         }
 
         #[cfg(unix)]
@@ -169,15 +176,15 @@ impl Run {
 ///
 /// # Errors
 /// Returns any fatal errors with the checks
-pub fn checks(fix: Option<WriteOutput>) -> TypedResult<()> {
+pub fn checks(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
     // OK to fix source JS
-    check_js(fix)?;
+    check_js(cmd, fix)?;
     // SKIP dist (write None) since we're only checking
-    DistJs { write: None }.run()?;
+    DistJs { write: None }.run(cmd)?;
     Ok(())
 }
-fn check_js(fix: Option<WriteOutput>) -> TypedResult<()> {
-    run_cmd("biome", |c| {
+fn check_js(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
+    cmd.run_cmd("biome", |c| {
         c.arg("check");
         if let Some(WriteOutput { .. }) = fix {
             c.arg("--write");
@@ -188,9 +195,9 @@ fn check_js(fix: Option<WriteOutput>) -> TypedResult<()> {
 }
 
 /// Formats the JavaScript sources
-fn fmt_js(write: WriteOutput) -> TypedResult<()> {
+fn fmt_js(cmd: &CmdSettings, write: WriteOutput) -> TypedResult<()> {
     // `biome format --write` also works, but format is a subset of `biome check --write`
-    check_js(Some(write))
+    check_js(cmd, Some(write))
 }
 
 /// Compiles the spigot-visual typescript
@@ -203,15 +210,15 @@ impl DistJs {
     ///
     /// # Errors
     /// Returns an error if any subprocesses fail
-    pub fn dist_js(write: WriteOutput) -> TypedResult<()> {
-        Self { write: Some(write) }.run()
+    pub fn dist_js(cmd: &CmdSettings, write: WriteOutput) -> TypedResult<()> {
+        Self { write: Some(write) }.run(cmd)
     }
-    fn run(self) -> TypedResult<()> {
+    fn run(self, cmd: &CmdSettings) -> TypedResult<()> {
         let Self { write } = self;
 
-        gen_bindings_ts()?;
+        gen_bindings_ts(cmd)?;
 
-        run_cmd("tsc", |c| {
+        cmd.run_cmd("tsc", |c| {
             if write.is_none() {
                 c.arg("--noEmit");
             }
@@ -228,7 +235,7 @@ mod gen_bindings {
     };
 
     use self::ts_binding_set::TsBindingSet;
-    use crate::TypedResult;
+    use crate::{CmdSettings, TypedResult};
 
     /// files that are skipped for auto-removal (without any warnings)
     const IGNORE_FILE_NAMES: &[&str] = &[
@@ -241,7 +248,7 @@ mod gen_bindings {
     const EXTENSION_BINDING: &str = "ts";
     const EXTENSION_DEST: &str = "d.ts";
 
-    pub(super) fn gen_bindings_ts() -> TypedResult<()> {
+    pub(super) fn gen_bindings_ts(cmd: &CmdSettings) -> TypedResult<()> {
         TsBindingSet::new()
             .add_package(
                 "bucket-spigot",
@@ -265,12 +272,12 @@ mod gen_bindings {
                     "SpigotResponse",
                 ],
             )
-            .execute()
+            .execute(cmd)
     }
 
     mod ts_binding_set {
         use super::{EXTENSION_DEST, copy_bindings_to_dest, remove_generated_dir};
-        use crate::{TypedResult, project_root, run_cargo, spigot_visual::ts_src_dir};
+        use crate::{CmdSettings, TypedResult, project_root, spigot_visual::ts_src_dir};
         use std::path::PathBuf;
 
         #[derive(Default)]
@@ -301,7 +308,7 @@ mod gen_bindings {
 
                 self
             }
-            pub fn execute(self) -> TypedResult<()> {
+            pub fn execute(self, cmd: &CmdSettings) -> TypedResult<()> {
                 let Self {
                     package_names,
                     packages,
@@ -317,7 +324,7 @@ mod gen_bindings {
                 // remove_generated_dir(&binding_dir, EXTENSION_BINDING, known_binding_names)?;
 
                 // generate bindings
-                run_cargo(|c| {
+                cmd.run_cargo(|c| {
                     c.args([
                         "test",
                         // some crates may gate `ts-rs` on a feature flag

@@ -4,7 +4,7 @@
 
 use clap::Parser as _;
 use xtask::spigot_visual::HintAllowRustWorkspaceCalls;
-use xtask::{TypedResult, WriteOutput};
+use xtask::{CmdSettings, TypedResult, WriteOutput};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
@@ -29,8 +29,9 @@ fn main_inner() -> TypedResult<()> {
         Subcommand::Checks(checks) => checks.all_checks()?,
         Subcommand::SpigotVisualRun(run) => run.run()?,
         Subcommand::SpigotVisualDist => {
+            let cmd = &CmdSettings::new(None);
             let write = WriteOutput::unchecked_user_wants_to_write_files();
-            xtask::spigot_visual::DistJs::dist_js(write)?;
+            xtask::spigot_visual::DistJs::dist_js(cmd, write)?;
         }
         Subcommand::Vlc(run_web) => run_web.run_web()?,
     }
@@ -41,32 +42,23 @@ fn main_inner() -> TypedResult<()> {
 #[derive(Debug, clap::Args)]
 struct AllChecks {
     #[clap(flatten)]
-    quiet: xtask::ArgQuiet,
+    cmd_args: xtask::ArgsCmdSettings,
     #[clap(flatten)]
     fix: xtask::ArgFix,
 }
 impl AllChecks {
     fn all_checks(self) -> TypedResult<()> {
-        let AllChecks { quiet, fix } = self;
-        let quiet = quiet.into_inner();
+        let AllChecks { cmd_args, fix } = self;
         let fix = fix.into_inner();
 
-        if let Some(xtask::Quiet { .. }) = quiet {
-            // TODO: pass `quiet` to all individual functions,
-            // potentially in the form of a `CmdContext` struct.
-            //
-            // e.g. Adapt `fn status_cmd` in lib.rs into a method on the new planned `CmdContext` struct,
-            // so it can apply `Option<Quiet>` (and possibly other settings in the future)
-            // to the output settings for all commands run in this xtask crate.
-            unimplemented!("quiet mode");
-        }
+        let cmd = &cmd_args.into_inner();
 
-        let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
+        let hint = HintAllowRustWorkspaceCalls::check_and_run_once(cmd, fix)?;
 
-        xtask::copyright::checks(fix)?;
-        xtask::supply_chain::checks(fix, &hint)?;
-        xtask::rust::checks(fix, &hint)?;
-        xtask::spigot_visual::checks(fix)?;
+        xtask::copyright::checks(cmd, fix)?;
+        xtask::supply_chain::checks(cmd, fix, &hint)?;
+        xtask::rust::checks(cmd, fix, &hint)?;
+        xtask::spigot_visual::checks(cmd, fix)?;
 
         Ok(())
     }

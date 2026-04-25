@@ -1,30 +1,32 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks for the rust source code as a whole
 
-use crate::{
-    TypedResult, WriteOutput, run_cargo, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo,
-};
+use crate::{CmdSettings, TypedResult, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls};
 
 /// Checks the rust source as a whole
 ///
 /// # Errors
 /// Returns an error if any subprocesses fail
-pub fn checks(fix: Option<WriteOutput>, _hint: &HintAllowRustWorkspaceCalls) -> TypedResult<()> {
-    fmt(fix)?;
-    clippy(fix)?;
-    test()?;
-    doc()?;
+pub fn checks(
+    cmd: &CmdSettings,
+    fix: Option<WriteOutput>,
+    _hint: &HintAllowRustWorkspaceCalls,
+) -> TypedResult<()> {
+    fmt(cmd, fix)?;
+    clippy(cmd, fix)?;
+    test(cmd)?;
+    doc(cmd)?;
 
     Ok(())
 }
 
-fn fmt(fix: Option<WriteOutput>) -> TypedResult<()> {
+fn fmt(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
     if fix.is_none() {
         // no fix = printing list
         eprintln!("Outstanding cargo fmt files:");
     }
 
-    let status = status_cargo(|c| {
+    let status = cmd.status_cargo(|c| {
         c.args(["fmt", "--all", "--"]);
         if fix.is_none() {
             c.args(["--check", "-l"]);
@@ -46,8 +48,8 @@ fn fmt(fix: Option<WriteOutput>) -> TypedResult<()> {
     Ok(())
 }
 
-fn clippy(fix: Option<WriteOutput>) -> TypedResult<()> {
-    run_cargo(|c| {
+fn clippy(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
+    cmd.run_cargo(|c| {
         c.args([
             "clippy",
             "--workspace",
@@ -61,9 +63,9 @@ fn clippy(fix: Option<WriteOutput>) -> TypedResult<()> {
         c
     })
 }
-fn test() -> TypedResult<()> {
-    run_cargo(|c| c.args(["test", "--workspace", "--color", "always"]))
+fn test(cmd: &CmdSettings) -> TypedResult<()> {
+    cmd.run_cargo(|c| c.args(["test", "--workspace", "--color", "always"]))
 }
-fn doc() -> TypedResult<()> {
-    run_cargo(|c| c.args(["doc", "--workspace", "--no-deps", "--color", "always"]))
+fn doc(cmd: &CmdSettings) -> TypedResult<()> {
+    cmd.run_cargo(|c| c.args(["doc", "--workspace", "--no-deps", "--color", "always"]))
 }

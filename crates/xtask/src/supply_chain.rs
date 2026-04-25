@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks audits for the rust dependencies
 
-use crate::{TypedResult, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo};
+use crate::{CmdSettings, TypedResult, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls};
 
 /// Checks audits for the rust dependencies via `cargo-vet`
 ///
@@ -10,8 +10,12 @@ use crate::{TypedResult, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls
 ///
 /// # Errors
 /// Returns an error if any subprocesses fail
-pub fn checks(fix: Option<WriteOutput>, _hint: &HintAllowRustWorkspaceCalls) -> TypedResult<()> {
-    let status = status_cargo(|c| {
+pub fn checks(
+    cmd: &CmdSettings,
+    fix: Option<WriteOutput>,
+    _hint: &HintAllowRustWorkspaceCalls,
+) -> TypedResult<()> {
+    let status = cmd.status_cargo(|c| {
         c.args(["vet", "check"]);
         if fix.is_none() {
             c.args(["--locked", "--frozen"]);

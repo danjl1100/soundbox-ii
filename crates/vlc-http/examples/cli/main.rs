@@ -8,10 +8,6 @@ use vlc_http::sync::EndpointRequestor;
 use vlc_http_auth_clap::clap_crate::{self as clap, Parser};
 use vlc_http_ureq::HttpRunner;
 
-// NOTE: Even though the scope of this example is VLC only,
-// still include the `vlc-` prefix to show it's related to the other `vlc-` long args above
-const ARG_VLC_AUTH_FILE: &str = "--vlc-auth-file";
-
 #[derive(clap::Parser, Debug)]
 struct GlobalArgs {
     #[clap(flatten)]

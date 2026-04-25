@@ -1,9 +1,8 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Logic for the `xtask` functionality
 
-pub use self::quiet::{ArgQuiet, Quiet};
-use self::run_cmd::run_cmd;
-use self::status_cmd::status_cmd;
+pub use self::quiet::{ArgsCmdSettings, Quiet};
+pub use self::status_cmd::CmdSettings;
 pub use self::status_cmd::{SpawnError, SpawnFail};
 pub use self::typed_err::{TypedErr, TypedResult};
 pub use self::write_output::{ArgFix, WriteOutput};
@@ -62,6 +61,7 @@ mod write_output {
     }
     impl ArgFix {
         /// Returns the inner typed value
+        #[must_use]
         pub fn into_inner(self) -> Option<WriteOutput> {
             let Self { fix } = self;
             fix.then_some(WriteOutput { _sealed: () })
@@ -70,6 +70,8 @@ mod write_output {
 }
 
 mod quiet {
+    use crate::CmdSettings;
+
     /// The user wants to suppress output from commands if no errors occur
     #[derive(Clone, Copy, Debug)]
     pub struct Quiet {
@@ -78,16 +80,18 @@ mod quiet {
 
     /// clap entrypoint builder for [`Quiet`]
     #[derive(Clone, Debug, clap::Args)]
-    pub struct ArgQuiet {
+    pub struct ArgsCmdSettings {
         /// Suppress subcommand output unless an error occurs
-        #[clap(long)]
+        #[clap(long, env = "XTASK_QUIET")]
         quiet: bool,
     }
-    impl ArgQuiet {
+    impl ArgsCmdSettings {
         /// Returns the inner typed value
-        pub fn into_inner(self) -> Option<Quiet> {
+        #[must_use]
+        pub fn into_inner(self) -> CmdSettings {
             let Self { quiet } = self;
-            quiet.then_some(Quiet { _sealed: () })
+            let quiet = quiet.then_some(Quiet { _sealed: () });
+            CmdSettings::new(quiet)
         }
     }
 }
@@ -161,42 +165,48 @@ mod typed_err {
     }
 }
 
-/// Runs the specified `cargo` command
-///
-/// # Errors
-/// Returns an error if the command fails
-pub fn run_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> TypedResult<()> {
-    let mut with_args = InterceptArgs::default();
+impl CmdSettings {
+    /// Runs the specified `cargo` command
+    ///
+    /// # Errors
+    /// Returns an error if the command fails
+    pub fn run_cargo(&self, args_fn: impl FnOnce(&mut Command) -> &mut Command) -> TypedResult<()> {
+        let mut with_args = InterceptArgs::default();
 
-    let status = status_cargo(|cmd| with_args.args_fn(args_fn, cmd))?;
+        let status = self.status_cargo(|cmd| with_args.args_fn(args_fn, cmd))?;
 
-    if !status.success() {
-        crate::bail!("cargo command failed{with_args}")
+        if !status.success() {
+            crate::bail!("cargo command failed{with_args}")
+        }
+        Ok(())
     }
-    Ok(())
-}
-/// Statuses the specified `cargo` command
-///
-/// # Errors
-/// Returns an error if spawning the command fails
-pub fn status_cargo(args_fn: impl FnOnce(&mut Command) -> &mut Command) -> TypedResult<ExitStatus> {
-    let status = status_cmd(env!("CARGO"), args_fn)?;
-    Ok(status)
-}
-
-mod run_cmd {
-    use super::TypedResult;
-    use std::process::Command;
-
+    /// Statuses the specified `cargo` command
+    ///
+    /// # Errors
+    /// Returns an error if spawning the command fails
+    pub fn status_cargo(
+        &self,
+        args_fn: impl FnOnce(&mut Command) -> &mut Command,
+    ) -> TypedResult<ExitStatus> {
+        let quiet = self.get_quiet();
+        let status = self.status_cmd(env!("CARGO"), |c| {
+            if let Some(Quiet { .. }) = quiet {
+                c.arg("--quiet");
+            }
+            args_fn(c)
+        })?;
+        Ok(status)
+    }
     /// Runs the specified command
     ///
     /// # Errors
     /// Returns an error if the command fails
     pub fn run_cmd(
+        &self,
         cmd: &str,
         args_fn: impl FnOnce(&mut Command) -> &mut Command,
     ) -> TypedResult<()> {
-        let status = super::status_cmd(cmd, args_fn)?;
+        let status = self.status_cmd(cmd, args_fn)?;
         if !status.success() {
             // dbg!(&command);
             crate::bail!("`{cmd}` failed")
@@ -228,28 +238,53 @@ fn dbg_command_run(command: &Command) {
 mod status_cmd {
     //! Low-level execution of commands
 
-    use crate::{DisplayCommand, dbg_command_run};
+    use crate::{DisplayCommand, Quiet, dbg_command_run};
     use std::process::{Command, ExitStatus};
 
-    /// Runs the specified command and returns the [`ExitStatus`]
-    ///
-    /// # Errors
-    /// Returns an error only if spawning the command fails
-    pub fn status_cmd(
-        cmd: &str,
-        args_fn: impl FnOnce(&mut Command) -> &mut Command,
-    ) -> Result<ExitStatus, SpawnFail> {
-        let mut command = Command::new(cmd);
-        args_fn(&mut command);
-        dbg_command_run(&command);
+    /// Settings for running [`Command`]s
+    #[derive(Debug)]
+    pub struct CmdSettings {
+        quiet: Option<Quiet>,
+    }
+    impl CmdSettings {
+        /// Creates settings for running subcommands
+        #[must_use]
+        pub fn new(quiet: Option<Quiet>) -> Self {
+            Self { quiet }
+        }
+        /// Returns the [`Quiet`] setting
+        #[must_use]
+        pub fn get_quiet(&self) -> Option<Quiet> {
+            self.quiet
+        }
+        /// Runs the specified command and returns the [`ExitStatus`]
+        ///
+        /// # Errors
+        /// Returns an error only if spawning the command fails
+        pub fn status_cmd(
+            &self,
+            cmd: &str,
+            args_fn: impl FnOnce(&mut Command) -> &mut Command,
+        ) -> Result<ExitStatus, SpawnFail> {
+            let Self { quiet } = self;
 
-        command.status().map_err(|source| {
-            // dbg!(command);
+            let mut command = Command::new(cmd);
+            args_fn(&mut command);
+            dbg_command_run(&command);
 
-            let err = SpawnError { source, command };
-            // convert to `eyre::Error` to preserve the backtrace (if any)
-            SpawnFail(eyre::eyre!(err))
-        })
+            if let Some(Quiet { .. }) = quiet {
+                // TODO: suppress output, and only print to stdout/stderr if the command fails
+                unimplemented!("quiet mode");
+            }
+
+            command.status().map_err(|source| {
+                // dbg!(command);
+
+                let err = SpawnError { source, command };
+                // convert to `eyre::Error` to preserve the backtrace (if any)
+                SpawnFail(eyre::eyre!(err))
+            })
+        }
     }
 
     /// Wrapper around [`SpawnError`] that will not easily collapse into [`eyre::Error`], until the
