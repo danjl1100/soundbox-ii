@@ -224,21 +224,18 @@ impl std::fmt::Display for DisplayCommand<'_> {
         let program = command.get_program();
         let args = std::fmt::from_fn(|f| f.debug_list().entries(command.get_args()).finish());
 
-        write!(f, "{} with args {args:?}", program.display())?;
+        write!(f, "--> {} with args {args:?}", program.display())?;
         if let Some(dir) = command.get_current_dir() {
             write!(f, " in {}", dir.display())?;
         }
         Ok(())
     }
 }
-fn dbg_command_run(command: &Command) {
-    eprintln!("--> {}", DisplayCommand(command));
-}
 
 mod status_cmd {
     //! Low-level execution of commands
 
-    use crate::{DisplayCommand, Quiet, dbg_command_run};
+    use crate::{DisplayCommand, Quiet};
     use std::process::{Command, ExitStatus};
 
     /// Settings for running [`Command`]s
@@ -270,16 +267,30 @@ mod status_cmd {
 
             let mut command = Command::new(cmd);
             args_fn(&mut command);
-            dbg_command_run(&command);
+
+            let dbg_command = DisplayCommand(&command).to_string();
 
             if let Some(Quiet { .. }) = quiet {
-                // TODO: suppress output, and only print to stdout/stderr if the command fails
-                unimplemented!("quiet mode");
+                use std::io::Write as _;
+
+                let mut stdout = std::io::stdout().lock();
+                let _ignore_err = write!(&mut stdout, "\u{2713}");
+                let _ignore_err = stdout.flush();
+
+                let output = command
+                    .output()
+                    .map_err(|source| SpawnFail(eyre::eyre!(SpawnError { source, command })))?;
+                if !output.status.success() {
+                    eprintln!("{dbg_command}");
+                    let _ignore_err = std::io::stdout().write_all(&output.stdout);
+                    let _ignore_err = std::io::stderr().write_all(&output.stderr);
+                }
+                return Ok(output.status);
             }
 
-            command.status().map_err(|source| {
-                // dbg!(command);
+            eprintln!("{dbg_command}");
 
+            command.status().map_err(|source| {
                 let err = SpawnError { source, command };
                 // convert to `eyre::Error` to preserve the backtrace (if any)
                 SpawnFail(eyre::eyre!(err))

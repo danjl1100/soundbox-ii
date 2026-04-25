@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! On Unix, replace the current process instead of spawning a subprocess
 
-use crate::dbg_command_run;
+use crate::DisplayCommand;
 use eyre::Context as _;
 use std::process::Command;
 
@@ -23,7 +23,7 @@ pub fn exec_cmd(
     let mut command = Command::new(cmd);
     args_fn(&mut command);
 
-    dbg_command_run(&command);
+    eprintln!("{}", DisplayCommand(&command));
 
     let err = command.exec();
     Err(err).with_context(|| {
