@@ -1,10 +1,12 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Logic for the `xtask` functionality
 
+pub use self::quiet::{ArgQuiet, Quiet};
 use self::run_cmd::run_cmd;
 use self::status_cmd::status_cmd;
 pub use self::status_cmd::{SpawnError, SpawnFail};
 pub use self::typed_err::{TypedErr, TypedResult};
+pub use self::write_output::{ArgFix, WriteOutput};
 use eyre::Context as _;
 use std::{
     path::{Path, PathBuf},
@@ -20,18 +22,74 @@ pub mod vlc;
 #[cfg(unix)]
 pub mod unix_exec;
 
-/// Attempt to fix checks by writing to files (otherwise, run read-only checks)
-#[derive(Clone, Copy, Debug, clap::Subcommand)]
-pub enum Fix {
-    /// Attempt to fix checks by writing to files (otherwise, run read-only checks)
-    Fix,
+mod write_output {
+    /// The user wants to write files to improve the result
+    #[derive(Clone, Copy, Debug)]
+    pub struct WriteOutput {
+        _sealed: (),
+    }
+
+    impl WriteOutput {
+        /// Caller asserts that the user wants to write files
+        ///
+        /// NOTE: Long name to make it clear what the caller is asserting
+        #[must_use]
+        pub fn unchecked_user_wants_to_write_files() -> Self {
+            Self { _sealed: () }
+        }
+    }
+
+    #[derive(Clone, Debug, clap::Args)]
+    pub(crate) struct ArgFixJsFmt {
+        /// Write formatting fixes to JavaScript source files
+        #[clap(long)]
+        fix: bool,
+    }
+    impl ArgFixJsFmt {
+        /// Returns the inner typed value
+        pub fn into_inner(self) -> Option<WriteOutput> {
+            let Self { fix } = self;
+            fix.then_some(WriteOutput { _sealed: () })
+        }
+    }
+
+    /// clap builder for [`WriteOutput`] in the context of `--fix` in checks
+    #[derive(Clone, Debug, clap::Args)]
+    pub struct ArgFix {
+        /// Attempt to fix checks by writing to files (otherwise, run read-only checks)
+        #[clap(long)]
+        fix: bool,
+    }
+    impl ArgFix {
+        /// Returns the inner typed value
+        pub fn into_inner(self) -> Option<WriteOutput> {
+            let Self { fix } = self;
+            fix.then_some(WriteOutput { _sealed: () })
+        }
+    }
 }
 
-/// If present, write output files (otherwise, run read-only checks)
-#[derive(Clone, Copy, Debug, clap::Subcommand)]
-pub enum WriteOutput {
-    /// Write output files (otherwise, run read-only checks)
-    Write,
+mod quiet {
+    /// The user wants to suppress output from commands if no errors occur
+    #[derive(Clone, Copy, Debug)]
+    pub struct Quiet {
+        _sealed: (),
+    }
+
+    /// clap entrypoint builder for [`Quiet`]
+    #[derive(Clone, Debug, clap::Args)]
+    pub struct ArgQuiet {
+        /// Suppress subcommand output unless an error occurs
+        #[clap(long)]
+        quiet: bool,
+    }
+    impl ArgQuiet {
+        /// Returns the inner typed value
+        pub fn into_inner(self) -> Option<Quiet> {
+            let Self { quiet } = self;
+            quiet.then_some(Quiet { _sealed: () })
+        }
+    }
 }
 
 mod typed_err {
@@ -231,7 +289,7 @@ mod status_cmd {
 }
 
 /// Prints the help note for applying fixes
-pub fn print_help_fix_checks(source: &TypedErr, fix: &Option<Fix>) {
+pub fn print_help_fix_checks(source: &TypedErr, fix: &Option<WriteOutput>) {
     if fix.is_some() {
         // don't print the hint, already in fix mode
         return;
@@ -244,7 +302,7 @@ pub fn print_help_fix_checks(source: &TypedErr, fix: &Option<Fix>) {
     let args = ["cargo xtask".to_owned()]
         .into_iter()
         .chain(std::env::args().skip(1))
-        .chain(["fix".to_string()])
+        .chain(["--fix".to_string()])
         .fold(String::new(), |mut acc, arg| {
             use std::fmt::Write as _;
             if !acc.is_empty() {

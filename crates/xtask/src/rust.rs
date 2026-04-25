@@ -2,14 +2,14 @@
 //! Checks for the rust source code as a whole
 
 use crate::{
-    Fix, TypedResult, run_cargo, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo,
+    TypedResult, WriteOutput, run_cargo, spigot_visual::HintAllowRustWorkspaceCalls, status_cargo,
 };
 
 /// Checks the rust source as a whole
 ///
 /// # Errors
 /// Returns an error if any subprocesses fail
-pub fn checks(fix: Option<Fix>, _hint: &HintAllowRustWorkspaceCalls) -> TypedResult<()> {
+pub fn checks(fix: Option<WriteOutput>, _hint: &HintAllowRustWorkspaceCalls) -> TypedResult<()> {
     fmt(fix)?;
     clippy(fix)?;
     test()?;
@@ -18,7 +18,7 @@ pub fn checks(fix: Option<Fix>, _hint: &HintAllowRustWorkspaceCalls) -> TypedRes
     Ok(())
 }
 
-fn fmt(fix: Option<Fix>) -> TypedResult<()> {
+fn fmt(fix: Option<WriteOutput>) -> TypedResult<()> {
     if fix.is_none() {
         // no fix = printing list
         eprintln!("Outstanding cargo fmt files:");
@@ -46,7 +46,7 @@ fn fmt(fix: Option<Fix>) -> TypedResult<()> {
     Ok(())
 }
 
-fn clippy(fix: Option<Fix>) -> TypedResult<()> {
+fn clippy(fix: Option<WriteOutput>) -> TypedResult<()> {
     run_cargo(|c| {
         c.args([
             "clippy",
@@ -55,7 +55,7 @@ fn clippy(fix: Option<Fix>) -> TypedResult<()> {
             "--color",
             "always",
         ]);
-        if let Some(Fix::Fix) = fix {
+        if let Some(WriteOutput { .. }) = fix {
             c.args(["--fix", "--allow-dirty"]);
         }
         c

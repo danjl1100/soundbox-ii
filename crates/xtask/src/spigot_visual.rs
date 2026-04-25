@@ -3,7 +3,8 @@
 
 use self::gen_bindings::gen_bindings_ts;
 use crate::{
-    Fix, TypedErr, TypedResult, WriteOutput, print_help_fix_checks, project_root, run_cmd,
+    TypedErr, TypedResult, WriteOutput, print_help_fix_checks, project_root, run_cmd,
+    write_output::ArgFixJsFmt,
 };
 use eyre::Context;
 use std::{
@@ -44,7 +45,7 @@ impl HintAllowRustWorkspaceCalls {
     ///
     /// # Errors
     /// Returns an error if the check or need fails
-    pub fn check_and_run_once(fix: Option<Fix>) -> TypedResult<Self> {
+    pub fn check_and_run_once(fix: Option<WriteOutput>) -> TypedResult<Self> {
         Self::check()?
             .or_else(|need| {
                 need.run(fix)?;
@@ -73,8 +74,8 @@ impl Need {
     ///
     /// # Errors
     /// Returns an error if `fix` is not specified, or the file generation fails
-    pub fn run(&self, fix: Option<Fix>) -> TypedResult<()> {
-        let Some(Fix::Fix) = fix else {
+    pub fn run(&self, fix: Option<WriteOutput>) -> TypedResult<()> {
+        let Some(write) = fix else {
             crate::bail!("argument `fix` not specified, refusing to write output files: {self:#?}")
         };
         println!(
@@ -84,7 +85,7 @@ impl Need {
         match self {
             Need::DistJsWrite {
                 missing_files: _diagnostic_only,
-            } => DistJs::default().dist_js(),
+            } => DistJs::dist_js(write),
         }
     }
     fn label(&self) -> &'static str {
@@ -111,10 +112,12 @@ impl std::fmt::Debug for Need {
 /// Runs spigot-visual with the compiled typescript
 #[derive(Debug, clap::Args)]
 pub struct Run {
+    #[clap(flatten)]
+    fix_js_fmt: ArgFixJsFmt,
     args: Vec<OsString>,
 }
 impl Run {
-    /// Generates prerequisit files and executes the `spigot-visual` main entrypoint
+    /// Generates prerequisite files and executes the `spigot-visual` main entrypoint
     ///
     /// # Errors
     /// Returns any errors from I/O or spawned subprocesses
@@ -134,11 +137,18 @@ impl Run {
                 .args(args)
         }
 
-        let Self { args } = self;
+        let Self { fix_js_fmt, args } = self;
 
-        fmt_js()?;
+        if let Some(fix) = fix_js_fmt.into_inner() {
+            fmt_js(fix)?;
+        }
 
-        DistJs::default().dist_js()?;
+        {
+            // NOTE: Writing auto-generated files is required for running per the user request
+            let write_autogen = WriteOutput::unchecked_user_wants_to_write_files();
+
+            DistJs::dist_js(write_autogen)?;
+        }
 
         #[cfg(unix)]
         {
@@ -159,15 +169,17 @@ impl Run {
 ///
 /// # Errors
 /// Returns any fatal errors with the checks
-pub fn checks(fix: Option<Fix>) -> TypedResult<()> {
+pub fn checks(fix: Option<WriteOutput>) -> TypedResult<()> {
+    // OK to fix source JS
     check_js(fix)?;
-    DistJs { write: None }.dist_js()?;
+    // SKIP dist (write None) since we're only checking
+    DistJs { write: None }.run()?;
     Ok(())
 }
-fn check_js(fix: Option<Fix>) -> TypedResult<()> {
+fn check_js(fix: Option<WriteOutput>) -> TypedResult<()> {
     run_cmd("biome", |c| {
         c.arg("check");
-        if let Some(Fix::Fix) = fix {
+        if let Some(WriteOutput { .. }) = fix {
             c.arg("--write");
         }
         c.current_dir(ts_src_dir())
@@ -176,30 +188,25 @@ fn check_js(fix: Option<Fix>) -> TypedResult<()> {
 }
 
 /// Formats the JavaScript sources
-fn fmt_js() -> TypedResult<()> {
+fn fmt_js(write: WriteOutput) -> TypedResult<()> {
     // `biome format --write` also works, but format is a subset of `biome check --write`
-    check_js(Some(Fix::Fix))
+    check_js(Some(write))
 }
 
 /// Compiles the spigot-visual typescript
-#[derive(Clone, Copy, Debug, clap::Args)]
+#[derive(Clone, Debug)]
 pub struct DistJs {
-    #[clap(subcommand)]
     write: Option<WriteOutput>,
-}
-impl Default for DistJs {
-    fn default() -> Self {
-        Self {
-            write: Some(WriteOutput::Write),
-        }
-    }
 }
 impl DistJs {
     /// Generates the JavaScript sources
     ///
     /// # Errors
     /// Returns an error if any subprocesses fail
-    pub fn dist_js(self) -> TypedResult<()> {
+    pub fn dist_js(write: WriteOutput) -> TypedResult<()> {
+        Self { write: Some(write) }.run()
+    }
+    fn run(self) -> TypedResult<()> {
         let Self { write } = self;
 
         gen_bindings_ts()?;

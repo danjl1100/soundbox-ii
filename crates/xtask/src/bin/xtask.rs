@@ -4,7 +4,7 @@
 
 use clap::Parser as _;
 use xtask::spigot_visual::HintAllowRustWorkspaceCalls;
-use xtask::{Fix, TypedResult};
+use xtask::{TypedResult, WriteOutput};
 
 #[derive(Debug, clap::Parser)]
 struct Args {
@@ -28,21 +28,38 @@ fn main_inner() -> TypedResult<()> {
     match subcommand {
         Subcommand::Checks(checks) => checks.all_checks()?,
         Subcommand::SpigotVisualRun(run) => run.run()?,
-        Subcommand::SpigotVisualDist => xtask::spigot_visual::DistJs::default().dist_js()?,
+        Subcommand::SpigotVisualDist => {
+            let write = WriteOutput::unchecked_user_wants_to_write_files();
+            xtask::spigot_visual::DistJs::dist_js(write)?;
+        }
         Subcommand::Vlc(run_web) => run_web.run_web()?,
     }
     Ok(())
 }
 
-/// Runs all linting checks
+/// Runs all linting checks (cargo-vet, -fmt, -clippy, -doc, -test, JS linter, and copyright notes)
 #[derive(Debug, clap::Args)]
 struct AllChecks {
-    #[clap(subcommand)]
-    fix: Option<Fix>,
+    #[clap(flatten)]
+    quiet: xtask::ArgQuiet,
+    #[clap(flatten)]
+    fix: xtask::ArgFix,
 }
 impl AllChecks {
     fn all_checks(self) -> TypedResult<()> {
-        let AllChecks { fix } = self;
+        let AllChecks { quiet, fix } = self;
+        let quiet = quiet.into_inner();
+        let fix = fix.into_inner();
+
+        if let Some(xtask::Quiet { .. }) = quiet {
+            // TODO: pass `quiet` to all individual functions,
+            // potentially in the form of a `CmdContext` struct.
+            //
+            // e.g. Adapt `fn status_cmd` in lib.rs into a method on the new planned `CmdContext` struct,
+            // so it can apply `Option<Quiet>` (and possibly other settings in the future)
+            // to the output settings for all commands run in this xtask crate.
+            unimplemented!("quiet mode");
+        }
 
         let hint = HintAllowRustWorkspaceCalls::check_and_run_once(fix)?;
 

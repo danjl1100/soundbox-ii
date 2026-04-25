@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks the copyright notice for modified files
 
-use crate::Fix;
+use crate::WriteOutput;
 use eyre::{Context, ContextCompat as _};
 use std::{
     collections::HashMap,
@@ -17,7 +17,7 @@ const SUFFIX: &str =
 /// # Errors
 /// Returns an error if the GIT I/O fails, errors are present without permission to fix,
 /// or I/O fails while performing fixes.
-pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
+pub fn checks(fix: Option<WriteOutput>) -> eyre::Result<()> {
     let current_year = jiff::Zoned::now().year().cast_unsigned();
 
     let repo = git2::Repository::open_from_env().context("failed to open GIT repo")?;
@@ -60,7 +60,7 @@ pub fn checks(fix: Option<Fix>) -> eyre::Result<()> {
                     continue;
                 };
 
-                if let Some(Fix::Fix) = fix {
+                if let Some(WriteOutput { .. }) = fix {
                     if has_worktree_changes(status) {
                         eyre::bail!(
                             "refusing to update file with unstaged changes: {path:?} (use `git add -p` first to stage changes)"
