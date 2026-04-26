@@ -342,13 +342,20 @@ mod status_cmd {
                         let elapsed = start.elapsed();
                         let is_success = output.status.success();
 
-                        // print symbol check mark or cross
-                        let symbol = if is_success {
-                            "[\u{2713} PASS]"
-                        } else {
-                            "[\u{274C} FAIL]"
-                        };
-                        eprintln!("{symbol} {elapsed:?}");
+                        {
+                            // print symbol check mark or cross
+                            let message = if is_success {
+                                "[\u{2713} PASS]"
+                            } else {
+                                "[\u{274C} FAIL]"
+                            };
+                            let elapsed = humantime::format_duration(elapsed).to_string();
+                            // truncate to largest unit (e.g. "361ms 345us 208ns" -> "361ms")
+                            let elapsed = elapsed
+                                .split_once(' ')
+                                .map_or(&*elapsed, |(first, _)| first);
+                            eprintln!("{message} {elapsed}");
+                        }
 
                         if !is_success {
                             let _ignore_err = std::io::stdout().write_all(&output.stdout);
