@@ -29,7 +29,7 @@ fn main_inner() -> TypedResult<()> {
         Subcommand::Checks(checks) => checks.all_checks()?,
         Subcommand::SpigotVisualRun(run) => run.run()?,
         Subcommand::SpigotVisualDist => {
-            let cmd = &CmdSettings::new(None);
+            let cmd = &CmdSettings::new(xtask::Verbosity::default());
             let write = WriteOutput::unchecked_user_wants_to_write_files();
             xtask::spigot_visual::DistJs::dist_js(cmd, write)?;
         }

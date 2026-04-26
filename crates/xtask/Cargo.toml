@@ -17,5 +17,6 @@ clap = { version = "4.6.0", features = ["derive", "env"] }
 eyre = "0.6.12"
 git2 = { version = "0.20.3", default-features = false }
 jiff = "0.2.17"
+pathdiff = "0.2.3"
 vlc-http-auth = { version = "0.1.0", path = "../vlc-http-auth" }
 vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }

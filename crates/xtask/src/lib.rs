@@ -1,10 +1,10 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Logic for the `xtask` functionality
 
-pub use self::quiet::{ArgsCmdSettings, Quiet};
 pub use self::status_cmd::CmdSettings;
 pub use self::status_cmd::{SpawnError, SpawnFail};
 pub use self::typed_err::{TypedErr, TypedResult};
+pub use self::verbosity::{ArgsCmdSettings, Verbosity};
 pub use self::write_output::{ArgFix, WriteOutput};
 use eyre::Context as _;
 use std::{
@@ -69,29 +69,70 @@ mod write_output {
     }
 }
 
-mod quiet {
+mod verbosity {
     use crate::CmdSettings;
 
-    /// The user wants to suppress output from commands if no errors occur
-    #[derive(Clone, Copy, Debug)]
-    pub struct Quiet {
+    /// How much output to show
+    #[derive(Clone, Copy, Debug, Default)]
+    pub enum Verbosity {
+        /// Suppress output from commands if no errors occur
+        Quiet(Sealed),
+        /// Show regular amount of command output
+        #[default]
+        Normal,
+        /// Show extra output from commands
+        ///
+        /// Example: For commands like `cargo test` that usually receive `--quiet` by default, this
+        /// option omits the extra "quiet" parameter
+        Verbose(Sealed),
+    }
+    impl Verbosity {
+        /// Caller asserts that the user wants to suppress output ([`Self::Quiet`])
+        ///
+        /// NOTE: Long name to make it clear what the caller is asserting
+        #[must_use]
+        pub fn unchecked_user_wants_quiet_output() -> Self {
+            Self::Quiet(Sealed { _sealed: () })
+        }
+        /// Caller asserts that the user wants increased output ([`Self::Verbose`])
+        ///
+        /// NOTE: Long name to make it clear what the caller is asserting
+        #[must_use]
+        pub fn unchecked_user_wants_verbose_output() -> Self {
+            Self::Verbose(Sealed { _sealed: () })
+        }
+    }
+    /// Restrict construction of this variant to sufficiently-long-named functions
+    ///
+    /// Enum fields are public, so need a struct to have a pub type with a non-pub field
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Sealed {
         _sealed: (),
     }
 
-    /// clap entrypoint builder for [`Quiet`]
+    /// clap entrypoint builder for [`Verbosity`]
     #[derive(Clone, Debug, clap::Args)]
     pub struct ArgsCmdSettings {
         /// Suppress subcommand output unless an error occurs
         #[clap(long, env = "XTASK_QUIET")]
         quiet: bool,
+        /// Always show subcommand output (overrides `--quiet`)
+        #[clap(short, long, alias = "no_quiet")]
+        verbose: bool,
     }
     impl ArgsCmdSettings {
         /// Returns the inner typed value
         #[must_use]
         pub fn into_inner(self) -> CmdSettings {
-            let Self { quiet } = self;
-            let quiet = quiet.then_some(Quiet { _sealed: () });
-            CmdSettings::new(quiet)
+            let Self { quiet, verbose } = self;
+            let verbosity = if verbose {
+                Verbosity::Verbose(Sealed { _sealed: () })
+            } else if quiet {
+                Verbosity::Quiet(Sealed { _sealed: () })
+            } else {
+                Verbosity::Normal
+            };
+            CmdSettings::new(verbosity)
         }
     }
 }
@@ -188,9 +229,9 @@ impl CmdSettings {
         &self,
         args_fn: impl FnOnce(&mut Command) -> &mut Command,
     ) -> TypedResult<ExitStatus> {
-        let quiet = self.get_quiet();
+        let verbosity = self.get_verbosity();
         let status = self.status_cmd(env!("CARGO"), |c| {
-            if let Some(Quiet { .. }) = quiet {
+            if let Verbosity::Quiet { .. } = verbosity {
                 c.arg("--quiet");
             }
             args_fn(c)
@@ -221,12 +262,23 @@ impl std::fmt::Display for DisplayCommand<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(command) = self;
 
-        let program = command.get_program();
-        let args = std::fmt::from_fn(|f| f.debug_list().entries(command.get_args()).finish());
+        let program = std::path::Path::new(command.get_program());
+        let program = program
+            .iter()
+            .next_back()
+            .unwrap_or(std::ffi::OsStr::new("<UNKNOWN>"));
 
-        write!(f, "--> {} with args {args:?}", program.display())?;
-        if let Some(dir) = command.get_current_dir() {
-            write!(f, " in {}", dir.display())?;
+        write!(f, "--> {}", program.display())?;
+        for arg in command.get_args() {
+            write!(f, " {}", arg.display())?;
+        }
+        if let Some(target) = command.get_current_dir() {
+            let dir = std::env::current_dir()
+                .ok()
+                .and_then(|base| pathdiff::diff_paths(target, base))
+                .map(std::borrow::Cow::Owned)
+                .unwrap_or(std::borrow::Cow::Borrowed(target));
+            write!(f, " (in {})", dir.display())?;
         }
         Ok(())
     }
@@ -235,24 +287,30 @@ impl std::fmt::Display for DisplayCommand<'_> {
 mod status_cmd {
     //! Low-level execution of commands
 
-    use crate::{DisplayCommand, Quiet};
+    use crate::{DisplayCommand, Verbosity};
     use std::process::{Command, ExitStatus};
 
     /// Settings for running [`Command`]s
     #[derive(Debug)]
     pub struct CmdSettings {
-        quiet: Option<Quiet>,
+        verbosity: Verbosity,
     }
     impl CmdSettings {
         /// Creates settings for running subcommands
         #[must_use]
-        pub fn new(quiet: Option<Quiet>) -> Self {
-            Self { quiet }
+        pub fn new(verbosity: Verbosity) -> Self {
+            Self { verbosity }
         }
-        /// Returns the [`Quiet`] setting
+        /// Returns the [`Verbosity`] setting
         #[must_use]
-        pub fn get_quiet(&self) -> Option<Quiet> {
-            self.quiet
+        pub fn get_verbosity(&self) -> Verbosity {
+            self.verbosity
+        }
+        /// Returns a version of self with all output shown
+        #[must_use]
+        pub fn with_verbosity(&self, verbosity: Verbosity) -> Self {
+            let Self { verbosity: _ } = *self;
+            Self { verbosity }
         }
         /// Runs the specified command and returns the [`ExitStatus`]
         ///
@@ -263,34 +321,48 @@ mod status_cmd {
             cmd: &str,
             args_fn: impl FnOnce(&mut Command) -> &mut Command,
         ) -> Result<ExitStatus, SpawnFail> {
-            let Self { quiet } = self;
+            let Self { verbosity } = self;
 
             let mut command = Command::new(cmd);
             args_fn(&mut command);
 
-            let dbg_command = DisplayCommand(&command).to_string();
+            eprintln!("{}", DisplayCommand(&command));
 
-            if let Some(Quiet { .. }) = quiet {
-                use std::io::Write as _;
+            'act: {
+                match verbosity {
+                    Verbosity::Quiet { .. } => {
+                        use std::io::Write as _;
 
-                let mut stdout = std::io::stdout().lock();
-                let _ignore_err = write!(&mut stdout, "\u{2713}");
-                let _ignore_err = stdout.flush();
+                        let start = std::time::Instant::now();
 
-                let output = command
-                    .output()
-                    .map_err(|source| SpawnFail(eyre::eyre!(SpawnError { source, command })))?;
-                if !output.status.success() {
-                    eprintln!("{dbg_command}");
-                    let _ignore_err = std::io::stdout().write_all(&output.stdout);
-                    let _ignore_err = std::io::stderr().write_all(&output.stderr);
+                        let output = match command.output() {
+                            Ok(output) => output,
+                            Err(e) => break 'act Err(e),
+                        };
+                        let elapsed = start.elapsed();
+                        let is_success = output.status.success();
+
+                        // print symbol check mark or cross
+                        let symbol = if is_success {
+                            "[\u{2713} PASS]"
+                        } else {
+                            "[\u{274C} FAIL]"
+                        };
+                        eprintln!("{symbol} {elapsed:?}");
+
+                        if !is_success {
+                            let _ignore_err = std::io::stdout().write_all(&output.stdout);
+                            let _ignore_err = std::io::stderr().write_all(&output.stderr);
+                        }
+                        Ok(output.status)
+                    }
+                    Verbosity::Normal | Verbosity::Verbose { .. } => {
+                        // run command, stdout/stderr forwarded to parent
+                        command.status()
+                    }
                 }
-                return Ok(output.status);
             }
-
-            eprintln!("{dbg_command}");
-
-            command.status().map_err(|source| {
+            .map_err(|source| {
                 let err = SpawnError { source, command };
                 // convert to `eyre::Error` to preserve the backtrace (if any)
                 SpawnFail(eyre::eyre!(err))

@@ -1,7 +1,9 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks for the rust source code as a whole
 
-use crate::{CmdSettings, TypedResult, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls};
+use crate::{
+    CmdSettings, TypedResult, Verbosity, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls,
+};
 
 /// Checks the rust source as a whole
 ///
@@ -21,7 +23,13 @@ pub fn checks(
 }
 
 fn fmt(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
-    if fix.is_none() {
+    let show_header_footer = match (cmd.get_verbosity(), fix) {
+        // hide when `Quiet` or nothing to output (will fix)
+        (Verbosity::Quiet { .. }, _) | (_, Some(WriteOutput { .. })) => false,
+        // show when not going to fix
+        (_, None) => true,
+    };
+    if show_header_footer {
         // no fix = printing list
         eprintln!("Outstanding cargo fmt files:");
     }
@@ -33,7 +41,7 @@ fn fmt(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
         }
         c
     })?;
-    if fix.is_none() {
+    if show_header_footer {
         // no fix = printing list
         if status.success() {
             // passed, report "none"
@@ -49,23 +57,29 @@ fn fmt(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
 }
 
 fn clippy(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
-    cmd.run_cargo(|c| {
-        c.args([
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--color",
-            "always",
-        ]);
-        if let Some(WriteOutput { .. }) = fix {
-            c.args(["--fix", "--allow-dirty"]);
-        }
-        c
-    })
+    cmd
+        // always show `cargo clippy` output, in case of non-fatal warnings
+        .with_verbosity(Verbosity::Normal)
+        .run_cargo(|c| {
+            c.args([
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--color",
+                "always",
+            ]);
+            if let Some(WriteOutput { .. }) = fix {
+                c.args(["--fix", "--allow-dirty"]);
+            }
+            c
+        })
 }
 fn test(cmd: &CmdSettings) -> TypedResult<()> {
     cmd.run_cargo(|c| c.args(["test", "--workspace", "--color", "always"]))
 }
 fn doc(cmd: &CmdSettings) -> TypedResult<()> {
-    cmd.run_cargo(|c| c.args(["doc", "--workspace", "--no-deps", "--color", "always"]))
+    cmd
+        // always show `cargo doc` output, in case of non-fatal warnings
+        .with_verbosity(Verbosity::Normal)
+        .run_cargo(|c| c.args(["doc", "--workspace", "--no-deps", "--color", "always"]))
 }
