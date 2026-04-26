@@ -157,17 +157,16 @@ impl Run {
             DistJs::dist_js(cmd, write_autogen)?;
         }
 
-        #[cfg(unix)]
-        {
-            // replace the current process
-            let never = crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
-            match never {}
-        }
-
-        #[cfg(not(unix))]
-        {
-            // Fallback for non-Unix systems
-            run_cargo(|c| cmd_spigot_visual(c, args))
+        cfg_select! {
+            unix => {
+                // replace the current process
+                let never = crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
+                match never {}
+            }
+            _ => {
+                // Fallback for non-Unix systems
+                run_cargo(|c| cmd_spigot_visual(c, args))
+            }
         }
     }
 }

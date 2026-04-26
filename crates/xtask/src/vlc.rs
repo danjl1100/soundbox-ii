@@ -37,16 +37,15 @@ impl ArbitratedInput {
         )?;
         println!();
 
-        #[cfg(unix)]
-        {
-            // replace the current process
-            crate::unix_exec::exec_cmd(cmd, |c| self.cmd_args(c)).map(|never| match never {})
-        }
-
-        #[cfg(not(unix))]
-        {
-            // Fallback for non-Unix systems
-            crate::run_cmd(cmd, |c| self.cmd_args(c))
+        cfg_select! {
+            unix => {
+                // replace the current process
+                crate::unix_exec::exec_cmd(cmd, |c| self.cmd_args(c)).map(|never| match never {})
+            }
+            _ => {
+                // Fallback for non-Unix systems
+                crate::run_cmd(cmd, |c| self.cmd_args(c))
+            }
         }
     }
     fn cmd_args(self, c: &mut Command) -> &mut Command {
