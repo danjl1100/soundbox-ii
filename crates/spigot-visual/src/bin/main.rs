@@ -19,7 +19,7 @@ struct Config {
     bind_address: SocketAddr,
 
     #[clap(long)]
-    dev_path_prefix: Option<String>,
+    path_prefix: String,
 }
 
 #[derive(Debug)]
@@ -108,7 +108,7 @@ fn handle_request(
         return Ok(());
     }
 
-    let prefix = config.dev_path_prefix.as_deref();
+    let prefix = &config.path_prefix;
 
     let url = request.url();
     match url {

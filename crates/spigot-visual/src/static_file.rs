@@ -11,7 +11,8 @@ macro_rules! static_file {
         use $crate::static_file::StaticFile;
         const STATIC_FILE: StaticFile = StaticFile {
             path: $path,
-            bytes: include_bytes!(concat!("../../static/", $path)),
+            // NOTE: code smell to require asset files, as it can block workspace compilation/tests
+            // bytes: include_bytes!(concat!("../../static/", $path)),
         };
         STATIC_FILE
     }};
@@ -24,15 +25,15 @@ macro_rules! static_file {
 pub struct StaticFile {
     /// Relative path to the source file
     pub path: &'static str,
-    /// Contents of the file at compile time
-    pub bytes: &'static [u8],
+    // /// Contents of the file at compile time
+    // pub bytes: &'static [u8],
 }
 impl StaticFile {
     /// Replies with the file contents as plaintext
     ///
     /// # Errors
     /// Returns an error if the file load or reply fails
-    pub fn reply_file(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+    pub fn reply_file(self, request: Request, prefix: PrefixInput<'_>) -> eyre::Result<()> {
         self.get_response(prefix)?.reply_to(request)?;
         Ok(())
     }
@@ -40,7 +41,7 @@ impl StaticFile {
     ///
     /// # Errors
     /// Returns an error if the file load or reply fails
-    pub fn reply_html(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+    pub fn reply_html(self, request: Request, prefix: PrefixInput<'_>) -> eyre::Result<()> {
         self.get_response(prefix)?
             .content_type("text/html")
             .reply_to(request)?;
@@ -50,7 +51,7 @@ impl StaticFile {
     ///
     /// # Errors
     /// Returns an error if the file load or reply fails
-    pub fn reply_css(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+    pub fn reply_css(self, request: Request, prefix: PrefixInput<'_>) -> eyre::Result<()> {
         self.get_response(prefix)?
             .content_type("text/css")
             .reply_to(request)?;
@@ -60,24 +61,39 @@ impl StaticFile {
     ///
     /// # Errors
     /// Returns an error if the file load or reply fails
-    pub fn reply_js(self, request: Request, prefix: Option<&str>) -> eyre::Result<()> {
+    pub fn reply_js(self, request: Request, prefix: PrefixInput<'_>) -> eyre::Result<()> {
         self.get_response(prefix)?
             .content_type("text/javascript")
             .reply_to(request)?;
         Ok(())
     }
-    fn get_response(self, prefix: Option<&str>) -> eyre::Result<FileResponse> {
-        let Self { path, bytes } = self;
-        let file_response = if let Some(prefix) = prefix {
+    fn get_response_with_prefix(self, prefix: &str) -> eyre::Result<FileResponse> {
+        let Self { path, .. } = self;
+        let file_response = {
             let path = format!("{prefix}/{path}");
             let file = std::fs::File::open(&path)
                 .with_context(|| format!("failed to read path: {path}"))?;
             FileResponse::File(Response::from_file(file))
-        } else {
-            FileResponse::Data(Response::from_data(bytes))
         };
         Ok(file_response)
     }
+}
+
+type PrefixInput<'a> = &'a str;
+// type PrefixInput<'a> = Option<&'a str>;
+
+impl StaticFile {
+    fn get_response(self, prefix: &str) -> eyre::Result<FileResponse> {
+        self.get_response_with_prefix(prefix)
+    }
+    // fn get_response(self, prefix: Option<&str>) -> eyre::Result<FileResponse> {
+    //     let file_response = if let Some(prefix) = prefix {
+    //         self.get_response_with_prefix(prefix)?
+    //     } else {
+    //         FileResponse::Data(Response::from_data(self.bytes))
+    //     };
+    //     Ok(file_response)
+    // }
 }
 
 enum FileResponse {

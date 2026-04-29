@@ -3,111 +3,13 @@
 
 use self::gen_bindings::gen_bindings_ts;
 use crate::{
-    ArgsCmdSettings, CmdSettings, TypedErr, TypedResult, WriteOutput, print_help_fix_checks,
-    project_root, write_output::ArgFixJsFmt,
+    ArgsCmdSettings, CmdSettings, TypedResult, WriteOutput, print_help_fix_checks, project_root,
+    write_output::ArgFixJsFmt,
 };
-use eyre::Context;
 use std::{
     ffi::{OsStr, OsString},
     path::PathBuf,
 };
-
-/// Hint that prerequisite files for the `cargo` workspace are present
-pub struct HintAllowRustWorkspaceCalls {}
-impl HintAllowRustWorkspaceCalls {
-    /// Checks that the prerequisite files for the `cargo` workspace are present
-    ///
-    /// # Errors
-    /// Returns an error if reading the file status fails
-    pub fn check() -> eyre::Result<Result<Self, Need>> {
-        /// Generated files that are required for workspace-wide cargo invocations
-        const REQUIRED_DIST_DIR_FILES: &[&str] = &["app.js", "sample-input.js"];
-        let missing_files = REQUIRED_DIST_DIR_FILES
-            .iter()
-            .filter_map(|name| {
-                let path = {
-                    let mut p = dist_dir();
-                    p.push(name);
-                    p
-                };
-                std::fs::exists(&path)
-                    .with_context(|| format!("failed to stat {}", path.display()))
-                    .map(|exists| (!exists).then_some(path))
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        if !missing_files.is_empty() {
-            return Ok(Err(Need::DistJsWrite { missing_files }));
-        }
-        Ok(Ok(Self {}))
-    }
-    /// Automatically attempts to recover if [`Self::check()`] returns a [`Need`] (one time only)
-    ///
-    /// # Errors
-    /// Returns an error if the check or need fails
-    pub fn check_and_run_once(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<Self> {
-        Self::check()?
-            .or_else(|need| {
-                need.run(cmd, fix)?;
-                match Self::check()? {
-                    Ok(v) => Ok(v),
-                    Err(need_next) => {
-                        crate::bail!("too many needs: {need:?} --> {need_next:?}")
-                    }
-                }
-            })
-            .map_err(|e: TypedErr| {
-                e.map_eyre_only(|e| e.context("failed to build files needed for rust workspace"))
-            })
-    }
-}
-/// Required action for prerequisite of the cargo workspace
-pub enum Need {
-    /// Need to run [`DistJs::dist_js()`]
-    DistJsWrite {
-        /// Prerequisite files that are missing
-        missing_files: Vec<PathBuf>,
-    },
-}
-impl Need {
-    /// Attempts to resolve the prerequisite
-    ///
-    /// # Errors
-    /// Returns an error if `fix` is not specified, or the file generation fails
-    pub fn run(&self, cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
-        let Some(write) = fix else {
-            crate::bail!("argument `fix` not specified, refusing to write output files: {self:#?}")
-        };
-        println!(
-            "building source prerequisite for rust workpace calls:\n\t{:?}\n",
-            self.label()
-        );
-        match self {
-            Need::DistJsWrite {
-                missing_files: _diagnostic_only,
-            } => DistJs::dist_js(cmd, write),
-        }
-    }
-    fn label(&self) -> &'static str {
-        match self {
-            Need::DistJsWrite { .. } => "cargo xtask spigot-visual-dist",
-        }
-    }
-}
-impl std::fmt::Debug for Need {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut debug = f.debug_struct("");
-
-        match self {
-            Need::DistJsWrite { missing_files } => {
-                debug.field("missing_files", missing_files);
-            }
-        }
-
-        debug.field("add `fix` argument to automatically run", &self.label());
-        debug.finish()
-    }
-}
 
 /// Runs spigot-visual with the compiled typescript
 #[derive(Debug, clap::Args)]
@@ -133,7 +35,7 @@ impl Run {
         {
             c.args(["run", "--package", "spigot-visual", "--"])
                 //
-                .arg("--dev-path-prefix")
+                .arg("--path-prefix")
                 .arg(dist_dir())
                 //
                 .args(args)

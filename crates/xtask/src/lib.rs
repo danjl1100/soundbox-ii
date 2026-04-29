@@ -160,25 +160,25 @@ mod typed_err {
         Eyre(eyre::Error),
     }
     impl TypedErr {
-        // NOTE: [`eyre::Context`] requires `Result<_, E>`, so provide that type for `map_fn`
-        pub(crate) fn map_eyre_only(
-            self,
-            map_fn: impl FnOnce(
-                eyre::Result<std::convert::Infallible>,
-            ) -> eyre::Result<std::convert::Infallible>,
-        ) -> Self {
-            let Self(kind) = self;
-            match kind {
-                TypedErrKind::Spawn(_) => Self(kind),
-                TypedErrKind::Eyre(e) => {
-                    let e = match map_fn(Err(e)) {
-                        Ok(never) => match never {},
-                        Err(e) => e,
-                    };
-                    Self(TypedErrKind::Eyre(e))
-                }
-            }
-        }
+        // // NOTE: [`eyre::Context`] requires `Result<_, E>`, so provide that type for `map_fn`
+        // pub(crate) fn map_eyre_only(
+        //     self,
+        //     map_fn: impl FnOnce(
+        //         eyre::Result<std::convert::Infallible>,
+        //     ) -> eyre::Result<std::convert::Infallible>,
+        // ) -> Self {
+        //     let Self(kind) = self;
+        //     match kind {
+        //         TypedErrKind::Spawn(_) => Self(kind),
+        //         TypedErrKind::Eyre(e) => {
+        //             let e = match map_fn(Err(e)) {
+        //                 Ok(never) => match never {},
+        //                 Err(e) => e,
+        //             };
+        //             Self(TypedErrKind::Eyre(e))
+        //         }
+        //     }
+        // }
 
         pub(crate) fn is_spawn_error(&self) -> bool {
             matches!(self, Self(TypedErrKind::Spawn(_)))

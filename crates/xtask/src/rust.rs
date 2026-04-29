@@ -1,19 +1,13 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Checks for the rust source code as a whole
 
-use crate::{
-    CmdSettings, TypedResult, Verbosity, WriteOutput, spigot_visual::HintAllowRustWorkspaceCalls,
-};
+use crate::{CmdSettings, TypedResult, Verbosity, WriteOutput};
 
 /// Checks the rust source as a whole
 ///
 /// # Errors
 /// Returns an error if any subprocesses fail
-pub fn checks(
-    cmd: &CmdSettings,
-    fix: Option<WriteOutput>,
-    _hint: &HintAllowRustWorkspaceCalls,
-) -> TypedResult<()> {
+pub fn checks(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
     fmt(cmd, fix)?;
     clippy(cmd, fix)?;
     test(cmd)?;

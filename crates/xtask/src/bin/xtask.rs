@@ -3,7 +3,6 @@
 //! [`cargo-xtask`](https://github.com/matklad/cargo-xtask/) template
 
 use clap::Parser as _;
-use xtask::spigot_visual::HintAllowRustWorkspaceCalls;
 use xtask::{CmdSettings, TypedResult, WriteOutput};
 
 #[derive(Debug, clap::Parser)]
@@ -53,11 +52,9 @@ impl AllChecks {
 
         let cmd = &cmd_args.into_inner();
 
-        let hint = HintAllowRustWorkspaceCalls::check_and_run_once(cmd, fix)?;
-
         xtask::copyright::checks(cmd, fix)?;
-        xtask::supply_chain::checks(cmd, fix, &hint)?;
-        xtask::rust::checks(cmd, fix, &hint)?;
+        xtask::supply_chain::checks(cmd, fix)?;
+        xtask::rust::checks(cmd, fix)?;
         xtask::spigot_visual::checks(cmd, fix)?;
 
         Ok(())
