@@ -210,7 +210,6 @@ fn new_beet_spigot(script: &str) -> bucket_spigot::Network<BeetItem, String> {
 
 /// Must tolerate empty results, in case of transient invalid queries while the user is editing
 #[test]
-#[ignore = "update behavior to allow idle/no-items scenario"]
 fn empty_beet_result() -> eyre::Result<()> {
     let spigot = new_beet_spigot("add-bucket .");
 
@@ -223,7 +222,14 @@ fn empty_beet_result() -> eyre::Result<()> {
         runner.assert_empty();
     }
 
-    pusher.fill_determined()?;
+    let push_result = pusher.fill_determined();
+    assert!(
+        matches!(
+            push_result,
+            Err(beet_pusher::FillDeterminedError::SpigotEmptyError(_))
+        ),
+        "expected SpigotEmptyError, found {push_result:?}"
+    );
 
     let (runner, now_playing) = push_playlist_update(pusher, model)?;
     now_playing.assert_playing(&[]);
