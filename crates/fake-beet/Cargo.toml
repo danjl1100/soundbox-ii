@@ -1,0 +1,19 @@
+[package]
+name = "fake-beet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eyre = "0.6.12"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+
+[lints]
+workspace = true
+
+[[bin]]
+name="beet"
+path="src/bin/main.rs"
+
+[dev-dependencies]
+tempfile = "3.27.0"

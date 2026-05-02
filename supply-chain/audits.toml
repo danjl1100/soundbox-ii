@@ -84,12 +84,12 @@ end = "2027-04-19"
 
 [[trusted.linux-raw-sys]]
 criteria = "safe-to-run"
-user-id = 6825
+user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2021-06-12"
 end = "2027-05-02"
 
 [[trusted.rustix]]
 criteria = "safe-to-run"
-user-id = 6825
+user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2021-10-29"
 end = "2027-05-02"

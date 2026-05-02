@@ -208,10 +208,6 @@ criteria = "safe-to-deploy"
 version = "0.7.1"
 criteria = "safe-to-run"
 
-[[exemptions.ryu]]
-version = "1.0.20"
-criteria = "safe-to-deploy"
-
 [[exemptions.serde]]
 version = "1.0.228"
 criteria = "safe-to-deploy"
