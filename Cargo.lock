@@ -140,6 +140,7 @@ dependencies = [
  "clap",
  "eyre",
  "fake-beet",
+ "fake-vlc",
  "percent-encoding",
  "rand 0.8.5",
  "serde",
@@ -152,6 +153,7 @@ dependencies = [
  "url",
  "urlencoding",
  "vlc-http",
+ "vlc-http-auth",
  "vlc-http-auth-clap",
  "vlc-http-ureq",
 ]
@@ -398,6 +400,19 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "fake-vlc"
+version = "0.1.0"
+dependencies = [
+ "arbtest",
+ "eyre",
+ "rand 0.8.5",
+ "tiny_http",
+ "vlc-http",
+ "vlc-http-auth",
+ "vlc-http-cmd",
 ]
 
 [[package]]

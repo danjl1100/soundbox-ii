@@ -1,0 +1,19 @@
+[package]
+name = "fake-vlc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eyre = "0.6.12"
+rand = "0.8.5"
+tiny_http = "0.12.0"
+vlc-http-auth = { version = "0.1.0", path = "../vlc-http-auth" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+arbtest = "0.3.2"
+vlc-http = { path = "../vlc-http" }
+vlc-http-auth = { path = "../vlc-http-auth" }
+vlc-http-cmd = { path = "../vlc-http-cmd" }

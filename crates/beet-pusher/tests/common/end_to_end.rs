@@ -1,9 +1,13 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::common::end_to_end::pipe_runner::{Output, PipeRunner};
 
 #[test]
-#[ignore = "need fake-vlc to accept the HTTP requests, in PipeRunner"]
+#[ignore = "TODO"]
 fn stdin_reports_unknown_command() -> eyre::Result<()> {
-    let mut r = PipeRunner::spawn()?;
+    let (vlc, vlc_thread) = fake_vlc::FakeVlc::new()?;
+
+    let vlc_auth = vlc.get_auth_cloned();
+    let mut r = PipeRunner::spawn(&vlc_auth)?;
 
     r.send_stdin("test string is **NOT** a JSON object")?;
 
@@ -14,14 +18,15 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
         r#"{"error":"invalid command: \"test string is **NOT** a JSON object\""}"#
     );
 
+    drop(vlc);
+    vlc_thread.join().expect("VLC thread panic")?;
+
     Ok(())
 }
 
 #[test]
 #[ignore = "TODO"]
 fn stdin_modify_spigot() -> eyre::Result<()> {
-    let _r = PipeRunner::spawn()?;
-
     eyre::bail!("TODO: send spigot modifications through stdin, verify status in stdout")
 }
 
@@ -40,18 +45,14 @@ mod pipe_runner {
         _temp_dir: tempfile::TempDir,
     }
     impl PipeRunner {
-        pub fn spawn() -> eyre::Result<Self> {
+        pub fn spawn(vlc_auth: &vlc_http_auth::AuthInput) -> eyre::Result<Self> {
             let temp_dir = tempfile::tempdir().context("failed to create tempdir")?;
             let dir = temp_dir.path();
 
             let vlc_auth_file = create_config_file(
                 dir,
                 "vlc_auth.toml",
-                r#"
-                vlc_password="vlc_password"
-                vlc_host="127.0.0.1"
-                vlc_port=0
-                "#,
+                &toml::to_string_pretty(vlc_auth).expect("failed vlc_auth toml serialize"),
             )?;
 
             create_config_file(

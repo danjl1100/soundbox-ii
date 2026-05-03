@@ -33,5 +33,7 @@ vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }
 vlc-http-ureq = { version = "0.1.0", path = "../vlc-http-ureq" }
 
 [dev-dependencies]
+fake-vlc = { path = "../fake-vlc" }
 tempfile = "3.27.0"
 urlencoding = "2.1.3"
+vlc-http-auth = { path = "../vlc-http-auth" }
