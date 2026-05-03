@@ -8,14 +8,14 @@ use self::model_endpoint_caller::ModelEndpointCaller;
 use eyre::Context as _;
 use std::{collections::VecDeque, str::FromStr, sync::LazyLock};
 use tracing::{debug, info};
-use vlc_http::{Change, ClientState, goal::TargetPlaylistItems, url::Url};
+use vlc_http::{ClientState, Goal, goal::TargetPlaylistItems, url::Url};
 
 mod alphanum_string;
 mod ascii_string;
 
 mod arb_repeat_mode;
 
-/// Arbitrary high level [`Change`] to apply to VLC
+/// Arbitrary high level [`Goal`] to apply to VLC
 #[derive(Clone, Debug, arbitrary::Arbitrary)]
 enum ArbChange {
     PlaybackMode {
@@ -42,7 +42,7 @@ impl ArbChange {
     }
 }
 
-impl From<ArbChange> for Change {
+impl From<ArbChange> for Goal {
     fn from(value: ArbChange) -> Self {
         match value {
             ArbChange::PlaybackMode { repeat, is_random } => vlc_http::goal::PlaybackMode::new()
@@ -66,7 +66,7 @@ enum Glitch {
     DelayRequest,
 }
 impl Glitch {
-    /// Returns how much complexity this glitch adds for the specified [`Change`]
+    /// Returns how much complexity this glitch adds for the specified [`Goal`]
     fn get_added_complexity(
         self,
         change: &ArbChange,
@@ -101,7 +101,7 @@ impl GlitchSource {
     }
 
     /// Returns the how much complexity is added by the run of [`Glitch`]es for the specified
-    /// [`Change`]
+    /// [`Goal`]
     fn get_added_complexity(
         &self,
         change: &ArbChange,
@@ -347,7 +347,7 @@ where
             let max_iter_count = change_complexity + glitch_complexity;
             debug!(max_iter_count);
 
-            let change = Change::from(change);
+            let change = Goal::from(change);
 
             dbg!((&change, change_complexity, glitch_complexity));
 

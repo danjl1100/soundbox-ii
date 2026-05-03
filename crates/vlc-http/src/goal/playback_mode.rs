@@ -72,12 +72,12 @@ impl std::fmt::Debug for Set {
 #[expect(clippy::unwrap_used, reason = "allow panic in tests")]
 mod tests {
     use super::*;
-    use crate::{Change, Response, goal::RepeatMode};
+    use crate::{Goal, Response, goal::RepeatMode};
     use std::str::FromStr as _;
     use test_log::test;
 
     fn plan<'a>(mode: PlaybackMode, state: &ClientState) -> impl Plan<Output<'a> = ()> + 'static {
-        state.build_plan().apply(Change::PlaybackMode(mode))
+        state.build_plan().apply(Goal::PlaybackMode(mode))
     }
 
     trait ResultExt<T, E> {

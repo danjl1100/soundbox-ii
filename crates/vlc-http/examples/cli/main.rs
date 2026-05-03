@@ -40,7 +40,7 @@ enum CliAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http_cmd_clap::goal::ClapChange,
+        action: vlc_http_cmd_clap::goal::ClapGoal,
     },
     #[clap(alias = "exit", alias = "q")]
     Quit,
@@ -57,7 +57,7 @@ enum OneshotAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http_cmd_clap::goal::ClapChange,
+        action: vlc_http_cmd_clap::goal::ClapGoal,
     },
 }
 impl From<OneshotAction> for CliAction {
@@ -188,7 +188,7 @@ impl Client {
                 self.complete_plan(
                     self.client_state
                         .build_plan()
-                        .apply(vlc_http::Change::from(action)),
+                        .apply(vlc_http::Goal::from(action)),
                 )?;
 
                 Ok(None)

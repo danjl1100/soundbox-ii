@@ -4,24 +4,24 @@
 
 use crate::url::Url;
 
-/// High-level change to VLC state (dynamic API calls depending on the current state), with no output.
+/// High-level desired state for VLC (dynamic API calls depending on the current state), with no output.
 /// (think `Result<(), Error>`)
 ///
 /// See also: [`Command`](`crate::Command`)s for simple changes that do not rely on the current
 /// client state.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Change {
+pub enum Goal {
     /// Set the item selection mode
     PlaybackMode(PlaybackMode),
     /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
     PlaylistSet(TargetPlaylistItems),
 }
-impl From<PlaybackMode> for Change {
+impl From<PlaybackMode> for Goal {
     fn from(value: PlaybackMode) -> Self {
         Self::PlaybackMode(value)
     }
 }
-impl From<TargetPlaylistItems> for Change {
+impl From<TargetPlaylistItems> for Goal {
     fn from(value: TargetPlaylistItems) -> Self {
         Self::PlaylistSet(value)
     }
@@ -91,7 +91,7 @@ pub enum RepeatMode {
     One,
 }
 
-/// Target parameters for [`Change::PlaylistSet`]
+/// Target parameters for [`Goal::PlaylistSet`]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[must_use]
 pub struct TargetPlaylistItems {

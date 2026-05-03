@@ -1,13 +1,15 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-//! Separates the command/goal input layer from the core `vlc-http` logic
+//! Command and goal input types for controlling VLC, separate from the core `vlc-http` logic.
 //!
-//! Provides a reexport of [`url`] (intrinsic to commands)
+//! - [`Command`] — low-level, maps 1:1 to a single VLC API call
+//! - [`Goal`] — high-level desired state, may require multiple API calls
+//! - [`url`] — re-exported for constructing URLs in commands and goals
 
 pub use ::url;
 
 pub use self::command::Command;
-pub use self::goal::Change;
+pub use self::goal::Goal;
 
 pub mod command;
-pub mod fmt;
 pub mod goal;
+pub mod url_fmt;

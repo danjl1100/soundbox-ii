@@ -47,8 +47,8 @@ impl From<ItemJSON> for Item {
 pub use item::Item;
 pub(crate) use item::ItemBuilder;
 mod item {
-    use crate::fmt::DebugUrl;
     use crate::url::Url;
+    use crate::url_fmt::DebugUrl;
 
     /// Item in the playlist (track, playlist, folder, etc.)
     #[derive(Clone, PartialEq, Eq, serde::Serialize)]

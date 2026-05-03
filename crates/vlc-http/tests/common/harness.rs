@@ -94,7 +94,7 @@ impl Runner {
 
                 self.set_action_pending_or_bail(
                     line,
-                    ActionPending::NoOutput(plan_builder.apply(vlc_http::Change::from(action))),
+                    ActionPending::NoOutput(plan_builder.apply(vlc_http::Goal::from(action))),
                 );
                 self.run_pending_action(line);
             }
@@ -403,7 +403,7 @@ enum TestAction {
     },
     Action {
         #[command(subcommand)]
-        action: vlc_http_cmd_clap::goal::ClapChange,
+        action: vlc_http_cmd_clap::goal::ClapGoal,
         /// Marks all cached data as valid, behaving as-if the action was created at the beginning of the program
         #[clap(long)]
         extend_cache: bool,

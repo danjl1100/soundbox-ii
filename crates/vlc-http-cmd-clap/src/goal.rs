@@ -2,13 +2,13 @@
 //! [`clap`] compatible versions of [`vlc_http_cmd::goal`] types
 
 use crate::Url;
-use vlc_http_cmd::goal::{Change, PlaybackMode, RepeatMode, TargetPlaylistItems};
+use vlc_http_cmd::goal::{Goal, PlaybackMode, RepeatMode, TargetPlaylistItems};
 
-/// High-level change to VLC state (dynamic API calls depending on the current state)
+/// High-level desired state for VLC (dynamic API calls depending on the current state)
 #[derive(Clone, clap::Subcommand, Debug)]
-pub enum ClapChange {
+pub enum ClapGoal {
     /// Set the item selection mode
-    PlaybackMode(ClapChangePlaybackMode),
+    PlaybackMode(ClapGoalPlaybackMode),
     /// Set the current playing and up-next playlist URLs, clearing the history to the specified max count
     ///
     /// See also: [`ClapPlaylistSetQueryMatched`] for obtaining the list of matched items
@@ -16,7 +16,7 @@ pub enum ClapChange {
 }
 /// Set the item selection mode
 #[derive(Clone, clap::Args, Debug)]
-pub struct ClapChangePlaybackMode {
+pub struct ClapGoalPlaybackMode {
     /// Rule for repeating items
     repeat_mode: ClapRepeatMode,
     /// Randomize the VLC playback order
@@ -48,10 +48,10 @@ impl From<ClapRepeatMode> for RepeatMode {
         }
     }
 }
-impl From<ClapChange> for Change {
-    fn from(value: ClapChange) -> Self {
+impl From<ClapGoal> for Goal {
+    fn from(value: ClapGoal) -> Self {
         match value {
-            ClapChange::PlaybackMode(ClapChangePlaybackMode {
+            ClapGoal::PlaybackMode(ClapGoalPlaybackMode {
                 repeat_mode,
                 random,
             }) => {
@@ -60,7 +60,7 @@ impl From<ClapChange> for Change {
                     .set_random(random);
                 Self::PlaybackMode(mode)
             }
-            ClapChange::PlaylistSet(target) => Self::PlaylistSet(target.into()),
+            ClapGoal::PlaylistSet(target) => Self::PlaylistSet(target.into()),
         }
     }
 }
