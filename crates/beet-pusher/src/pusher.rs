@@ -1,4 +1,5 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+pub use self::fill_determined::{FillError as FillDeterminedError, SpigotEmptyError};
 use crate::{BaseUrl, BeetItem, Determined};
 use bucket_spigot::{Network, order::ArbitrarySource};
 
@@ -128,15 +129,13 @@ mod fill_determined {
         ///
         /// # Panics
         /// Panics if the determined logic does not yield 1 item (TODO!!!)
-        pub fn fill_determined(&mut self) -> Result<(), Error<R::Error>> {
-            use ErrorKind;
-            let make_err = |kind| Error { kind };
-
+        pub fn fill_determined(&mut self) -> Result<(), FillError<R::Error>> {
             if self.spigot.is_empty() {
                 let view = self.spigot.view_table_default();
-                return Err(make_err(ErrorKind::SpigotEmptyError {
+                return Err(SpigotEmptyError {
                     view: view.to_string(),
-                }));
+                }
+                .into());
             }
 
             let peek_len = match self.determined.items().len() {
@@ -149,8 +148,7 @@ mod fill_determined {
                 let peeked = self
                     .spigot
                     .peek(self.rng, peek_len)
-                    .map_err(ErrorKind::Arbitrary)
-                    .map_err(make_err)?;
+                    .map_err(FillError::Arbitrary)?;
 
                 if peeked.items().len() != peek_len {
                     let view = self.spigot.view_table_default();
@@ -165,8 +163,7 @@ mod fill_determined {
                     .modify(&self.config.base_url, |dest: &mut Vec<BeetItem>| {
                         dest.extend(peeked.items().iter().map(|&item| item.clone()));
                     })
-                    .map_err(ErrorKind::BeetPath)
-                    .map_err(make_err)?;
+                    .map_err(FillError::BeetPath)?;
 
                 self.spigot.finalize_peeked(peeked.accept_into_inner());
 
@@ -184,40 +181,25 @@ mod fill_determined {
         }
     }
 
-    #[derive(Debug)]
-    pub struct Error<E> {
-        kind: ErrorKind<E>,
+    /// Error from [`BeetPusher::fill_determined`] where the spigot is empty
+    #[derive(Debug, thiserror::Error)]
+    #[error("bucket-spigot network must be non-empty:\n{view}")]
+    pub struct SpigotEmptyError {
+        view: String,
     }
-    #[derive(Debug)]
-    enum ErrorKind<E> {
-        SpigotEmptyError { view: String },
-        Arbitrary(E),
-        BeetPath(crate::path_url::ErrorBeetPath),
-    }
-    impl<E> std::error::Error for Error<E>
-    where
-        E: std::error::Error + 'static,
-    {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            let Self { kind } = self;
-            match kind {
-                ErrorKind::SpigotEmptyError { .. } => None,
-                ErrorKind::Arbitrary(source) => Some(source),
-                ErrorKind::BeetPath(source) => Some(source),
-            }
-        }
-    }
-    impl<E> std::fmt::Display for Error<E> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self { kind } = self;
-            match kind {
-                ErrorKind::SpigotEmptyError { view } => {
-                    write!(f, "bucket-spigot network must be non-empty:\n{view}")
-                }
-                ErrorKind::Arbitrary(_source) => write!(f, "failed to get randomness"),
-                ErrorKind::BeetPath(_source) => write!(f, "failed to convert beet paths"),
-            }
-        }
+
+    /// Error from [`BeetPusher::fill_determined`]
+    #[derive(Debug, thiserror::Error)]
+    pub enum FillError<E> {
+        /// The spigot is empty, nothing to fill
+        #[error(transparent)]
+        SpigotEmptyError(#[from] SpigotEmptyError),
+        /// Fill failed to get randomness
+        #[error("failed to get randomness")]
+        Arbitrary(#[source] E),
+        /// Fill failed to convert beet paths
+        #[error("failed to convert beet paths")]
+        BeetPath(#[source] crate::path_url::ErrorBeetPath),
     }
 }
 
@@ -253,7 +235,7 @@ mod push_playlist {
         ///
         /// # Errors
         /// Returns an error if updating the determined list fails, or the [`NowPlayingObserver`]
-        /// fails (if any)
+        /// fails
         pub fn push_playlist_update<T, E>(
             &mut self,
             http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
@@ -264,6 +246,11 @@ mod push_playlist {
             E: std::error::Error + 'static,
         {
             let make_err = |kind| Error { kind };
+
+            if self.determined.is_empty() {
+                // nothing to do, don't waste querying effort until we have items to push
+                return Ok(());
+            }
 
             let target = TargetPlaylistItems::new()
                 .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...

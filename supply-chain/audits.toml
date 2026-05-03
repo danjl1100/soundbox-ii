@@ -7,6 +7,18 @@ criteria = "safe-to-deploy"
 delta = "1.12.1 -> 1.12.0"
 notes = "Docs change and inconsequential lifetime annotation"
 
+[[audits.errno]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.13 -> 0.3.14"
+notes = "No unsafe in diff, only an update to windows-sys dep"
+
+[[audits.fastrand]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.3.0 -> 2.4.1"
+notes = "No unsafe in diff, only tweaks to rand generation algorithms"
+
 [[audits.humantime]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -34,6 +46,12 @@ No unsafe, direct port of [cited std source] with `camino` optional duplication
 [cited std source]: https://github.com/rust-lang/rust/blob/e1d0de82cc40b666b88d4a6d2c9dcbc81d7ed27f/src/librustc_back/rpath.rs#L116-L158
 """
 
+[[audits.serde_json]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.145 -> 1.0.149"
+notes = "No unsafe in the diff, only upgraded from ryu to zmij"
+
 [[audits.thiserror]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -52,8 +70,26 @@ criteria = "safe-to-deploy"
 delta = "0.9.4 -> 0.9.5"
 notes = "Docs-only change"
 
+[[audits.zmij]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.20 -> 1.0.21"
+notes = "Unsafe usage is in the diff, with no safety comments. However, the unsafe usage is just refactored into a different function, the actual pointer indexing logic appears unchanged."
+
 [[trusted.libc]]
 criteria = "safe-to-deploy"
 user-id = 55123 # rust-lang-owner
 start = "2024-08-15"
 end = "2027-04-19"
+
+[[trusted.linux-raw-sys]]
+criteria = "safe-to-run"
+user-id = 6825
+start = "2021-06-12"
+end = "2027-05-02"
+
+[[trusted.rustix]]
+criteria = "safe-to-run"
+user-id = 6825
+start = "2021-10-29"
+end = "2027-05-02"

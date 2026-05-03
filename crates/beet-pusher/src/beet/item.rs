@@ -75,41 +75,18 @@ impl AsRef<BeetPath> for BeetItem {
 }
 
 /// Invalid [`BeetItem`] specification from beet
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
 pub struct Error {
     kind: ErrorKind,
 }
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 enum ErrorKind {
-    MissingSeparator {
-        separator: &'static str,
-    },
+    #[error("missing separator: {separator:?}")]
+    MissingSeparator { separator: &'static str },
+    #[error("invalid id number: {id_string:?}")]
     InvalidId {
         source: std::num::ParseIntError,
         id_string: String,
     },
-}
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match &self.kind {
-            ErrorKind::MissingSeparator { separator: _ } => None,
-            ErrorKind::InvalidId {
-                source,
-                id_string: _,
-            } => Some(source),
-        }
-    }
-}
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self { kind } = self;
-        let (description, details) = match kind {
-            ErrorKind::MissingSeparator { separator } => ("missing separator", *separator),
-            ErrorKind::InvalidId {
-                id_string,
-                source: _,
-            } => ("invalid id number", &**id_string),
-        };
-        write!(f, "{description}: {details:?}")
-    }
 }
