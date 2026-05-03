@@ -4,6 +4,8 @@
 //! - [`Command`] — low-level, maps 1:1 to a single VLC API call
 //! - [`Goal`] — high-level desired state, may require multiple API calls
 //! - [`url`] — re-exported for constructing URLs in commands and goals
+//!
+//! NOTE: See `vlc_http::client_state::PlanBuilder` for options to query information
 
 pub use ::url;
 
