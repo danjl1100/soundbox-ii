@@ -8,16 +8,16 @@ use self::model_endpoint_caller::ModelEndpointCaller;
 use eyre::Context as _;
 use std::{collections::VecDeque, str::FromStr, sync::LazyLock};
 use tracing::{debug, info};
-use vlc_http::{Change, ClientState, goal::TargetPlaylistItems, url::Url};
+use vlc_http::{ClientState, Goal, goal::TargetPlaylistItems, url::Url};
 
 mod alphanum_string;
 mod ascii_string;
 
 mod arb_repeat_mode;
 
-/// Arbitrary high level [`Change`] to apply to VLC
+/// Arbitrary high level [`Goal`] to apply to VLC
 #[derive(Clone, Debug, arbitrary::Arbitrary)]
-enum ArbChange {
+enum ArbGoal {
     PlaybackMode {
         repeat: ArbRepeatMode,
         is_random: bool,
@@ -29,27 +29,27 @@ enum ArbChange {
     },
 }
 
-impl ArbChange {
-    /// Measure the expected number of steps for the change
+impl ArbGoal {
+    /// Measure the expected number of steps for reaching the goal
     fn get_complexity(&self, current_len: usize) -> usize {
         match self {
-            ArbChange::PlaybackMode {
+            ArbGoal::PlaybackMode {
                 repeat: _,
                 is_random: _,
             } => 4,
-            ArbChange::PlaylistSet { items } => 2 * items.len() + current_len + 4,
+            ArbGoal::PlaylistSet { items } => 2 * items.len() + current_len + 4,
         }
     }
 }
 
-impl From<ArbChange> for Change {
-    fn from(value: ArbChange) -> Self {
+impl From<ArbGoal> for Goal {
+    fn from(value: ArbGoal) -> Self {
         match value {
-            ArbChange::PlaybackMode { repeat, is_random } => vlc_http::goal::PlaybackMode::new()
+            ArbGoal::PlaybackMode { repeat, is_random } => vlc_http::goal::PlaybackMode::new()
                 .set_repeat(repeat.into())
                 .set_random(is_random)
                 .into(),
-            ArbChange::PlaylistSet { items } => {
+            ArbGoal::PlaylistSet { items } => {
                 let items = items
                     .into_iter()
                     .map(|s| Url::from_str(&format!("file:///{s}")).expect("valid URL"))
@@ -66,21 +66,21 @@ enum Glitch {
     DelayRequest,
 }
 impl Glitch {
-    /// Returns how much complexity this glitch adds for the specified [`Change`]
+    /// Returns how much complexity this glitch adds for the specified [`Goal`]
     fn get_added_complexity(
         self,
-        change: &ArbChange,
+        goal: &ArbGoal,
         // current_items_len: usize,
     ) -> usize {
         match self {
             Glitch::DropRequest => 1,
             Glitch::DelayRequest => {
                 #[expect(clippy::match_same_arms, reason = "clarify logic difference")]
-                match change {
+                match goal {
                     // delay is likely to repeat actions
-                    ArbChange::PlaybackMode { .. } => 2,
+                    ArbGoal::PlaybackMode { .. } => 2,
                     // includes playback mode, above
-                    ArbChange::PlaylistSet { items: _ } => 2,
+                    ArbGoal::PlaylistSet { items: _ } => 2,
                 }
             }
         }
@@ -101,17 +101,17 @@ impl GlitchSource {
     }
 
     /// Returns the how much complexity is added by the run of [`Glitch`]es for the specified
-    /// [`Change`]
+    /// [`Goal`]
     fn get_added_complexity(
         &self,
-        change: &ArbChange,
+        goal: &ArbGoal,
         // current_items_len: usize,
     ) -> usize {
         match self {
             GlitchSource::Once(glitches) => glitches
                 .iter()
                 .copied()
-                .filter_map(|opt| Some(opt?.get_added_complexity(change)))
+                .filter_map(|opt| Some(opt?.get_added_complexity(goal)))
                 .sum(),
         }
     }
@@ -283,75 +283,75 @@ mod model_endpoint_caller {
     }
 }
 
-/// List of changes to apply to VLC, with extra metadata `T` for each change
+/// List of goals to apply to VLC, with extra metadata `T` for each goals
 #[derive(Clone, Debug, arbitrary::Arbitrary)]
-struct ArbChangesList<T> {
-    changes: Vec<(ArbChange, T)>,
+struct ArbGoalsList<T> {
+    goals: Vec<(ArbGoal, T)>,
 }
 
-impl<T> Default for ArbChangesList<T> {
+impl<T> Default for ArbGoalsList<T> {
     fn default() -> Self {
-        Self { changes: vec![] }
+        Self { goals: vec![] }
     }
 }
-impl<T> ArbChangesList<T> {
-    fn push_glitches(&mut self, change: ArbChange, glitches: T) {
-        let Self { changes } = self;
-        changes.push((change, glitches));
+impl<T> ArbGoalsList<T> {
+    fn push_glitches(&mut self, goal: ArbGoal, glitches: T) {
+        let Self { goals } = self;
+        goals.push((goal, glitches));
     }
-    fn map_inner<U>(self, map_fn: impl Fn(T) -> U) -> ArbChangesList<U> {
-        let Self { changes } = self;
-        let changes = changes
+    fn map_inner<U>(self, map_fn: impl Fn(T) -> U) -> ArbGoalsList<U> {
+        let Self { goals } = self;
+        let goals = goals
             .into_iter()
-            .map(|(change, elem)| (change, map_fn(elem)))
+            .map(|(goal, elem)| (goal, map_fn(elem)))
             .collect();
-        ArbChangesList { changes }
+        ArbGoalsList { goals }
     }
 }
-impl ArbChangesList<Once<Glitches>> {
-    fn push(&mut self, change: ArbChange) {
-        self.push_glitches(change, Once(Glitches(vec![])));
+impl ArbGoalsList<Once<Glitches>> {
+    fn push(&mut self, goal: ArbGoal) {
+        self.push_glitches(goal, Once(Glitches(vec![])));
     }
 }
-// impl ArbChangesList<NoGlitches> {
-//     fn push(&mut self, change: ArbChange) {
-//         self.push_glitches(change, NoGlitches);
+// impl ArbGoalsList<NoGlitches> {
+//     fn push(&mut self, goal: ArbGoal) {
+//         self.push_glitches(goal, NoGlitches);
 //     }
 // }
 
-impl<T> ArbChangesList<T>
+impl<T> ArbGoalsList<T>
 where
     T: Into<GlitchSource> + std::fmt::Debug,
 {
-    fn run_changes_list(self) -> eyre::Result<()> {
+    fn run_goals_list(self) -> eyre::Result<()> {
         let mut client_state = ClientState::new();
         let mut endpoint_caller = ModelEndpointCaller::new();
 
         eprintln!("{:-<80}", "");
         info!(?self);
 
-        let ArbChangesList { changes } = self;
-        for (change, glitches) in changes {
+        let ArbGoalsList { goals } = self;
+        for (goal, glitches) in goals {
             let current_len = endpoint_caller.get_model().get_items().len();
-            let change_complexity = change.get_complexity(current_len);
+            let goal_complexity = goal.get_complexity(current_len);
 
-            debug!(?change);
+            debug!(?goal);
             debug!(?glitches);
 
             let glitches = glitches.into();
             let glitch_complexity = glitches.get_added_complexity(
-                &change,
+                &goal,
                 // current_len,
             );
 
-            let max_iter_count = change_complexity + glitch_complexity;
+            let max_iter_count = goal_complexity + glitch_complexity;
             debug!(max_iter_count);
 
-            let change = Change::from(change);
+            let goal = Goal::from(goal);
 
-            dbg!((&change, change_complexity, glitch_complexity));
+            dbg!((&goal, goal_complexity, glitch_complexity));
 
-            let plan = client_state.build_plan().apply(change.clone());
+            let plan = client_state.build_plan().apply(goal.clone());
 
             endpoint_caller.replace_glitch_source(glitches);
 
@@ -361,7 +361,7 @@ where
                 &mut endpoint_caller,
                 max_iter_count,
             )
-            .with_context(|| format!("failed to complete plan for {change:?}"))?;
+            .with_context(|| format!("failed to complete plan for {goal:?}"))?;
         }
 
         Ok(())
@@ -428,9 +428,9 @@ impl From<Once<Glitches>> for GlitchSource {
 #[test]
 fn arb_commands_perfect() {
     arbtest::arbtest(|u| {
-        u.arbitrary::<ArbChangesList<NoGlitches>>()?
-            .run_changes_list()
-            .expect("changes should pass with no glitches");
+        u.arbitrary::<ArbGoalsList<NoGlitches>>()?
+            .run_goals_list()
+            .expect("goals should pass with no glitches");
         Ok(())
     });
 }
@@ -438,16 +438,16 @@ fn arb_commands_perfect() {
 #[test]
 fn arb_commands_glitches() {
     arbtest::arbtest(|u| {
-        let list = u.arbitrary::<ArbChangesList<Once<Glitches>>>()?;
+        let list = u.arbitrary::<ArbGoalsList<Once<Glitches>>>()?;
 
         list.clone()
             .map_inner(|_| NoGlitches)
-            .run_changes_list()
-            .expect("changes should pass with no glitches");
+            .run_goals_list()
+            .expect("goals should pass with no glitches");
 
         // run with the full glitches list
-        list.run_changes_list()
-            .expect("changes should pass WITH glitches too");
+        list.run_goals_list()
+            .expect("goals should pass WITH glitches too");
 
         Ok(())
     })
@@ -468,28 +468,28 @@ fn init_tracing() {
 
 #[test]
 fn playlist_set_from_wrong_state() -> eyre::Result<()> {
-    use ArbChange::{PlaybackMode, PlaylistSet};
+    use ArbGoal::{PlaybackMode, PlaylistSet};
     use ArbRepeatMode::All;
 
     init_tracing();
 
-    let mut list = ArbChangesList::<Once<Glitches>>::default();
+    let mut list = ArbGoalsList::<Once<Glitches>>::default();
     list.push(PlaybackMode {
         repeat: All,
         is_random: true,
     });
     list.push(PlaylistSet { items: vec![] });
 
-    list.run_changes_list()
+    list.run_goals_list()
 }
 #[test]
 fn commands_glitches_case() -> eyre::Result<()> {
-    use ArbChange::{PlaybackMode, PlaylistSet};
+    use ArbGoal::{PlaybackMode, PlaylistSet};
     use ArbRepeatMode::{All, One};
 
     init_tracing();
 
-    let mut list = ArbChangesList::<Once<Glitches>>::default();
+    let mut list = ArbGoalsList::<Once<Glitches>>::default();
     list.push(PlaybackMode {
         repeat: One,
         is_random: true,
@@ -503,5 +503,5 @@ fn commands_glitches_case() -> eyre::Result<()> {
     );
     list.push(PlaylistSet { items: vec![] });
 
-    list.run_changes_list()
+    list.run_goals_list()
 }

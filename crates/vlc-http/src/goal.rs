@@ -9,7 +9,7 @@ use crate::{
 };
 pub use vlc_http_cmd::{
     command::{VolumePercent, VolumePercentDelta},
-    goal::{Change, PlaybackMode, RepeatMode, TargetPlaylistItems},
+    goal::{Goal, PlaybackMode, RepeatMode, TargetPlaylistItems},
 };
 
 mod playback_mode;
@@ -20,7 +20,7 @@ mod query_playlist;
 
 mod builders {
     use super::{
-        ActionPlan, ActionQuerySetItems, Change, PlanConstructor as _, TargetPlaylistItems,
+        ActionPlan, ActionQuerySetItems, Goal, PlanConstructor as _, TargetPlaylistItems,
         playlist_items, query_playback::QueryPlayback, query_playlist::QueryPlaylist,
     };
     use crate::{client_state::PlanBuilder, goal::playback_mode};
@@ -46,14 +46,14 @@ mod builders {
             let inner = playlist_items::Update::new(target, self.get_sequence());
             ActionQuerySetItems(inner)
         }
-        /// Creates a [`Plan`](`super::Plan`) to apply the desired change
-        pub fn apply(self, change: Change) -> ActionPlan {
+        /// Creates a [`Plan`](`super::Plan`) to apply the desired goal
+        pub fn apply(self, goal: Goal) -> ActionPlan {
             use super::ActionPlanInner as Inner;
-            let inner = match change {
-                Change::PlaybackMode(mode) => {
+            let inner = match goal {
+                Goal::PlaybackMode(mode) => {
                     Inner::PlaybackMode(playback_mode::Set::new(mode, self.get_sequence()))
                 }
-                Change::PlaylistSet(target) => {
+                Goal::PlaylistSet(target) => {
                     Inner::PlaylistSet(playlist_items::Set::new(target, self.get_sequence()))
                 }
             };
@@ -68,7 +68,7 @@ enum ActionPlanInner {
     PlaylistSet(playlist_items::Set),
 }
 
-/// [`Plan`] container for various (non-query) [`Change`]s
+/// [`Plan`] container for various (non-query) [`Goal`]s
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ActionPlan(ActionPlanInner);

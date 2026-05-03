@@ -208,7 +208,7 @@ impl std::fmt::Debug for Command {
         match self {
             Self::PlaylistAdd { url } => f
                 .debug_struct("PlaylistAdd")
-                .field("url", &crate::fmt::DebugUrlRef(url))
+                .field("url", &crate::url_fmt::DebugUrlRef(url))
                 .finish(),
             Self::PlaylistDelete { item_id } => f
                 .debug_struct("PlaylistDelete")

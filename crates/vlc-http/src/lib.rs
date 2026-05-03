@@ -133,7 +133,7 @@ pub use ::vlc_http_auth::http;
 pub use ::vlc_http_cmd::url;
 
 pub use ::vlc_http_auth::Auth;
-use ::vlc_http_cmd::fmt;
+use ::vlc_http_cmd::url_fmt;
 
 // --------------------------------------------------
 // Requests sent to VLC
@@ -142,7 +142,7 @@ use ::vlc_http_cmd::fmt;
 pub use command::{Command, VolumePercent, VolumePercentDelta};
 pub use vlc_http_cmd::command;
 
-pub use goal::{Change, Plan};
+pub use goal::{Goal, Plan};
 pub mod goal;
 
 pub use request::Endpoint;

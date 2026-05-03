@@ -65,7 +65,7 @@ use super::{
     Error, PlanConstructor, PlaybackMode, Step, playback_mode, query_playback::QueryPlayback,
     query_playlist::QueryPlaylist, response,
 };
-use crate::{Command, Plan, client_state::ClientStateSequence, fmt::DebugUrl};
+use crate::{Command, Plan, client_state::ClientStateSequence, url_fmt::DebugUrl};
 
 mod insert_match;
 mod next_command;
@@ -76,7 +76,7 @@ mod next_command;
 /// The intended use is to advance a "want to play" list based on playback progress.
 #[derive(Clone)]
 pub(super) struct Update {
-    target: Target<crate::fmt::DebugUrl>,
+    target: Target<crate::url_fmt::DebugUrl>,
     playback_mode: playback_mode::Set,
     query_playback: QueryPlayback,
     query_playlist: QueryPlaylist,
