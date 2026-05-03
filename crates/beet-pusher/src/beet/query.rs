@@ -1,5 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use crate::BeetItem;
+use std::ffi::OsStr;
 use std::io::BufRead as _;
 use std::{borrow::Cow, process::Command};
 use tracing::{debug, trace};
@@ -23,19 +24,19 @@ pub trait BeetRunner: std::fmt::Debug {
 /// Executes the `beet` command from the system path
 #[derive(Debug)]
 pub struct BeetCommand<'a> {
-    cmd_name: &'a str,
+    cmd_name: std::borrow::Cow<'a, OsStr>,
 }
 impl BeetCommand<'static> {
     /// Creates a command runner for the default `"beet"` executable name
     #[must_use]
     pub fn new_beet() -> Self {
-        Self::new("beet")
+        Self::new(Cow::Borrowed("beet".as_ref()))
     }
 }
 impl<'a> BeetCommand<'a> {
     /// Creates a command runner with the specified path to the `beet` executable
     #[must_use]
-    pub fn new(cmd_name: &'a str) -> Self {
+    pub fn new(cmd_name: std::borrow::Cow<'a, OsStr>) -> Self {
         Self { cmd_name }
     }
 }
@@ -76,18 +77,11 @@ impl BeetItem {
         debug!("spawn `beet` command");
 
         let output = runner.run_beet_command(
-            ["ls", "-f", "="]
+            ["ls", "-f$id=$path"]
                 .into_iter()
                 .map(std::borrow::Cow::Borrowed)
                 .chain(filters.map(std::borrow::Cow::Owned)),
         );
-        // let mut command = Command::new("beet");
-        // command
-        //     //
-        //     .arg("ls")
-        //     .arg("-f")
-        //     .arg("=")
-        //     .args(filters);
 
         let output = output.map_err(ErrorKind::Spawn).map_err(make_error)?;
 
@@ -196,7 +190,7 @@ where
         };
         write!(f, "{description} beet command")?;
         if let Some(details) = details {
-            write!(f, ": {details}")?;
+            write!(f, ": {details:?}")?;
         }
         Ok(())
     }

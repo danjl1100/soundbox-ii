@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Verifies `fake-beet` performs the actions specified in the configuration
 
 use std::process::Command;
@@ -75,6 +76,39 @@ fn delay_reacts_args() -> eyre::Result<()> {
     Ok(())
 }
 
+#[test]
+fn stdout_multiline() {
+    let config1 = {
+        let mut c = ConfigAll::default();
+        c.for_args_empty([])
+            .stdout_lines(["line1", "line2", "line3"]);
+        c
+    };
+    let config2 = {
+        let mut c = ConfigAll::default();
+        c.for_args_empty([]).stdout("line1\nline2\nline3");
+        c
+    };
+
+    assert_eq!(config1, config2);
+}
+#[test]
+fn stderr_multiline() {
+    let config1 = {
+        let mut c = ConfigAll::default();
+        c.for_args_empty([])
+            .stderr_lines(["line1", "line2", "line3"]);
+        c
+    };
+    let config2 = {
+        let mut c = ConfigAll::default();
+        c.for_args_empty([]).stderr("line1\nline2\nline3");
+        c
+    };
+
+    assert_eq!(config1, config2);
+}
+
 #[track_caller]
 fn verify_all_outputs(config: ConfigAll) -> eyre::Result<()> {
     // setup config file (shared by all invocations)
@@ -90,7 +124,7 @@ fn verify_all_outputs(config: ConfigAll) -> eyre::Result<()> {
 
         let cmd_out = Command::new(env!("CARGO_BIN_EXE_beet"))
             .args(&args)
-            .env("FAKE_BEET_CONFIG_FILE", &config_file)
+            .env(fake_beet::FAKE_BEET_CONFIG_FILE, &config_file)
             .current_dir(dir)
             .output()
             .context("failed to run fake beet")?;

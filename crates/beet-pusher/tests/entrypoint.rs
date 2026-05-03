@@ -6,4 +6,5 @@
 
 mod common {
     mod beet_to_vlc;
+    mod end_to_end;
 }

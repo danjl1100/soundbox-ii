@@ -23,6 +23,8 @@ struct Args {
     /// If set, only print the bucket spigot setup then exit
     #[clap(long)]
     debug_items: bool,
+    #[clap(long)]
+    json: bool,
 }
 
 fn main() -> eyre::Result<()> {
@@ -48,6 +50,7 @@ fn main() -> eyre::Result<()> {
         config_file,
         spigot_script,
         debug_items,
+        json,
     } = Args::parse();
 
     let mut http_runner = {
@@ -73,7 +76,8 @@ fn main() -> eyre::Result<()> {
 
     // TODO delete unused diagnostic
     if debug_items {
-        let mut spigot = setup_spigot(&script)?;
+        let mut beet_cmd = beet_pusher::BeetCommand::new_beet();
+        let mut spigot = setup_spigot(&mut beet_cmd, &script)?;
         let view = spigot.view_table_default();
         println!("{view}");
         let rng = &mut bucket_spigot::order::ErrorRng(&mut rand::thread_rng());
@@ -100,6 +104,7 @@ fn main() -> eyre::Result<()> {
     let ConfigFile {
         base_url,
         publish_id_file,
+        beet,
     } = config_file;
 
     let mut now_playing_observer = move |item: &BeetItem| {
@@ -117,10 +122,23 @@ fn main() -> eyre::Result<()> {
     };
 
     let rng = &mut bucket_spigot::order::ErrorRng(&mut rand::thread_rng());
-    let spigot = setup_spigot(&script)?;
+
+    let mut beet_cmd = beet.map_or_else(beet_pusher::BeetCommand::new_beet, |p| {
+        beet_pusher::BeetCommand::new(std::borrow::Cow::Owned(p.into_os_string()))
+    });
+    let spigot = setup_spigot(&mut beet_cmd, &script)?;
 
     let mut pusher = BeetPusher::new(rng, spigot, base_url);
     // let mut client_state = vlc_http::ClientState::new();
+
+    if json {
+        std::thread::spawn(|| {
+            for line in std::io::stdin().lines() {
+                // TODO - actual errors from serde_json parsing
+                println!(r#"{{"error": "ohno: {line:?}"}}"#);
+            }
+        });
+    }
 
     // TODO add a "determined holder" concept, to make it easy to:
     // 1. Peek a bunch, update spigot
@@ -147,11 +165,14 @@ fn init_tracing() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 }
-fn setup_spigot(script: &str) -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
+fn setup_spigot(
+    beet_cmd: &mut beet_pusher::BeetCommand,
+    script: &str,
+) -> eyre::Result<bucket_spigot::Network<BeetItem, String>> {
     use bucket_spigot::Network;
 
     let mut spigot = Network::from_commands_str_whitespace(script)?;
-    fill_buckets(&mut beet_pusher::BeetCommand::new_beet(), &mut spigot)?;
+    fill_buckets(beet_cmd, &mut spigot)?;
 
     if spigot.is_empty() {
         eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
@@ -273,6 +294,7 @@ mod config_file {
         pub base_url: BaseUrl,
         // If specified, writes the "now playing" ID to a text file for other scripts to pickup
         pub publish_id_file: Option<std::path::PathBuf>,
+        pub beet: Option<std::path::PathBuf>,
     }
 
     impl ConfigFile {
@@ -281,11 +303,12 @@ mod config_file {
         ) -> Result<std::path::PathBuf, arg_util::config_file::ErrorWrite> {
             Self {
                 base_url: BaseUrl(
-                    "file:///path/to/beets/folder/"
+                    "file:///path/to/beets/media/folder/"
                         .parse()
                         .expect("default base_url should parse"),
                 ),
-                publish_id_file: Some(std::path::PathBuf::from("current_item_id.txt")),
+                publish_id_file: Some("current_item_id.txt".into()),
+                beet: Some("/path/to/usr/bin/beet".into()),
             }
             .write_template_for_file(path)
         }

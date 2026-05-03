@@ -217,7 +217,7 @@ fn empty_beet_result() -> eyre::Result<()> {
     let model = &mut Model::default();
 
     {
-        let mut runner = ExpectBeet::new(&[(&["ls", "-f", "="], "")]);
+        let mut runner = ExpectBeet::new(&[(&["ls", "-f$id=$path"], "")]);
         pusher.fill_buckets(&mut runner)?;
         runner.assert_empty();
     }
@@ -265,7 +265,7 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
     let model = &mut Model::default();
 
     {
-        let mut runner = ExpectBeet::new(&[(&["ls", "-f", "="], beet_items_str)]);
+        let mut runner = ExpectBeet::new(&[(&["ls", "-f$id=$path"], beet_items_str)]);
         pusher.fill_buckets(&mut runner)?;
         runner.assert_empty();
     }

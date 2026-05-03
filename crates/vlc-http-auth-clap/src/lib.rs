@@ -116,6 +116,7 @@ mod merge {
     /// Both [`ClapAuthInputOptional`] and [`ClapAuthFile`] for convenient use in
     /// [`Self::merge`]
     #[derive(Clone, clap::Args, Debug)]
+    #[clap(about = None, long_about = None)]
     pub struct ClapAuthInputAndFile {
         #[clap(flatten)]
         input: ClapAuthInputOptional,

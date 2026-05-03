@@ -13,7 +13,7 @@ workspace = true
 
 [[bin]]
 name="beet"
-path="src/bin/main.rs"
+path="src/bin/fake_beet.rs"
 
 [dev-dependencies]
 tempfile = "3.27.0"

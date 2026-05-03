@@ -8,14 +8,21 @@ license = "GPL-3.0-or-later"
 [lints]
 workspace = true
 
+[[bin]]
+name = "beet"
+path = "src/bin/fake_beet.rs"
+doc = false
+
 [dependencies]
 arg_util = { version = "0.1.0", path = "../arg-util" }
 bucket-spigot = { version = "0.1.0", path = "../bucket-spigot" }
 clap = { version = "4.5.4", features = ["derive"] }
+fake-beet = { path = "../fake-beet" }
 eyre = "0.6.12"
 percent-encoding = "2.3.1"
 rand = "0.8.5"
 serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.149"
 thiserror = "2.0.18"
 toml = "0.8.19"
 tracing = "0.1.40"
@@ -26,4 +33,5 @@ vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }
 vlc-http-ureq = { version = "0.1.0", path = "../vlc-http-ureq" }
 
 [dev-dependencies]
+tempfile = "3.27.0"
 urlencoding = "2.1.3"
