@@ -7,6 +7,18 @@ criteria = "safe-to-deploy"
 delta = "1.12.1 -> 1.12.0"
 notes = "Docs change and inconsequential lifetime annotation"
 
+[[audits.errno]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.13 -> 0.3.14"
+notes = "No unsafe in diff, only an update to windows-sys dep"
+
+[[audits.fastrand]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.3.0 -> 2.4.1"
+notes = "No unsafe in diff, only tweaks to rand generation algorithms"
+
 [[audits.humantime]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -69,3 +81,15 @@ criteria = "safe-to-deploy"
 user-id = 55123 # rust-lang-owner
 start = "2024-08-15"
 end = "2027-04-19"
+
+[[trusted.linux-raw-sys]]
+criteria = "safe-to-run"
+user-id = 6825
+start = "2021-06-12"
+end = "2027-05-02"
+
+[[trusted.rustix]]
+criteria = "safe-to-run"
+user-id = 6825
+start = "2021-10-29"
+end = "2027-05-02"
