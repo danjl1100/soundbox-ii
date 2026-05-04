@@ -31,3 +31,9 @@ fn arb_playlist_set_and_get() -> eyre::Result<()> {
 fn arb_action_succeeds() -> eyre::Result<()> {
     todo!()
 }
+
+#[test]
+#[ignore = "TODO"]
+fn rejects_wrong_password() -> eyre::Result<()> {
+    todo!()
+}

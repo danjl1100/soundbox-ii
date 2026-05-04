@@ -1,64 +1,15 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Injects imperfections between the `vlc-http` logic and the simulated VLC instance
 
-use self::alphanum_string::AlphanumString;
-use self::arb_repeat_mode::ArbRepeatMode;
+use vlc_http_test::arb_goal::ArbGoal;
+
 use self::model_endpoint_caller::ModelEndpointCaller;
+use vlc_http_test::arb_goal::ArbRepeatMode;
 
 use eyre::Context as _;
 use std::{collections::VecDeque, str::FromStr};
 use tracing::{debug, info};
-use vlc_http::{ClientState, Goal, goal::TargetPlaylistItems, url::Url};
-
-mod alphanum_string;
-mod ascii_string;
-
-mod arb_repeat_mode;
-
-/// Arbitrary high level [`Goal`] to apply to VLC
-#[derive(Clone, Debug, arbitrary::Arbitrary)]
-enum ArbGoal {
-    PlaybackMode {
-        repeat: ArbRepeatMode,
-        is_random: bool,
-    },
-    PlaylistSet {
-        items: Vec<
-            AlphanumString, // AsciiString
-        >,
-    },
-}
-
-impl ArbGoal {
-    /// Measure the expected number of steps for reaching the goal
-    fn get_complexity(&self, current_len: usize) -> usize {
-        match self {
-            ArbGoal::PlaybackMode {
-                repeat: _,
-                is_random: _,
-            } => 4,
-            ArbGoal::PlaylistSet { items } => 2 * items.len() + current_len + 4,
-        }
-    }
-}
-
-impl From<ArbGoal> for Goal {
-    fn from(value: ArbGoal) -> Self {
-        match value {
-            ArbGoal::PlaybackMode { repeat, is_random } => vlc_http::goal::PlaybackMode::new()
-                .set_repeat(repeat.into())
-                .set_random(is_random)
-                .into(),
-            ArbGoal::PlaylistSet { items } => {
-                let items = items
-                    .into_iter()
-                    .map(|s| Url::from_str(&format!("file:///{s}")).expect("valid URL"))
-                    .collect();
-                TargetPlaylistItems::new().set_urls(items).into()
-            }
-        }
-    }
-}
+use vlc_http::{ClientState, Goal};
 
 #[derive(Clone, Copy, Debug, arbitrary::Arbitrary)]
 enum Glitch {
@@ -137,11 +88,8 @@ impl Iterator for GlitchSource {
 mod model_endpoint_caller {
     use super::{Glitch, GlitchSource};
     use std::str::FromStr as _;
-    use vlc_http::{
-        Endpoint,
-        sync::EndpointRequestor,
-        testing::{Model, ModelResponse},
-    };
+    use vlc_http::{Endpoint, sync::EndpointRequestor};
+    use vlc_http_test::model::{Model, ModelResponse};
 
     /// Applies [`Endpoint`] request to a [`Model`], with optional interference from a determined
     /// [`GlitchSource`]
@@ -226,10 +174,10 @@ mod model_endpoint_caller {
                 .map_err(|source| ErrorKind::Request { source, endpoint })
                 .map_err(make_err)?;
             let response = match &response {
-                vlc_http::testing::ModelResponse::Json(s) => vlc_http::Response::from_str(s)
+                vlc_http_test::model::ModelResponse::Json(s) => vlc_http::Response::from_str(s)
                     .map_err(|source| ErrorKind::ResponseJson { source, response })
                     .map_err(make_err)?,
-                vlc_http::testing::ModelResponse::Art => {
+                vlc_http_test::model::ModelResponse::Art => {
                     return Err(make_err(ErrorKind::ResponseArt));
                 }
             };
@@ -244,7 +192,7 @@ mod model_endpoint_caller {
     #[derive(Debug)]
     enum ErrorKind {
         Request {
-            source: vlc_http::testing::RequestError,
+            source: vlc_http_test::model::RequestError,
             endpoint: Endpoint,
         },
         ResponseJson {

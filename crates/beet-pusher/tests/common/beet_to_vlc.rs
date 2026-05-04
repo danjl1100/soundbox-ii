@@ -6,7 +6,7 @@ use self::expect_http::ExpectHttp;
 use beet_pusher::{BeetItem, BeetPusher, NowPlayingObserver};
 use bucket_spigot::order::ArbitrarySource;
 use std::str::FromStr;
-use vlc_http::testing::{Model, PlayState};
+use vlc_http_test::model::{Model, PlayState};
 
 struct PanicRng;
 impl ArbitrarySource for PanicRng {
@@ -69,10 +69,8 @@ mod expect_beet {
 }
 
 mod expect_http {
-    use vlc_http::{
-        sync::EndpointRequestor,
-        testing::{Model, ModelResponse},
-    };
+    use vlc_http::sync::EndpointRequestor;
+    use vlc_http_test::model::{Model, ModelResponse};
 
     pub struct ExpectHttp<'a> {
         model: &'a mut Model,
@@ -117,7 +115,7 @@ mod expect_http {
         }
     }
     impl EndpointRequestor for ExpectHttp<'_> {
-        type Error = vlc_http::testing::RequestError;
+        type Error = vlc_http_test::model::RequestError;
 
         fn request(
             &mut self,

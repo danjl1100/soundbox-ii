@@ -165,5 +165,3 @@ pub mod client_state;
 mod volume_256;
 
 pub mod sync;
-
-pub mod testing;

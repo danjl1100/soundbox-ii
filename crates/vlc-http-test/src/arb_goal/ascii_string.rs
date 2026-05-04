@@ -11,10 +11,7 @@ impl<'a> arbitrary::Arbitrary<'a> for AsciiString {
             })
             .collect();
         let string: String = string?;
-        assert!(
-            string.chars().all(char::is_alphanumeric),
-            "non alphanumeric: {string:?}"
-        );
+        assert!(string.is_ascii(), "non-ascii: {string:?}");
         Ok(Self(string))
     }
 }

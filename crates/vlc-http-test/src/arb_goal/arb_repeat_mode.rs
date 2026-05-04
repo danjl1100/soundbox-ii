@@ -1,7 +1,9 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use vlc_http::goal::RepeatMode;
 
+/// Arbitrary [`RepeatMode`]
 #[derive(Clone, Debug, arbitrary::Arbitrary)]
+#[expect(missing_docs, reason = "self explanatory")]
 pub enum ArbRepeatMode {
     Off,
     All,

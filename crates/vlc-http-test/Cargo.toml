@@ -1,0 +1,15 @@
+[package]
+name = "vlc-http-test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arbitrary = { version = "1.4.2", features = ["derive"] }
+arbtest = "0.3.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+urlencoding = "2.1.3"
+vlc-http = { version = "0.1.0", path = "../vlc-http" }
+
+[lints]
+workspace = true

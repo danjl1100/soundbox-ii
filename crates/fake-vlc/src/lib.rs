@@ -4,7 +4,11 @@
 #![expect(missing_docs, reason = "figuring out the right API")] // TODO remove
 
 use eyre::Context as _;
-use std::sync::Arc;
+use std::{
+    ops::ControlFlow,
+    sync::{Arc, Mutex},
+};
+use vlc_http_test::Model;
 
 use crate::only_socket_addr::SocketServer;
 
@@ -12,8 +16,15 @@ type SpawnHandle = std::thread::JoinHandle<Result<(), std::io::Error>>;
 
 /// Server mimicking the VLC HTTP interface
 pub struct FakeVlc {
-    server: Arc<SocketServer>,
+    inner_shared: Arc<InnerShared>,
+}
+pub struct InnerShared {
+    server: SocketServer,
     fake_password: String,
+    inner_mut: Mutex<InnerMut>,
+}
+pub struct InnerMut {
+    model: Model,
 }
 impl FakeVlc {
     /// Binds the HTTP server to an OS-provided port at localhost, for use in `spawn`
@@ -33,7 +44,6 @@ impl FakeVlc {
         let server = SocketServer::http(bind_address)
             .map_err(|e| eyre::eyre!(e))
             .context("failed to bind FakeVlc server")?;
-        let server = Arc::new(server);
 
         let fake_password: [u8; 8] = rand::random();
         let fake_password = fake_password.into_iter().fold(String::new(), |mut acc, v| {
@@ -42,10 +52,19 @@ impl FakeVlc {
             acc
         });
 
-        let this = Self {
+        let inner_mut = InnerMut {
+            model: Model::default(),
+        };
+        let inner_mut = Mutex::new(inner_mut);
+
+        let inner_shared = InnerShared {
             server,
             fake_password,
+            inner_mut,
         };
+        let inner_shared = Arc::new(inner_shared);
+
+        let this = Self { inner_shared };
 
         let handle = this.spawn();
 
@@ -56,11 +75,11 @@ impl FakeVlc {
     /// NOTE: Clones both the password and IP address strings
     #[must_use]
     pub fn get_auth_cloned(&self) -> vlc_http_auth::AuthInput {
-        let addr = self.server.get_server_addr();
+        let addr = self.inner_shared.server.get_server_addr();
         let vlc_host = vlc_http_auth::Host(addr.ip().to_string());
         let vlc_port = vlc_http_auth::Port(addr.port());
 
-        let vlc_password = vlc_http_auth::Password(self.fake_password.clone());
+        let vlc_password = vlc_http_auth::Password(self.inner_shared.fake_password.clone());
 
         vlc_http_auth::AuthInput {
             vlc_password,
@@ -71,37 +90,25 @@ impl FakeVlc {
     /// Borrows `self` to spawn an HTTP receive thread in a scope
     #[must_use]
     fn spawn(&self) -> SpawnHandle {
-        let Self { server, .. } = self;
+        let Self { inner_shared } = self;
+
         // weak reference, to end the loop after receiving a wakeup
-        let server = Arc::downgrade(server);
+        let inner_shared = Arc::downgrade(inner_shared);
         std::thread::spawn(move || {
             loop {
-                let Some(server) = server.upgrade() else {
+                let Some(inner_shared) = inner_shared.upgrade() else {
                     // server dropped, after a request was received
                     break Ok(());
                 };
-                let request = match server.inner().recv() {
-                    Ok(req) => req,
-                    Err(e)
-                        if e.kind() == std::io::ErrorKind::Other
-                            && e.to_string() == "thread unblocked" =>
-                    {
-                        // server dropped, then unblocked with no request
-                        break Ok(());
-                    }
-                    Err(e) => {
-                        println!("FakeVlc error: {e}");
-                        break Err::<(), _>(e);
-                    }
-                };
 
-                // TODO function, organize for logical state read/respond
-                dbg!(request.url());
-                let response =
-                    tiny_http::Response::from_string("Not really sure").with_status_code(501);
-                let result = request.respond(response);
-                if let Err(e) = result {
-                    eprintln!("FakeVlc response error: {:?}", eyre::eyre!(e));
+                match inner_shared.recv_and_run_request() {
+                    ControlFlow::Break(result) => {
+                        if let Err(e) = &result {
+                            println!("FakeVlc error: {e}");
+                        }
+                        break result;
+                    }
+                    ControlFlow::Continue(()) => {}
                 }
             }
         })
@@ -113,14 +120,74 @@ impl FakeVlc {
 }
 impl Drop for FakeVlc {
     fn drop(&mut self) {
-        let Self {
-            server,
-            fake_password: _,
-        } = self;
-        while Arc::weak_count(server) > 0 {
-            server.inner().unblock();
+        let Self { inner_shared, .. } = self;
+        while Arc::weak_count(inner_shared) > 0 {
+            inner_shared.server.inner().unblock();
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
+    }
+}
+
+impl InnerShared {
+    fn recv_and_run_request(&self) -> ControlFlow<std::io::Result<()>> {
+        let Self {
+            server,
+            fake_password: _, // TODO
+            inner_mut,
+        } = self;
+
+        let request = match server.inner().recv() {
+            Ok(req) => req,
+            Err(e) => {
+                let result = if e.kind() == std::io::ErrorKind::Other
+                    && e.to_string() == "thread unblocked"
+                {
+                    // server dropped, then unblocked with no request
+                    ControlFlow::Break(Ok(()))
+                } else {
+                    ControlFlow::Break(Err(e))
+                };
+                return result;
+            }
+        };
+
+        let response_parts = match InnerMut::model_request(inner_mut, &request) {
+            Ok(vlc_http_test::model::ModelResponse::Json(response)) => {
+                let response =
+                    serde_json::to_string(&response).expect("response JSON serialize failed");
+                (response, None)
+            }
+            Ok(vlc_http_test::model::ModelResponse::Art) => {
+                ("request for Art".to_string(), Some(400))
+            }
+            Err(error) => (error.to_string(), Some(400)),
+        };
+
+        let response = {
+            let (msg, code) = response_parts;
+            let response = tiny_http::Response::from_string(msg);
+            if let Some(code) = code {
+                response.with_status_code(code)
+            } else {
+                response
+            }
+        };
+        let result = request.respond(response);
+        if let Err(e) = result {
+            eprintln!("FakeVlc response error: {:?}", eyre::eyre!(e));
+        }
+
+        ControlFlow::Continue(())
+    }
+}
+impl InnerMut {
+    fn model_request(
+        mutex: &Mutex<Self>,
+        request: &tiny_http::Request,
+    ) -> Result<vlc_http_test::model::ModelResponse, vlc_http_test::model::RequestError> {
+        let mut inner_mut = mutex.lock().expect("no mutex poison");
+        let Self { model } = &mut *inner_mut;
+        model.request(request.url())
     }
 }
 

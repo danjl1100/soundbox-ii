@@ -37,3 +37,4 @@ fake-vlc = { path = "../fake-vlc" }
 tempfile = "3.27.0"
 urlencoding = "2.1.3"
 vlc-http-auth = { path = "../vlc-http-auth" }
+vlc-http-test = { path = "../vlc-http-test" }

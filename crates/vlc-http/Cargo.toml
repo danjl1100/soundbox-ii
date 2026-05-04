@@ -27,5 +27,6 @@ test-log = { version = "0.2.16", default-features = false, features = ["color", 
 tracing-subscriber = "0.3.22"
 vlc-http-auth-clap = { path = "../vlc-http-auth-clap" }
 vlc-http-cmd-clap = { path = "../vlc-http-cmd-clap" }
+vlc-http-test = { path = "../vlc-http-test" }
 vlc-http-ureq = { path = "../vlc-http-ureq" }
 

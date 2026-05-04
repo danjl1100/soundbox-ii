@@ -3,9 +3,8 @@
 use clap::Parser as _;
 use std::{collections::VecDeque, num::NonZeroU32};
 use tracing::error;
-use vlc_http::{
-    ClientState, Endpoint, Plan, client_state::PlanBuilder, goal::Step, testing::Model,
-};
+use vlc_http::{ClientState, Endpoint, Plan, client_state::PlanBuilder, goal::Step};
+use vlc_http_test::Model;
 
 pub fn run_input(input: &str) -> Vec<LogEntry> {
     let mut runner = Runner::default();
@@ -285,10 +284,8 @@ mod model_logger {
     use super::Model;
     use std::str::FromStr;
     use tracing::info;
-    use vlc_http::{
-        ClientState, Endpoint, Response,
-        testing::{ModelJson, ModelResponse},
-    };
+    use vlc_http::{ClientState, Endpoint, Response};
+    use vlc_http_test::model::{ModelJson, ModelResponse};
 
     #[derive(Debug, PartialEq, Eq, serde::Serialize)]
     pub enum LogEntry {

@@ -155,6 +155,7 @@ dependencies = [
  "vlc-http",
  "vlc-http-auth",
  "vlc-http-auth-clap",
+ "vlc-http-test",
  "vlc-http-ureq",
 ]
 
@@ -409,10 +410,12 @@ dependencies = [
  "arbtest",
  "eyre",
  "rand 0.8.5",
+ "serde_json",
  "tiny_http",
  "vlc-http",
  "vlc-http-auth",
  "vlc-http-cmd",
+ "vlc-http-test",
 ]
 
 [[package]]
@@ -1370,6 +1373,7 @@ dependencies = [
  "vlc-http-auth-clap",
  "vlc-http-cmd",
  "vlc-http-cmd-clap",
+ "vlc-http-test",
  "vlc-http-ureq",
 ]
 
@@ -1406,6 +1410,18 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "vlc-http-cmd",
+]
+
+[[package]]
+name = "vlc-http-test"
+version = "0.1.0"
+dependencies = [
+ "arbitrary",
+ "arbtest",
+ "serde",
+ "serde_json",
+ "urlencoding",
+ "vlc-http",
 ]
 
 [[package]]
