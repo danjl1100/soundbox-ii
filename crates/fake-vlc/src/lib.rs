@@ -12,6 +12,10 @@ use vlc_http_test::Model;
 
 use crate::only_socket_addr::SocketServer;
 
+pub use self::arbtest::{ArbTestWithFakeVlc, arbtest_with_fake_vlc};
+
+mod arbtest;
+
 type SpawnHandle = std::thread::JoinHandle<Result<(), std::io::Error>>;
 
 /// Server mimicking the VLC HTTP interface
@@ -27,6 +31,30 @@ pub struct InnerMut {
     model: Model,
 }
 impl FakeVlc {
+    /// Calls the specified function with an instance and configured
+    /// [`vlc_http_ureq::HttpRunner`]
+    ///
+    /// # Errors
+    /// Returns an error if the server bind fails
+    ///
+    /// # Panics
+    /// Panics if shutting down the spawned thread handle fails due to panic
+    /// elsewhere in the program
+    pub fn with_new<T>(
+        test_fn: impl FnOnce(&FakeVlc, &mut vlc_http_ureq::HttpRunner) -> eyre::Result<T>,
+    ) -> eyre::Result<T> {
+        let (vlc, thread_handle) = FakeVlc::new()?;
+
+        let auth = vlc_http_auth::Auth::new(vlc.get_auth_cloned())?;
+        let mut endpoint_caller = vlc_http_ureq::HttpRunner::new(auth);
+
+        let result = test_fn(&vlc, &mut endpoint_caller)?;
+
+        drop(vlc);
+        thread_handle.join().expect("VLC thread panic")?;
+
+        Ok(result)
+    }
     /// Binds the HTTP server to an OS-provided port at localhost, for use in `spawn`
     ///
     /// # Errors
@@ -118,7 +146,7 @@ impl FakeVlc {
     /// # Panics
     ///
     /// Panics if the inner mutex is poisoned (another thread holding the mutex,
-    /// e.g. [`Self::spawn`] thread panicked)
+    /// e.g. spawned thread panicked)
     #[must_use]
     pub fn get_playlist_cloned(&self) -> Vec<vlc_http_test::model::Item> {
         let inner_mut = self.inner_shared.inner_mut.lock().expect("no poison");

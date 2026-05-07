@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! [`arbitrary::Arbitrary`] types for fuzz testing `vlc-http`
 
 // TODO remove if unused
@@ -35,6 +36,13 @@ pub struct ArbPlaybackMode {
 #[derive(Clone, Debug, arbitrary::Arbitrary)]
 pub struct ArbTargetPlaylistItems {
     items: Vec<AsciiString>,
+}
+impl ArbTargetPlaylistItems {
+    /// Creates an empty target (which requires no validation of ascii strings)
+    #[must_use]
+    pub fn empty() -> Self {
+        Self { items: vec![] }
+    }
 }
 
 impl ArbGoal {

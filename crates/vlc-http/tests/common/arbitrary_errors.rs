@@ -31,7 +31,7 @@ impl Glitch {
                     // delay is likely to repeat actions
                     ArbGoal::PlaybackMode(ArbPlaybackMode { .. }) => 2,
                     // includes playback mode, above
-                    ArbGoal::PlaylistSet(ArbTargetPlaylistItems { items: _ }) => 2,
+                    ArbGoal::PlaylistSet(ArbTargetPlaylistItems { .. }) => 2,
                 }
             }
         }
@@ -422,7 +422,7 @@ fn playlist_set_from_wrong_state() -> eyre::Result<()> {
         repeat: All,
         is_random: true,
     });
-    list.push(ArbTargetPlaylistItems { items: vec![] });
+    list.push(ArbTargetPlaylistItems::empty());
 
     list.run_goals_list()
 }
@@ -444,7 +444,7 @@ fn commands_glitches_case() -> eyre::Result<()> {
         },
         Once("_, Delay, Drop, Delay, Delay".parse().unwrap()),
     );
-    list.push(ArbTargetPlaylistItems { items: vec![] });
+    list.push(ArbTargetPlaylistItems::empty());
 
     list.run_goals_list()
 }

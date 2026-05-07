@@ -16,6 +16,10 @@ url = "https://raw.githubusercontent.com/google/supply-chain/main/audits.toml"
 [imports.mozilla]
 url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
+[policy.fake-vlc]
+criteria = "safe-to-run"
+notes = "fake-vlc is a test-only tool"
+
 [policy.vlc-http-test]
 criteria = "safe-to-run"
 notes = "vlc-http-test is a test-only tool"

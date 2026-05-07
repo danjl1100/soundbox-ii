@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+arbtest = "0.3.2"
 eyre = "0.6.12"
 rand = "0.8.5"
 serde_json = "1.0.149"
@@ -16,6 +17,5 @@ vlc-http-ureq = { version = "0.1.0", path = "../vlc-http-ureq" }
 workspace = true
 
 [dev-dependencies]
-arbtest = "0.3.2"
 vlc-http = { path = "../vlc-http" }
 vlc-http-cmd = { path = "../vlc-http-cmd" }
