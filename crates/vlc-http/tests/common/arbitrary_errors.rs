@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Injects imperfections between the `vlc-http` logic and the simulated VLC instance
 
-use vlc_http_test::arb_goal::ArbGoal;
+use vlc_http_test::arb_goal::{ArbGoal, ArbPlaybackMode, ArbTargetPlaylistItems};
 
 use self::model_endpoint_caller::ModelEndpointCaller;
 use vlc_http_test::arb_goal::ArbRepeatMode;
@@ -29,9 +29,9 @@ impl Glitch {
                 #[expect(clippy::match_same_arms, reason = "clarify logic difference")]
                 match goal {
                     // delay is likely to repeat actions
-                    ArbGoal::PlaybackMode { .. } => 2,
+                    ArbGoal::PlaybackMode(ArbPlaybackMode { .. }) => 2,
                     // includes playback mode, above
-                    ArbGoal::PlaylistSet { items: _ } => 2,
+                    ArbGoal::PlaylistSet(ArbTargetPlaylistItems { items: _ }) => 2,
                 }
             }
         }
@@ -243,9 +243,9 @@ impl<T> Default for ArbGoalsList<T> {
     }
 }
 impl<T> ArbGoalsList<T> {
-    fn push_glitches(&mut self, goal: ArbGoal, glitches: T) {
+    fn push_glitches(&mut self, goal: impl Into<ArbGoal>, glitches: T) {
         let Self { goals } = self;
-        goals.push((goal, glitches));
+        goals.push((goal.into(), glitches));
     }
     fn map_inner<U>(self, map_fn: impl Fn(T) -> U) -> ArbGoalsList<U> {
         let Self { goals } = self;
@@ -257,8 +257,8 @@ impl<T> ArbGoalsList<T> {
     }
 }
 impl ArbGoalsList<Once<Glitches>> {
-    fn push(&mut self, goal: ArbGoal) {
-        self.push_glitches(goal, Once(Glitches(vec![])));
+    fn push(&mut self, goal: impl Into<ArbGoal>) {
+        self.push_glitches(goal.into(), Once(Glitches(vec![])));
     }
 }
 // impl ArbGoalsList<NoGlitches> {
@@ -413,40 +413,38 @@ fn init_tracing() {
 
 #[test]
 fn playlist_set_from_wrong_state() -> eyre::Result<()> {
-    use ArbGoal::{PlaybackMode, PlaylistSet};
     use ArbRepeatMode::All;
 
     init_tracing();
 
     let mut list = ArbGoalsList::<Once<Glitches>>::default();
-    list.push(PlaybackMode {
+    list.push(ArbPlaybackMode {
         repeat: All,
         is_random: true,
     });
-    list.push(PlaylistSet { items: vec![] });
+    list.push(ArbTargetPlaylistItems { items: vec![] });
 
     list.run_goals_list()
 }
 #[test]
 fn commands_glitches_case() -> eyre::Result<()> {
-    use ArbGoal::{PlaybackMode, PlaylistSet};
     use ArbRepeatMode::{All, One};
 
     init_tracing();
 
     let mut list = ArbGoalsList::<Once<Glitches>>::default();
-    list.push(PlaybackMode {
+    list.push(ArbPlaybackMode {
         repeat: One,
         is_random: true,
     });
     list.push_glitches(
-        PlaybackMode {
+        ArbPlaybackMode {
             repeat: All,
             is_random: true,
         },
         Once("_, Delay, Drop, Delay, Delay".parse().unwrap()),
     );
-    list.push(PlaylistSet { items: vec![] });
+    list.push(ArbTargetPlaylistItems { items: vec![] });
 
     list.run_goals_list()
 }

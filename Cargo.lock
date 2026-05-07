@@ -416,6 +416,7 @@ dependencies = [
  "vlc-http-auth",
  "vlc-http-cmd",
  "vlc-http-test",
+ "vlc-http-ureq",
 ]
 
 [[package]]

@@ -37,6 +37,53 @@ where
 /// NOTE: While an equivalent helper function could be created for `async` (accepting an `async`
 /// closure) this is left for the user to implement, as they may need to select between other
 /// competing futures.
+///
+/// # Examples
+/// ```no_run
+/// # struct MyCaller;
+/// # impl vlc_http::sync::EndpointRequestor for MyCaller {
+/// #     type Error = MyError;
+/// #     fn request(
+/// #         &mut self,
+/// #         _: vlc_http::request::Endpoint,
+/// #     ) -> Result<vlc_http::Response, Self::Error> {
+/// #         unimplemented!()
+/// #     }
+/// # }
+/// # #[derive(Debug)]
+/// # enum MyError {}
+/// # impl std::error::Error for MyError {}
+/// # impl std::fmt::Display for MyError {
+/// #     fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+/// #         match *self {}
+/// #     }
+/// # }
+/// #
+/// use vlc_http::client_state::ClientState;
+/// use vlc_http_cmd::goal::{Goal, PlaybackMode, RepeatMode};
+///
+/// let mode = PlaybackMode::new()
+///     .set_random(true)
+///     .set_repeat(RepeatMode::All);
+/// let goal = Goal::from(mode);
+///
+/// let mut client_state = ClientState::new();
+/// let plan = client_state.build_plan().apply(goal);
+///
+/// // let mut endpoint_caller = todo!(); // see `vlc-http-ureq` crate
+/// # let mut endpoint_caller = MyCaller;
+///
+/// let max_iter_count = 10; // choose number as a safety net
+///
+/// vlc_http::sync::complete_plan(
+///     plan,
+///     &mut client_state,
+///     &mut endpoint_caller,
+///     max_iter_count,
+/// )?;
+/// #
+/// # Ok::<_, vlc_http::sync::Error<vlc_http::goal::ActionPlan, MyError>>(())
+/// ```
 pub fn complete_plan<'a, T, E, F>(
     mut source: T,
     client_state: &'a mut ClientState,

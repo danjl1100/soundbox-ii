@@ -113,9 +113,16 @@ impl FakeVlc {
             }
         })
     }
+    /// Clones the playlist items currently present in the model
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inner mutex is poisoned (another thread holding the mutex,
+    /// e.g. [`Self::spawn`] thread panicked)
     #[must_use]
-    pub fn get_playlist(&self) -> Vec<()> {
-        todo!()
+    pub fn get_playlist_cloned(&self) -> Vec<vlc_http_test::model::Item> {
+        let inner_mut = self.inner_shared.inner_mut.lock().expect("no poison");
+        inner_mut.model.get_items().to_vec()
     }
 }
 impl Drop for FakeVlc {
@@ -152,11 +159,7 @@ impl InnerShared {
         };
 
         let response_parts = match InnerMut::model_request(inner_mut, &request) {
-            Ok(vlc_http_test::model::ModelResponse::Json(response)) => {
-                let response =
-                    serde_json::to_string(&response).expect("response JSON serialize failed");
-                (response, None)
-            }
+            Ok(vlc_http_test::model::ModelResponse::Json(response)) => (response, None),
             Ok(vlc_http_test::model::ModelResponse::Art) => {
                 ("request for Art".to_string(), Some(400))
             }

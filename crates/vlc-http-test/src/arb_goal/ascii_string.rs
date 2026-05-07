@@ -6,8 +6,12 @@ impl<'a> arbitrary::Arbitrary<'a> for AsciiString {
         let string: Result<_, _> = u
             .arbitrary_iter()?
             .map(|byte: Result<u8, _>| {
-                let ascii_byte = byte? & 0x7F;
-                Ok(ascii_byte as char)
+                const ASCII_NON_CONTROL_RANGE: std::ops::RangeInclusive<u8> = 0x20..=0x7E;
+                let range_len = 1 + ASCII_NON_CONTROL_RANGE.end() - ASCII_NON_CONTROL_RANGE.start();
+                let byte = byte?;
+                let ascii_non_control_byte = (byte % range_len) + ASCII_NON_CONTROL_RANGE.start();
+                // let ascii_byte = byte & 0x7F;
+                Ok(ascii_non_control_byte as char)
             })
             .collect();
         let string: String = string?;

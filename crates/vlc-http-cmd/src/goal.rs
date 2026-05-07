@@ -128,6 +128,11 @@ impl TargetPlaylistItems {
             max_history_count,
         }
     }
+    /// Returns the [`Url`]s, see [`Self::set_urls`] for semantic details
+    #[must_use]
+    pub fn get_urls(&self) -> &[Url] {
+        &self.urls
+    }
 }
 /// Exposes all inner fields of [`TargetPlaylistItems`]
 ///
