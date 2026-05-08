@@ -29,9 +29,9 @@ fn fmt(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
     }
 
     let status = cmd.status_cargo(|c| {
-        c.args(["fmt", "--all", "--"]);
+        c.args(["fmt", "--all"]);
         if fix.is_none() {
-            c.args(["--check", "-l"]);
+            c.args(["--", "--check", "-l"]);
         }
         c
     })?;
@@ -45,7 +45,9 @@ fn fmt(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
     }
 
     if !status.success() {
-        crate::bail!("cargo fmt failed")
+        // NOTE: cargo-fmt returns the same exit code "1" if formatting is required
+        // but also many other error conditions (e.g. invalid workspace)
+        crate::bail!(r#"cargo fmt failed, to fix formatting add argument "--fix""#)
     }
     Ok(())
 }
