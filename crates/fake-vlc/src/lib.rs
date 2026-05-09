@@ -8,7 +8,7 @@ use std::{
 };
 use vlc_http_test::Model;
 
-use crate::only_socket_addr::SocketServer;
+use crate::{auth_result::AuthError, only_socket_addr::SocketServer};
 
 pub use self::arbtest::{ArbTestWithFakeVlc, arbtest_with_fake_vlc};
 
@@ -23,6 +23,8 @@ pub struct FakeVlc {
 struct InnerShared {
     server: SocketServer,
     fake_password: String,
+    /// "Basic [base64]" version of `fake_password`
+    fake_password_bearer: String,
     inner_mut: Mutex<InnerMut>,
 }
 struct InnerMut {
@@ -78,6 +80,12 @@ impl FakeVlc {
             acc
         });
 
+        let fake_password_bearer = {
+            use base64::{Engine as _, prelude::BASE64_STANDARD};
+            let user_pass = format!(":{fake_password}");
+            format!("Basic {}", BASE64_STANDARD.encode(&user_pass))
+        };
+
         let inner_mut = InnerMut {
             model: Model::default(),
         };
@@ -86,6 +94,7 @@ impl FakeVlc {
         let inner_shared = InnerShared {
             server,
             fake_password,
+            fake_password_bearer,
             inner_mut,
         };
         let inner_shared = Arc::new(inner_shared);
@@ -165,7 +174,8 @@ impl InnerShared {
     fn recv_and_run_request(&self) -> ControlFlow<std::io::Result<()>> {
         let Self {
             server,
-            fake_password: _, // TODO
+            fake_password: _, // bearer only, raw not used
+            fake_password_bearer,
             inner_mut,
         } = self;
 
@@ -184,12 +194,18 @@ impl InnerShared {
             }
         };
 
-        let response_parts = match InnerMut::model_request(inner_mut, &request) {
-            Ok(vlc_http_test::model::ModelResponse::Json(response)) => (response, None),
-            Ok(vlc_http_test::model::ModelResponse::Art) => {
-                ("request for Art".to_string(), Some(400))
+        let response_parts = match AuthError::from_request(&request, fake_password_bearer) {
+            Ok(()) => match InnerMut::model_request(inner_mut, &request) {
+                Ok(vlc_http_test::model::ModelResponse::Json(response)) => (response, None),
+                Ok(vlc_http_test::model::ModelResponse::Art) => {
+                    ("request for Art".to_string(), Some(400))
+                }
+                Err(error) => (error.to_string(), Some(400)),
+            },
+            Err(auth_err) => {
+                eprintln!("{auth_err}");
+                (String::new(), Some(auth_err.http_code()))
             }
-            Err(error) => (error.to_string(), Some(400)),
         };
 
         let response = {
@@ -248,6 +264,54 @@ mod only_socket_addr {
                 .server_addr()
                 .to_ip()
                 .expect("bound to an IP address")
+        }
+    }
+}
+
+mod auth_result {
+    pub enum AuthError {
+        Missing,
+        Incorrect { found: String, expected: String },
+    }
+    impl AuthError {
+        pub fn from_request(
+            request: &tiny_http::Request,
+            expected_bearer: &str,
+        ) -> Result<(), Self> {
+            let Some(bearer) = request
+                .headers()
+                .iter()
+                .find(|h| h.field.equiv("authorization"))
+            else {
+                return Err(Self::Missing);
+            };
+            let found = &bearer.value;
+            if found != expected_bearer {
+                return Err(Self::Incorrect {
+                    found: found.to_string(),
+                    expected: expected_bearer.to_string(),
+                });
+            }
+            Ok(())
+        }
+        pub fn http_code(&self) -> u16 {
+            const HTTP_401_UNAUTHORIZED: u16 = 401;
+            const HTTP_403_FORBIDDEN: u16 = 403;
+            match self {
+                AuthError::Missing => HTTP_401_UNAUTHORIZED,
+                AuthError::Incorrect { .. } => HTTP_403_FORBIDDEN,
+            }
+        }
+    }
+    impl std::fmt::Display for AuthError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                AuthError::Missing => write!(f, "bearer heading missing"),
+                AuthError::Incorrect { found, expected } => write!(
+                    f,
+                    "bearer heading incorrect, expected {expected:?}, found {found:?}"
+                ),
+            }
         }
     }
 }

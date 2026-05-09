@@ -3,8 +3,10 @@
 
 #![expect(clippy::panic, reason = "arbtest requires panic for inner errors")]
 
+use fake_vlc::FakeVlc;
 use vlc_http::ClientState;
 use vlc_http_test::arb_goal::ArbGoal;
+use vlc_http_ureq::HttpRunner;
 
 #[track_caller]
 fn unwrap_or_eyre_panic<T, E>(result: Result<T, E>, target: impl std::fmt::Debug) -> T
@@ -103,7 +105,46 @@ fn arb_goal_succeeds() -> eyre::Result<()> {
 }
 
 #[test]
-#[ignore = "TODO"]
 fn rejects_wrong_password() -> eyre::Result<()> {
-    todo!()
+    use vlc_http_auth::{Auth, AuthInput, Password};
+
+    FakeVlc::with_new(|vlc, _runner| {
+        let AuthInput {
+            vlc_password: Password(vlc_password),
+            vlc_host,
+            vlc_port,
+        } = vlc.get_auth_cloned();
+        let wrong_auth = AuthInput {
+            vlc_password: Password(format!("{vlc_password}-but-wrong")),
+            vlc_host,
+            vlc_port,
+        };
+        let wrong_auth = Auth::new(wrong_auth)?;
+
+        let mut endpoint_caller = HttpRunner::new(wrong_auth);
+
+        let target = vlc_http_cmd::goal::TargetPlaylistItems::new().set_urls(vec![]);
+        let goal = vlc_http_cmd::Goal::from(target);
+
+        let mut client_state = vlc_http::ClientState::new();
+        let plan = client_state.build_plan().apply(goal.clone());
+
+        let max_iter_count = 100;
+
+        let result = vlc_http::sync::complete_plan(
+            plan,
+            &mut client_state,
+            &mut endpoint_caller,
+            max_iter_count,
+        );
+        let err = result.expect_err("wrong auth (password) should fail");
+        let err_eyre = eyre::eyre!(err);
+        let err_str = format!("{err_eyre:?}");
+        assert!(
+            err_str.contains("status code 403"),
+            "expected 403 error, got:\n{err_eyre:?}",
+        );
+
+        Ok(())
+    })
 }

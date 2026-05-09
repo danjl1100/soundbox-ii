@@ -408,6 +408,7 @@ name = "fake-vlc"
 version = "0.1.0"
 dependencies = [
  "arbtest",
+ "base64 0.22.1",
  "eyre",
  "rand 0.8.5",
  "serde_json",
