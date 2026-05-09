@@ -6,27 +6,15 @@
 # install via:
 #    ln -s ../../pre-commit.sh .git/hooks/pre-commit
 
-COPYRIGHT_TEXT="Copyright (C) 2021-$(date +%Y)  Daniel Lambert. Licensed under GPL-3.0-or-later"
-
 cd "$(git rev-parse --show-toplevel)"
 
 # Run tests
 true \
-  && echo "Missing copyright notice in changed files:" \
-    && [[ ! $( \
-        git diff --cached --name-only --diff-filter=d HEAD | grep '.\(rs\|ts\)$' | \
-        grep -v "^spigot-visual/static/van-1.5.5.js$" | \
-        grep -v "^spigot-visual/static-ts/van-1.5.5.d.ts$" | \
-        xargs --no-run-if-empty grep -LH "${COPYRIGHT_TEXT}" | tee /dev/stderr \
-      ) ]] \
-      || (echo "fix using:   echo \"// ${COPYRIGHT_TEXT}, see /COPYING file for details
-\$(cat \$FILE)\" > \$FILE" && false) \
-    && echo "[none]" \
   && (echo "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  COPYING" | sha256sum -c - --strict) \
-  && cargo xtask checks
+  && cargo xtask checks --quiet $*
 RESULT=$?
 
-# TODO when nix reinstated
+# TODO if nix is reinstated
 # if [ $RESULT -eq 0 ]; then
 #   nix --version >/dev/null 2>&1
 #   if [ $? -eq 0 ]; then

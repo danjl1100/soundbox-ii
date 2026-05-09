@@ -6,7 +6,7 @@ use self::arb_repeat_mode::ArbRepeatMode;
 use self::model_endpoint_caller::ModelEndpointCaller;
 
 use eyre::Context as _;
-use std::{collections::VecDeque, str::FromStr, sync::LazyLock};
+use std::{collections::VecDeque, str::FromStr};
 use tracing::{debug, info};
 use vlc_http::{ClientState, Goal, goal::TargetPlaylistItems, url::Url};
 
@@ -456,14 +456,11 @@ fn arb_commands_glitches() {
 }
 
 fn init_tracing() {
-    static ONCE: LazyLock<()> = LazyLock::new(|| {
-        use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
-        tracing_subscriber::registry()
-            .with(tracing_subscriber::fmt::layer().compact())
-            .with(tracing_subscriber::EnvFilter::from_default_env())
-            .init();
-    });
-    *ONCE;
+    use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+    let _ = tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().compact())
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
 }
 
 #[test]
