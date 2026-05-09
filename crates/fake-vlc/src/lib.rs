@@ -1,8 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Library helper for faking a `vlc` HTTP server in end-to-end integration tests
 
-#![expect(missing_docs, reason = "figuring out the right API")] // TODO remove
-
 use eyre::Context as _;
 use std::{
     ops::ControlFlow,
@@ -22,12 +20,12 @@ type SpawnHandle = std::thread::JoinHandle<Result<(), std::io::Error>>;
 pub struct FakeVlc {
     inner_shared: Arc<InnerShared>,
 }
-pub struct InnerShared {
+struct InnerShared {
     server: SocketServer,
     fake_password: String,
     inner_mut: Mutex<InnerMut>,
 }
-pub struct InnerMut {
+struct InnerMut {
     model: Model,
 }
 impl FakeVlc {
