@@ -6,6 +6,20 @@
 use vlc_http::ClientState;
 use vlc_http_test::arb_goal::ArbGoal;
 
+#[track_caller]
+fn unwrap_or_eyre_panic<T, E>(result: Result<T, E>, target: impl std::fmt::Debug) -> T
+where
+    E: Into<eyre::Report>,
+{
+    match result {
+        Ok(v) => v,
+        Err(err) => {
+            eprintln!("{:?}", eyre::eyre!(err));
+            panic!("error completing plan {target:?}");
+        }
+    }
+}
+
 #[test]
 fn arb_playlist_set_and_get() -> eyre::Result<()> {
     let mut waiting_proof_of_work = Some(());
@@ -32,13 +46,7 @@ fn arb_playlist_set_and_get() -> eyre::Result<()> {
             .set_playlist_and_query_matched(target_playlist_items);
         let result =
             vlc_http::sync::complete_plan(plan, &mut client_state, endpoint_caller, max_iter_count);
-        let read_items = match result {
-            Ok(read_items) => read_items,
-            Err(err) => {
-                eprintln!("{:?}", eyre::eyre!(err));
-                panic!("error completing plan {target:?}");
-            }
-        };
+        let read_items = unwrap_or_eyre_panic(result, &target);
 
         // verify `FakeVlc::get_playlist` method matches the target
         let vlc_playlist_items: Vec<_> = vlc
@@ -64,7 +72,6 @@ fn arb_playlist_set_and_get() -> eyre::Result<()> {
 
         Ok(())
     })
-    .budget_ms(1_000)
     .run()?;
 
     assert!(waiting_proof_of_work.is_none());
@@ -73,9 +80,26 @@ fn arb_playlist_set_and_get() -> eyre::Result<()> {
 }
 
 #[test]
-#[ignore = "TODO"]
-fn arb_action_succeeds() -> eyre::Result<()> {
-    todo!()
+fn arb_goal_succeeds() -> eyre::Result<()> {
+    fake_vlc::arbtest_with_fake_vlc(|u, vlc, endpoint_caller| {
+        let goal: ArbGoal = u.arbitrary()?;
+
+        let current_len = vlc.get_playlist_cloned().len();
+        let max_iter_count = goal.get_complexity(current_len);
+
+        let mut client_state = vlc_http::ClientState::new();
+        let plan = client_state
+            .build_plan()
+            .apply(vlc_http::Goal::from(goal.clone()));
+
+        let result =
+            vlc_http::sync::complete_plan(plan, &mut client_state, endpoint_caller, max_iter_count);
+        unwrap_or_eyre_panic(result, goal);
+
+        Ok(())
+    })
+    .run()?;
+    Ok(())
 }
 
 #[test]
