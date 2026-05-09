@@ -1,4 +1,5 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Queries items from `beet`
 pub use self::item::BeetItem;
 pub use self::path::BeetPath;
 pub use self::query::{BeetCommand, BeetRunner};

@@ -102,6 +102,12 @@ impl ConfigOut {
 }
 
 impl ConfigAll {
+    /// Returns a default config with the specified setup function applied
+    pub fn setup_with(setup_fn: impl FnOnce(&mut Self)) -> Self {
+        let mut config = Self::default();
+        setup_fn(&mut config);
+        config
+    }
     /// Returns the map of all configured outputs
     #[must_use]
     pub fn into_configs_map(self) -> BTreeMap<Vec<String>, ConfigOut> {

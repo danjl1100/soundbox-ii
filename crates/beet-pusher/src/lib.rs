@@ -8,8 +8,12 @@ pub use self::determined::{Determined, UrlSource};
 pub use self::path_url::BaseUrl;
 pub use self::pusher::{BeetPusher, FillDeterminedError, NowPlayingObserver, SpigotEmptyError};
 
-/// Queries items from `beet`
 mod beet;
 mod determined;
 mod path_url;
 mod pusher;
+
+pub mod pipe_exec;
+
+/// Signal to shutdown the application
+pub struct Shutdown;

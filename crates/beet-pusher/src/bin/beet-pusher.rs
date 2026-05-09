@@ -6,10 +6,10 @@
 
 use crate::config_file::ConfigFile;
 use arg_util::ConfigFileOpen as _;
-use beet_pusher::{BeetItem, BeetPusher, fill_buckets};
+use beet_pusher::{BeetItem, BeetPusher, Shutdown, fill_buckets};
 use clap::Parser;
 use eyre::Context as _;
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, path::PathBuf, sync::mpsc::TryRecvError};
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -79,11 +79,11 @@ fn main() -> eyre::Result<()> {
         let mut beet_cmd = beet_pusher::BeetCommand::new_beet();
         let mut spigot = setup_spigot(&mut beet_cmd, &script)?;
         let view = spigot.view_table_default();
-        println!("{view}");
+        eprintln!("{view}");
         let rng = &mut bucket_spigot::order::ErrorRng(&mut rand::thread_rng());
         for _ in 0..50 {
             let peeked = spigot.peek(rng, 1)?;
-            println!("{:?}", peeked.items());
+            eprintln!("{:?}", peeked.items());
             spigot.finalize_peeked(peeked.accept_into_inner());
         }
         return Ok(());
@@ -111,7 +111,7 @@ fn main() -> eyre::Result<()> {
         let beet_id = item.get_beet_id();
         let path = item.get_path().as_str();
 
-        println!("Now playing id={beet_id}: {path}");
+        eprintln!("Now playing id={beet_id}: {path}");
 
         publish_id_file
             .as_ref()
@@ -131,12 +131,14 @@ fn main() -> eyre::Result<()> {
     let mut pusher = BeetPusher::new(rng, spigot, base_url);
     // let mut client_state = vlc_http::ClientState::new();
 
+    let (shutdown_tx, shutdown_rx) = std::sync::mpsc::sync_channel(1);
     if json {
-        std::thread::spawn(|| {
-            for line in std::io::stdin().lines() {
-                // TODO - actual errors from serde_json parsing
-                println!(r#"{{"error": "ohno: {line:?}"}}"#);
+        std::thread::spawn(move || {
+            match pipe_cmd_loop() {
+                Ok(()) => eprintln!("end of input on stdin"),
+                Err(e) => eprintln!("{e:?}"),
             }
+            let _ = shutdown_tx.send(Shutdown);
         });
     }
 
@@ -154,8 +156,14 @@ fn main() -> eyre::Result<()> {
         // let update = pusher.complete_plan(action, &mut http_runner)?;
         // pusher.push_playlist_update(update)?;
 
+        match shutdown_rx.try_recv() {
+            Err(TryRecvError::Disconnected) | Ok(Shutdown) => break,
+            Err(TryRecvError::Empty) => {}
+        }
+
         std::thread::sleep(SLEEP_DURATION);
     }
+    Ok(())
 }
 
 fn init_tracing() {
@@ -179,6 +187,36 @@ fn setup_spigot(
     }
 
     Ok(spigot)
+}
+
+fn pipe_cmd_loop() -> eyre::Result<()> {
+    use beet_pusher::pipe_exec::ResponseOut;
+
+    for line in std::io::stdin().lines() {
+        let line = line.context("failed to read from stdin")?;
+        let result = ResponseOut::from(pipe_cmd(line));
+
+        // view for json
+        let result_json = serde_json::to_string(&result).context("failed to serialize error");
+
+        #[expect(irrefutable_let_patterns, reason = "Ok case is TODO")]
+        if let ResponseOut::Error(err) = result {
+            // consume to print eyre
+            eprintln!("{:?}", eyre::eyre!(err));
+        }
+
+        // print JSON result (error if failed)
+        println!("{}", result_json?);
+    }
+
+    Ok(())
+}
+fn pipe_cmd(line: String) -> beet_pusher::pipe_exec::ResponseResult {
+    let _cmd: beet_pusher::pipe_exec::CommandIn = serde_json::from_str(&line)
+        .map_err(|e| beet_pusher::pipe_exec::Error::new_invalid_command(line, e))?;
+
+    // TODO execute commands
+    todo!()
 }
 
 mod now_playing_observer {
