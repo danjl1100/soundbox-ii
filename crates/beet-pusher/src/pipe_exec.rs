@@ -4,8 +4,17 @@
 #![expect(missing_docs, reason = "TODO while designing API")]
 
 #[derive(Clone, Debug, serde::Deserialize)] // NOTE: not `Serialize`, test should compare plain strings
-pub enum CommandIn {
-    // TODO
+pub struct CommandIn {
+    pub seq: Option<u64>,
+    #[serde(flatten)]
+    pub cmd: Command,
+}
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(tag = "cmd")]
+#[serde(rename_all = "snake_case")]
+pub enum Command {
+    AddNode { parent: String },
+    SetFilter { path: String, filters: Vec<String> },
 }
 
 pub type ResponseResult = Result<std::convert::Infallible /* TODO */, Error>;

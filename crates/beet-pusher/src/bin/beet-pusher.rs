@@ -27,6 +27,7 @@ struct Args {
     json: bool,
 }
 
+#[expect(clippy::too_many_lines, reason = "TODO cleanup modules in main")]
 fn main() -> eyre::Result<()> {
     const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
 
