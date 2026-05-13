@@ -73,13 +73,10 @@ impl PipeRunner {
         use std::io::Write as _;
 
         let stdin = self.cmd.stdin.as_mut().expect("stdin available");
-        writeln!(stdin, "{line}")
-            // where T: serde::Serialize + std::fmt::Debug + ?Sized,
-            // serde_json::to_writer(stdin, line)
-            .with_context(|| {
-                let line = line.to_string();
-                format!("failed to serialize to stdin: {line:?}")
-            })?;
+        writeln!(stdin, "{line}").with_context(|| {
+            let line = line.to_string();
+            format!("failed to serialize to stdin: {line:?}")
+        })?;
 
         Ok(())
     }

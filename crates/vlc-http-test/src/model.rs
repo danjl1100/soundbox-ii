@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Model for the VLC client state
 
 /// Model of a VLC client instance, receiving raw commands from HTTP
@@ -75,7 +76,14 @@ impl Model {
     }
     /// Sets the current playing item
     pub fn set_current_playing(&mut self, item_id: i32, state: PlayState) {
+        dbg!((item_id, state));
         self.current_item_id = Some((item_id, state));
+    }
+
+    /// Returns the current playing item ID and state
+    #[must_use]
+    pub fn get_current_playing(&self) -> Option<(i32, PlayState)> {
+        self.current_item_id
     }
 
     /// Returns a view of the current playlist items
@@ -103,6 +111,29 @@ impl Model {
             is_random,
             art_endpoints: art_endpoints.into(),
             current_item_id,
+        }
+    }
+
+    /// Returns the track that is logically "after the current playing track"
+    #[must_use]
+    pub fn get_available_next_track(&self) -> Option<&Item> {
+        if let Some((current_id, _)) = self.current_item_id {
+            dbg!(&self.items);
+
+            let mut found_current = false;
+            self.items.iter().find(|item| {
+                if found_current {
+                    // after current
+                    return true;
+                }
+
+                if item.id == current_id {
+                    found_current = true;
+                }
+                false
+            })
+        } else {
+            self.items.first()
         }
     }
 }

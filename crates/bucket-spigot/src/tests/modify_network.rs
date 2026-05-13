@@ -603,7 +603,11 @@ fn delete_then_view() -> eyre::Result<()> {
         ",
     )?;
     let view = network.view_table_default();
-    println!("{view}");
+    insta::assert_snapshot!(view, @r"
+    Table {
+    X <--- .0 joint (empty) in order
+    }
+    ");
 
     Ok(())
 }

@@ -6,10 +6,10 @@
 
 use crate::config_file::ConfigFile;
 use arg_util::ConfigFileOpen as _;
-use beet_pusher::{BeetItem, BeetPusher, Shutdown, fill_buckets};
+use beet_pusher::{BeetItem, BeetPusher, Shutdown, fill_buckets, pipe_exec::SpigotCmd};
 use clap::Parser;
 use eyre::Context as _;
-use std::{borrow::Cow, path::PathBuf, sync::mpsc::TryRecvError};
+use std::{borrow::Cow, path::PathBuf, sync::mpsc::RecvTimeoutError};
 
 #[derive(clap::Parser, Debug)]
 struct Args {
@@ -29,20 +29,19 @@ struct Args {
 
 #[expect(clippy::too_many_lines, reason = "TODO cleanup modules in main")]
 fn main() -> eyre::Result<()> {
-    const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(1);
-
     // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
-    const DEFAULT_SCRIPT: &str = "
-        add-joint .
+    const DEFAULT_SCRIPT: &str = "";
+    // "
+    // add-joint .
 
-        add-bucket .0
-        set-order-type .0.0 shuffle
-        set-filters .0.0 added:2020.. grouping::^$
+    // add-bucket .0
+    // set-order-type .0.0 shuffle
+    // set-filters .0.0 added:2020.. grouping::^$
 
-        add-bucket .0
-        set-order-type .0.1 shuffle
-        set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
-        ";
+    // add-bucket .0
+    // set-order-type .0.1 shuffle
+    // set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
+    // ";
 
     init_tracing();
 
@@ -132,14 +131,14 @@ fn main() -> eyre::Result<()> {
     let mut pusher = BeetPusher::new(rng, spigot, base_url);
     // let mut client_state = vlc_http::ClientState::new();
 
-    let (shutdown_tx, shutdown_rx) = std::sync::mpsc::sync_channel(1);
+    let (loop_tx, loop_rx) = std::sync::mpsc::sync_channel(1);
     if json {
         std::thread::spawn(move || {
-            match pipe_cmd_loop() {
+            match pipe_cmd_loop(&loop_tx) {
                 Ok(()) => eprintln!("end of input on stdin"),
-                Err(e) => eprintln!("{e:?}"),
+                Err(e) => eprintln!("pipe_cmd_loop fatal error: {e:?}"),
             }
-            let _ = shutdown_tx.send(Shutdown);
+            let _ = loop_tx.send(Shutdown.into());
         });
     }
 
@@ -149,28 +148,154 @@ fn main() -> eyre::Result<()> {
     // 3. Pop from the "determined" holder
     // 4. Repeat from step 1, only peeking what is needed
     // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
-    loop {
-        pusher.fill_determined()?;
-        pusher.push_playlist_update(&mut http_runner, Some(&mut now_playing_observer))?;
 
-        // let action = pusher.get_playlist_update();
-        // let update = pusher.complete_plan(action, &mut http_runner)?;
-        // pusher.push_playlist_update(update)?;
+    {
+        const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_millis(100);
+        const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
-        match shutdown_rx.try_recv() {
-            Err(TryRecvError::Disconnected) | Ok(Shutdown) => break,
-            Err(TryRecvError::Empty) => {}
+        let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
+        let mut timer_fill_bucket = DebounceTask::new(SLEEP_DURATION);
+        // only fill buckets when explicitly activated
+        timer_fill_bucket.set_active(false);
+        loop {
+            let event = if timer_fill_playlist.is_ready() {
+                // highest priority - feed the externally-advancing VLC
+                Ok(LoopEvent::MaintainPlaylist)
+            } else if timer_fill_bucket.is_ready() {
+                // next priority - update to reflect the user command
+                Ok(LoopEvent::MaintainBuckets)
+            } else {
+                // lowest - process new commands
+                loop_rx.recv_timeout(SLEEP_DURATION)
+            };
+            match event {
+                Ok(loop_event) => match loop_event {
+                    LoopEvent::Shutdown(Shutdown) => break,
+                    LoopEvent::MaintainPlaylist => {
+                        if !pusher.get_spigot_mut().is_empty() {
+                            tracing::trace!("FILL DETERMINED");
+                            pusher.fill_determined()?;
+                        }
+                        tracing::trace!("PLAYLIST UPDATE");
+                        pusher.push_playlist_update(
+                            &mut http_runner,
+                            Some(&mut now_playing_observer),
+                        )?;
+
+                        // requires constant maintenance (VLC client self-advances)
+                        timer_fill_playlist.defer();
+                    }
+                    LoopEvent::MaintainBuckets => {
+                        tracing::trace!("FILL BUCKETS");
+
+                        let spigot = pusher.get_spigot_mut();
+                        fill_buckets(&mut beet_cmd, spigot)?;
+
+                        timer_fill_bucket.set_active(false);
+
+                        // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
+                        timer_fill_playlist.set_immediate();
+                    }
+                    LoopEvent::SpigotCmd { reply_to, cmd } => {
+                        use beet_pusher::pipe_exec::{Error, ResponseData};
+                        let spigot = pusher.get_spigot_mut();
+                        tracing::trace!(?cmd);
+                        let result = match spigot.modify_and_get_created_path(cmd.into()) {
+                            Ok(Some(path)) => Ok(ResponseData::NodeAdded { path }),
+                            Ok(None) => Ok(ResponseData::PassNoData),
+                            Err(e) => Err(Error::SpigotError(e)),
+                        };
+                        let _ = reply_to.send(result);
+
+                        // causes update to buckets
+                        timer_fill_bucket.defer();
+                        timer_fill_bucket.set_active(true);
+                    }
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    #[expect(clippy::panic, reason = "invalid shutdown state")]
+                    {
+                        panic!("all senders ended with no Shutdown received")
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+        }
+    }
+
+    tracing::trace!("END OF BEET-PUSHER MAIN");
+
+    Ok(())
+}
+
+enum LoopEvent {
+    Shutdown(Shutdown),
+    MaintainPlaylist,
+    MaintainBuckets,
+    SpigotCmd {
+        reply_to: oneshot::Sender<beet_pusher::pipe_exec::ResponseResultInner>,
+        cmd: SpigotCmd,
+    },
+}
+impl From<Shutdown> for LoopEvent {
+    fn from(value: Shutdown) -> Self {
+        Self::Shutdown(value)
+    }
+}
+
+/// Helper to schedule the ready time for a task
+struct DebounceTask {
+    last_run: Option<std::time::Instant>,
+    interval: std::time::Duration,
+    is_active: bool,
+}
+impl DebounceTask {
+    fn new(interval: std::time::Duration) -> Self {
+        Self {
+            last_run: None,
+            interval,
+            is_active: true,
+        }
+    }
+    fn is_ready(&self) -> bool {
+        let Self {
+            last_run,
+            interval,
+            is_active,
+        } = *self;
+
+        if !is_active {
+            return false;
         }
 
-        std::thread::sleep(SLEEP_DURATION);
+        if let Some(last_run) = last_run
+            && last_run.elapsed() < interval
+        {
+            // last ran within the interval
+            return false;
+        }
+
+        // ran too long ago, or never ran
+        true
     }
-    Ok(())
+    /// Schedules the task after the interval from now
+    fn defer(&mut self) {
+        self.last_run = Some(std::time::Instant::now());
+    }
+    /// Blocks `is_ready` when `active` is false
+    fn set_active(&mut self, active: bool) {
+        self.is_active = active;
+    }
+    /// Sets the timer to ready when next active
+    fn set_immediate(&mut self) {
+        self.last_run = None;
+    }
 }
 
 fn init_tracing() {
     use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 }
@@ -183,24 +308,24 @@ fn setup_spigot(
     let mut spigot = Network::from_commands_str_whitespace(script)?;
     fill_buckets(beet_cmd, &mut spigot)?;
 
-    if spigot.is_empty() {
-        eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
-    }
+    // NOTE: Empty is a valid startup state
+    // if spigot.is_empty() {
+    //     eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
+    // }
 
     Ok(spigot)
 }
 
-fn pipe_cmd_loop() -> eyre::Result<()> {
+fn pipe_cmd_loop(loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>) -> eyre::Result<()> {
     use beet_pusher::pipe_exec::ResponseOut;
 
     for line in std::io::stdin().lines() {
         let line = line.context("failed to read from stdin")?;
-        let result = ResponseOut::from(pipe_cmd(line));
+        let result = ResponseOut::from(pipe_cmd(loop_tx, line));
 
         // view for json
         let result_json = serde_json::to_string(&result).context("failed to serialize error");
 
-        #[expect(irrefutable_let_patterns, reason = "Ok case is TODO")]
         if let ResponseOut::Error(err) = result {
             // consume to print eyre
             eprintln!("{:?}", eyre::eyre!(err));
@@ -212,12 +337,29 @@ fn pipe_cmd_loop() -> eyre::Result<()> {
 
     Ok(())
 }
-fn pipe_cmd(line: String) -> beet_pusher::pipe_exec::ResponseResult {
-    let _cmd: beet_pusher::pipe_exec::CommandIn = serde_json::from_str(&line)
-        .map_err(|e| beet_pusher::pipe_exec::Error::new_invalid_command(line, e))?;
+fn pipe_cmd(
+    loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>,
+    line: String,
+) -> beet_pusher::pipe_exec::ResponseResult {
+    const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
-    // TODO execute commands
-    todo!()
+    let beet_pusher::pipe_exec::CommandIn { seq, cmd } = serde_json::from_str(&line)
+        .map_err(|e| beet_pusher::pipe_exec::Error::new_invalid_command(line, e))?;
+    match cmd {
+        beet_pusher::pipe_exec::Command::Spigot(cmd) => {
+            let (reply_to, rx) = oneshot::channel();
+            let _ = loop_tx.send(LoopEvent::SpigotCmd { reply_to, cmd });
+            match rx.recv_timeout(RESPONSE_TIMEOUT) {
+                Ok(result) => result.map(|data| (seq, data)),
+                Err(e) => match e {
+                    oneshot::RecvTimeoutError::Timeout
+                    | oneshot::RecvTimeoutError::Disconnected => {
+                        Err(beet_pusher::pipe_exec::Error::InternalTimeout)
+                    }
+                },
+            }
+        }
+    }
 }
 
 mod now_playing_observer {

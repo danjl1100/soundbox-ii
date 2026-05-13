@@ -7,6 +7,12 @@ criteria = "safe-to-deploy"
 delta = "1.12.1 -> 1.12.0"
 notes = "Docs change and inconsequential lifetime annotation"
 
+[[audits.console]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.15.11 -> 0.16.3"
+notes = '''Only adds true colors and other non-relevant changes. Noted a panic path added (PR \#287), but it's still safe to run.'''
+
 [[audits.errno]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -37,6 +43,22 @@ criteria = "safe-to-deploy"
 delta = "1.2.0 -> 1.0.0"
 notes = "No unsafe, and `#![no_std]`"
 
+[[audits.insta]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "1.43.2 -> 1.47.2"
+notes = """
+New filesystem access appears in-line with the purpose/functionality of the snapshot diff:
+INSTA_DIFF_TOOL - executes external diff tool
+INSTA_WARNINGS_FILE - writes to the specified file (for use in cargo-insta harness)
+"""
+
+[[audits.oneshot]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.1.11 -> 0.2.1"
+notes = "Core channel functionality relies on unsafe, diff appears to only restructure logic.  Cursory look at safety shows preconditions are met."
+
 [[audits.pathdiff]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -45,6 +67,12 @@ notes = """
 No unsafe, direct port of [cited std source] with `camino` optional duplication
 [cited std source]: https://github.com/rust-lang/rust/blob/e1d0de82cc40b666b88d4a6d2c9dcbc81d7ed27f/src/librustc_back/rpath.rs#L116-L158
 """
+
+[[audits.ron]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.12.0 -> 0.12.1"
+notes = "Minor changes to integer bases and ignoring certain attributes."
 
 [[audits.serde_json]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -63,6 +91,12 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "2.0.16 -> 2.0.18"
 notes = "No unsafe changes, only changing clippy allows generated and identifier for `__private`"
+
+[[audits.typeid]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+version = "1.0.3"
+notes = "Only const type manipulation, no surprising consequences."
 
 [[audits.version_check]]
 who = "Daniel Lambert <danjl1100@gmail.com>"

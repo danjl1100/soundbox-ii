@@ -5,33 +5,35 @@ use serde_json::json;
 
 mod pipe_runner;
 
-fn base_beet_config(c: &mut fake_beet::ConfigAll) {
-    // this is the current default script,
-    // when changed then this will be emptier or completely unused
-    c.for_args(["ls", "-f$id=$path", "grouping:1|2|3|4|5", "has_lyrics::^$"])
-        .stdout_lines(["1=/path/to/file1.mp3", "2=/path/to/file2.mp3"]);
-    c.for_args(["ls", "-f$id=$path", "added:2020..", "grouping::^$"])
-        .stdout_lines(["5=/path/recent_file1.mp3", "6=/path/recent_file2.mp3"]);
-    c.for_args(["ls", "-f$id=$path", "grouping::1|2|3|4|5", "has_lyrics::^$"])
-        .stdout_lines(["7=/path/lyrics_file1.mp3"]);
-}
+// TODO remove if not needed
+// fn base_beet_config(c: &mut fake_beet::ConfigAll) {
+//     // this is the current default script,
+//     // when changed then this will be emptier or completely unused
+//     c.for_args(["ls", "-f$id=$path", "grouping:1|2|3|4|5", "has_lyrics::^$"])
+//         .stdout_lines(["1=/path/to/file1.mp3", "2=/path/to/file2.mp3"]);
+//     c.for_args(["ls", "-f$id=$path", "added:2020..", "grouping::^$"])
+//         .stdout_lines(["5=/path/recent_file1.mp3", "6=/path/recent_file2.mp3"]);
+//     c.for_args(["ls", "-f$id=$path", "grouping::1|2|3|4|5", "has_lyrics::^$"])
+//         .stdout_lines(["7=/path/lyrics_file1.mp3"]);
+// }
 
 #[test]
 fn stdin_reports_unknown_command() -> eyre::Result<()> {
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {
-        let fake_beet_config = fake_beet::ConfigAll::setup_with(|c| {
-            base_beet_config(c);
-        });
+        let fake_beet_config = fake_beet::ConfigAll::default();
 
         let mut r = PipeRunner::spawn(vlc, &fake_beet_config)?;
         let bad_input = "test string is **NOT** a JSON object";
         r.send_stdin_line(bad_input)?;
 
         let Output {
-            stdout: _,
+            stdout,
             stdout_json_lines,
             stderr,
         } = r.wait_success()?;
+
+        eprintln!("STDOUT:\n{stdout}\nEND");
+        eprintln!("STDERR:\n{stderr}\nEND");
 
         JsonLines::one(json!({
             "error": {
@@ -55,11 +57,14 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
 }
 
 #[test]
-#[ignore = "TODO"]
+#[ignore = "long runtime for 3 cycles to play 2 items"]
 fn stdin_modify_spigot() -> eyre::Result<()> {
+    const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(16);
+
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {
         let fake_beet_config = fake_beet::ConfigAll::setup_with(|c| {
-            base_beet_config(c);
+            c.for_args(["ls", "-f$id=$path", "arg1", "arg2", "arg3"])
+                .stdout_lines(["23=item1", "59=item2"]);
         });
 
         let mut r = PipeRunner::spawn(vlc, &fake_beet_config)?;
@@ -68,14 +73,21 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
                 "seq": 1,
                 "cmd": "add_node",
                 "parent": ".",
+                "node_kind": "bucket",
             }),
             json!({
                 "seq": 2,
-                "cmd": "set_filter",
+                "cmd": "set_filters",
                 "path": ".0",
-                "filters": ["arg1", "arg2", "arg3"],
+                "new_filters": ["arg1", "arg2", "arg3"],
             }),
         ]))?;
+
+        // TODO lower the timeout - shouldn't take more than 2x 5-second cycles... right?
+        // maybe send a "Track Next" after the first item, so that beet-pusher will update faster
+        let advanced_to_item1 = vlc.wait_for_play_next(WAIT_PLAY_NEXT_TIMEOUT);
+        dbg!("again!");
+        let advanced_to_item2 = vlc.wait_for_play_next(WAIT_PLAY_NEXT_TIMEOUT);
 
         let Output {
             stdout: _,
@@ -85,25 +97,55 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
 
         eprintln!("STDERR:\n{stderr}\nEND");
 
+        advanced_to_item1.expect("advanced to item1");
+        advanced_to_item2.expect("advanced to item2");
+
         JsonLines::new([
             json!({
                 "data": {
                     "reply_to_seq": 1,
                     "kind": "node_added",
-                    "node": ".0",
+                    "path": ".0",
                 }
             }),
             json!({
                 "data": {
                     "reply_to_seq": 2,
-                    "kind": "generic",
-                    "status": "pass",
+                    "kind": "pass",
                 }
             }),
         ])
         .assert_eq_stdout(stdout_json_lines)?;
 
         assert!(!stderr.to_lowercase().contains("error"), "error in stdout");
+
+        insta::assert_snapshot!(vlc.get_json_str(), @r#"
+        {
+          "items": {
+            "0": "file://base_url/item1",
+            "1": "file://base_url/item2"
+          },
+          "current_item_id": [
+            1,
+            "Playing"
+          ]
+        }
+        "#);
+
+        let playlist = vlc.get_playlist_cloned();
+        assert_eq!(
+            playlist,
+            vec![
+                vlc_http_test::model::Item {
+                    id: 0, // NOTE: VLC Id, not the Beet ID
+                    uri: "file://base_url/item1".to_string()
+                },
+                vlc_http_test::model::Item {
+                    id: 1,
+                    uri: "file://base_url/item2".to_string()
+                }
+            ]
+        );
 
         Ok(())
     })

@@ -130,6 +130,9 @@ mod fill_determined {
         /// # Panics
         /// Panics if the determined logic does not yield 1 item (TODO!!!)
         pub fn fill_determined(&mut self) -> Result<(), FillError<R::Error>> {
+            // TODO: refactor the function to accept the "empty" case, not error
+            // this error was initially to notify the user "nothing to do",
+            // but this is a more normal/acceptable scenario now
             if self.spigot.is_empty() {
                 let view = self.spigot.view_table_default();
                 return Err(SpigotEmptyError {

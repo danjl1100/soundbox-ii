@@ -2,15 +2,12 @@
 //! Library helper for faking a `vlc` HTTP server in end-to-end integration tests
 
 use eyre::Context as _;
-use std::{
-    ops::ControlFlow,
-    sync::{Arc, Mutex},
-};
-use vlc_http_test::Model;
+use std::{ops::ControlFlow, sync::Arc};
 
 use crate::{auth_result::AuthError, only_socket_addr::SocketServer};
 
 pub use self::arbtest::{ArbTestWithFakeVlc, arbtest_with_fake_vlc};
+use self::inner_mut::InnerMut;
 
 mod arbtest;
 
@@ -25,10 +22,7 @@ struct InnerShared {
     fake_password: String,
     /// "Basic [base64]" version of `fake_password`
     fake_password_bearer: String,
-    inner_mut: Mutex<InnerMut>,
-}
-struct InnerMut {
-    model: Model,
+    inner_mut: InnerMut,
 }
 impl FakeVlc {
     /// Calls the specified function with an instance and configured
@@ -86,16 +80,11 @@ impl FakeVlc {
             format!("Basic {}", BASE64_STANDARD.encode(&user_pass))
         };
 
-        let inner_mut = InnerMut {
-            model: Model::default(),
-        };
-        let inner_mut = Mutex::new(inner_mut);
-
         let inner_shared = InnerShared {
             server,
             fake_password,
             fake_password_bearer,
-            inner_mut,
+            inner_mut: InnerMut::new(),
         };
         let inner_shared = Arc::new(inner_shared);
 
@@ -156,8 +145,32 @@ impl FakeVlc {
     /// e.g. spawned thread panicked)
     #[must_use]
     pub fn get_playlist_cloned(&self) -> Vec<vlc_http_test::model::Item> {
-        let inner_mut = self.inner_shared.inner_mut.lock().expect("no poison");
-        inner_mut.model.get_items().to_vec()
+        self.inner_shared
+            .inner_mut
+            .lock_with_model_ref(|model| model.get_items().to_vec())
+    }
+    /// Serializes the model state into a JSON string
+    ///
+    /// # Panics
+    ///
+    /// Panics if the inner mutex is poisoned (another thread holding the mutex,
+    /// e.g. spawned thread panicked)
+    #[must_use]
+    pub fn get_json_str(&self) -> String {
+        let json_result = self.inner_shared.inner_mut.lock_with_model_ref(|model| {
+            let json = model.as_json();
+            serde_json::to_string_pretty(&json)
+        });
+        json_result.expect("serialize")
+    }
+    /// Waits for a "next" item to be available (per
+    /// [`vlc_http_test::Model::get_available_next_track`]) then returns
+    /// `Some(())` after advancing the VLC model to be playing that track.
+    ///
+    /// Returns `None` if the timeout expires with no change in available items
+    #[expect(clippy::must_use_candidate, reason = "return diagnostic is optional")]
+    pub fn wait_for_play_next(&self, wait_timeout: std::time::Duration) -> Option<()> {
+        self.inner_shared.inner_mut.wait_for_play_next(wait_timeout)
     }
 }
 impl Drop for FakeVlc {
@@ -195,7 +208,7 @@ impl InnerShared {
         };
 
         let response_parts = match AuthError::from_request(&request, fake_password_bearer) {
-            Ok(()) => match InnerMut::model_request(inner_mut, &request) {
+            Ok(()) => match InnerMut::lock_model_request(inner_mut, &request) {
                 Ok(vlc_http_test::model::ModelResponse::Json(response)) => (response, None),
                 Ok(vlc_http_test::model::ModelResponse::Art) => {
                     ("request for Art".to_string(), Some(400))
@@ -225,14 +238,102 @@ impl InnerShared {
         ControlFlow::Continue(())
     }
 }
-impl InnerMut {
-    fn model_request(
-        mutex: &Mutex<Self>,
-        request: &tiny_http::Request,
-    ) -> Result<vlc_http_test::model::ModelResponse, vlc_http_test::model::RequestError> {
-        let mut inner_mut = mutex.lock().expect("no mutex poison");
-        let Self { model } = &mut *inner_mut;
-        model.request(request.url())
+
+mod inner_mut {
+    //! Invariants:
+    //! - Notifies [`InnerMut::current_playing`] when the Model's current playing item changes
+
+    use std::sync::{Condvar, Mutex};
+
+    use vlc_http_test::{
+        Model,
+        model::{ModelResponse, PlayState, RequestError},
+    };
+
+    pub struct InnerMut {
+        model: Mutex<Model>,
+        current_playing: Condvar,
+    }
+    impl InnerMut {
+        pub fn new() -> Self {
+            Self {
+                model: Mutex::new(Model::default()),
+                current_playing: Condvar::new(),
+            }
+        }
+        pub fn lock_model_request(
+            &self,
+            request: &tiny_http::Request,
+        ) -> Result<ModelResponse, RequestError> {
+            let Self {
+                model,
+                current_playing,
+            } = self;
+            let (result, changed) = {
+                let mut model = model.lock().expect("no mutex poison");
+                let prev_current_playing = model.get_current_playing();
+
+                dbg!(request.url());
+                let result = model.request(request.url());
+
+                let changed = model.get_current_playing() != prev_current_playing;
+                (result, changed)
+            };
+
+            if changed {
+                current_playing.notify_all();
+            }
+            result
+        }
+        // pub fn lock_set_current_playing(&self, id: i32, state: PlayState) {
+        //     let Self {
+        //         model,
+        //         current_playing,
+        //     } = self;
+
+        //     {
+        //         let mut model = model.lock().expect("no mutex poison");
+        //         model.set_current_playing(id, state);
+        //     }
+
+        //     current_playing.notify_all();
+        // }
+        pub fn wait_for_play_next(&self, wait_timeout: std::time::Duration) -> Option<()> {
+            let Self {
+                model,
+                current_playing,
+            } = self;
+            let model = model.lock().expect("no mutex poison");
+            let (mut model, wait_result) = current_playing
+                .wait_timeout_while(model, wait_timeout, |model| {
+                    dbg!(model.get_available_next_track()).is_none()
+                })
+                .expect("no mutex poison");
+
+            if wait_result.timed_out() {
+                return None;
+            }
+
+            #[expect(
+                clippy::panic,
+                reason = "violates Condvar::wait_timeout_white postcondition"
+            )]
+            let Some(next_track) = model.get_available_next_track() else {
+                panic!("wait succeeded but no next track")
+            };
+
+            let id = next_track.id;
+            let state = PlayState::Playing;
+            dbg!(next_track);
+            model.set_current_playing(id, state);
+
+            Some(())
+        }
+        // Non-mutable accessors
+        pub fn lock_with_model_ref<T>(&self, act_fn: impl FnOnce(&Model) -> T) -> T {
+            let model = self.model.lock().expect("no mutex poison");
+            act_fn(&model)
+        }
     }
 }
 

@@ -101,30 +101,48 @@ impl<T, U> Network<T, U> {
     /// # Errors
     /// Returns an error if the command does not match the current network state
     pub fn modify(&mut self, cmd: ModifyCmd<T, U>) -> Result<(), ModifyError> {
+        self.modify_and_get_created_path(cmd).map(|_| ())
+    }
+    /// Modify the network topology, returning a [`Path`] if a bucket or joint
+    /// was created
+    ///
+    /// # Errors
+    /// Returns an error if the command does not match the current network state
+    pub fn modify_and_get_created_path(
+        &mut self,
+        cmd: ModifyCmd<T, U>,
+    ) -> Result<Option<Path>, ModifyError> {
         let result = match cmd {
             ModifyCmd::AddBucket { parent } => {
                 let bucket = Child::Bucket(self.new_bucket());
-                let _path = self.add_child(bucket, parent)?;
-                Ok(())
+                let path = self.add_child(bucket, parent)?;
+                Ok(Some(path))
             }
             ModifyCmd::AddJoint { parent } => {
-                let _path = self.add_child(Child::Joint(Joint::default()), parent)?;
-                Ok(())
+                let path = self.add_child(Child::Joint(Joint::default()), parent)?;
+                Ok(Some(path))
             }
-            ModifyCmd::DeleteEmpty { path } => self.delete_empty(path),
+            ModifyCmd::DeleteEmpty { path } => self.delete_empty(path).map(|()| None),
             ModifyCmd::FillBucket {
                 bucket,
                 new_contents,
-            } => self.set_bucket_items(new_contents, bucket.as_ref()),
-            ModifyCmd::SetFilters { path, new_filters } => self.set_filters(new_filters, path),
-            ModifyCmd::SetWeight { path, new_weight } => self.set_weight(new_weight, path),
+            } => self
+                .set_bucket_items(new_contents, bucket.as_ref())
+                .map(|()| None),
+            ModifyCmd::SetFilters { path, new_filters } => {
+                self.set_filters(new_filters, path).map(|()| None)
+            }
+            ModifyCmd::SetWeight { path, new_weight } => {
+                self.set_weight(new_weight, path).map(|()| None)
+            }
             ModifyCmd::SetOrderType {
                 path,
                 new_order_type,
             } => Ok(self
                 .trees
                 .order
-                .set_order_type(new_order_type, path.as_ref())?),
+                .set_order_type(new_order_type, path.as_ref())?)
+            .map(|()| None),
         };
 
         #[cfg(test)]
