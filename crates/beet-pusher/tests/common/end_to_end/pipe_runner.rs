@@ -97,33 +97,59 @@ impl PipeRunner {
         Ok(output)
     }
     pub fn wait_for_result(self) -> eyre::Result<(Output, ExitStatus)> {
+        const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
         let Self {
             mut cmd,
             _temp_dir: _,
         } = self;
 
-        let stdin = cmd.stdin.take();
-        drop(stdin);
+        drop(cmd.stdin.take());
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Drain pipes concurrently — read_to_string blocks until the write-end
+        // closes (i.e. the child exits), so this captures all output reliably
+        // regardless of platform buffering timing.
+        let mut stdout_pipe = cmd.stdout.take().expect("stdout available");
+        let mut stderr_pipe = cmd.stderr.take().expect("stderr available");
+        let stdout_thread = std::thread::spawn(move || {
+            let mut buf = String::new();
+            stdout_pipe.read_to_string(&mut buf).map(|_| buf)
+        });
+        let stderr_thread = std::thread::spawn(move || {
+            let mut buf = String::new();
+            stderr_pipe.read_to_string(&mut buf).map(|_| buf)
+        });
 
-        cmd.kill().context("failed to kill subprocess")?;
+        // Wait for natural exit (stdin close should cause this), kill only as fallback
+        let deadline = std::time::Instant::now() + TIMEOUT;
+        loop {
+            if cmd
+                .try_wait()
+                .context("failed to check subprocess status")?
+                .is_some()
+            {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                cmd.kill().context("failed to kill subprocess")?;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         let exit_status = cmd.wait().context("failed to wait for subprocess")?;
 
-        let mut stdout_pipe = cmd.stdout.take().expect("stdout available");
-        let mut stdout = String::new();
-        stdout_pipe
-            .read_to_string(&mut stdout)
+        // Joining after wait() guarantees the pipe write-ends are closed, so
+        // these joins return immediately with complete output.
+        let stdout = stdout_thread
+            .join()
+            .expect("stdout thread panicked")
             .context("failed to read stdout")?;
-
-        let stdout_json_lines = stdout.parse();
-
-        let mut stderr_pipe = cmd.stderr.take().expect("stderr available");
-        let mut stderr = String::new();
-        stderr_pipe
-            .read_to_string(&mut stderr)
+        let stderr = stderr_thread
+            .join()
+            .expect("stderr thread panicked")
             .context("failed to read stderr")?;
 
+        let stdout_json_lines = stdout.parse();
         Ok((
             Output {
                 stdout,

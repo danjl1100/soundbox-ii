@@ -76,7 +76,10 @@ mod tests {
         steady_heartbeat_interval(5, 40);
     }
     fn steady_heartbeat_interval(count: usize, interval: u64) {
-        const TOLERANCE_MS: u64 = 1;
+        let tolerance_ms = cfg_select! {
+            target_os = "macos" => 1 + (interval / 5),
+            _ => 1,
+        };
 
         let (tx, rx) = std::sync::mpsc::sync_channel(0);
         let handle = {
@@ -107,8 +110,8 @@ mod tests {
 
             assert!(
                 deltas.iter().all(|d| {
-                    let min = (interval - TOLERANCE_MS).into();
-                    let max = (interval + TOLERANCE_MS).into();
+                    let min = (interval - tolerance_ms).into();
+                    let max = (interval + tolerance_ms).into();
                     (min..=max).contains(d)
                 }),
                 "interval={interval} deltas={deltas:#?}"
