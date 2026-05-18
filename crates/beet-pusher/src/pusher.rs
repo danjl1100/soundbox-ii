@@ -207,6 +207,8 @@ mod fill_determined {
 }
 
 mod push_playlist {
+    use crate::pipe_exec::VlcCmd;
+
     use super::{BeetPusher, NowPlayingObserver};
     use bucket_spigot::order::ArbitrarySource;
     use vlc_http::goal::TargetPlaylistItems;
@@ -290,6 +292,23 @@ mod push_playlist {
                     .map_err(ErrorKind::Observer)
                     .map_err(make_err)?;
             }
+            Ok(())
+        }
+        /// Runs the [`VlcCmd`] and updates the client state with the response
+        ///
+        /// # Errors
+        /// Returns an error if requesting the command endpoint or parsing the
+        /// response fails
+        pub fn vlc_cmd<E>(
+            &mut self,
+            http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
+            cmd: VlcCmd,
+        ) -> Result<(), E> {
+            let cmd = vlc_http::Command::from(cmd);
+
+            let response = http_runner.request(cmd.into())?;
+            self.client_state.update(response);
+
             Ok(())
         }
     }

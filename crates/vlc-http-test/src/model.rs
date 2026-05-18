@@ -237,6 +237,7 @@ impl Model {
                     Some("pl_repeat") => Ok(self.toggle_repeat_one()),
                     Some("pl_forcepause") => Ok(self.set_playing_paused()),
                     Some("pl_forceresume") => Ok(self.set_playing_resume()),
+                    Some("pl_next") => Ok(self.set_seek_next()),
                     Some(command) => Err(RequestErrorKind::unknown_command(
                         "playback no-arg",
                         command,
@@ -472,6 +473,14 @@ impl Model {
             };
             self.current_item_id = Some((id, new_state));
         }
+        self.get_playback_status()
+    }
+    fn set_seek_next(&mut self) -> String {
+        self.current_item_id = self.current_item_id.and_then(|(_, state)| {
+            let next = self.get_available_next_track()?;
+            Some((next.id, state))
+        });
+
         self.get_playback_status()
     }
 

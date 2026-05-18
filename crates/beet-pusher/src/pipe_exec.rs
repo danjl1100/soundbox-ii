@@ -21,6 +21,7 @@ pub struct CommandIn {
 #[serde(untagged)]
 pub enum Command {
     Spigot(SpigotCmd),
+    Vlc(VlcCmd),
 }
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(tag = "cmd")]
@@ -52,6 +53,22 @@ impl From<SpigotCmd> for bucket_spigot::ModifyCmd<BeetItem, String> {
             SpigotCmd::SetFilters { path, new_filters } => {
                 ModifyCmd::SetFilters { path, new_filters }
             }
+        }
+    }
+}
+
+/// Subset of [`vlc_http::command::Command`] allowed while [`crate::BeetPusher`]
+/// manages the playlist and playback mode
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(tag = "cmd")]
+#[serde(rename_all = "snake_case")]
+pub enum VlcCmd {
+    SeekNext,
+}
+impl From<VlcCmd> for vlc_http::Command {
+    fn from(value: VlcCmd) -> Self {
+        match value {
+            VlcCmd::SeekNext => Self::SeekNext,
         }
     }
 }
@@ -97,13 +114,15 @@ pub enum ResponseData {
 
 #[derive(Debug, serde::Serialize, thiserror::Error)] // NOTE: not `Deserialize`, tests should compare plain strings
 #[must_use]
-#[serde(tag = "kind")]
+#[serde(tag = "kind", content = "details")]
 #[serde(rename_all = "snake_case")]
 pub enum Error {
     #[error(transparent)]
     InvalidCommand(ErrorInvalidCommand),
     #[error(transparent)]
     SpigotError(#[serde(serialize_with = "serialize_as_display")] bucket_spigot::ModifyError),
+    #[error(transparent)]
+    VlcRequest(#[serde(serialize_with = "serialize_as_display")] vlc_http_ureq::Error),
     #[error("internal request operation timed out")]
     InternalTimeout,
 }

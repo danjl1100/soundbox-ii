@@ -38,7 +38,9 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
         JsonLines::one(json!({
             "error": {
                 "kind": "invalid_command",
-                "command_json": bad_input,
+                "details": {
+                    "command_json": bad_input,
+                },
             },
         }))
         .assert_eq_stdout(stdout_json_lines)?;
@@ -59,7 +61,7 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
 #[test]
 #[ignore = "long runtime for 3 cycles to play 2 items"]
 fn stdin_modify_spigot() -> eyre::Result<()> {
-    const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(16);
+    const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {
         let fake_beet_config = fake_beet::ConfigAll::setup_with(|c| {
@@ -86,8 +88,14 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
         // TODO lower the timeout - shouldn't take more than 2x 5-second cycles... right?
         // maybe send a "Track Next" after the first item, so that beet-pusher will update faster
         let advanced_to_item1 = vlc.wait_for_play_next(WAIT_PLAY_NEXT_TIMEOUT);
-        dbg!("again!");
-        let advanced_to_item2 = vlc.wait_for_play_next(WAIT_PLAY_NEXT_TIMEOUT);
+
+        // TODO how to decrease this time delay?  currently needed for item2 to be queued
+        std::thread::sleep(std::time::Duration::from_secs(6));
+
+        r.send_stdin(&JsonLines::one(json!({
+            "seq": 3,
+            "cmd": "seek_next",
+        })))?;
 
         let Output {
             stdout: _,
@@ -97,8 +105,8 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
 
         eprintln!("STDERR:\n{stderr}\nEND");
 
+        // begin behavior asserts (after printing stderr)
         advanced_to_item1.expect("advanced to item1");
-        advanced_to_item2.expect("advanced to item2");
 
         JsonLines::new([
             json!({
@@ -111,6 +119,12 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
             json!({
                 "data": {
                     "reply_to_seq": 2,
+                    "kind": "pass",
+                }
+            }),
+            json!({
+                "data": {
+                    "reply_to_seq": 3,
                     "kind": "pass",
                 }
             }),

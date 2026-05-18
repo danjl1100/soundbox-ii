@@ -6,7 +6,10 @@
 
 use crate::config_file::ConfigFile;
 use arg_util::ConfigFileOpen as _;
-use beet_pusher::{BeetItem, BeetPusher, Shutdown, fill_buckets, pipe_exec::SpigotCmd};
+use beet_pusher::{
+    BeetItem, BeetPusher, Shutdown, fill_buckets,
+    pipe_exec::{SpigotCmd, VlcCmd},
+};
 use clap::Parser;
 use eyre::Context as _;
 use std::{borrow::Cow, path::PathBuf, sync::mpsc::RecvTimeoutError};
@@ -211,6 +214,23 @@ fn main() -> eyre::Result<()> {
                         timer_fill_bucket.defer();
                         timer_fill_bucket.set_active(true);
                     }
+                    LoopEvent::VlcCmd { reply_to, cmd } => {
+                        use beet_pusher::pipe_exec::{Error, ResponseData};
+
+                        match cmd {
+                            VlcCmd::SeekNext => {
+                                // causes update to playlist
+                                timer_fill_playlist.set_immediate();
+                            }
+                        }
+
+                        tracing::trace!(?cmd);
+                        let result = match pusher.vlc_cmd(&mut http_runner, cmd) {
+                            Ok(()) => Ok(ResponseData::PassNoData),
+                            Err(e) => Err(Error::VlcRequest(e)),
+                        };
+                        let _ = reply_to.send(result);
+                    }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
                     #[expect(clippy::panic, reason = "invalid shutdown state")]
@@ -235,6 +255,10 @@ enum LoopEvent {
     SpigotCmd {
         reply_to: oneshot::Sender<beet_pusher::pipe_exec::ResponseResultInner>,
         cmd: SpigotCmd,
+    },
+    VlcCmd {
+        reply_to: oneshot::Sender<beet_pusher::pipe_exec::ResponseResultInner>,
+        cmd: VlcCmd,
     },
 }
 impl From<Shutdown> for LoopEvent {
@@ -341,24 +365,26 @@ fn pipe_cmd(
     loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>,
     line: String,
 ) -> beet_pusher::pipe_exec::ResponseResult {
+    use beet_pusher::pipe_exec::Command as PipeCommand;
     const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
     let beet_pusher::pipe_exec::CommandIn { seq, cmd } = serde_json::from_str(&line)
         .map_err(|e| beet_pusher::pipe_exec::Error::new_invalid_command(line, e))?;
-    match cmd {
-        beet_pusher::pipe_exec::Command::Spigot(cmd) => {
-            let (reply_to, rx) = oneshot::channel();
-            let _ = loop_tx.send(LoopEvent::SpigotCmd { reply_to, cmd });
-            match rx.recv_timeout(RESPONSE_TIMEOUT) {
-                Ok(result) => result.map(|data| (seq, data)),
-                Err(e) => match e {
-                    oneshot::RecvTimeoutError::Timeout
-                    | oneshot::RecvTimeoutError::Disconnected => {
-                        Err(beet_pusher::pipe_exec::Error::InternalTimeout)
-                    }
-                },
+    let (reply_to, rx) = oneshot::channel();
+
+    let event = match cmd {
+        PipeCommand::Spigot(cmd) => LoopEvent::SpigotCmd { reply_to, cmd },
+        PipeCommand::Vlc(cmd) => LoopEvent::VlcCmd { reply_to, cmd },
+    };
+
+    let _ = loop_tx.send(event);
+    match rx.recv_timeout(RESPONSE_TIMEOUT) {
+        Ok(result) => result.map(|data| (seq, data)),
+        Err(e) => match e {
+            oneshot::RecvTimeoutError::Timeout | oneshot::RecvTimeoutError::Disconnected => {
+                Err(beet_pusher::pipe_exec::Error::InternalTimeout)
             }
-        }
+        },
     }
 }
 
