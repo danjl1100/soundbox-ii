@@ -405,6 +405,7 @@ dependencies = [
  "rand 0.8.5",
  "serde_json",
  "tiny_http",
+ "tracing",
  "vlc-http",
  "vlc-http-auth",
  "vlc-http-cmd",
@@ -1430,6 +1431,7 @@ dependencies = [
  "arbtest",
  "serde",
  "serde_json",
+ "tracing",
  "urlencoding",
  "vlc-http",
 ]

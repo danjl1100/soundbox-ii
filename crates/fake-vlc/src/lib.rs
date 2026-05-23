@@ -273,7 +273,7 @@ mod inner_mut {
                 let mut model = model.lock().expect("no mutex poison");
                 let prev_current_playing = model.get_current_playing();
 
-                dbg!(request.url());
+                tracing::debug!(url = request.url(), "model request");
                 let result = model.request(request.url());
 
                 let changed = model.get_current_playing() != prev_current_playing;
@@ -306,7 +306,9 @@ mod inner_mut {
             let model = model.lock().expect("no mutex poison");
             let (mut model, wait_result) = current_playing
                 .wait_timeout_while(model, wait_timeout, |model| {
-                    dbg!(model.get_available_next_track()).is_none()
+                    let next_track = model.get_available_next_track();
+                    tracing::debug!(?next_track);
+                    next_track.is_none()
                 })
                 .expect("no mutex poison");
 
@@ -324,7 +326,7 @@ mod inner_mut {
 
             let id = next_track.id;
             let state = PlayState::Playing;
-            dbg!(next_track);
+            tracing::debug!(?next_track);
             model.set_current_playing(id, state);
 
             Some(())

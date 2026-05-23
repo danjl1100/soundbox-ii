@@ -130,6 +130,8 @@ mod fill_determined {
         /// # Panics
         /// Panics if the determined logic does not yield 1 item (TODO!!!)
         pub fn fill_determined(&mut self) -> Result<(), FillError<R::Error>> {
+            tracing::debug!("fill determined...");
+
             // TODO: refactor the function to accept the "empty" case, not error
             // this error was initially to notify the user "nothing to do",
             // but this is a more normal/acceptable scenario now

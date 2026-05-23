@@ -1,5 +1,8 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use crate::common::end_to_end::pipe_runner::{JsonLines, Output, PipeRunner};
+use crate::{
+    common::end_to_end::pipe_runner::{JsonLines, Output, PipeRunner},
+    init_tracing,
+};
 
 use serde_json::json;
 
@@ -62,6 +65,8 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
 #[ignore = "long runtime for 3 cycles to play 2 items"]
 fn stdin_modify_spigot() -> eyre::Result<()> {
     const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    init_tracing();
 
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {
         let fake_beet_config = fake_beet::ConfigAll::setup_with(|c| {

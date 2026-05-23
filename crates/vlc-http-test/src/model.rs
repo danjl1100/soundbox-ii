@@ -76,7 +76,7 @@ impl Model {
     }
     /// Sets the current playing item
     pub fn set_current_playing(&mut self, item_id: i32, state: PlayState) {
-        dbg!((item_id, state));
+        tracing::debug!(?item_id, ?state, "set_current_playing");
         self.current_item_id = Some((item_id, state));
     }
 
@@ -118,7 +118,7 @@ impl Model {
     #[must_use]
     pub fn get_available_next_track(&self) -> Option<&Item> {
         if let Some((current_id, _)) = self.current_item_id {
-            dbg!(&self.items);
+            tracing::debug!(items = ?self.items);
 
             let mut found_current = false;
             self.items.iter().find(|item| {
