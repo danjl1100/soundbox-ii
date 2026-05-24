@@ -1,5 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 pub use self::fill_determined::FillError as FillDeterminedError;
+pub use self::push_playlist::HintNeedPlaylistUpdate;
 use crate::{BaseUrl, BeetItem, Determined};
 use bucket_spigot::{Network, order::ArbitrarySource};
 
@@ -133,8 +134,7 @@ mod fill_determined {
         ///
         /// # Panics
         /// Panics if the determined logic does not yield 1 item (TODO!!!)
-        // TODO: pub(super)
-        pub fn fill_determined(&mut self) -> Result<(), FillError<R::Error>> {
+        pub(super) fn fill_determined(&mut self) -> Result<(), FillError<R::Error>> {
             tracing::debug!("fill determined...");
 
             if self.spigot.is_empty() {
@@ -198,7 +198,7 @@ mod fill_determined {
     //     view: String,
     // }
 
-    /// Error from [`BeetPusher::fill_determined`]
+    /// Error filling the determined items list (from the bucket spigot)
     #[derive(Debug, thiserror::Error)]
     pub enum FillError<E> {
         // TODO remove if unused
@@ -221,6 +221,9 @@ mod push_playlist {
     use bucket_spigot::order::ArbitrarySource;
     use vlc_http::goal::TargetPlaylistItems;
 
+    /// [`BeetPusher::push_playlist_update`] anticipates that it needs to run again
+    pub struct HintNeedPlaylistUpdate;
+
     impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Pushes the determined track list to VLC, notifies the `now_playing_observer`
         /// for the current track if it changed, and refills the determined list if needed
@@ -232,24 +235,20 @@ mod push_playlist {
             &mut self,
             http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
             now_playing_observer: Option<&mut T>,
-        ) -> Result<(), Error<T::Error, E, R::Error>>
+        ) -> Result<Option<HintNeedPlaylistUpdate>, Error<T::Error, E, R::Error>>
         where
             T: NowPlayingObserver,
             E: std::error::Error + 'static,
         {
             let make_err = |kind| Error { kind };
 
-            if self.determined.is_empty() {
-                // TODO
-                // // started empty, attempt to fill
-                // self.fill_determined()
-                //     .map_err(ErrorKind::FillDetermined)
-                //     .map_err(make_err)?;
+            self.fill_determined()
+                .map_err(ErrorKind::FillDetermined)
+                .map_err(make_err)?;
 
-                if self.determined.is_empty() {
-                    // nothing to do, don't waste querying effort until we have items to push
-                    return Ok(());
-                }
+            if self.determined.is_empty() {
+                // nothing to do, don't waste querying effort until we have items to push
+                return Ok(None);
             }
 
             let target = TargetPlaylistItems::new()
@@ -286,14 +285,11 @@ mod push_playlist {
                     .map_err(make_err)?
                     .map_err(ErrorKind::Observer)
                     .map_err(make_err)?;
-
-                // TODO
-                // // removed items, so refill is likely needed
-                // self.fill_determined()
-                //     .map_err(ErrorKind::FillDetermined)
-                //     .map_err(make_err)?;
             }
-            Ok(())
+
+            let hint = (self.is_determined_empty() && !self.spigot.is_empty())
+                .then_some(HintNeedPlaylistUpdate);
+            Ok(hint)
         }
         /// Runs the [`VlcCmd`] and updates the client state with the response
         ///
@@ -323,7 +319,6 @@ mod push_playlist {
         HttpRunner(Box<vlc_http::sync::Error<vlc_http::goal::ActionQuerySetItems, F>>),
         BeetPath(crate::path_url::ErrorBeetPath),
         Observer(E),
-        #[expect(unused, reason = "TODO")] // TODO
         FillDetermined(FillDeterminedError<G>),
     }
     impl<E, F, G> std::error::Error for Error<E, F, G>

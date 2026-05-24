@@ -175,22 +175,17 @@ fn main() -> eyre::Result<()> {
                 Ok(loop_event) => match loop_event {
                     LoopEvent::Shutdown(Shutdown) => break,
                     LoopEvent::MaintainPlaylist => {
-                        // TODO remove this IF
-                        if !pusher.get_spigot_mut().is_empty() {
-                            tracing::trace!("FILL DETERMINED");
-                            pusher.fill_determined()?;
-                        }
                         tracing::trace!("PLAYLIST UPDATE");
-                        pusher.push_playlist_update(
+                        let hint_need_fill = pusher.push_playlist_update(
                             &mut http_runner,
                             Some(&mut now_playing_observer),
                         )?;
                         // if VLC consumed the determined item, immediately peek the next one
                         // (faster than waiting for the next deferred cycle trigger)
-                        if pusher.is_determined_empty() && !pusher.get_spigot_mut().is_empty() {
+                        if let Some(beet_pusher::HintNeedPlaylistUpdate) = hint_need_fill {
                             timer_fill_playlist.set_immediate();
                         } else {
-                            // requires constant maintenance (VLC client self-advances)
+                            // requires periodic maintenance (VLC client self-advances)
                             timer_fill_playlist.defer();
 
                             // TODO: when push_playlist_update returns items_enqueued > 0,

@@ -220,16 +220,6 @@ fn empty_beet_result() -> eyre::Result<()> {
         runner.assert_empty();
     }
 
-    let _push_result = pusher.fill_determined();
-    // TODO: remove, instead moved into `push_playlist_update`
-    // assert!(
-    //     matches!(
-    //         push_result,
-    //         Err(beet_pusher::FillDeterminedError::SpigotEmptyError(_))
-    //     ),
-    //     "expected SpigotEmptyError, found {push_result:?}"
-    // );
-
     let (runner, now_playing) = push_playlist_update(pusher, model)?;
     now_playing.assert_playing(&[]);
     runner.assert_empty();
@@ -277,9 +267,6 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
 
         let expected_beet_items = &beet_items[loop_index..=loop_index];
 
-        // TODO: remove, moved into `push_playlist_update`
-        pusher.fill_determined()?;
-
         {
             let (runner, now_playing) = push_playlist_update(pusher, model)?;
             now_playing.assert_playing(&[]);
@@ -304,9 +291,6 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
         assert_eq!(&item_urls, &file_urls[0..=loop_index]);
 
         model.set_current_playing(set_playing_id, PlayState::Playing);
-
-        // TODO: remove, moved into `push_playlist_update`
-        pusher.fill_determined()?;
 
         {
             let (runner, now_playing) = push_playlist_update(pusher, model)?;
