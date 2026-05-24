@@ -37,7 +37,7 @@ pub mod order {
     pub use self::fallible_rng::{ArbitrarySource, ErrorRng};
     pub(crate) use self::node::Node as OrderNode;
     pub(crate) use self::node::{Root, UnknownOrderPath};
-    pub use self::peek::Peeked;
+    pub use self::peek::{PeekAccepted, Peeked};
     use self::source::Order;
     #[expect(clippy::module_name_repetitions, reason = "name for re-export")]
     pub use self::source::OrderType;

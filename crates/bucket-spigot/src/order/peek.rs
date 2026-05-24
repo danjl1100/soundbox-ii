@@ -10,7 +10,7 @@ impl<T, U> Network<T, U> {
     /// peeked items (depending on the child-ordering involved)
     ///
     /// # Errors
-    /// Returns any errors reported by the provided [`rand::Rng`] instance
+    /// Returns any errors reported by the provided [`ArbitrarySource`] instance
     ///
     /// # Panics
     /// Panics if the internal order state does not match the item node structure
@@ -224,6 +224,9 @@ impl<'a, T> Peeked<'a, T> {
         self.items
     }
     /// Accepts the peeked items, discarding them to allow updating the original network
+    ///
+    /// NOTE: The "accept" is not complete until the returned [`PeekAccepted`]
+    /// is passed into [`Network::finalize_peeked`]
     pub fn accept_into_inner(self) -> PeekAccepted {
         PeekAccepted {
             new_root_order: self.root_order,

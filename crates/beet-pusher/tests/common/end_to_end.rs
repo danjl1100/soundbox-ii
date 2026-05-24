@@ -62,9 +62,8 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
 }
 
 #[test]
-#[ignore = "long runtime for 3 cycles to play 2 items"]
 fn stdin_modify_spigot() -> eyre::Result<()> {
-    const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+    const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
     init_tracing();
 
@@ -90,12 +89,11 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
             }),
         ]))?;
 
-        // TODO lower the timeout - shouldn't take more than 2x 5-second cycles... right?
-        // maybe send a "Track Next" after the first item, so that beet-pusher will update faster
         let advanced_to_item1 = vlc.wait_for_play_next(WAIT_PLAY_NEXT_TIMEOUT);
 
-        // TODO how to decrease this time delay?  currently needed for item2 to be queued
-        std::thread::sleep(std::time::Duration::from_secs(6));
+        // wait for beet-pusher cycle 2 (5s interval) to detect item1 consumed,
+        // then cycle 3 fires ~100ms later via set_immediate to enqueue item2
+        std::thread::sleep(std::time::Duration::from_millis(5500));
 
         r.send_stdin(&JsonLines::one(json!({
             "seq": 3,
@@ -142,7 +140,8 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
         {
           "items": {
             "0": "file://base_url/item1",
-            "1": "file://base_url/item2"
+            "1": "file://base_url/item2",
+            "2": "file://base_url/item1"
           },
           "current_item_id": [
             1,
@@ -162,7 +161,11 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
                 vlc_http_test::model::Item {
                     id: 1,
                     uri: "file://base_url/item2".to_string()
-                }
+                },
+                vlc_http_test::model::Item {
+                    id: 2,
+                    uri: "file://base_url/item1".to_string()
+                },
             ]
         );
 

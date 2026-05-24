@@ -6,7 +6,7 @@
 pub use self::beet::{BeetCommand, BeetItem, BeetPath, BeetRunner, fill_buckets};
 pub use self::determined::{Determined, UrlSource};
 pub use self::path_url::BaseUrl;
-pub use self::pusher::{BeetPusher, FillDeterminedError, NowPlayingObserver, SpigotEmptyError};
+pub use self::pusher::{BeetPusher, FillDeterminedError, NowPlayingObserver};
 
 mod beet;
 mod determined;

@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-pub use self::fill_determined::{FillError as FillDeterminedError, SpigotEmptyError};
+pub use self::fill_determined::FillError as FillDeterminedError;
 use crate::{BaseUrl, BeetItem, Determined};
 use bucket_spigot::{Network, order::ArbitrarySource};
 
@@ -75,6 +75,11 @@ impl<R> BeetPusher<'_, R> {
     pub fn get_spigot_mut(&mut self) -> &mut Network<BeetItem, String> {
         &mut self.spigot
     }
+    /// Returns `true` if VLC has consumed all determined items (i.e. a refill is needed)
+    #[must_use]
+    pub fn is_determined_empty(&self) -> bool {
+        self.determined.is_empty()
+    }
 }
 
 mod sync {
@@ -119,28 +124,22 @@ mod fill_determined {
     use super::BeetPusher;
     use crate::BeetItem;
     use bucket_spigot::order::ArbitrarySource;
-    use tracing::debug;
 
     impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Updates the determined playlist items
         ///
         /// # Errors
-        /// Returns an error if the spigot is empty
+        /// Returns an error if the beet path is invalid or the [`ArbitrarySource`] fails
         ///
         /// # Panics
         /// Panics if the determined logic does not yield 1 item (TODO!!!)
+        // TODO: pub(super)
         pub fn fill_determined(&mut self) -> Result<(), FillError<R::Error>> {
             tracing::debug!("fill determined...");
 
-            // TODO: refactor the function to accept the "empty" case, not error
-            // this error was initially to notify the user "nothing to do",
-            // but this is a more normal/acceptable scenario now
             if self.spigot.is_empty() {
-                let view = self.spigot.view_table_default();
-                return Err(SpigotEmptyError {
-                    view: view.to_string(),
-                }
-                .into());
+                // nothing to do, no source data
+                return Ok(());
             }
 
             let peek_len = match self.determined.items().len() {
@@ -170,9 +169,14 @@ mod fill_determined {
                     })
                     .map_err(FillError::BeetPath)?;
 
+                // TODO: can this "finalize" be deferred?
+                // e.g. store the `PeekAccepted` in self, and finalize only when
+                // the item enters VLC (maximum user control of "next")
+                // - likely need a wrapper around `spigot` to clarify "accept" vs
+                //   "destroy" actions for each access
                 self.spigot.finalize_peeked(peeked.accept_into_inner());
 
-                debug!(
+                tracing::debug!(
                     items = ?self.determined.items(),
                     "Selected new desired items",
                 );
@@ -186,19 +190,21 @@ mod fill_determined {
         }
     }
 
-    /// Error from [`BeetPusher::fill_determined`] where the spigot is empty
-    #[derive(Debug, thiserror::Error)]
-    #[error("bucket-spigot network must be non-empty:\n{view}")]
-    pub struct SpigotEmptyError {
-        view: String,
-    }
+    // TODO remove if unused
+    // /// Error from [`BeetPusher::fill_determined`] where the spigot is empty
+    // #[derive(Debug, thiserror::Error)]
+    // #[error("bucket-spigot network must be non-empty:\n{view}")]
+    // pub struct SpigotEmptyError {
+    //     view: String,
+    // }
 
     /// Error from [`BeetPusher::fill_determined`]
     #[derive(Debug, thiserror::Error)]
     pub enum FillError<E> {
-        /// The spigot is empty, nothing to fill
-        #[error(transparent)]
-        SpigotEmptyError(#[from] SpigotEmptyError),
+        // TODO remove if unused
+        // /// The spigot is empty, nothing to fill
+        // #[error(transparent)]
+        // SpigotEmptyError(#[from] SpigotEmptyError),
         /// Fill failed to get randomness
         #[error("failed to get randomness")]
         Arbitrary(#[source] E),
@@ -209,36 +215,15 @@ mod fill_determined {
 }
 
 mod push_playlist {
-    use crate::pipe_exec::VlcCmd;
+    use crate::{FillDeterminedError, pipe_exec::VlcCmd};
 
     use super::{BeetPusher, NowPlayingObserver};
     use bucket_spigot::order::ArbitrarySource;
     use vlc_http::goal::TargetPlaylistItems;
 
-    // TODO remove if unused
-    // type InnerPlan = vlc_http::goal::ActionQuerySetItems;
-
-    // /// Output returned from executing the plan from [`BeetPusher::get_playlist_update`]
-    // #[derive(Clone, Copy, Debug)]
-    // pub struct PlaylistUpdate<'a>(<InnerPlan as vlc_http::Plan>::Output<'a>);
-
-    // #[derive(Debug)]
-    // pub struct PlaylistUpdatePlan(InnerPlan);
-    // impl vlc_http::Plan for PlaylistUpdatePlan {
-    //     type Output<'a> = PlaylistUpdate<'a>;
-
-    //     fn next<'a>(
-    //         &mut self,
-    //         state: &'a vlc_http::ClientState,
-    //     ) -> Result<vlc_http::goal::Step<Self::Output<'a>>, vlc_http::goal::Error> {
-    //         let Self(action) = self;
-    //         action.next(state).map(|step| step.map(PlaylistUpdate))
-    //     }
-    // }
-
     impl<R: ArbitrarySource> BeetPusher<'_, R> {
-        /// Pushes the determined track list to VLC and notifies the `now_playing_observer`
-        /// for the current track if it changed
+        /// Pushes the determined track list to VLC, notifies the `now_playing_observer`
+        /// for the current track if it changed, and refills the determined list if needed
         ///
         /// # Errors
         /// Returns an error if updating the determined list fails, or the [`NowPlayingObserver`]
@@ -247,7 +232,7 @@ mod push_playlist {
             &mut self,
             http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
             now_playing_observer: Option<&mut T>,
-        ) -> Result<(), Error<T::Error, E>>
+        ) -> Result<(), Error<T::Error, E, R::Error>>
         where
             T: NowPlayingObserver,
             E: std::error::Error + 'static,
@@ -255,8 +240,16 @@ mod push_playlist {
             let make_err = |kind| Error { kind };
 
             if self.determined.is_empty() {
-                // nothing to do, don't waste querying effort until we have items to push
-                return Ok(());
+                // TODO
+                // // started empty, attempt to fill
+                // self.fill_determined()
+                //     .map_err(ErrorKind::FillDetermined)
+                //     .map_err(make_err)?;
+
+                if self.determined.is_empty() {
+                    // nothing to do, don't waste querying effort until we have items to push
+                    return Ok(());
+                }
             }
 
             let target = TargetPlaylistItems::new()
@@ -293,6 +286,12 @@ mod push_playlist {
                     .map_err(make_err)?
                     .map_err(ErrorKind::Observer)
                     .map_err(make_err)?;
+
+                // TODO
+                // // removed items, so refill is likely needed
+                // self.fill_determined()
+                //     .map_err(ErrorKind::FillDetermined)
+                //     .map_err(make_err)?;
             }
             Ok(())
         }
@@ -316,19 +315,22 @@ mod push_playlist {
     }
 
     #[derive(Debug)]
-    pub struct Error<E, F> {
-        kind: ErrorKind<E, F>,
+    pub struct Error<E, F, G> {
+        kind: ErrorKind<E, F, G>,
     }
     #[derive(Debug)]
-    enum ErrorKind<E, F> {
+    enum ErrorKind<E, F, G> {
         HttpRunner(Box<vlc_http::sync::Error<vlc_http::goal::ActionQuerySetItems, F>>),
         BeetPath(crate::path_url::ErrorBeetPath),
         Observer(E),
+        #[expect(unused, reason = "TODO")] // TODO
+        FillDetermined(FillDeterminedError<G>),
     }
-    impl<E, F> std::error::Error for Error<E, F>
+    impl<E, F, G> std::error::Error for Error<E, F, G>
     where
         E: std::error::Error + 'static,
         F: std::error::Error + 'static,
+        G: std::error::Error + 'static,
     {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
             let Self { kind } = self;
@@ -336,10 +338,11 @@ mod push_playlist {
                 ErrorKind::HttpRunner(source) => Some(source),
                 ErrorKind::Observer(source) => Some(source),
                 ErrorKind::BeetPath(source) => Some(source),
+                ErrorKind::FillDetermined(source) => Some(source),
             }
         }
     }
-    impl<E, F> std::fmt::Display for Error<E, F> {
+    impl<E, F, G> std::fmt::Display for Error<E, F, G> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             let Self { kind } = self;
             match kind {
@@ -348,6 +351,7 @@ mod push_playlist {
                 ErrorKind::BeetPath(_) => {
                     write!(f, "failed to update the determined playlist URLs")
                 }
+                ErrorKind::FillDetermined(_) => write!(f, "failed to fill determined list"),
             }
         }
     }
