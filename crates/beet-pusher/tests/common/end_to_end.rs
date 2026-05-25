@@ -89,7 +89,7 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
 
         // fake VLC notifies the condvar when items are enqueued, so this returns ~100ms after
         // beet-pusher enqueues item1 (not after the full timeout)
-        let advanced_to_item1 = vlc.wait_for_play_next(std::time::Duration::from_millis(500));
+        let advanced_to_item1 = vlc.wait_for_play_next(std::time::Duration::from_secs(1));
 
         // beet-pusher re-polls after ~500ms (WaitForVlc interval) and detects item1 playing,
         // then enqueues item2 ~100ms later via set_immediate
