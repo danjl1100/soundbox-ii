@@ -184,14 +184,6 @@ criteria = "safe-to-deploy"
 version = "0.2.21"
 criteria = "safe-to-deploy"
 
-[[exemptions.proc-macro2]]
-version = "1.0.106"
-criteria = "safe-to-deploy"
-
-[[exemptions.quote]]
-version = "1.0.45"
-criteria = "safe-to-deploy"
-
 [[exemptions.r-efi]]
 version = "5.3.0"
 criteria = "safe-to-deploy"
@@ -335,10 +327,6 @@ criteria = "safe-to-deploy"
 [[exemptions.windows-sys]]
 version = "0.52.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.windows-sys]]
-version = "0.59.0"
-criteria = "safe-to-run"
 
 [[exemptions.windows-sys]]
 version = "0.60.2"

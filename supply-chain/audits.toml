@@ -1,6 +1,12 @@
 
 # cargo-vet audits file
 
+[[audits.axum-core]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.5.6"
+notes = "Forbid unsafe, no ambient capabilities seen"
+
 [[audits.bstr]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -24,6 +30,45 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "2.3.0 -> 2.4.1"
 notes = "No unsafe in diff, only tweaks to rand generation algorithms"
+
+[[audits.futures-channel]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.32"
+notes = "No change to unsafe nor ambient capabilities"
+
+[[audits.futures-core]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.32"
+notes = "Tiny change in atomic_waker.rs to validate the previous state"
+
+[[audits.futures-task]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.32"
+notes = "No ambient capabilities. Waker related usage of unsafe; queried an LLM for any obvious safety violations and didn't find any. Low confidence, but at least this crate is relatively simple."
+
+[[audits.futures-util]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.32"
+notes = """
+With only a surface-level understanding, no ambient capabilities found. Asked an LLM about the extensive unsafe usage, and no issues were identified (obviously, I have fairly low confidence, but this is a well known library).
+My \"review\" basically serves as a cargo-vet exemption, to enable future diff reviews. Other orgs seem to blanket trust the author, but I'm looking forward to reviewing deltas from here.
+"""
+
+[[audits.http-body]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.0 -> 1.0.1"
+notes = "No functional code change, license and rust version update"
+
+[[audits.http-body-util]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.1.0 -> 0.1.3"
+notes = "No change to unsafe nor ambient capabilities"
 
 [[audits.humantime]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -53,6 +98,18 @@ INSTA_DIFF_TOOL - executes external diff tool
 INSTA_WARNINGS_FILE - writes to the specified file (for use in cargo-insta harness)
 """
 
+[[audits.matchit]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.8.4"
+notes = "No ambient capabilities, and tiny unsafe seems sound (around UnsafeCell &self -> &T, &mut self -> &mut T)"
+
+[[audits.mime]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.16"
+notes = "One unsafe usage is trivially sound, no ambient capabilities"
+
 [[audits.oneshot]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -74,11 +131,41 @@ criteria = "safe-to-run"
 delta = "0.12.0 -> 0.12.1"
 notes = "Minor changes to integer bases and ignoring certain attributes."
 
+[[audits.ryu]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "1.0.23"
+notes = "On a cursory look, unsafe seems reasonable (unchecked buffer writes). No ambient capabilities, just float formatting as it says on the tin."
+
 [[audits.serde_json]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "1.0.145 -> 1.0.149"
 notes = "No unsafe in the diff, only upgraded from ryu to zmij"
+
+[[audits.serde_path_to_error]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.1.11 -> 0.1.20"
+notes = "No change to unsafe, only update to full u128 support and explicit string for values"
+
+[[audits.serde_urlencoded]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.7.1"
+notes = "Forbid unsafe, and no ambient capabilities, straight-forward"
+
+[[audits.slab]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.4.8 -> 0.4.12"
+notes = "Removed build script, added unsafe that looks valid (MaybeUninit in get_disjoint_mut fn)"
+
+[[audits.sync_wrapper]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "1.0.2"
+notes = "All unsafe is either pin projection (trivially provable) or impl Send, which is explained well by the docs"
 
 [[audits.thiserror]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -91,6 +178,24 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "2.0.16 -> 2.0.18"
 notes = "No unsafe changes, only changing clippy allows generated and identifier for `__private`"
+
+[[audits.tokio-macros]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "2.7.0"
+notes = "Proc macro, appears no unsafe nor ambient capabilities"
+
+[[audits.tower-layer]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.3"
+notes = "Forbid unsafe, and no ambient capabilities"
+
+[[audits.tower-service]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.3.3"
+notes = "Forbid unsafe, one trait with thorough docs"
 
 [[audits.typeid]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -110,6 +215,24 @@ criteria = "safe-to-deploy"
 delta = "1.0.20 -> 1.0.21"
 notes = "Unsafe usage is in the diff, with no safety comments. However, the unsafe usage is just refactored into a different function, the actual pointer indexing logic appears unchanged."
 
+[[trusted.axum]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2026-04-14"
+end = "2027-05-25"
+
+[[trusted.hyper]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2019-03-01"
+end = "2027-05-25"
+
+[[trusted.hyper-util]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2022-01-15"
+end = "2027-05-25"
+
 [[trusted.libc]]
 criteria = "safe-to-deploy"
 user-id = 55123 # rust-lang-owner
@@ -122,8 +245,32 @@ user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2021-06-12"
 end = "2027-05-02"
 
+[[trusted.mio]]
+criteria = "safe-to-deploy"
+user-id = 6025 # Thomas de Zeeuw (Thomasdezeeuw)
+start = "2019-12-17"
+end = "2027-05-25"
+
 [[trusted.rustix]]
 criteria = "safe-to-run"
 user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2021-10-29"
 end = "2027-05-02"
+
+[[trusted.socket2]]
+criteria = "safe-to-deploy"
+user-id = 6025 # Thomas de Zeeuw (Thomasdezeeuw)
+start = "2020-09-09"
+end = "2027-05-25"
+
+[[trusted.tokio]]
+criteria = "safe-to-deploy"
+user-id = 6741 # Alice Ryhl (Darksonn)
+start = "2020-12-25"
+end = "2027-05-25"
+
+[[trusted.tower]]
+criteria = "safe-to-deploy"
+user-id = 359 # Sean McArthur (seanmonstar)
+start = "2024-09-09"
+end = "2027-05-25"
