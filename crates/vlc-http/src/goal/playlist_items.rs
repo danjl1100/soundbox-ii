@@ -73,29 +73,6 @@ mod next_command;
 /// Sets the specified target and outputs matched items after the current playing item
 ///
 /// See [`Output`] for details
-//
-// # TODO: surface "items enqueued" in output
-//
-// Currently the output is only the matched-after-playing slice.  Callers that want to
-// use a shorter re-poll interval when new items were just enqueued (so they can detect
-// VLC starting playback sooner than the normal 5-second cycle) need a second piece of
-// information: did this execution issue any `in_enqueue` commands?
-//
-// Proposed change: change `Output` from `&'a [Item]` to a struct, e.g.
-// ```text
-// pub struct UpdateOutput<'a> {
-//     pub matched_after_playing: &'a [Item],
-//     pub items_enqueued: usize,   // count of in_enqueue commands issued this execution
-// }
-// ```
-// Track `items_enqueued` as a field on `Update`, incrementing it each time
-// `next_command` returns `NextCommand::PlaylistAdd` and the corresponding endpoint
-// is successfully executed (i.e. when `complete_plan` advances past that step).
-//
-// Callers (`BeetPusher::push_playlist_update`) can then propagate `items_enqueued`
-// upward, and the event loop can choose `timer_fill_playlist.defer_short()` (e.g. 500ms)
-// instead of the full 5-second interval when items were just freshly enqueued — giving
-// beet-pusher a quick follow-up check to detect VLC starting playback without busy-polling.
 #[derive(Clone)]
 pub(super) struct Update {
     target: Target<crate::url_fmt::DebugUrl>,
