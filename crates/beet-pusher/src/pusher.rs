@@ -222,7 +222,12 @@ mod push_playlist {
     use vlc_http::goal::TargetPlaylistItems;
 
     /// [`BeetPusher::push_playlist_update`] anticipates that it needs to run again
-    pub struct HintNeedPlaylistUpdate;
+    pub enum HintNeedPlaylistUpdate {
+        /// Available to run immediately (deterministic internal structure change)
+        Immediate,
+        /// Recommend to run after ~500ms, to allow VLC to catch up to reporting the new status
+        WaitForVlc,
+    }
 
     impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Pushes the determined track list to VLC, notifies the `now_playing_observer`
@@ -260,11 +265,12 @@ mod push_playlist {
                 .build_plan()
                 .set_playlist_and_query_matched(target);
 
-            let vlc_list = Self::complete_plan(action, &mut self.client_state, http_runner)
+            let playlist_result = Self::complete_plan(action, &mut self.client_state, http_runner)
                 .map_err(Box::new)
                 .map_err(ErrorKind::HttpRunner)
                 .map_err(make_err)?;
-            let vlc_len = vlc_list.len();
+            let vlc_len = playlist_result.get_matched_items().len();
+            let items_enqueued_count = playlist_result.get_items_enqueued_count();
             // remove completed items for the beginning of the `determined` list
             if let Some(excess_at_start) = self.determined.len().checked_sub(vlc_len) {
                 let () = self
@@ -287,8 +293,16 @@ mod push_playlist {
                     .map_err(make_err)?;
             }
 
-            let hint = (self.is_determined_empty() && !self.spigot.is_empty())
-                .then_some(HintNeedPlaylistUpdate);
+            let hint = {
+                // if VLC consumed the determined item, hint to immediately peek the next one
+                // (faster than waiting for the next deferred cycle trigger)
+                (self.is_determined_empty() && !self.spigot.is_empty())
+                    .then_some(HintNeedPlaylistUpdate::Immediate)
+            }
+            .or_else(|| {
+                // if queued any items, recommend repeating after VLC updates
+                (items_enqueued_count > 0).then_some(HintNeedPlaylistUpdate::WaitForVlc)
+            });
             Ok(hint)
         }
         /// Runs the [`VlcCmd`] and updates the client state with the response

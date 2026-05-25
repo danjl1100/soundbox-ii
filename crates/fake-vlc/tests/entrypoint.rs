@@ -48,7 +48,7 @@ fn arb_playlist_set_and_get() -> eyre::Result<()> {
             .set_playlist_and_query_matched(target_playlist_items);
         let result =
             vlc_http::sync::complete_plan(plan, &mut client_state, endpoint_caller, max_iter_count);
-        let read_items = unwrap_or_eyre_panic(result, &target);
+        let read_result = unwrap_or_eyre_panic(result, &target);
 
         // verify `FakeVlc::get_playlist` method matches the target
         let vlc_playlist_items: Vec<_> = vlc
@@ -60,7 +60,8 @@ fn arb_playlist_set_and_get() -> eyre::Result<()> {
 
         // verify FakeVlc HTTP query-result matches the target
         assert_eq!(
-            read_items
+            read_result
+                .get_matched_items()
                 .iter()
                 .map(|item| item.get_url().clone())
                 .collect::<Vec<_>>(),

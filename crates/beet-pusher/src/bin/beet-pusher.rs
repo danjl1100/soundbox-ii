@@ -153,23 +153,28 @@ fn main() -> eyre::Result<()> {
     // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
 
     {
-        const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_millis(100);
+        const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
         const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
         let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
-        let mut timer_fill_bucket = DebounceTask::new(SLEEP_DURATION);
+
+        let mut timer_fill_bucket = DebounceTask::new(TICK_INTERVAL);
         // only fill buckets when explicitly activated
         timer_fill_bucket.set_active(false);
+
         loop {
             let event = if timer_fill_playlist.is_ready() {
                 // highest priority - feed the externally-advancing VLC
                 Ok(LoopEvent::MaintainPlaylist)
             } else if timer_fill_bucket.is_ready() {
+                // only fill buckets when explicitly activated
+                timer_fill_bucket.set_active(false);
+
                 // next priority - update to reflect the user command
                 Ok(LoopEvent::MaintainBuckets)
             } else {
                 // lowest - process new commands
-                loop_rx.recv_timeout(SLEEP_DURATION)
+                loop_rx.recv_timeout(TICK_INTERVAL)
             };
             match event {
                 Ok(loop_event) => match loop_event {
@@ -180,18 +185,18 @@ fn main() -> eyre::Result<()> {
                             &mut http_runner,
                             Some(&mut now_playing_observer),
                         )?;
-                        // if VLC consumed the determined item, immediately peek the next one
-                        // (faster than waiting for the next deferred cycle trigger)
-                        if let Some(beet_pusher::HintNeedPlaylistUpdate) = hint_need_fill {
-                            timer_fill_playlist.set_immediate();
-                        } else {
-                            // requires periodic maintenance (VLC client self-advances)
-                            timer_fill_playlist.defer();
-
-                            // TODO: when push_playlist_update returns items_enqueued > 0,
-                            // use a short defer (~500ms) here instead of the full interval so
-                            // beet-pusher quickly detects VLC starting playback after a fresh
-                            // enqueue — see the TODO on `vlc_http::goal::playlist_items::Update`
+                        match hint_need_fill {
+                            Some(beet_pusher::HintNeedPlaylistUpdate::Immediate) => {
+                                timer_fill_playlist.set_immediate();
+                            }
+                            Some(beet_pusher::HintNeedPlaylistUpdate::WaitForVlc) => {
+                                timer_fill_playlist
+                                    .defer_with(std::time::Duration::from_millis(500));
+                            }
+                            None => {
+                                // requires periodic maintenance (VLC client self-advances)
+                                timer_fill_playlist.defer();
+                            }
                         }
                     }
                     LoopEvent::MaintainBuckets => {
@@ -199,8 +204,6 @@ fn main() -> eyre::Result<()> {
 
                         let spigot = pusher.get_spigot_mut();
                         fill_buckets(&mut beet_cmd, spigot)?;
-
-                        timer_fill_bucket.set_active(false);
 
                         // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
                         timer_fill_playlist.set_immediate();
@@ -311,6 +314,29 @@ impl DebounceTask {
     /// Schedules the task after the interval from now
     fn defer(&mut self) {
         self.last_run = Some(std::time::Instant::now());
+    }
+    /// Schedules the task after the specified interval (capped by [`Self::interval`]),
+    /// overriding the built-in interval for one time only
+    fn defer_with(&mut self, shorter_interval: std::time::Duration) {
+        // Recall, the condition to run:  (SCHEDULED - last_run) >= interval
+        //
+        // Set fake `last_run` to force the shorter_interval
+        //
+        // <*> fake last_run
+        //  |<------- interval ------->|
+        //            |<--- shorter -->|
+        //           <*> NOW          <*> SCHEDULED
+        //
+        //  |<------->|
+        //       ^ subtract_from_now
+        //
+        let subtract_from_now = self
+            .interval
+            .checked_sub(shorter_interval)
+            .unwrap_or_default();
+
+        // fake `last_run` so that it will trigger after the custom interval
+        self.last_run = std::time::Instant::now().checked_sub(subtract_from_now);
     }
     /// Blocks `is_ready` when `active` is false
     fn set_active(&mut self, active: bool) {

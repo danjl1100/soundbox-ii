@@ -113,7 +113,7 @@ struct Target<T> {
 /// Matched items and number of items enqueued after running the [`Plan`]
 ///
 /// NOTE: The serialize format is not considered to be part of the public API (more like [`Debug`])
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 pub struct Output<'a> {
     matched_items: &'a [response::playlist::Item],
     items_enqueued: usize,
@@ -124,8 +124,13 @@ impl<'a> Output<'a> {
     /// Output items will be items from a subset of the original target if playing desired items.
     /// The intended use is to advance a "want to play" list based on playback progress.
     #[must_use]
-    pub fn items(self) -> &'a [response::playlist::Item] {
+    pub fn get_matched_items(self) -> &'a [response::playlist::Item] {
         self.matched_items
+    }
+    /// Returns the number of items enqueued
+    #[must_use]
+    pub fn get_items_enqueued_count(self) -> usize {
+        self.items_enqueued
     }
 }
 
