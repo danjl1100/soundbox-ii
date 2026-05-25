@@ -1,7 +1,7 @@
 ---
-source: vlc-http/tests/test_cases.rs
+source: crates/vlc-http/tests/test_cases.rs
 expression: output
-input_file: vlc-http/tests/inputs/query-art-01.txt
+input_file: crates/vlc-http/tests/inputs/query-art-01.txt
 ---
 [
   LogEntry(Endpoint(

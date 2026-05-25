@@ -72,8 +72,7 @@ mod next_command;
 
 /// Sets the specified target and outputs matched items after the current playing item
 ///
-/// Output items will be items from a subset of the original target if playing desired items.
-/// The intended use is to advance a "want to play" list based on playback progress.
+/// See [`Output`] for details
 //
 // # TODO: surface "items enqueued" in output
 //
@@ -103,6 +102,7 @@ pub(super) struct Update {
     playback_mode: playback_mode::Set,
     query_playback: QueryPlayback,
     query_playlist: QueryPlaylist,
+    items_enqueued: usize,
 }
 #[derive(Clone, Debug)]
 struct Target<T> {
@@ -110,8 +110,27 @@ struct Target<T> {
     max_history_count: u16,
 }
 
+/// Matched items and number of items enqueued after running the [`Plan`]
+///
+/// NOTE: The serialize format is not considered to be part of the public API (more like [`Debug`])
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct Output<'a> {
+    matched_items: &'a [response::playlist::Item],
+    items_enqueued: usize,
+}
+impl<'a> Output<'a> {
+    /// Returns matched items after the current playing item
+    ///
+    /// Output items will be items from a subset of the original target if playing desired items.
+    /// The intended use is to advance a "want to play" list based on playback progress.
+    #[must_use]
+    pub fn items(self) -> &'a [response::playlist::Item] {
+        self.matched_items
+    }
+}
+
 impl Plan for Update {
-    type Output<'a> = &'a [response::playlist::Item];
+    type Output<'a> = Output<'a>;
 
     fn next<'a>(&mut self, state: &'a crate::ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         match self.playback_mode.next(state)? {
@@ -145,6 +164,8 @@ impl Plan for Update {
         if let Some(command) = command {
             let command = match command {
                 next_command::NextCommand::PlaylistAdd(url) => {
+                    self.items_enqueued = self.items_enqueued.saturating_add(1);
+
                     Command::PlaylistAdd { url: url.0.clone() }
                 }
                 next_command::NextCommand::PlaylistDelete(item) => Command::PlaylistDelete {
@@ -153,7 +174,10 @@ impl Plan for Update {
             };
             Ok(Step::Need(command.into()))
         } else {
-            Ok(Step::Done(matched_items))
+            Ok(Step::Done(Output {
+                matched_items,
+                items_enqueued: self.items_enqueued,
+            }))
         }
     }
 }
@@ -179,6 +203,7 @@ impl PlanConstructor for Update {
             playback_mode: playback_mode::Set::new(LINEAR_PLAYBACK, state),
             query_playback: QueryPlayback::new((), state),
             query_playlist: QueryPlaylist::new((), state),
+            items_enqueued: 0,
         }
     }
 }

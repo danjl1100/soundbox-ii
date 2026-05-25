@@ -1,5 +1,5 @@
 ---
-source: bucket-spigot/src/order/tests/random_seeded.rs
+source: crates/bucket-spigot/src/order/tests/random_seeded.rs
 expression: result
 ---
 125  	                                                                                                                                                                                                                                                          ><

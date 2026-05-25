@@ -1,5 +1,5 @@
 ---
-source: bucket-spigot/src/tests/view_table.rs
+source: crates/bucket-spigot/src/tests/view_table.rs
 expression: full
 ---
 Table {

@@ -2,6 +2,7 @@
 //
 //! High-level actions for VLC, requiring multiple steps to reach the desired state
 
+pub use self::playlist_items::Output as OutputQuerySetItems;
 use crate::{
     ClientState, Endpoint,
     client_state::{ClientStateSequence, InvalidClientInstance, Sequence},
@@ -175,7 +176,7 @@ impl Plan for ActionPlan {
     }
 }
 impl Plan for ActionQuerySetItems {
-    type Output<'a> = &'a [response::playlist::Item];
+    type Output<'a> = OutputQuerySetItems<'a>;
     fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
         self.0.next(state)
     }

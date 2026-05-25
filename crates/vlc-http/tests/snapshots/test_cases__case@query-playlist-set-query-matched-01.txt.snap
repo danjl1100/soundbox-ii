@@ -1,7 +1,7 @@
 ---
-source: vlc-http/tests/test_cases.rs
+source: crates/vlc-http/tests/test_cases.rs
 expression: output
-input_file: vlc-http/tests/inputs/query-playlist-set-query-matched-01.txt
+input_file: crates/vlc-http/tests/inputs/query-playlist-set-query-matched-01.txt
 ---
 [
   Harness(Model(
@@ -70,26 +70,29 @@ input_file: vlc-http/tests/inputs/query-playlist-set-query-matched-01.txt
     },
     current_item_id: Some((1, Playing)),
   )),
-  Output([
-    {
-      "duration_secs": 214,
-      "id": 2,
-      "name": "Item 2",
-      "url": "file:///new1",
-    },
-    {
-      "duration_secs": 300,
-      "id": 3,
-      "name": "Item 3",
-      "url": "file:///new2",
-    },
-    {
-      "duration_secs": 407,
-      "id": 4,
-      "name": "Item 4",
-      "url": "file:///new3",
-    },
-  ]),
+  Output({
+    "items_enqueued": 3,
+    "matched_items": [
+      {
+        "duration_secs": 214,
+        "id": 2,
+        "name": "Item 2",
+        "url": "file:///new1",
+      },
+      {
+        "duration_secs": 300,
+        "id": 3,
+        "name": "Item 3",
+        "url": "file:///new2",
+      },
+      {
+        "duration_secs": 407,
+        "id": 4,
+        "name": "Item 4",
+        "url": "file:///new3",
+      },
+    ],
+  }),
   LogEntry(Endpoint(
     path_and_query: "/requests/status.json?command=pl_play&id=2",
   ), Model(
@@ -126,20 +129,23 @@ input_file: vlc-http/tests/inputs/query-playlist-set-query-matched-01.txt
     },
     current_item_id: Some((2, Playing)),
   )),
-  Output([
-    {
-      "duration_secs": 300,
-      "id": 3,
-      "name": "Item 3",
-      "url": "file:///new2",
-    },
-    {
-      "duration_secs": 407,
-      "id": 4,
-      "name": "Item 4",
-      "url": "file:///new3",
-    },
-  ]),
+  Output({
+    "items_enqueued": 0,
+    "matched_items": [
+      {
+        "duration_secs": 300,
+        "id": 3,
+        "name": "Item 3",
+        "url": "file:///new2",
+      },
+      {
+        "duration_secs": 407,
+        "id": 4,
+        "name": "Item 4",
+        "url": "file:///new3",
+      },
+    ],
+  }),
   LogEntry(Endpoint(
     path_and_query: "/requests/status.json?command=pl_play&id=3",
   ), Model(
@@ -187,14 +193,17 @@ input_file: vlc-http/tests/inputs/query-playlist-set-query-matched-01.txt
     },
     current_item_id: Some((3, Playing)),
   )),
-  Output([
-    {
-      "duration_secs": 407,
-      "id": 4,
-      "name": "Item 4",
-      "url": "file:///new3",
-    },
-  ]),
+  Output({
+    "items_enqueued": 0,
+    "matched_items": [
+      {
+        "duration_secs": 407,
+        "id": 4,
+        "name": "Item 4",
+        "url": "file:///new3",
+      },
+    ],
+  }),
   LogEntry(Endpoint(
     path_and_query: "/requests/status.json?command=pl_play&id=4",
   ), Model(
@@ -238,5 +247,8 @@ input_file: vlc-http/tests/inputs/query-playlist-set-query-matched-01.txt
     },
     current_item_id: Some((4, Playing)),
   )),
-  Output([]),
+  Output({
+    "items_enqueued": 0,
+    "matched_items": [],
+  }),
 ]
