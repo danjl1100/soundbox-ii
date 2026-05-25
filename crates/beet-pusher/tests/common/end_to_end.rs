@@ -63,8 +63,6 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
 
 #[test]
 fn stdin_modify_spigot() -> eyre::Result<()> {
-    const WAIT_PLAY_NEXT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
-
     init_tracing();
 
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {
@@ -89,11 +87,13 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
             }),
         ]))?;
 
-        let advanced_to_item1 = vlc.wait_for_play_next(WAIT_PLAY_NEXT_TIMEOUT);
+        // fake VLC notifies the condvar when items are enqueued, so this returns ~100ms after
+        // beet-pusher enqueues item1 (not after the full timeout)
+        let advanced_to_item1 = vlc.wait_for_play_next(std::time::Duration::from_millis(500));
 
-        // wait for beet-pusher cycle 2 (5s interval) to detect item1 consumed,
-        // then cycle 3 fires ~100ms later via set_immediate to enqueue item2
-        std::thread::sleep(std::time::Duration::from_millis(5500));
+        // beet-pusher re-polls after ~500ms (WaitForVlc interval) and detects item1 playing,
+        // then enqueues item2 ~100ms later via set_immediate
+        std::thread::sleep(std::time::Duration::from_millis(800));
 
         r.send_stdin(&JsonLines::one(json!({
             "seq": 3,

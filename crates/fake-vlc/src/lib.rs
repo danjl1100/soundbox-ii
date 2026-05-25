@@ -272,11 +272,13 @@ mod inner_mut {
             let (result, changed) = {
                 let mut model = model.lock().expect("no mutex poison");
                 let prev_current_playing = model.get_current_playing();
+                let prev_items_len = model.get_items().len();
 
                 tracing::debug!(url = request.url(), "model request");
                 let result = model.request(request.url());
 
-                let changed = model.get_current_playing() != prev_current_playing;
+                let changed = model.get_current_playing() != prev_current_playing
+                    || model.get_items().len() != prev_items_len;
                 (result, changed)
             };
 
