@@ -7,17 +7,53 @@ criteria = "safe-to-deploy"
 version = "0.5.6"
 notes = "Forbid unsafe, no ambient capabilities seen"
 
+[[audits.axum-macros]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.5.1"
+notes = "Forbids unsafe, only possible capability seen was just a TCP bind example in doc tests"
+
 [[audits.bstr]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "1.12.1 -> 1.12.0"
 notes = "Docs change and inconsequential lifetime annotation"
 
+[[audits.config]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.15.23"
+notes = "No unsafe, no ambient capabilities seen"
+
 [[audits.console]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-run"
 delta = "0.15.11 -> 0.16.3"
 notes = '''Only adds true colors and other non-relevant changes. Noted a panic path added (PR \#287), but it's still safe to run.'''
+
+[[audits.darling]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.20.11"
+notes = "No unsafe, couldn't find any ambient capability use"
+
+[[audits.darling_core]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.20.11"
+notes = "No unsafe (except an error string `\"unsafe\"`), and no ambient capabilities"
+
+[[audits.darling_macro]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.20.11"
+notes = "Tiny stub for proc macro derives (no unsafe, no capabilities to speak of)"
+
+[[audits.dotenvy]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.15.7"
+notes = "Cursory look, no unsafe but calls `std::env::set_var` with no safety comments to the caller. Also reads files, for the .env file loading"
 
 [[audits.errno]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -42,6 +78,12 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.3.31 -> 0.3.32"
 notes = "Tiny change in atomic_waker.rs to validate the previous state"
+
+[[audits.futures-sink]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.31 -> 0.3.32"
+notes = "Cargo.toml changes only"
 
 [[audits.futures-task]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -75,6 +117,12 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 version = "2.3.0"
 notes = "Forbids unsafe, did not see any ambient capabilities used"
+
+[[audits.ident_case]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "1.0.1"
+notes = "No unsafe, simple lib.rs for identifier cases"
 
 [[audits.idna]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -143,6 +191,12 @@ criteria = "safe-to-deploy"
 delta = "1.0.145 -> 1.0.149"
 notes = "No unsafe in the diff, only upgraded from ryu to zmij"
 
+[[audits.serde_json]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.149 -> 1.0.150"
+notes = "No changes to unsafe, small change to deserialize logic"
+
 [[audits.serde_path_to_error]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -185,6 +239,12 @@ criteria = "safe-to-deploy"
 version = "2.7.0"
 notes = "Proc macro, appears no unsafe nor ambient capabilities"
 
+[[audits.tokio-tungstenite]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.29.0"
+notes = "No unsafe. Net usage justified, thin wrapper around tungstenite"
+
 [[audits.tower-layer]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -197,17 +257,41 @@ criteria = "safe-to-deploy"
 version = "0.3.3"
 notes = "Forbid unsafe, one trait with thorough docs"
 
+[[audits.tungstenite]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.28.0 -> 0.29.0"
+notes = "The new utf8 module adds unsafe, but it appears sound at a cursory look within the module"
+
 [[audits.typeid]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-run"
 version = "1.0.3"
 notes = "Only const type manipulation, no surprising consequences."
 
+[[audits.validator]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.20.0"
+notes = "No unsafe, no ambient capabilities seen"
+
+[[audits.validator_derive]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.20.0"
+notes = "No unsafe, no ambient capabilities found"
+
 [[audits.version_check]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.9.4 -> 0.9.5"
 notes = "Docs-only change"
+
+[[audits.winnow]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.7.13 -> 1.0.3"
+notes = "Removed some unsafe, and remaining unsafe diff looks reasonable"
 
 [[audits.zmij]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -250,6 +334,12 @@ criteria = "safe-to-deploy"
 user-id = 6025 # Thomas de Zeeuw (Thomasdezeeuw)
 start = "2019-12-17"
 end = "2027-05-25"
+
+[[trusted.regex]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-02-27"
+end = "2027-05-26"
 
 [[trusted.rustix]]
 criteria = "safe-to-run"
