@@ -8,5 +8,6 @@ in
       pkgs.biome
       pkgs.cargo-insta
       pkgs.cargo-vet
+      pkgs.npins
     ];
   }
