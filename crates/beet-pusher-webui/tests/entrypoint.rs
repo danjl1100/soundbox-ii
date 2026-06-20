@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 #![expect(missing_docs, reason = "TODO while building")]
 
 use axum::{Router, response::Response};
@@ -6,6 +7,7 @@ use beet_pusher_webui::{create_app, init_tracing};
 mod common {
     mod api_errors;
     mod api_happy_paths;
+    mod end_to_end;
 }
 
 static TRACING_ONCE: std::sync::Once = std::sync::Once::new();

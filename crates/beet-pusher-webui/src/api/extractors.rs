@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use std::collections::HashMap;
 
 use axum::{Json, extract::FromRequest};
@@ -36,8 +37,7 @@ fn format_validation_errors(errors: &validator::ValidationErrors) -> HashMap<Str
                 .map(|e| {
                     e.message
                         .as_ref()
-                        .map(|m| m.to_string())
-                        .unwrap_or_else(|| format!("{field} is invalid"))
+                        .map_or_else(|| format!("{field} is invalid"), ToString::to_string)
                 })
                 .collect();
             (field.to_string(), messages)

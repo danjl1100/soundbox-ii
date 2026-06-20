@@ -22,3 +22,5 @@ workspace = true
 
 [dev-dependencies]
 insta = { version = "1.48.0", features = ["json"] }
+stdio-test = { path = "../stdio-test" }
+ureq = { version = "3.3.0", default-features = false }

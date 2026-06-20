@@ -287,6 +287,24 @@ criteria = "safe-to-run"
 version = "1.0.3"
 notes = "Only const type manipulation, no surprising consequences."
 
+[[audits.ureq]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.9.1 -> 3.3.0"
+notes = "Very low confidence, but they forbid unsafe and uses of File seem consistent with the crate's purpose (no unexpected ambient capabilities for an HTTP client)"
+
+[[audits.ureq-proto]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.5.3 -> 0.6.0"
+notes = "Minor logic changes, not affecting consequences"
+
+[[audits.utf8-zero]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+version = "0.8.1"
+notes = "Some unsafe (didn't check all) but seems well scoped to byte/string manipulation"
+
 [[audits.validator]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"

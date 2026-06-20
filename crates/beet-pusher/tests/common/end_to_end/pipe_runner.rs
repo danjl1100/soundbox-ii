@@ -3,7 +3,7 @@
 use std::process::Command;
 
 use fake_beet::create_config_file;
-use stdio_test::StdioCmd;
+use stdio_test::{ExitStatusError, StdioCmd};
 pub use stdio_test::{JsonLines, Output};
 
 /// Spawns `bucket-spigot` in piped mode, collecting stdout and accepting inputs to forward to stdin
@@ -56,7 +56,7 @@ impl PipeRunner {
     {
         self.cmd.send_stdin_line(line)
     }
-    pub fn wait_success(self) -> eyre::Result<Output> {
+    pub fn wait_success(self) -> eyre::Result<Result<Output, ExitStatusError>> {
         const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
         self.cmd.wait_success(WAIT_TIMEOUT)

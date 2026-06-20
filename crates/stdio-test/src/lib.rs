@@ -23,17 +23,32 @@ impl StdioCmd {
     /// # Errors
     /// Returns an error if the provided `setup_fn` or command spawn fails
     pub fn spawn(setup_fn: impl FnOnce(&Path) -> eyre::Result<Command>) -> eyre::Result<Self> {
+        Self::spawn_with(|dir| {
+            let cmd = setup_fn(dir)?;
+            Ok((cmd, ()))
+        })
+        .map(|(this, ())| this)
+    }
+    /// Spawns the command
+    ///
+    /// # Errors
+    /// Returns an error if the provided `setup_fn` or command spawn fails
+    pub fn spawn_with<T>(
+        setup_fn: impl FnOnce(&Path) -> eyre::Result<(Command, T)>,
+    ) -> eyre::Result<(Self, T)> {
         let temp_dir = tempfile::tempdir().context("failed to create tempdir")?;
         let dir = temp_dir.path();
 
-        let mut cmd = setup_fn(dir)?;
+        let (mut cmd, extra) = setup_fn(dir)?;
 
         cmd.current_dir(dir);
         let cmd = StdioChild::spawn(cmd).context("failed to spawn command")?;
-        Ok(Self {
+
+        let this = Self {
             cmd,
             _temp_dir: temp_dir,
-        })
+        };
+        Ok((this, extra))
     }
     /// Sends JSON lines to stdin
     ///
@@ -70,10 +85,15 @@ impl StdioCmd {
     ///
     /// # Errors
     /// Returns an error if reading the process output fails
-    pub fn wait_success(self, timeout: std::time::Duration) -> eyre::Result<Output> {
+    pub fn wait_success(
+        self,
+        timeout: std::time::Duration,
+    ) -> eyre::Result<Result<Output, ExitStatusError>> {
         let (output, exit_status) = self.wait_for_result(timeout)?;
 
-        if !exit_status.success() {
+        if exit_status.success() {
+            Ok(Ok(output))
+        } else {
             let Output {
                 stdout,
                 stdout_json_lines: _,
@@ -81,10 +101,8 @@ impl StdioCmd {
             } = output;
             eprintln!("STDOUT:\n{stdout}\nEND");
             eprintln!("STDERR:\n{stderr}\nEND");
-            eyre::bail!("subprocess exited with code {exit_status:?}");
+            Ok(Err(ExitStatusError { exit_status }))
         }
-
-        Ok(output)
     }
     /// Closes stdin, drains stdout/stderr, then waits for the process to exit
     /// before killing the process
@@ -156,6 +174,19 @@ impl StdioCmd {
             },
             exit_status,
         ))
+    }
+}
+
+/// Error from [`StdioCmd::wait_success`]
+#[derive(Debug)]
+pub struct ExitStatusError {
+    exit_status: ExitStatus,
+}
+impl std::error::Error for ExitStatusError {}
+impl std::fmt::Display for ExitStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { exit_status } = self;
+        write!(f, "subprocess exited with code {exit_status:?}")
     }
 }
 

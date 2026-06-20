@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 #![expect(missing_docs, reason = "TODO while building")]
 
 use crate::{config::Config, state::AppState};
@@ -29,9 +30,13 @@ pub fn init_tracing(log_level: &str) {
     let json_output = std::env::var("LOG_JSON").is_ok_and(|v| v == "true" || v == "1");
 
     let fmt_layer = if json_output {
-        fmt::layer().json().boxed()
+        fmt::layer().json().with_writer(std::io::stderr).boxed()
     } else {
-        fmt::layer().pretty().boxed()
+        fmt::layer()
+            // multi-line [`tracing_subscriber::Pretty`] is too verbose...
+            // .pretty()
+            .with_writer(std::io::stderr)
+            .boxed()
     };
 
     tracing_subscriber::registry()

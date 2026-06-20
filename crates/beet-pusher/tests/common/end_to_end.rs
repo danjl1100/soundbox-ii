@@ -33,7 +33,7 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
             stdout,
             stdout_json_lines,
             stderr,
-        } = r.wait_success()?;
+        } = r.wait_success()??;
 
         eprintln!("STDOUT:\n{stdout}\nEND");
         eprintln!("STDERR:\n{stderr}\nEND");
@@ -104,7 +104,7 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
             stdout: _,
             stdout_json_lines,
             stderr,
-        } = r.wait_success()?;
+        } = r.wait_success()??;
 
         eprintln!("STDERR:\n{stderr}\nEND");
 
