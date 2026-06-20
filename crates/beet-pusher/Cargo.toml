@@ -36,6 +36,7 @@ oneshot = { version = "0.2.1", features = ["std"] }
 [dev-dependencies]
 fake-vlc = { path = "../fake-vlc" }
 insta = "1.47.2"
+stdio-test = { path = "../stdio-test" }
 tempfile = "3.27.0"
 urlencoding = "2.1.3"
 vlc-http-auth = { path = "../vlc-http-auth" }

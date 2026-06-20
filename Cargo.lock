@@ -214,6 +214,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "stdio-test",
  "tempfile",
  "thiserror",
  "toml",
@@ -1378,6 +1379,15 @@ dependencies = [
  "tiny_http",
  "ts-rs",
  "tungstenite 0.28.0",
+]
+
+[[package]]
+name = "stdio-test"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

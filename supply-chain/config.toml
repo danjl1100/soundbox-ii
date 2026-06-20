@@ -20,6 +20,10 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 criteria = "safe-to-run"
 notes = "fake-vlc is a test-only tool"
 
+[policy.stdio-test]
+criteria = "safe-to-run"
+notes = "stdio-test is a test-only tool"
+
 [policy.vlc-http-test]
 criteria = "safe-to-run"
 notes = "vlc-http-test is a test-only tool"

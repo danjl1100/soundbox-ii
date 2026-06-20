@@ -46,7 +46,7 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
                 },
             },
         }))
-        .assert_eq_stdout(stdout_json_lines)?;
+        .check_eq_stdout(stdout_json_lines)??;
 
         assert!(
             stderr.contains("test string is **NOT** a JSON object"),
@@ -132,7 +132,7 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
                 }
             }),
         ])
-        .assert_eq_stdout(stdout_json_lines)?;
+        .check_eq_stdout(stdout_json_lines)??;
 
         assert!(!stderr.to_lowercase().contains("error"), "error in stdout");
 
