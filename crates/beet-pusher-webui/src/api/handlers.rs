@@ -1,15 +1,41 @@
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{extract::State, http::StatusCode};
 
-use crate::{error::AppResult, state::AppState};
+use crate::{
+    api::{
+        JsonOut,
+        extractors::ValidatedJson,
+        handlers::dtos::{CreateBucketDto, CreateBucketResponse},
+    },
+    error::AppResult,
+    state::AppState,
+};
 
-// TODO
-#[derive(serde::Serialize)]
-pub struct NounResponse {
-    todo: &'static str,
+pub async fn health_check() -> StatusCode {
+    StatusCode::OK
 }
-// # Errors
-// Never returns an error. Nouns are always and forever.
-pub async fn list_nouns(state: State<AppState>) -> AppResult<(StatusCode, Json<NounResponse>)> {
-    let todo = "nouns???";
-    Ok((StatusCode::OK, Json(NounResponse { todo })))
+
+mod dtos {
+    pub(super) use crate::domain::models::NodePath;
+    use validator::Validate;
+
+    #[derive(serde::Deserialize, Validate)]
+    pub struct CreateBucketDto {
+        parent: NodePath,
+    }
+
+    #[derive(serde::Serialize)]
+    pub struct CreateBucketResponse {
+        pub path: NodePath,
+    }
+}
+#[axum::debug_handler]
+pub async fn node_create_bucket(
+    state: State<AppState>,
+    ValidatedJson(payload): ValidatedJson<CreateBucketDto>,
+) -> AppResult<(StatusCode, JsonOut<CreateBucketResponse>)> {
+    let path = ".0".parse().expect("valid constant"); // TODO
+    Ok((
+        StatusCode::OK,
+        JsonOut::success(CreateBucketResponse { path }),
+    ))
 }

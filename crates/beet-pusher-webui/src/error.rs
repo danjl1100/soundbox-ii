@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use axum::{http::StatusCode, response::IntoResponse};
+
+use crate::api::JsonOut;
 
 pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("resource not found")]
-    NotFound,
+    // #[error("resource not found")]
+    // NotFound,
     #[error("{0}")]
     Validation(String),
     #[error("validation failed")]
@@ -24,56 +26,43 @@ pub enum AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        let (status, error_type, message, fields) = match self {
-            AppError::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string(), None),
-            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "validation_error", msg, None),
-            AppError::ValidationFields(fields) => (
-                StatusCode::BAD_REQUEST,
-                "validation_error",
-                "request validation failed".to_string(),
-                Some(fields),
-            ),
+        let err = |error_type: &'static str, message: String| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("type".to_string(), error_type.into());
+            obj.insert("message".to_string(), message.into());
+            obj
+        };
+
+        let (status, err_value) = match self {
+            // AppError::NotFound => (
+            //     StatusCode::NOT_FOUND,
+            //     err("not_found", self.to_string()),
+            // ),
+            AppError::Validation(message) => {
+                (StatusCode::BAD_REQUEST, err("validation_error", message))
+            }
+            AppError::ValidationFields(fields) => {
+                let mut err_map = err("validation_error", "request validation failed".to_string());
+                err_map.insert("fields".to_string(), serde_json::json!(fields));
+                (StatusCode::BAD_REQUEST, err_map)
+            }
             AppError::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
-                "unauthorized",
-                self.to_string(),
-                None,
+                err("unauthorized", self.to_string()),
             ),
-            AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string(), None),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg, None),
-            AppError::Internal(err) => {
+            AppError::Forbidden => (StatusCode::FORBIDDEN, err("forbidden", self.to_string())),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, err("conflict", msg)),
+            AppError::Internal(error) => {
                 // Log the full error chain for debugging.
                 // This is the only place where the real error details are visible
-                tracing::error!(error = ?err, "internal server error");
+                tracing::error!(?error, "internal server error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal_error",
-                    "an internal error occurred".to_string(),
-                    None,
+                    err("internal_error", "an internal error occurred".to_string()),
                 )
             }
         };
 
-        let body = if let Some(fields) = fields {
-            serde_json::json!({
-                "todo": "error JSON structure", // TODO
-                "fields": fields,
-                // "error": {
-                //     "type": error_type,
-                //     "message": message,
-                //     "fields": fields,
-                // }
-            })
-        } else {
-            serde_json::json!({
-                "todo": "error JSON structure" // TODO
-                // "error": {
-                //     "type": error_type,
-                //     "message": message,
-                // }
-            })
-        };
-
-        (status, Json(body)).into_response()
+        (status, JsonOut::fail(err_value)).into_response()
     }
 }

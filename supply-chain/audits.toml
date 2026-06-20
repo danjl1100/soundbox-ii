@@ -41,7 +41,7 @@ notes = "No unsafe, couldn't find any ambient capability use"
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 version = "0.20.11"
-notes = "No unsafe (except an error string `\"unsafe\"`), and no ambient capabilities"
+notes = 'No unsafe (except an error string `"unsafe"`), and no ambient capabilities'
 
 [[audits.darling_macro]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -97,7 +97,7 @@ criteria = "safe-to-deploy"
 version = "0.3.32"
 notes = """
 With only a surface-level understanding, no ambient capabilities found. Asked an LLM about the extensive unsafe usage, and no issues were identified (obviously, I have fairly low confidence, but this is a well known library).
-My \"review\" basically serves as a cargo-vet exemption, to enable future diff reviews. Other orgs seem to blanket trust the author, but I'm looking forward to reviewing deltas from here.
+My "review" basically serves as a cargo-vet exemption, to enable future diff reviews. Other orgs seem to blanket trust the author, but I'm looking forward to reviewing deltas from here.
 """
 
 [[audits.http-body]]
@@ -145,6 +145,12 @@ New filesystem access appears in-line with the purpose/functionality of the snap
 INSTA_DIFF_TOOL - executes external diff tool
 INSTA_WARNINGS_FILE - writes to the specified file (for use in cargo-insta harness)
 """
+
+[[audits.insta]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "1.47.2 -> 1.48.0"
+notes = "No unsafe change, only YAML capabilities and ANSI removal"
 
 [[audits.matchit]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -256,6 +262,18 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 version = "0.3.3"
 notes = "Forbid unsafe, one trait with thorough docs"
+
+[[audits.tracing-serde]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = "No unsafe, straight forward tracing serde conversion layer"
+
+[[audits.tracing-subscriber]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.22 -> 0.3.23"
+notes = "No unsafe change, just adding ANSI sanitization option"
 
 [[audits.tungstenite]]
 who = "Daniel Lambert <danjl1100@gmail.com>"

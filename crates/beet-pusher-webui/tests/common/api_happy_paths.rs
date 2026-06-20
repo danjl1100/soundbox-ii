@@ -5,10 +5,9 @@ use axum::{
 use serde_json::json;
 use tower::ServiceExt as _;
 
-use crate::{response_json, test_app};
+use crate::{read_response, test_app};
 
 #[tokio::test]
-#[ignore = "TODO"]
 async fn health() -> eyre::Result<()> {
     let app = test_app().await;
 
@@ -22,26 +21,37 @@ async fn health() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "TODO"]
 async fn add_node() -> eyre::Result<()> {
     let app = test_app().await;
 
+    let uri = "/api/v1/nodes/create-bucket";
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/api/v1/nodes/./create-bucket")
-                .body(Body::empty())?,
+                .method("POST")
+                .uri(uri)
+                .header("Content-Type", "application/json")
+                .body(
+                    json!({
+                        "parent": ".",
+                    })
+                    .to_string(),
+                )?,
         )
         .await?;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let resp = read_response(uri, response).await?;
+
+    assert_eq!(resp.status, StatusCode::OK);
     assert_eq!(
-        response_json(response).await?,
+        resp.json?,
         json!({
+            "status": "success",
             "data": {
-                "path": ".0 or smth amazing I guess",
+                "path": ".0",
             },
-        })
+        }),
+        "uri={uri:?}"
     );
 
     Ok(())

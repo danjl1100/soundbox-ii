@@ -5,7 +5,7 @@
 
 use crate::BeetItem;
 
-use bucket_spigot::path::Path as NodePath;
+pub use bucket_spigot::path::Path as NodePath;
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
