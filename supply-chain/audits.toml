@@ -295,9 +295,21 @@ notes = "Very low confidence, but they forbid unsafe and uses of File seem consi
 
 [[audits.ureq-proto]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.5.3 -> 0.6.0"
+notes = "No impact to unsafe or ambient capabilities, sans-io model for ureq"
+
+[[audits.ureq-proto]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-run"
 delta = "0.5.3 -> 0.6.0"
 notes = "Minor logic changes, not affecting consequences"
+
+[[audits.utf8-zero]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.8.1"
+notes = "Low effort, 3 unsafe usages, 1 looks OK, 2 less clear. No ambient capabilities seen"
 
 [[audits.utf8-zero]]
 who = "Daniel Lambert <danjl1100@gmail.com>"

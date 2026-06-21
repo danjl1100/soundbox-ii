@@ -142,7 +142,7 @@ fn rejects_wrong_password() -> eyre::Result<()> {
         let err_eyre = eyre::eyre!(err);
         let err_str = format!("{err_eyre:?}");
         assert!(
-            err_str.contains("status code 403"),
+            err_str.contains("http status: 403"),
             "expected 403 error, got:\n{err_eyre:?}",
         );
 

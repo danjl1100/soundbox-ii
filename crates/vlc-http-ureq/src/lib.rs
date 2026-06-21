@@ -47,16 +47,43 @@ impl EndpointRequestor for HttpRunner {
 
         let request = {
             let (parts, ()) = request.into_parts();
-            ureq::Request::from(parts)
+            let ureq::http::request::Parts {
+                method,
+                uri,
+                headers,
+                extensions,
+                ..
+            } = parts;
+
+            let mut builder = if method == ureq::http::Method::GET {
+                ureq::get(uri)
+            // } else if method == ureq::http::Method::POST {
+            //     ureq::post(uri)
+            } else {
+                unimplemented!("unknown method {method:?}")
+            };
+            let headers_mut = builder
+                .headers_mut()
+                .expect("ureq builder should allow headers");
+            headers_mut.extend(headers);
+
+            let extensions_mut = builder
+                .extensions_mut()
+                .expect("ureq builder should allow extensions");
+            extensions_mut.extend(extensions);
+
+            builder
         };
 
-        let response = request
+        let mut response = request
             .call()
             .map_err(Box::new)
             .map_err(ErrorKind::RequestCall)
             .map_err(make_error)?;
         let response_body = response
-            .into_string()
+            .body_mut()
+            .read_to_string()
+            .map_err(Box::new)
             .map_err(ErrorKind::ResponseBody)
             .map_err(make_error)?;
 
@@ -84,7 +111,7 @@ pub struct Error {
 #[derive(Debug)]
 enum ErrorKind {
     RequestCall(Box<ureq::Error>),
-    ResponseBody(std::io::Error),
+    ResponseBody(Box<ureq::Error>),
     ResponseParse(vlc_http::response::ParseError),
 }
 impl std::error::Error for Error {
