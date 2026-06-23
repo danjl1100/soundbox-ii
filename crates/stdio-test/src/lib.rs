@@ -2,32 +2,84 @@
 //! Helpers for running a subcommand, sending to stdin, and receiving stdout
 
 use std::{
-    io::Read as _,
     path::Path,
     process::{Command, ExitStatus},
     str::FromStr,
 };
 
-use self::stdio_child::StdioChild;
+use crate::stdio_child::SpawnResult;
 
 use eyre::Context as _;
 
+/// String from stdout
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OutStr(pub String);
+/// String from stderr
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ErrStr(pub String);
+
+impl std::fmt::Display for OutStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(inner) = self;
+        write!(f, "{inner}")
+    }
+}
+impl std::fmt::Display for ErrStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(inner) = self;
+        write!(f, "{inner}")
+    }
+}
+// Hack, but oh so convenient
+impl std::ops::Deref for OutStr {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::Deref for ErrStr {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Signal to end the stdin forwarding loop
+pub struct StdinShutdown;
+
+type IoResultThread<T> = std::thread::JoinHandle<std::io::Result<T>>;
+
 /// Spawns a command in piped mode, collecting stdout and accepting inputs to forward to stdin
 pub struct StdioCmd {
-    cmd: StdioChild,
+    cmd: std::process::Child,
+    stdin_tx: std::sync::mpsc::SyncSender<Result<String, StdinShutdown>>,
+    stdin_thread: IoResultThread<()>,
+    stdout_thread: IoResultThread<OutStr>,
+    stderr_thread: IoResultThread<ErrStr>,
     _temp_dir: tempfile::TempDir,
+}
+/// Channels to send stdin lines and observe stdout and stderr lines
+pub struct OutObserver {
+    /// Sends lines to stdin
+    pub stdin_tx: std::sync::mpsc::SyncSender<Result<String, StdinShutdown>>,
+    /// Receives lines from stdout
+    pub stdout_rx: std::sync::mpsc::Receiver<OutStr>,
+    /// Receives lines from stderr
+    pub stderr_rx: std::sync::mpsc::Receiver<ErrStr>,
 }
 impl StdioCmd {
     /// Spawns the command
     ///
     /// # Errors
     /// Returns an error if the provided `setup_fn` or command spawn fails
-    pub fn spawn(setup_fn: impl FnOnce(&Path) -> eyre::Result<Command>) -> eyre::Result<Self> {
+    pub fn spawn(
+        setup_fn: impl FnOnce(&Path) -> eyre::Result<Command>,
+    ) -> eyre::Result<(Self, OutObserver)> {
         Self::spawn_with(|dir| {
             let cmd = setup_fn(dir)?;
             Ok((cmd, ()))
         })
-        .map(|(this, ())| this)
+        .map(|(this, out, ())| (this, out))
     }
     /// Spawns the command
     ///
@@ -35,20 +87,36 @@ impl StdioCmd {
     /// Returns an error if the provided `setup_fn` or command spawn fails
     pub fn spawn_with<T>(
         setup_fn: impl FnOnce(&Path) -> eyre::Result<(Command, T)>,
-    ) -> eyre::Result<(Self, T)> {
+    ) -> eyre::Result<(Self, OutObserver, T)> {
         let temp_dir = tempfile::tempdir().context("failed to create tempdir")?;
         let dir = temp_dir.path();
 
         let (mut cmd, extra) = setup_fn(dir)?;
 
         cmd.current_dir(dir);
-        let cmd = StdioChild::spawn(cmd).context("failed to spawn command")?;
+        let SpawnResult {
+            child: cmd,
+            stdin: (stdin_tx, stdin_thread),
+            stdout: (stdout_rx, stdout_thread),
+            stderr: (stderr_rx, stderr_thread),
+        } = stdio_child::spawn(cmd).context("failed to spawn command")?;
 
         let this = Self {
             cmd,
+            stdin_tx: stdin_tx.clone(),
+            stdin_thread,
+            stdout_thread,
+            stderr_thread,
             _temp_dir: temp_dir,
         };
-        Ok((this, extra))
+
+        let out = OutObserver {
+            stdin_tx,
+            stdout_rx,
+            stderr_rx,
+        };
+
+        Ok((this, out, extra))
     }
     /// Sends JSON lines to stdin
     ///
@@ -70,13 +138,10 @@ impl StdioCmd {
     where
         T: std::fmt::Display + ?Sized,
     {
-        use std::io::Write as _;
-
-        let stdin = self.cmd.stdin_mut();
-        writeln!(stdin, "{line}").with_context(|| {
-            let line = line.to_string();
-            format!("failed to serialize to stdin: {line:?}")
-        })?;
+        let line = line.to_string();
+        self.stdin_tx
+            .send(Ok(line))
+            .context("failed to queue stdin line")?;
 
         Ok(())
     }
@@ -114,27 +179,17 @@ impl StdioCmd {
         self,
         timeout: std::time::Duration,
     ) -> eyre::Result<(Output, ExitStatus)> {
-        let Self { cmd, _temp_dir: _ } = self;
+        let Self {
+            mut cmd,
+            stdin_tx,
+            stdin_thread,
+            stdout_thread,
+            stderr_thread,
+            _temp_dir: _,
+        } = self;
 
-        let (stdin, stdout, stderr, mut cmd) = cmd.into_parts();
-
-        drop(stdin);
-
-        // Drain pipes concurrently — read_to_string blocks until the write-end
-        // closes (i.e. the child exits), so this captures all output reliably
-        // regardless of platform buffering timing.
-        let stdout_thread = std::thread::spawn(move || {
-            let mut stdout = stdout;
-
-            let mut buf = String::new();
-            stdout.read_to_string(&mut buf).map(|_| buf)
-        });
-        let stderr_thread = std::thread::spawn(move || {
-            let mut stderr = stderr;
-
-            let mut buf = String::new();
-            stderr.read_to_string(&mut buf).map(|_| buf)
-        });
+        let _ = stdin_tx.send(Err(StdinShutdown));
+        drop(stdin_tx);
 
         // Wait for natural exit (stdin close should cause this), kill only as fallback
         let deadline = std::time::Instant::now() + timeout;
@@ -153,6 +208,9 @@ impl StdioCmd {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let exit_status = cmd.wait().context("failed to wait for subprocess")?;
+
+        // join stdin thread after process ends
+        stdin_thread.join().expect("stdin thread panicked")?;
 
         // Joining after wait() guarantees the pipe write-ends are closed, so
         // these joins return immediately with complete output.
@@ -193,12 +251,12 @@ impl std::fmt::Display for ExitStatusError {
 /// Stdout and stderr from a process, with fallible JSON-parsed stdout lines
 pub struct Output {
     /// Stdout as a (lossy) UTF-8 string
-    pub stdout: String,
+    pub stdout: OutStr,
     /// Stdout as [`JsonLines`], left as `Result` in case the test-caller
     /// tolerates non-JSON output
     pub stdout_json_lines: Result<JsonLines, serde_json::Error>,
     /// Stderr as a (lossy) UTF-8 string
-    pub stderr: String,
+    pub stderr: ErrStr,
 }
 
 /// Lines of JSON, for sending to stdin or verifying stdout
@@ -285,45 +343,91 @@ impl std::fmt::Display for EqStdoutError {
 }
 
 mod stdio_child {
-    use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
+    use std::{
+        io::BufReader,
+        process::{Child, Command},
+    };
 
-    /// [`std::process::Child`] with guaranteed access to stdin, stdout, and sterrr
-    pub(super) struct StdioChild(Child);
-    impl StdioChild {
-        pub fn spawn(mut cmd: Command) -> std::io::Result<Self> {
-            let child = cmd
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()?;
+    use crate::{ErrStr, OutStr, StdinShutdown};
 
-            assert!(child.stdin.is_some());
-            assert!(child.stdout.is_some());
-            assert!(child.stderr.is_some());
+    type ReceiverAndThread<T> = (
+        std::sync::mpsc::Receiver<T>,
+        std::thread::JoinHandle<std::io::Result<T>>,
+    );
 
-            Ok(Self(child))
+    /// [`std::process::Child`] with guaranteed access to stdin, and reads
+    /// stdout and sterrr
+    pub(super) struct SpawnResult {
+        pub child: Child,
+        pub stdin: (
+            std::sync::mpsc::SyncSender<Result<String, StdinShutdown>>,
+            std::thread::JoinHandle<std::io::Result<()>>,
+        ),
+        pub stdout: ReceiverAndThread<OutStr>,
+        pub stderr: ReceiverAndThread<ErrStr>,
+    }
+    pub fn spawn(mut cmd: Command) -> std::io::Result<SpawnResult> {
+        let mut child = cmd
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        let stdin = child.stdin.take().expect("stdin available");
+        let stdout = child.stdout.take().expect("stdout available");
+        let stderr = child.stderr.take().expect("stderr available");
+
+        let (stdin_line_tx, stdin_line_rx) = std::sync::mpsc::sync_channel(1);
+        let stdin_thread = std::thread::spawn(move || {
+            use std::io::Write as _;
+
+            let mut stdin = stdin;
+            for line in stdin_line_rx {
+                let line = match line {
+                    Ok(line) => line,
+                    Err(StdinShutdown) => break,
+                };
+                writeln!(&mut stdin, "{line}")?;
+            }
+            Ok(())
+        });
+
+        let (stdout_line_tx, stdout_line_rx) = std::sync::mpsc::channel();
+        let stdout_thread =
+            std::thread::spawn(move || read_stream(stdout, &stdout_line_tx, OutStr));
+        let (stderr_line_tx, stderr_line_rx) = std::sync::mpsc::channel();
+        let stderr_thread =
+            std::thread::spawn(move || read_stream(stderr, &stderr_line_tx, ErrStr));
+
+        Ok(SpawnResult {
+            child,
+            stdin: (stdin_line_tx, stdin_thread),
+            stdout: (stdout_line_rx, stdout_thread),
+            stderr: (stderr_line_rx, stderr_thread),
+        })
+    }
+
+    fn read_stream<R, T>(
+        stream: R,
+        line_tx: &std::sync::mpsc::Sender<T>,
+        label_fn: impl Fn(String) -> T,
+    ) -> std::io::Result<T>
+    where
+        R: std::io::Read,
+    {
+        use std::fmt::Write as _;
+        use std::io::BufRead as _;
+
+        let reader = BufReader::new(stream);
+
+        let mut buf = String::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            writeln!(&mut buf, "{line}").expect("string fmt infallible");
+            let _ = line_tx.send(label_fn(line));
         }
-        pub fn stdin_mut(&mut self) -> &mut ChildStdin {
-            let Self(inner) = self;
-            inner
-                .stdin
-                .as_mut()
-                .expect("stdin ensured by CmdStdio wrapper")
-        }
-        /// Returns the stdio parts, along with the stripped process handle
-        pub fn into_parts(self) -> (ChildStdin, ChildStdout, ChildStderr, Child) {
-            let Self(mut inner) = self;
 
-            let stdin = inner.stdin.take();
-            let stdout = inner.stdout.take();
-            let stderr = inner.stderr.take();
-
-            (
-                stdin.expect("stdin ensured by CmdStdio wrapper"),
-                stdout.expect("stdout ensured by CmdStdio wrapper"),
-                stderr.expect("stderr ensured by CmdStdio wrapper"),
-                inner,
-            )
-        }
+        Ok(label_fn(buf))
     }
 }

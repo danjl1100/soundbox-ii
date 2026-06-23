@@ -1,3 +1,4 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -5,10 +6,11 @@ use axum::{
 use serde_json::json;
 use tower::ServiceExt as _;
 
-use crate::{read_response, test_app};
+use crate::{init_test_tracing, read_response, test_app};
 
 #[tokio::test]
 async fn health() -> eyre::Result<()> {
+    init_test_tracing();
     let app = test_app().await;
 
     let response = app
@@ -22,6 +24,7 @@ async fn health() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn add_node() -> eyre::Result<()> {
+    init_test_tracing();
     let app = test_app().await;
 
     let uri = "/api/v1/nodes/create-bucket";

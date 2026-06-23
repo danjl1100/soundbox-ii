@@ -45,7 +45,7 @@ impl PipeRunner {
 
             Ok(cmd)
         })
-        .map(|cmd| Self { cmd })
+        .map(|(cmd, _out_observer)| Self { cmd })
     }
     pub fn send_stdin(&mut self, lines: &JsonLines) -> eyre::Result<()> {
         self.cmd.send_stdin(lines)

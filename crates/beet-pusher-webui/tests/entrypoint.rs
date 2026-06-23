@@ -2,7 +2,8 @@
 #![expect(missing_docs, reason = "TODO while building")]
 
 use axum::{Router, response::Response};
-use beet_pusher_webui::{create_app, init_tracing};
+use beet_pusher_webui::create_app;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 mod common {
     mod api_errors;
@@ -10,13 +11,7 @@ mod common {
     mod end_to_end;
 }
 
-static TRACING_ONCE: std::sync::Once = std::sync::Once::new();
-
 async fn test_app() -> Router {
-    TRACING_ONCE.call_once(|| {
-        init_tracing("DEBUG");
-    });
-
     let config = beet_pusher_webui::config::Config { port: 0 };
     create_app(config).await
 }
@@ -55,4 +50,19 @@ impl std::fmt::Debug for ReadResponse {
 
         d.finish()
     }
+}
+
+pub fn init_test_tracing() {
+    static TRACING_ONCE: std::sync::Once = std::sync::Once::new();
+
+    TRACING_ONCE.call_once(|| {
+        let env_filter = EnvFilter::try_from_default_env().unwrap_or_default();
+
+        let fmt_layer = tracing_subscriber::fmt::layer().with_test_writer();
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .init();
+    });
 }

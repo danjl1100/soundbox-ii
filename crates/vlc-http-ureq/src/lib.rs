@@ -117,8 +117,7 @@ enum ErrorKind {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            ErrorKind::RequestCall(error) => Some(error),
-            ErrorKind::ResponseBody(error) => Some(error),
+            ErrorKind::RequestCall(error) | ErrorKind::ResponseBody(error) => Some(error),
             ErrorKind::ResponseParse(error) => Some(error),
         }
     }
