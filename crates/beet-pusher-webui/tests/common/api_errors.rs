@@ -3,6 +3,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use serde_json::json;
 use tower::ServiceExt as _;
 
 use crate::{init_test_tracing, read_response, test_app};
@@ -58,6 +59,43 @@ async fn error_invalid_json() -> eyre::Result<()> {
       "error": {
         "message": "invalid JSON: Expected request with `Content-Type: application/json`",
         "type": "validation_error"
+      },
+      "status": "fail"
+    }
+    "#);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn error_no_backend_response() -> eyre::Result<()> {
+    init_test_tracing();
+    let app = test_app().await;
+
+    let uri = "/api/v1/nodes/create-bucket";
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header("Content-Type", "application/json")
+                .body(
+                    json!({
+                        "parent": ".",
+                    })
+                    .to_string(),
+                )?,
+        )
+        .await?;
+
+    let resp = read_response(uri, response).await?;
+
+    assert_eq!(resp.status, StatusCode::INTERNAL_SERVER_ERROR);
+    insta::assert_json_snapshot!(resp.json?, @r#"
+    {
+      "error": {
+        "message": "an internal error occurred",
+        "type": "internal_error"
       },
       "status": "fail"
     }

@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 #![expect(missing_docs, reason = "TODO while building")]
 
-use crate::{config::Config, state::AppState};
+use crate::{config::Config, domain::services::ports::BeetPusherPipe, state::AppState};
 use tracing_subscriber::{
     EnvFilter, Layer as _, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -15,8 +15,8 @@ pub mod routes;
 pub mod state;
 
 #[expect(clippy::unused_async, reason = "future capability may require async")]
-pub async fn create_app(config: Config) -> axum::Router {
-    let state = AppState::new(config);
+pub async fn create_app(config: Config, pipe: impl BeetPusherPipe) -> axum::Router {
+    let state = AppState::new(config, pipe);
     routes::router(state)
 }
 

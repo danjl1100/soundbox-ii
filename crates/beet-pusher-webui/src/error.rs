@@ -1,8 +1,9 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use std::collections::HashMap;
 
 use axum::{http::StatusCode, response::IntoResponse};
 
-use crate::api::JsonOut;
+use crate::{api::JsonOut, domain::services::node_service::CreateBucketError};
 
 pub type AppResult<T> = Result<T, AppError>;
 
@@ -64,5 +65,11 @@ impl IntoResponse for AppError {
         };
 
         (status, JsonOut::fail(err_value)).into_response()
+    }
+}
+
+impl From<CreateBucketError> for AppError {
+    fn from(value: CreateBucketError) -> Self {
+        Self::Internal(value.into())
     }
 }

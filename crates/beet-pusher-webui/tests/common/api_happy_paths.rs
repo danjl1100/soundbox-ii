@@ -6,7 +6,7 @@ use axum::{
 use serde_json::json;
 use tower::ServiceExt as _;
 
-use crate::{init_test_tracing, read_response, test_app};
+use crate::{init_test_tracing, read_response, test_app, test_app_with_pipe};
 
 #[tokio::test]
 async fn health() -> eyre::Result<()> {
@@ -25,7 +25,7 @@ async fn health() -> eyre::Result<()> {
 #[tokio::test]
 async fn add_node() -> eyre::Result<()> {
     init_test_tracing();
-    let app = test_app().await;
+    let app = test_app_with_pipe(|p| p.fake_add_node(true)).await;
 
     let uri = "/api/v1/nodes/create-bucket";
     let response = app

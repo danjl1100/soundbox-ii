@@ -7,23 +7,30 @@ use crate::BeetItem;
 
 pub use bucket_spigot::path::Path as NodePath;
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(transparent)]
 pub struct RequestSequence(u64);
+impl From<u64> for RequestSequence {
+    fn from(seq: u64) -> Self {
+        Self(seq)
+    }
+}
 
-#[derive(Clone, Debug, serde::Deserialize)] // NOTE: not `Serialize`, test should compare plain strings
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CommandIn {
     pub seq: RequestSequence,
     #[serde(flatten)]
     pub cmd: Command,
 }
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum Command {
     Spigot(SpigotCmd),
     Vlc(VlcCmd),
 }
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "cmd")]
 #[serde(rename_all = "snake_case")]
 pub enum SpigotCmd {
@@ -36,7 +43,7 @@ pub enum SpigotCmd {
         new_filters: Vec<String>,
     },
 }
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
     // TODO: Joint,
@@ -59,7 +66,7 @@ impl From<SpigotCmd> for bucket_spigot::ModifyCmd<BeetItem, String> {
 
 /// Subset of [`vlc_http::command::Command`] allowed while [`crate::BeetPusher`]
 /// manages the playlist and playback mode
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "cmd")]
 #[serde(rename_all = "snake_case")]
 pub enum VlcCmd {
@@ -82,6 +89,7 @@ pub type ResponseResult = Result<(RequestSequence, ResponseData), Error>;
 /// Inner Result only
 pub type ResponseResultInner = Result<ResponseData, Error>;
 
+/// Serializable rich-error version of [`ResponseOutDe`]
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseOut {
@@ -101,7 +109,19 @@ impl From<ResponseResult> for ResponseOut {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+/// Deserializable version of [`ResponseOut`] with [`Self::Error`] as opaque JSON
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseOutDe {
+    Data {
+        reply_to_seq: RequestSequence,
+        #[serde(flatten)]
+        data: ResponseData,
+    },
+    Error(serde_json::Value),
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind")]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseData {

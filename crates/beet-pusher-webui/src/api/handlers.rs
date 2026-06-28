@@ -1,3 +1,6 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+use std::sync::Arc;
+
 use axum::{extract::State, http::StatusCode};
 
 use crate::{
@@ -6,8 +9,8 @@ use crate::{
         extractors::ValidatedJson,
         handlers::dtos::{CreateBucketDto, CreateBucketResponse},
     },
+    domain::services::{node_service::NodeService, ports::BeetPusherPipe},
     error::AppResult,
-    state::AppState,
 };
 
 pub async fn health_check() -> StatusCode {
@@ -15,12 +18,12 @@ pub async fn health_check() -> StatusCode {
 }
 
 mod dtos {
-    pub(super) use crate::domain::models::NodePath;
+    use crate::domain::models::NodePath;
     use validator::Validate;
 
     #[derive(serde::Deserialize, Validate)]
     pub struct CreateBucketDto {
-        parent: NodePath,
+        pub parent: NodePath,
     }
 
     #[derive(serde::Serialize)]
@@ -28,12 +31,14 @@ mod dtos {
         pub path: NodePath,
     }
 }
-#[axum::debug_handler]
-pub async fn node_create_bucket(
-    state: State<AppState>,
+pub(crate) async fn node_create_bucket<T: BeetPusherPipe>(
+    State(nodes): State<Arc<NodeService<T>>>,
     ValidatedJson(payload): ValidatedJson<CreateBucketDto>,
 ) -> AppResult<(StatusCode, JsonOut<CreateBucketResponse>)> {
-    let path = ".0".parse().expect("valid constant"); // TODO
+    let CreateBucketDto { parent } = payload;
+
+    let path = nodes.create_bucket(parent).await?;
+
     Ok((
         StatusCode::OK,
         JsonOut::success(CreateBucketResponse { path }),

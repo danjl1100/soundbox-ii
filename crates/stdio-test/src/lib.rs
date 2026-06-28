@@ -18,6 +18,21 @@ pub struct OutStr(pub String);
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ErrStr(pub String);
 
+impl OutStr {
+    /// Convenience constructor
+    #[expect(clippy::needless_pass_by_value, reason = "ergonoimcs")]
+    pub fn new(s: impl ToString) -> Self {
+        Self(s.to_string())
+    }
+}
+impl ErrStr {
+    /// Convenience constructor
+    #[expect(clippy::needless_pass_by_value, reason = "ergonoimcs")]
+    pub fn new(s: impl ToString) -> Self {
+        Self(s.to_string())
+    }
+}
+
 impl std::fmt::Display for OutStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(inner) = self;
@@ -45,14 +60,18 @@ impl std::ops::Deref for ErrStr {
 }
 
 /// Signal to end the stdin forwarding loop
-pub struct StdinShutdown;
+pub struct StdinShutdown {
+    _private: (),
+}
+/// Message sent to the stdin receiver - a String to print, or shutdown request
+pub type StdinMsg = Result<String, StdinShutdown>;
 
 type IoResultThread<T> = std::thread::JoinHandle<std::io::Result<T>>;
 
 /// Spawns a command in piped mode, collecting stdout and accepting inputs to forward to stdin
 pub struct StdioCmd {
     cmd: std::process::Child,
-    stdin_tx: std::sync::mpsc::SyncSender<Result<String, StdinShutdown>>,
+    stdin_tx: std::sync::mpsc::SyncSender<StdinMsg>,
     stdin_thread: IoResultThread<()>,
     stdout_thread: IoResultThread<OutStr>,
     stderr_thread: IoResultThread<ErrStr>,
@@ -61,7 +80,7 @@ pub struct StdioCmd {
 /// Channels to send stdin lines and observe stdout and stderr lines
 pub struct OutObserver {
     /// Sends lines to stdin
-    pub stdin_tx: std::sync::mpsc::SyncSender<Result<String, StdinShutdown>>,
+    pub stdin_tx: std::sync::mpsc::SyncSender<StdinMsg>,
     /// Receives lines from stdout
     pub stdout_rx: std::sync::mpsc::Receiver<OutStr>,
     /// Receives lines from stderr
@@ -159,13 +178,7 @@ impl StdioCmd {
         if exit_status.success() {
             Ok(Ok(output))
         } else {
-            let Output {
-                stdout,
-                stdout_json_lines: _,
-                stderr,
-            } = output;
-            eprintln!("STDOUT:\n{stdout}\nEND");
-            eprintln!("STDERR:\n{stderr}\nEND");
+            eprintln!("{output}");
             Ok(Err(ExitStatusError { exit_status }))
         }
     }
@@ -188,7 +201,7 @@ impl StdioCmd {
             _temp_dir: _,
         } = self;
 
-        let _ = stdin_tx.send(Err(StdinShutdown));
+        let _ = stdin_tx.send(Err(StdinShutdown { _private: () }));
         drop(stdin_tx);
 
         // Wait for natural exit (stdin close should cause this), kill only as fallback
@@ -257,6 +270,22 @@ pub struct Output {
     pub stdout_json_lines: Result<JsonLines, serde_json::Error>,
     /// Stderr as a (lossy) UTF-8 string
     pub stderr: ErrStr,
+}
+impl std::fmt::Display for Output {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            stdout,
+            stdout_json_lines: _,
+            stderr,
+        } = self;
+        writeln!(f, "STDOUT: --------------------------")?;
+        writeln!(f, "{stdout}")?;
+        writeln!(f, "END ------------------------------")?;
+        writeln!(f, "STDERR: --------------------------")?;
+        writeln!(f, "{stderr}")?;
+        writeln!(f, "END ------------------------------")?;
+        Ok(())
+    }
 }
 
 /// Lines of JSON, for sending to stdin or verifying stdout
@@ -348,7 +377,7 @@ mod stdio_child {
         process::{Child, Command},
     };
 
-    use crate::{ErrStr, OutStr, StdinShutdown};
+    use crate::{ErrStr, OutStr, StdinMsg, StdinShutdown};
 
     type ReceiverAndThread<T> = (
         std::sync::mpsc::Receiver<T>,
@@ -360,7 +389,7 @@ mod stdio_child {
     pub(super) struct SpawnResult {
         pub child: Child,
         pub stdin: (
-            std::sync::mpsc::SyncSender<Result<String, StdinShutdown>>,
+            std::sync::mpsc::SyncSender<StdinMsg>,
             std::thread::JoinHandle<std::io::Result<()>>,
         ),
         pub stdout: ReceiverAndThread<OutStr>,
@@ -385,7 +414,7 @@ mod stdio_child {
             for line in stdin_line_rx {
                 let line = match line {
                     Ok(line) => line,
-                    Err(StdinShutdown) => break,
+                    Err(StdinShutdown { _private }) => break,
                 };
                 writeln!(&mut stdin, "{line}")?;
             }
@@ -424,6 +453,12 @@ mod stdio_child {
 
         for line in reader.lines() {
             let line = line?;
+            if let Some(v) = option_env!("TEE_PIPES")
+                && v != "0"
+            {
+                // print output as it occurs, if **COMPILE-TIME** TEE_PIPES=1
+                eprintln!("{line}");
+            }
             writeln!(&mut buf, "{line}").expect("string fmt infallible");
             let _ = line_tx.send(label_fn(line));
         }

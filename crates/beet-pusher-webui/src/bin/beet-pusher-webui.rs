@@ -1,10 +1,12 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP server frontend to drive [`beet_pusher`]
 
-use beet_pusher_webui::{config::Config, create_app, init_tracing};
-
-/// Signal to shutdown the application
-struct Shutdown;
+use beet_pusher_webui::{
+    config::Config,
+    create_app,
+    infra::{Shutdown, stdio_pipe::StdioPipe},
+    init_tracing,
+};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -12,17 +14,12 @@ async fn main() -> eyre::Result<()> {
 
     tracing::info!("Startup");
 
-    let (shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel(1);
-    std::thread::spawn(move || {
-        for _line in std::io::stdin().lines() {
-            // TODO
-        }
-        let _ = shutdown_tx.blocking_send(Shutdown);
-    });
-
     let config = Config::from_env()?;
 
-    let app = create_app(config.clone()).await;
+    let (shutdown_tx, shutdown_rx) = tokio::sync::mpsc::channel(1);
+
+    let (pipe, stdout_thread, stdin_thread) = StdioPipe::spawn(shutdown_tx);
+    let app = create_app(config.clone(), pipe).await;
 
     let addr = format!("0.0.0.0:{}", config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -45,6 +42,9 @@ async fn main() -> eyre::Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown_rx))
         .await?;
+
+    stdout_thread.join().expect("panic in pipe thread")?;
+    stdin_thread.join().expect("panic in pipe thread")?;
 
     Ok(())
 }
