@@ -2,8 +2,10 @@
 use std::process::Command;
 
 use eyre::Context as _;
-use stdio_test::{ExitStatusError, JsonLines, OutStr, Output, StdinMsg, StdioCmd};
+use stdio_test::{ExitStatusError, OutStr, Output, StdinMsg, StdioCmd};
 use ureq::http;
+
+const IP_ADDR_LOCAL: &str = "127.0.0.1";
 
 pub struct PipeRunner {
     cmd: StdioCmd,
@@ -19,21 +21,39 @@ impl PipeRunner {
             let mut cmd = Command::new(env!("CARGO_BIN_EXE_beet-pusher-webui"));
             cmd.env("SCRIPT_WRITE_PORT", &port_file)
                 .env("PORT", "0")
+                .env("BIND_IP", IP_ADDR_LOCAL)
                 .env("RUST_LOG", "beet_pusher=DEBUG");
             Ok((cmd, port_file))
         })?;
 
-        // read port from `port_file`
-        let start = std::time::Instant::now();
-        let port = loop {
-            let read_err = match Self::read_port(&port_file) {
-                Ok(port) => break port,
-                Err(e) => e,
+        // POST-SETUP FUNCTION
+        let post_setup_result = (move || {
+            // read port from `port_file`
+            let start = std::time::Instant::now();
+            let port = loop {
+                let read_err = match Self::read_port(&port_file) {
+                    Ok(port) => break port,
+                    Err(e) => e,
+                };
+                if start.elapsed() > std::time::Duration::from_secs(1) {
+                    Err(read_err).context("timed out waiting for port_file")?;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
             };
-            if start.elapsed() > std::time::Duration::from_secs(1) {
-                Err(read_err).context("timed out waiting for port_file")?;
+            Ok(port)
+        })();
+
+        let port = match post_setup_result {
+            Ok(port) => port,
+            Err(e) => {
+                let wait_result = cmd.wait_success(std::time::Duration::from_secs(1));
+                match wait_result {
+                    Ok(Ok(_output)) => {}
+                    Ok(Err(e)) => eprintln!("{e:?}"),
+                    Err(e) => eprintln!("{e:?}"),
+                }
+                return Err(e);
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
         };
 
         // spawn thread to respond to known stdout messages
@@ -55,15 +75,6 @@ impl PipeRunner {
         reply: ReplyPlan,
     ) -> Result<(), std::sync::mpsc::SendError<ReplyPlan>> {
         self.respond_tx.send(reply)
-    }
-    pub fn send_stdin(&mut self, lines: &JsonLines) -> eyre::Result<()> {
-        self.cmd.send_stdin(lines)
-    }
-    pub fn send_stdin_line<T>(&mut self, line: &T) -> eyre::Result<()>
-    where
-        T: std::fmt::Display + ?Sized,
-    {
-        self.cmd.send_stdin_line(line)
     }
 }
 
@@ -199,13 +210,23 @@ pub struct RemainingRepliesError {
 }
 
 impl PipeRunner {
-    fn read_port(port_file: &std::path::Path) -> eyre::Result<u16> {
-        let port = std::fs::read_to_string(port_file).context("failed to load port_file")?;
-        let port = port.parse().context("invalid text in port_file")?;
+    fn read_port(port_file: &std::path::Path) -> Result<u16, ReadPortError> {
+        let make_err = |kind| ReadPortError {
+            file: port_file.to_path_buf(),
+            kind,
+        };
+
+        let port = std::fs::read_to_string(port_file)
+            .map_err(ReadPortErrorKind::Load)
+            .map_err(make_err)?;
+        let port = port
+            .parse()
+            .map_err(ReadPortErrorKind::InvalidText)
+            .map_err(make_err)?;
         Ok(port)
     }
     fn build_uri(&self, path: &str) -> String {
-        format!("http://127.0.0.1:{port}/{path}", port = self.port)
+        format!("http://{IP_ADDR_LOCAL}:{port}/{path}", port = self.port)
     }
     fn agent() -> ureq::Agent {
         let config = ureq::Agent::config_builder()
@@ -259,6 +280,20 @@ impl PipeRunner {
 
         Ok(response)
     }
+}
+#[derive(Debug, thiserror::Error)]
+#[error("failed to read port file {file}")]
+pub struct ReadPortError {
+    file: std::path::PathBuf,
+    #[source]
+    kind: ReadPortErrorKind,
+}
+#[derive(Debug, thiserror::Error)]
+enum ReadPortErrorKind {
+    #[error(transparent)]
+    Load(std::io::Error),
+    #[error(transparent)]
+    InvalidText(std::num::ParseIntError),
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -60,7 +60,10 @@ async fn test_app() -> Router {
     test_app_with_pipe(|p| p).await
 }
 async fn test_app_with_pipe(pipe_fn: impl FnOnce(TestPipe) -> TestPipe) -> Router {
-    let config = beet_pusher_webui::config::Config { port: 0 };
+    let config = beet_pusher_webui::config::Config {
+        port: 0,
+        bind_ip: "127.0.0.1".parse().expect("valid IP"),
+    };
     let pipe = pipe_fn(TestPipe::default());
     create_app(config, pipe).await
 }
