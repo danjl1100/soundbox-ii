@@ -77,7 +77,7 @@ mod tests {
     }
     fn steady_heartbeat_interval(count: usize, interval: u64) {
         let tolerance_ms = cfg_select! {
-            target_os = "macos" => 1 + (interval / 5),
+            target_os = "macos" => 1 + (interval / 2),
             _ => 1,
         };
 

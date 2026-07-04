@@ -45,7 +45,7 @@ async fn add_node() -> eyre::Result<()> {
 
     let resp = read_response(uri, response).await?;
 
-    assert_eq!(resp.status, StatusCode::OK);
+    assert_eq!(resp.status, StatusCode::CREATED);
     assert_eq!(
         resp.json?,
         json!({

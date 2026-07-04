@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 
 use axum::{http::StatusCode, response::IntoResponse};
+use utoipa::ToSchema;
 
 use crate::{api::JsonOut, domain::services::node_service::CreateBucketError};
 
@@ -25,13 +26,20 @@ pub enum AppError {
     Internal(#[from] eyre::Error),
 }
 
+#[derive(serde::Serialize, ToSchema)]
+pub struct ErrorOut {
+    r#type: &'static str,
+    message: String,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    fields: Option<serde_json::Value>,
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        let err = |error_type: &'static str, message: String| {
-            let mut obj = serde_json::Map::new();
-            obj.insert("type".to_string(), error_type.into());
-            obj.insert("message".to_string(), message.into());
-            obj
+        let err = |r#type: &'static str, message: String| ErrorOut {
+            r#type,
+            message,
+            fields: None,
         };
 
         let (status, err_value) = match self {
@@ -44,7 +52,7 @@ impl IntoResponse for AppError {
             }
             AppError::ValidationFields(fields) => {
                 let mut err_map = err("validation_error", "request validation failed".to_string());
-                err_map.insert("fields".to_string(), serde_json::json!(fields));
+                err_map.fields = Some(serde_json::json!(fields));
                 (StatusCode::BAD_REQUEST, err_map)
             }
             AppError::Unauthorized => (

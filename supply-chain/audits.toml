@@ -317,6 +317,18 @@ criteria = "safe-to-run"
 version = "0.8.1"
 notes = "Some unsafe (didn't check all) but seems well scoped to byte/string manipulation"
 
+[[audits.utoipa]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "5.5.0"
+notes = "No unsafe (only a Cargo.lock reference to unsafe yaml crate sub-dep), and no ambient capability use seen"
+
+[[audits.utoipa-gen]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "5.5.0"
+notes = "Cursory look in proc macro, not unsafe or ambient capabilities referenced here"
+
 [[audits.validator]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"

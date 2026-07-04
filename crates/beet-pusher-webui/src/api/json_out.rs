@@ -1,4 +1,6 @@
+// Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 use axum::Json;
+use utoipa::ToSchema;
 
 /// Encapsulation of the final json output format
 pub struct JsonOut<T>(Json<ResponseOut<T>>);
@@ -14,10 +16,10 @@ impl<T> JsonOut<T> {
     }
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, ToSchema)]
 #[serde(tag = "status")]
 #[serde(rename_all = "snake_case")]
-enum ResponseOut<T> {
+pub enum ResponseOut<T> {
     Success { data: T },
     Fail { error: T },
 }
