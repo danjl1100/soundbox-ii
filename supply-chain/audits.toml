@@ -31,6 +31,12 @@ criteria = "safe-to-run"
 delta = "0.15.11 -> 0.16.3"
 notes = '''Only adds true colors and other non-relevant changes. Noted a panic path added (PR \#287), but it's still safe to run.'''
 
+[[audits.crc32fast]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.4.2 -> 1.5.0"
+notes = "No material change to unsafe, no capabilities change seen either"
+
 [[audits.darling]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -66,6 +72,12 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "2.3.0 -> 2.4.1"
 notes = "No unsafe in diff, only tweaks to rand generation algorithms"
+
+[[audits.flate2]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.1.4 -> 1.1.9"
+notes = "No material change to unsfe usage, no use of ambient capabilities seen"
 
 [[audits.futures-channel]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -164,6 +176,12 @@ criteria = "safe-to-deploy"
 version = "0.3.16"
 notes = "One unsafe usage is trivially sound, no ambient capabilities"
 
+[[audits.mime_guess]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "2.0.4"
+notes = "No unsafe, no ambient capabilities seen. Build script compiles list of mime types (phf?)"
+
 [[audits.oneshot]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -185,11 +203,35 @@ criteria = "safe-to-run"
 delta = "0.12.0 -> 0.12.1"
 notes = "Minor changes to integer bases and ignoring certain attributes."
 
+[[audits.rust-embed]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "8.11.0"
+notes = "Small trait/enum definition, forbids unsafe"
+
+[[audits.rust-embed-impl]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "8.11.0"
+notes = "Proc macro has no unsafe, performs expected file I/O actions"
+
+[[audits.rust-embed-utils]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "8.11.0"
+notes = "No unsafe, straight-forward/expected file IO"
+
 [[audits.ryu]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 version = "1.0.23"
 notes = "On a cursory look, unsafe seems reasonable (unchecked buffer writes). No ambient capabilities, just float formatting as it says on the tin."
+
+[[audits.same-file]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "1.0.6"
+notes = "Only unsafe is unix reference to stdio handles, I/O usage is in line with the crate's purpose"
 
 [[audits.serde_json]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -214,6 +256,21 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 version = "0.7.1"
 notes = "Forbid unsafe, and no ambient capabilities, straight-forward"
+
+[[audits.sha2]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.10.9"
+notes = """
+Could not verify all unsafe, some are large chunks of assembly...
+A more recent release removes some unsafe, but not all
+"""
+
+[[audits.simd-adler32]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.7 -> 0.3.9"
+notes = "Change to unsafe in one function, zero confidence in the impl (I'm not knowledgable) but it quotes a source. No ambient capability changes seen."
 
 [[audits.slab]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
@@ -287,6 +344,12 @@ criteria = "safe-to-run"
 version = "1.0.3"
 notes = "Only const type manipulation, no surprising consequences."
 
+[[audits.unicase]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.8.1 -> 2.9.0"
+notes = "No unsafe or capabilities change, just tests and table updates"
+
 [[audits.ureq]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -329,6 +392,18 @@ criteria = "safe-to-deploy"
 version = "5.5.0"
 notes = "Cursory look in proc macro, not unsafe or ambient capabilities referenced here"
 
+[[audits.utoipa-swagger-ui]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "9.0.2"
+notes = "Build script fetches HTML asset files from the network (unless feature `vendored` is enabled), but no unsafe or ambient capabilities in the library"
+
+[[audits.utoipa-swagger-ui-vendored]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.1.2"
+notes = "From a rust perspective, a single byte array. Did not evaluate the contents of the .ZIP archive provided to clients of this crate"
+
 [[audits.validator]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -347,17 +422,35 @@ criteria = "safe-to-deploy"
 delta = "0.9.4 -> 0.9.5"
 notes = "Docs-only change"
 
+[[audits.walkdir]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "2.5.0"
+notes = "No unsafe, extensive filesystem access (as is its purpose) and no ambient capabilities seen"
+
 [[audits.winnow]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.7.13 -> 1.0.3"
 notes = "Removed some unsafe, and remaining unsafe diff looks reasonable"
 
+[[audits.zip]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.4.2 -> 3.0.0"
+notes = "Only change to unsafe is MS-DOS unchecked date construction in tests, minor changes overall"
+
 [[audits.zmij]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "1.0.20 -> 1.0.21"
 notes = "Unsafe usage is in the diff, with no safety comments. However, the unsafe usage is just refactored into a different function, the actual pointer indexing logic appears unchanged."
+
+[[audits.zopfli]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.8.3"
+notes = "Unsafe usage in hash.rs appears OK at a quick cursory glance, no ambient capabilities (main.rs reads files passed as arguments, which makes sense)"
 
 [[trusted.axum]]
 criteria = "safe-to-deploy"
@@ -424,3 +517,15 @@ criteria = "safe-to-deploy"
 user-id = 359 # Sean McArthur (seanmonstar)
 start = "2024-09-09"
 end = "2027-05-25"
+
+[[trusted.zlib-rs]]
+criteria = "safe-to-deploy"
+user-id = 1303
+start = "2024-02-23"
+end = "2027-07-04"
+
+[[trusted.zlib-rs]]
+criteria = "safe-to-deploy"
+user-id = 256011 # Folkert de Vries (folkertdev)
+start = "2024-12-16"
+end = "2027-07-04"

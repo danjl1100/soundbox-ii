@@ -312,10 +312,6 @@ criteria = "safe-to-deploy"
 version = "0.1.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.walkdir]]
-version = "2.5.0"
-criteria = "safe-to-run"
-
 [[exemptions.wasi]]
 version = "0.11.1+wasi-snapshot-preview1"
 criteria = "safe-to-deploy"
