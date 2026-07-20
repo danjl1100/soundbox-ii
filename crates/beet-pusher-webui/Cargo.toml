@@ -16,6 +16,7 @@ tower = "0.5.3"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "std"] }
 utoipa = "5.5.0"
+utoipa-swagger-ui = { version = "9.0.2", default-features = false, features = ["axum", "vendored"] }
 validator = { version = "0.20.0", features = ["derive"] }
 
 [lints]

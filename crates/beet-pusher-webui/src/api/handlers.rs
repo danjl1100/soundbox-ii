@@ -21,7 +21,7 @@ use utoipa::OpenApi;
     components(schemas(CreateBucketDto)),
     tags((name = "nodes", description = "Nodes in the bucket spigot graph"))
 )]
-struct ApiDoc;
+pub(crate) struct ApiDoc;
 
 pub async fn health_check() -> StatusCode {
     StatusCode::OK
@@ -44,7 +44,7 @@ mod dtos {
 
 #[utoipa::path(
     post,
-    path = "/api/v1/node/create-bucket",
+    path = "/api/v1/nodes/create-bucket",
     request_body = CreateBucketDto,
     responses(
         (status = 201, description = "Node created successfully", body = CreateBucketResponse),
