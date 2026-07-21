@@ -17,6 +17,12 @@ impl From<u64> for RequestSequence {
         Self(seq)
     }
 }
+impl std::fmt::Display for RequestSequence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self(inner) = self;
+        write!(f, "{inner}")
+    }
+}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CommandIn {
@@ -87,38 +93,28 @@ impl From<VlcCmd> for vlc_http::Command {
 // request was valid enough to contain a sequence)
 pub type ResponseResult = Result<(RequestSequence, ResponseData), Error>;
 /// Inner Result only
-pub type ResponseResultInner = Result<ResponseData, Error>;
+pub type ResponseResultInner = Result<ResponseData, ErrorKind>;
+
+pub type ResponseOutDe = ResponseOut<serde_json::Value>;
 
 /// Serializable rich-error version of [`ResponseOutDe`]
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ResponseOut {
+pub enum ResponseOut<K = ErrorKind> {
     Data {
         reply_to_seq: RequestSequence,
         #[serde(flatten)]
         data: ResponseData,
     },
-    Error(Error),
+    Error(Error<K>),
 }
 impl From<ResponseResult> for ResponseOut {
     fn from(value: ResponseResult) -> Self {
         match value {
             Ok((reply_to_seq, data)) => Self::Data { reply_to_seq, data },
-            Err(e) => Self::Error(e),
+            Err(error) => Self::Error(error),
         }
     }
-}
-
-/// Deserializable version of [`ResponseOut`] with [`Self::Error`] as opaque JSON
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResponseOutDe {
-    Data {
-        reply_to_seq: RequestSequence,
-        #[serde(flatten)]
-        data: ResponseData,
-    },
-    Error(serde_json::Value),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -132,26 +128,80 @@ pub enum ResponseData {
     PassNoData, // No additional data
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[must_use]
+#[serde(rename_all = "snake_case")]
+pub struct Error<K = ErrorKind> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply_to_seq: Option<RequestSequence>,
+    #[serde(flatten)]
+    kind: K,
+}
 #[derive(Debug, serde::Serialize, thiserror::Error)] // NOTE: not `Deserialize`, tests should compare plain strings
 #[must_use]
 #[serde(tag = "kind", content = "details")]
 #[serde(rename_all = "snake_case")]
-pub enum Error {
+pub enum ErrorKind {
     #[error(transparent)]
-    InvalidCommand(ErrorInvalidCommand),
+    InvalidCommand(#[from] ErrorInvalidCommand),
     #[error(transparent)]
-    SpigotError(#[serde(serialize_with = "serialize_as_display")] bucket_spigot::ModifyError),
+    SpigotError(
+        #[from]
+        #[serde(serialize_with = "serialize_as_display")]
+        bucket_spigot::ModifyError,
+    ),
     #[error(transparent)]
-    VlcRequest(#[serde(serialize_with = "serialize_as_display")] vlc_http_ureq::Error),
+    VlcRequest(
+        #[from]
+        #[serde(serialize_with = "serialize_as_display")]
+        vlc_http_ureq::Error,
+    ),
     #[error("internal request operation timed out")]
     InternalTimeout,
 }
 impl Error {
+    pub fn new(seq: RequestSequence, kind: ErrorKind) -> Self {
+        Self {
+            reply_to_seq: Some(seq),
+            kind,
+        }
+    }
     pub fn new_invalid_command(command_json: String, source: serde_json::Error) -> Self {
-        Self::InvalidCommand(ErrorInvalidCommand {
-            command_json,
-            source,
-        })
+        Self {
+            reply_to_seq: None,
+            kind: ErrorInvalidCommand {
+                command_json,
+                source,
+            }
+            .into(),
+        }
+    }
+}
+impl<K> Error<K> {
+    #[must_use]
+    pub fn get_reply_to_seq(&self) -> Option<RequestSequence> {
+        self.reply_to_seq
+    }
+    pub fn into_inner(self) -> K {
+        self.kind
+    }
+}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        let Self { reply_to_seq, kind } = self;
+        match reply_to_seq {
+            Some(_) => Some(kind), // source if Some
+            None => kind.source(), // transparent if None
+        }
+    }
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { reply_to_seq, kind } = self;
+        match reply_to_seq {
+            Some(seq) => write!(f, "request seq={seq} failed"), // source if Some
+            None => write!(f, "{kind}"),                        // transparent if None
+        }
     }
 }
 

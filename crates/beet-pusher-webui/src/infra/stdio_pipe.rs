@@ -15,9 +15,10 @@ pub struct StdioPipe {
     next_seq: AtomicU64,
     cmd_tx: tokio::sync::mpsc::Sender<Queued<beet_pusher::pipe_exec::CommandIn>>,
 }
+type ResponseResult = Result<beet_pusher::pipe_exec::ResponseData, ()>;
 struct Queued<T> {
     value: T,
-    tx: tokio::sync::oneshot::Sender<beet_pusher::pipe_exec::ResponseData>,
+    tx: tokio::sync::oneshot::Sender<ResponseResult>,
 }
 impl StdioPipe {
     /// Spawns stdout/stdin threads to send commands and receive responses
@@ -77,12 +78,20 @@ impl StdioPipe {
                 match response {
                     beet_pusher::pipe_exec::ResponseOutDe::Data { reply_to_seq, data } => {
                         if let Some(tx) = waiting_inflight.find_take_tx(reply_to_seq) {
-                            let _ = tx.send(data);
+                            let _ = tx.send(Ok(data));
                         } else {
                             tracing::error!(?data, "no waiting entry for response");
                         }
                     }
                     beet_pusher::pipe_exec::ResponseOutDe::Error(error) => {
+                        let reply_to_seq = error.get_reply_to_seq();
+                        let error = error.into_inner();
+
+                        if let Some(seq) = reply_to_seq
+                            && let Some(tx) = waiting_inflight.find_take_tx(seq)
+                        {
+                            let _ = tx.send(Err(()));
+                        }
                         tracing::error!(?error);
                     }
                 }
@@ -119,7 +128,7 @@ impl WaitingChannels {
     fn find_take_tx(
         &mut self,
         needle: RequestSequence,
-    ) -> Option<tokio::sync::oneshot::Sender<beet_pusher::pipe_exec::ResponseData>> {
+    ) -> Option<tokio::sync::oneshot::Sender<ResponseResult>> {
         // NOTE: linear search, hopefully responses are mostly sequential?
         self.list.iter_mut().find_map(|entry| {
             let Queued { value: seq, .. } = entry.as_mut()?;
@@ -161,7 +170,7 @@ impl BeetPusherPipe for StdioPipe {
             .map_err(PipeErrorInner::RecvTimeout)?
             .map_err(PipeErrorInner::Recv)?;
 
-        Ok(response)
+        response.map_err(|()| PipeErrorInner::ResponseFailed.into())
     }
 }
 #[derive(Debug, thiserror::Error)]
@@ -178,4 +187,7 @@ enum PipeErrorInner {
     Recv(#[source] tokio::sync::oneshot::error::RecvError),
     #[error("timed out waiting for the result")]
     RecvTimeout(tokio::time::error::Elapsed),
+    /// Received response successfully, but the response was an error
+    #[error("failure in response")]
+    ResponseFailed,
 }

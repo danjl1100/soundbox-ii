@@ -209,13 +209,13 @@ fn main() -> eyre::Result<()> {
                         timer_fill_playlist.set_immediate();
                     }
                     LoopEvent::SpigotCmd { reply_to, cmd } => {
-                        use beet_pusher::pipe_exec::{Error, ResponseData};
+                        use beet_pusher::pipe_exec::{ErrorKind, ResponseData};
                         let spigot = pusher.get_spigot_mut();
                         tracing::trace!(?cmd);
                         let result = match spigot.modify_and_get_created_path(cmd.into()) {
                             Ok(Some(path)) => Ok(ResponseData::NodeAdded { path }),
                             Ok(None) => Ok(ResponseData::PassNoData),
-                            Err(e) => Err(Error::SpigotError(e)),
+                            Err(e) => Err(ErrorKind::SpigotError(e)),
                         };
                         let _ = reply_to.send(result);
 
@@ -224,7 +224,7 @@ fn main() -> eyre::Result<()> {
                         timer_fill_bucket.set_active(true);
                     }
                     LoopEvent::VlcCmd { reply_to, cmd } => {
-                        use beet_pusher::pipe_exec::{Error, ResponseData};
+                        use beet_pusher::pipe_exec::{ErrorKind, ResponseData};
 
                         match cmd {
                             VlcCmd::SeekNext => {
@@ -236,7 +236,7 @@ fn main() -> eyre::Result<()> {
                         tracing::trace!(?cmd);
                         let result = match pusher.vlc_cmd(&mut http_runner, cmd) {
                             Ok(()) => Ok(ResponseData::PassNoData),
-                            Err(e) => Err(Error::VlcRequest(e)),
+                            Err(e) => Err(ErrorKind::VlcRequest(e)),
                         };
                         let _ = reply_to.send(result);
                     }
@@ -398,10 +398,15 @@ fn pipe_cmd(
     line: String,
 ) -> beet_pusher::pipe_exec::ResponseResult {
     use beet_pusher::pipe_exec::Command as PipeCommand;
+    use beet_pusher::pipe_exec::{Error, ErrorKind};
+
     const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
-    let beet_pusher::pipe_exec::CommandIn { seq, cmd } = serde_json::from_str(&line)
-        .map_err(|e| beet_pusher::pipe_exec::Error::new_invalid_command(line, e))?;
+    let beet_pusher::pipe_exec::CommandIn { seq, cmd } =
+        serde_json::from_str(&line).map_err(|e| Error::new_invalid_command(line, e))?;
+
+    let make_err = |kind| Error::new(seq, kind);
+
     let (reply_to, rx) = oneshot::channel();
 
     let event = match cmd {
@@ -411,10 +416,10 @@ fn pipe_cmd(
 
     let _ = loop_tx.send(event);
     match rx.recv_timeout(RESPONSE_TIMEOUT) {
-        Ok(result) => result.map(|data| (seq, data)),
+        Ok(result) => result.map(|data| (seq, data)).map_err(make_err),
         Err(e) => match e {
             oneshot::RecvTimeoutError::Timeout | oneshot::RecvTimeoutError::Disconnected => {
-                Err(beet_pusher::pipe_exec::Error::InternalTimeout)
+                Err(make_err(ErrorKind::InternalTimeout))
             }
         },
     }
