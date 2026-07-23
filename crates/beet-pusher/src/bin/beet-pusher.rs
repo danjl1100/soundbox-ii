@@ -79,7 +79,8 @@ fn main() -> eyre::Result<()> {
 
     // TODO delete unused diagnostic
     if debug_items {
-        let mut beet_cmd = beet_pusher::BeetCommand::new_beet();
+        let mut beet_cmd =
+            beet_pusher::BeetCommand::new_beet().context("failed to run default `beet` command")?;
         let mut spigot = setup_spigot(&mut beet_cmd, &script)?;
         let view = spigot.view_table_default();
         eprintln!("{view}");
@@ -126,9 +127,13 @@ fn main() -> eyre::Result<()> {
 
     let rng = &mut bucket_spigot::order::ErrorRng(&mut rand::thread_rng());
 
-    let mut beet_cmd = beet.map_or_else(beet_pusher::BeetCommand::new_beet, |p| {
-        beet_pusher::BeetCommand::new(std::borrow::Cow::Owned(p.into_os_string()))
-    });
+    let mut beet_cmd = beet.map_or_else(
+        || beet_pusher::BeetCommand::new_beet().context("failed to validate default beet command"),
+        |p| {
+            beet_pusher::BeetCommand::new(std::borrow::Cow::Owned(p.into_os_string()))
+                .context("failed to validate configured beet command")
+        },
+    )?;
     let spigot = setup_spigot(&mut beet_cmd, &script)?;
 
     let mut pusher = BeetPusher::new(rng, spigot, base_url);

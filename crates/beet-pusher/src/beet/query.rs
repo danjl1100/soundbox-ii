@@ -28,16 +28,39 @@ pub struct BeetCommand<'a> {
 }
 impl BeetCommand<'static> {
     /// Creates a command runner for the default `"beet"` executable name
-    #[must_use]
-    pub fn new_beet() -> Self {
+    ///
+    /// # Errors
+    /// Returns an error if the specified `cmd_name` is not available for reading
+    pub fn new_beet() -> Result<Self, InvalidCmdError> {
         Self::new(Cow::Borrowed("beet".as_ref()))
     }
 }
 impl<'a> BeetCommand<'a> {
     /// Creates a command runner with the specified path to the `beet` executable
-    #[must_use]
-    pub fn new(cmd_name: std::borrow::Cow<'a, OsStr>) -> Self {
-        Self { cmd_name }
+    ///
+    /// # Errors
+    /// Returns an error if the specified `cmd_name` is not available for reading
+    pub fn new(cmd_name: std::borrow::Cow<'a, OsStr>) -> Result<Self, InvalidCmdError> {
+        use std::process::{Command, Stdio};
+
+        let make_err = |source| InvalidCmdError {
+            cmd: cmd_name.to_string_lossy().to_string(),
+            source,
+        };
+
+        let mut cmd = Command::new(&cmd_name);
+        cmd.arg("--help")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null());
+
+        tracing::trace!(?cmd, "checking beet command executes...");
+        let mut spawned = cmd.spawn().map_err(make_err)?;
+
+        spawned.kill().map_err(make_err)?;
+        spawned.wait().map_err(make_err)?;
+
+        Ok(Self { cmd_name })
     }
 }
 impl BeetRunner for BeetCommand<'_> {
@@ -119,6 +142,13 @@ impl BeetItem {
             .collect::<Result<Vec<_>, _>>()
             .map_err(make_error)
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("invalid beet command {cmd:?}")]
+pub struct InvalidCmdError {
+    cmd: String,
+    source: std::io::Error,
 }
 
 #[derive(Debug)]
