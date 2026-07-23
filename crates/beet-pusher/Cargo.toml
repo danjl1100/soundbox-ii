@@ -8,11 +8,6 @@ license = "GPL-3.0-or-later"
 [lints]
 workspace = true
 
-[[bin]]
-name = "beet"
-path = "src/bin/fake_beet.rs"
-doc = false
-
 [dependencies]
 arg_util = { version = "0.1.0", path = "../arg-util" }
 bucket-spigot = { version = "0.1.0", path = "../bucket-spigot" }

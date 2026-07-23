@@ -31,7 +31,7 @@ impl PipeRunner {
                     base_url="file://base_url"
                     beet={beet:?}
                     "#,
-                    beet = env!("CARGO_BIN_EXE_beet"),
+                    beet = fake_beet::build_bin_once().path().to_string_lossy(),
                 ),
             )?;
 

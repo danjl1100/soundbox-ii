@@ -67,6 +67,12 @@ criteria = "safe-to-deploy"
 delta = "0.3.13 -> 0.3.14"
 notes = "No unsafe in diff, only an update to windows-sys dep"
 
+[[audits.escargot]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.5.15"
+notes = "No unsafe, no ambient capabilities seen outside of expected command invocations"
+
 [[audits.fastrand]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"

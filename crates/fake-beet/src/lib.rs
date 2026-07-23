@@ -10,6 +10,24 @@ mod serde;
 /// Environment variable required for the file written from [`ConfigAll::create_config_file`]
 pub const FAKE_BEET_CONFIG_FILE: &str = "FAKE_BEET_CONFIG_FILE";
 
+/// Builds the binary **that is part of the current workspace**
+///
+/// # Panics
+/// Panics if the cargo invocation fails
+pub fn build_bin_once() -> &'static escargot::CargoRun {
+    use std::sync::OnceLock;
+
+    static BIN: OnceLock<escargot::CargoRun> = OnceLock::new();
+    BIN.get_or_init(|| {
+        escargot::CargoBuild::new()
+            .bin("fake-beet")
+            .package("fake-beet")
+            .current_release()
+            .run()
+            .expect("failed to build fake-beet helper binary")
+    })
+}
+
 /// Entrypoint for `fake-beet`
 ///
 /// NOTE: the `fake-beet` binary might need to be replicated to use in multiple crates' tests

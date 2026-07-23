@@ -122,7 +122,7 @@ fn verify_all_outputs(config: ConfigAll) -> eyre::Result<()> {
     for (args, expected_out) in config.into_configs_map() {
         let start = std::time::Instant::now();
 
-        let cmd_out = Command::new(env!("CARGO_BIN_EXE_beet"))
+        let cmd_out = Command::new(fake_beet::build_bin_once().path())
             .args(&args)
             .env(fake_beet::FAKE_BEET_CONFIG_FILE, &config_file)
             .current_dir(dir)
