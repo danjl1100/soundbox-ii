@@ -109,9 +109,10 @@ impl BeetItem {
         let output = output.map_err(ErrorKind::Spawn).map_err(make_error)?;
 
         if !output.stderr.is_empty() {
-            return Err(make_error(ErrorKind::Stderr {
-                stderr_str: String::from_utf8_lossy(&output.stderr).to_string(),
-            }));
+            let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+            tracing::trace!(stderr=?stderr_str, "beet query failed");
+
+            return Err(make_error(ErrorKind::Stderr { stderr_str }));
         }
 
         if !output.status.success() {

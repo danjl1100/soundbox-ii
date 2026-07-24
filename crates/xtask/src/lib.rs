@@ -12,6 +12,7 @@ use std::{
     process::{Command, ExitStatus},
 };
 
+pub mod beet_pusher;
 pub mod copyright;
 pub mod rust;
 pub mod spigot_visual;

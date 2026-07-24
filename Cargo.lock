@@ -2352,11 +2352,14 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "escargot",
  "eyre",
+ "fake-beet",
  "git2",
  "humantime",
  "jiff",
  "pathdiff",
+ "tempfile",
  "vlc-http-auth",
  "vlc-http-auth-clap",
 ]

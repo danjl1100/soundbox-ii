@@ -11,21 +11,29 @@ mod serde;
 pub const FAKE_BEET_CONFIG_FILE: &str = "FAKE_BEET_CONFIG_FILE";
 
 /// Builds the binary **that is part of the current workspace**
-///
-/// # Panics
-/// Panics if the cargo invocation fails
-pub fn build_bin_once() -> &'static escargot::CargoRun {
+pub fn try_build_bin_once() -> &'static escargot::error::CargoResult<escargot::CargoRun> {
+    use escargot::{CargoBuild, CargoRun, error::CargoResult};
     use std::sync::OnceLock;
 
-    static BIN: OnceLock<escargot::CargoRun> = OnceLock::new();
+    static BIN: OnceLock<CargoResult<CargoRun>> = OnceLock::new();
     BIN.get_or_init(|| {
-        escargot::CargoBuild::new()
+        CargoBuild::new()
             .bin("fake-beet")
             .package("fake-beet")
             .current_release()
             .run()
-            .expect("failed to build fake-beet helper binary")
     })
+}
+
+/// Builds the binary **that is part of the current workspace**
+///
+/// # Panics
+/// Panics if the cargo invocation fails
+#[must_use]
+pub fn build_bin_once() -> &'static escargot::CargoRun {
+    try_build_bin_once()
+        .as_ref()
+        .expect("failed to build fake-beet helper binary")
 }
 
 /// Entrypoint for `fake-beet`
@@ -70,7 +78,7 @@ pub struct ConfigOut {
     exit_code: u8,
     delay_millis: u16,
 }
-/// Publicly visible version of [`ConfigOut`]
+/// Publicly readable output from [`ConfigOut::into_output`]
 #[expect(missing_docs, reason = "self-explanatory field names")]
 pub struct ConfigOutput {
     pub stdout: String,

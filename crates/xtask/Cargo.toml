@@ -13,10 +13,13 @@ workspace = true
 
 [dependencies]
 clap = { version = "4.6.0", features = ["derive", "env"] }
+escargot = "0.5.15"
 eyre = "0.6.12"
+fake-beet = { version = "0.1.0", path = "../fake-beet" }
 git2 = { version = "0.20.3", default-features = false }
 humantime = "2.3.0"
 jiff = "0.2.17"
 pathdiff = "0.2.3"
+tempfile = "3.27.0"
 vlc-http-auth = { version = "0.1.0", path = "../vlc-http-auth" }
 vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }
