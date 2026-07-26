@@ -154,6 +154,12 @@ criteria = "safe-to-deploy"
 delta = "1.2.0 -> 1.0.0"
 notes = "No unsafe, and `#![no_std]`"
 
+[[audits.indexmap]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.11.4 -> 2.14.0"
+notes = "Only change to unsafe is labeling (deny, then individual allows). No noticeable change to ambient capabilities."
+
 [[audits.insta]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-run"

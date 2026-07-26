@@ -111,6 +111,21 @@ impl FakeVlc {
             vlc_port,
         }
     }
+    /// Writes the VLC config file content in the specified folder and filename,
+    /// returning the complete path
+    ///
+    /// # Errors
+    /// Returns an error if writing the file fails
+    pub fn create_config_file(
+        &self,
+        dir: &std::path::Path,
+        file_name: &str,
+    ) -> eyre::Result<std::path::PathBuf> {
+        let auth = self.get_auth_cloned();
+        let file_content =
+            toml::to_string_pretty(&auth).context("failed to serialize fake_vlc::AuthInput")?;
+        create_config_file(dir, file_name, &file_content)
+    }
     /// Borrows `self` to spawn an HTTP receive thread in a scope
     #[must_use]
     fn spawn(&self) -> SpawnHandle {
@@ -181,6 +196,23 @@ impl Drop for FakeVlc {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
+}
+
+/// Writes the config file content in the specified folder and filename, returning the complete path
+///
+/// # Errors
+/// Returns an error if writing the file fails
+pub fn create_config_file(
+    dir: &std::path::Path,
+    file_name: &str,
+    file_content: &str,
+) -> eyre::Result<std::path::PathBuf> {
+    let mut p = dir.to_path_buf();
+    p.push(file_name);
+    std::fs::write(&p, file_content)
+        .with_context(|| format!("failed to create {file_name} at {}", p.display()))?;
+
+    Ok(p)
 }
 
 impl InnerShared {

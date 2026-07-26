@@ -12,7 +12,7 @@ struct Args {
 }
 #[derive(Debug, clap::Subcommand)]
 enum Subcommand {
-    BeetPusherWebui,
+    BeetPusherWebui(xtask::beet_pusher::WebUiSpawn),
     Checks(AllChecks),
     SpigotVisualRun(xtask::spigot_visual::Run),
     /// Compiles the spigot-visual typescript
@@ -26,7 +26,7 @@ fn main() -> eyre::Result<()> {
 fn main_inner() -> TypedResult<()> {
     let Args { subcommand } = Args::parse();
     match subcommand {
-        Subcommand::BeetPusherWebui => xtask::beet_pusher::WebUiSpawn::spawn()?,
+        Subcommand::BeetPusherWebui(spawn) => spawn.spawn()?,
         Subcommand::Checks(checks) => checks.all_checks()?,
         Subcommand::SpigotVisualRun(run) => run.run()?,
         Subcommand::SpigotVisualDist => {

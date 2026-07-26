@@ -370,11 +370,7 @@ mod status_cmd {
                     }
                 }
             }
-            .map_err(|source| {
-                let err = SpawnError { source, command };
-                // convert to `eyre::Error` to preserve the backtrace (if any)
-                SpawnFail(eyre::eyre!(err))
-            })
+            .map_err(|source| SpawnFail::new(source, command))
         }
     }
 
@@ -386,6 +382,11 @@ mod status_cmd {
     #[derive(Debug)]
     pub struct SpawnFail(eyre::Error);
     impl SpawnFail {
+        fn new(source: std::io::Error, command: std::process::Command) -> Self {
+            let err = SpawnError { source, command };
+            // convert to `eyre::Error` to preserve the backtrace (if any)
+            SpawnFail(eyre::eyre!(err))
+        }
         /// Extracts the [`eyre::Error`], meant to be called only in the final report location
         /// to avoid collapsing [`SpawnFail`] errors into generic [`eyre::Error`]s
         pub fn into_eyre_in_final_main_error_report_location(self) -> eyre::Error {
@@ -411,6 +412,20 @@ mod status_cmd {
             let Self { source: _, command } = self;
             write!(f, "failed to run {}", DisplayCommand(command))
         }
+    }
+
+    pub(crate) fn spawn_cmd_try_args<E>(
+        cmd: &str,
+        args_fn: impl FnOnce(&mut Command) -> Result<&mut Command, E>,
+    ) -> Result<Result<std::process::Child, SpawnFail>, E> {
+        let mut command = Command::new(cmd);
+        args_fn(&mut command)?;
+
+        eprintln!("{}", DisplayCommand(&command));
+
+        Ok(command
+            .spawn()
+            .map_err(|source| SpawnFail::new(source, command)))
     }
 }
 
