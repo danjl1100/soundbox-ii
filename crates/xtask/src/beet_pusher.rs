@@ -10,6 +10,8 @@ use crate::{TypedResult, status_cmd::spawn_cmd_try_args};
 #[derive(Clone, Debug, clap::Args)]
 pub struct WebUiSpawn {
     #[clap(flatten)]
+    cmd_args: crate::ArgsCmdSettings,
+    #[clap(flatten)]
     args: ArgsInput,
 }
 #[derive(Clone, Debug, clap::Args)]
@@ -29,7 +31,22 @@ impl WebUiSpawn {
     /// # Errors
     /// Returns an error if any of the setup or execution fails
     pub fn spawn(self) -> TypedResult<()> {
-        let Self { args } = self;
+        let Self { cmd_args, args } = self;
+
+        let cmd_settings = cmd_args.into_inner();
+
+        cmd_settings.run_cargo(|c| {
+            c.args([
+                "build",
+                "--bin",
+                "beet-pusher",
+                "--bin",
+                "beet-pusher-webui",
+                "--bin",
+                "beet-pusher-webui-spawn",
+            ])
+        })?;
+
         let args = ArgsCombined::from(args);
 
         // print help messages
