@@ -18,7 +18,7 @@ use std::{borrow::Cow, path::PathBuf, sync::mpsc::RecvTimeoutError};
 struct Args {
     #[clap(flatten)]
     auth_args_and_file: vlc_http_auth_clap::ClapAuthInputAndFile,
-    #[clap(long)]
+    #[clap(long, env = "BEET_PUSHER_CONFIG_FILE")]
     config_file: Option<std::path::PathBuf>,
     /// Script file to use for the bucket spigot sequencer
     #[clap(long)]
