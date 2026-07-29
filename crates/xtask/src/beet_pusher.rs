@@ -54,7 +54,7 @@ impl WebUiSpawn {
             simulate_beet,
         } = args;
 
-        let fake_beet_and_configs = simulate_beet
+        let fake_beet_configs = simulate_beet
             .then(|| -> eyre::Result<_> {
                 let fake_beet = fake_beet::try_build_bin_once()
                     .as_ref()
@@ -68,7 +68,7 @@ impl WebUiSpawn {
                 let pusher_config = gen_beet_pusher_config(dir, fake_beet.path())?;
                 eprintln!("Created beet-pusher config: {}", pusher_config.display());
 
-                Ok((fake_beet, config, pusher_config))
+                Ok((config, pusher_config))
             })
             .transpose()?;
 
@@ -95,9 +95,8 @@ impl WebUiSpawn {
                 cmd.env("BEET_PUSHER_WEBUI", beet_pusher_webui.path())
                     .env("BEET_PUSHER_BACKEND", beet_pusher.path());
 
-                if let Some((fake_beet, config, pusher_config)) = fake_beet_and_configs {
-                    cmd.env("BEET", fake_beet.path())
-                        .env("FAKE_BEET_CONFIG_FILE", config)
+                if let Some((fake_beet_config, pusher_config)) = &fake_beet_configs {
+                    cmd.env("FAKE_BEET_CONFIG_FILE", fake_beet_config)
                         .env("BEET_PUSHER_CONFIG_FILE", pusher_config);
                 }
 
@@ -285,7 +284,11 @@ impl std::fmt::Display for ArgsCombined {
             write!(f, "- simulating beet")?;
         } else {
             write!(f, "- using external beet executable")?;
-            hint_line(f, "BEET", "specify a custom beet executable")?;
+            hint_line(
+                f,
+                "BEET_PUSHER_CONFIG_FILE",
+                "load a beet-pusher config TOML file (which sets the beet executable path)",
+            )?;
             hint_line(
                 f,
                 "--simulate-beet",
