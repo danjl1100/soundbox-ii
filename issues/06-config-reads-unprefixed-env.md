@@ -46,4 +46,4 @@ Note the separate `SCRIPT_WRITE_PORT` variable read directly via `std::env::var`
 
 ## Resolution
 
-Added prefix to env vars for `beet_pusher_webui`.
+Added prefix to env vars for `beet_pusher_webui` and added sane defaults for `bind_ip` and `port`.

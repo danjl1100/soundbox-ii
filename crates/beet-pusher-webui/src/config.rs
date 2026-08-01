@@ -20,6 +20,9 @@ impl Config {
                     .prefix("BEET_PUSHER_WEBUI")
                     .separator("__"),
             )
+            .set_default("bind_ip", "127.0.0.1")
+            .and_then(|b| b.set_default("port", "0"))
+            .context("failed to init default configuration")?
             .build()
             .context("failed to build configuration")?;
 
