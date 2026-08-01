@@ -89,7 +89,7 @@ impl WebUiSpawn {
         // fake-vlc to (interactively?) run in this process
         // NOTE: Must wait on the child to finish before tearing down fake-vlc
         // and the tempdir
-        let mut child = spawn_cmd_try_args(
+        let mut beet_pusher_webui_spawn = spawn_cmd_try_args(
             &beet_pusher_webui_spawn.path().to_string_lossy(),
             |cmd| -> eyre::Result<_> {
                 cmd.env("BEET_PUSHER_WEBUI", beet_pusher_webui.path())
@@ -135,7 +135,35 @@ impl WebUiSpawn {
             },
         )??;
 
-        let status = child
+        // interactive for the user
+        let mut kill_requested = false;
+        for line in std::io::stdin().lines() {
+            let line = line.context("failed to read stdin")?;
+            let line = line.trim();
+
+            if line.is_empty() {
+                continue;
+            }
+
+            match line {
+                "q" | "quit" => {
+                    beet_pusher_webui_spawn
+                        .kill()
+                        .context("failed to terminate beet-pusher-webui-spawn")?;
+
+                    kill_requested = true;
+                    break;
+                }
+                _ => {
+                    eprintln!(
+                        "unknown: {line:?}
+q | quit = kills the processes, to cleanup the harness tempdir correctly"
+                    );
+                }
+            }
+        }
+
+        let status = beet_pusher_webui_spawn
             .wait()
             .context("failed to wait for beet-pusher-webui-spawn")?;
 
@@ -152,7 +180,11 @@ impl WebUiSpawn {
         }
 
         if !status.success() {
-            return Err(eyre::eyre!("beet-pusher-webui-spawn failed: {status}").into());
+            if kill_requested {
+                eprintln!("beet-pusher-webui-spawn killed ({status})");
+            } else {
+                return Err(eyre::eyre!("beet-pusher-webui-spawn failed: {status}").into());
+            }
         }
 
         Ok(())

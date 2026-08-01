@@ -49,6 +49,8 @@ async fn main() -> eyre::Result<()> {
     stdout_thread.join().expect("panic in pipe thread")?;
     stdin_thread.join().expect("panic in pipe thread")?;
 
+    tracing::trace!("END OF BEET-PUSHER-WEBUI MAIN");
+
     Ok(())
 }
 
