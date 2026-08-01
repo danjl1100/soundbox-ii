@@ -19,7 +19,6 @@ Filed from the review of `feature/beet-pusher-web` before merging to `soundbox-i
 | [03](03-vlc-error-terminates-daemon.md) | Any VLC HTTP error terminates `beet-pusher` | high |
 | [04](04-stdin-thread-dies-on-bad-line.md) | Malformed stdout line shuts down the webui | medium |
 | [05](05-waiting-channels-leak.md) | `WaitingChannels` accumulates dead entries; linear scan | medium |
-| [06](06-config-reads-unprefixed-env.md) | webui config reads the unprefixed environment | medium |
 | [07](07-webui-has-no-authentication.md) | No authentication on the webui control surface | medium |
 | [08](08-new-crate-manifest-metadata.md) | New crates missing `license`/`authors`/`publish` | low |
 | [09](09-dead-code-and-lint-opt-outs.md) | Commented-out code and accumulating lint opt-outs | low |
