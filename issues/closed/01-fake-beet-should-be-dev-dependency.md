@@ -33,3 +33,7 @@ Move the entry to `[dev-dependencies]` in `crates/beet-pusher/Cargo.toml` and co
 Worth a check of the same kind across the other new crates — `xtask` depends on
 `fake-beet` and `fake-vlc` as normal dependencies, which *is* correct there, since
 `xtask::beet_pusher` uses them at runtime to drive the simulated dev environment.
+
+## Resolution
+
+Changed `fake-beet` to a dev-dependency of `beet-pusher`, all tests passed.

@@ -15,7 +15,6 @@ Filed from the review of `feature/beet-pusher-web` before merging to `soundbox-i
 
 | # | Issue | Severity |
 |---|-------|----------|
-| [01](01-fake-beet-should-be-dev-dependency.md) | `fake-beet` is a normal dependency of `beet-pusher` | high |
 | [02](02-pipe-timeout-mismatch.md) | webui/backend pipe timeouts mismatched; non-idempotent retries | high |
 | [03](03-vlc-error-terminates-daemon.md) | Any VLC HTTP error terminates `beet-pusher` | high |
 | [04](04-stdin-thread-dies-on-bad-line.md) | Malformed stdout line shuts down the webui | medium |

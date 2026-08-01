@@ -12,7 +12,6 @@ workspace = true
 arg_util = { version = "0.1.0", path = "../arg-util" }
 bucket-spigot = { version = "0.1.0", path = "../bucket-spigot" }
 clap = { version = "4.5.4", features = ["derive"] }
-fake-beet = { path = "../fake-beet" }
 eyre = "0.6.12"
 percent-encoding = "2.3.1"
 rand = "0.8.5"
@@ -29,6 +28,7 @@ vlc-http-ureq = { version = "0.1.0", path = "../vlc-http-ureq" }
 oneshot = { version = "0.2.1", features = ["std"] }
 
 [dev-dependencies]
+fake-beet = { path = "../fake-beet" }
 fake-vlc = { path = "../fake-vlc" }
 insta = "1.47.2"
 stdio-test = { path = "../stdio-test" }
