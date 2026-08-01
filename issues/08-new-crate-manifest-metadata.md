@@ -40,3 +40,15 @@ Add `publish = false` to the four test-double crates.
 
 Worth checking whether `cargo xtask checks` can assert this, given it already enforces
 copyright headers per-file.
+
+## Resolution
+
+Added authors, license, and publish fields to all crates.
+- Authors and license reference the workspace value
+- Publish is `false` for internal crates, and workspace value (currently also `false`) for all others
+
+Verified via nushell script:
+
+```nushell
+cargo metadata | from json | get packages | where $in.source == null | select name authors license publish
+```

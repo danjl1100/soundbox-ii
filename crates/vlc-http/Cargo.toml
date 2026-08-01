@@ -1,9 +1,10 @@
 [package]
 name = "vlc-http"
 version = "0.1.0"
-authors = ["Daniel Lambert <danjl1100@gmail.com>"]
 edition = "2024"
-license = "GPL-3.0-or-later"
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
 
 [lints]
 workspace = true
@@ -29,4 +30,3 @@ vlc-http-auth-clap = { path = "../vlc-http-auth-clap" }
 vlc-http-cmd-clap = { path = "../vlc-http-cmd-clap" }
 vlc-http-test = { path = "../vlc-http-test" }
 vlc-http-ureq = { path = "../vlc-http-ureq" }
-

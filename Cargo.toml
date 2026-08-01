@@ -2,6 +2,10 @@
 members = [ "crates/arg-util", "crates/beet-pusher", "crates/beet-pusher-webui", "crates/bucket-spigot", "crates/fake-beet", "crates/fake-vlc", "crates/shared", "crates/spigot-visual", "crates/stdio-test", "crates/vlc-http", "crates/vlc-http-auth", "crates/vlc-http-auth-clap", "crates/vlc-http-cmd", "crates/vlc-http-cmd-clap", "crates/vlc-http-test", "crates/vlc-http-ureq", "crates/xtask" ]
 resolver = "2"
 
+[workspace.package]
+authors = ["Daniel Lambert <danjl1100@gmail.com>"]
+license = "GPL-3.0-or-later"
+publish = false
 
 [workspace.lints.clippy]
 # teach me
