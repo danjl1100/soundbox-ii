@@ -27,3 +27,4 @@ Filed from the review of `feature/beet-pusher-web` before merging to `soundbox-i
 | [11](11-gitignore-generated-files.md) | Generated config files are untracked, not ignored | low |
 | [12](12-dependency-surface-growth.md) | Dependency surface roughly doubled | low |
 | [13](13-webui-architecture-review.md) | Revisit the ports-and-adapters layering | deferred |
+| [14](14-fully-specified-add-commands.md) | `AddBucket`/`AddJoint` do not name the node they create | medium |

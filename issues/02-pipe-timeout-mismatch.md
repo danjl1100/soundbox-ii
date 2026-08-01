@@ -39,7 +39,8 @@ behaviour, so it will need updating alongside the fix.
    (`webui_timeout >= backend_timeout + tick_interval`).
 3. Longer term, make the commands idempotent or give the backend a reply cache keyed by
    `RequestSequence`, so a retry of an already-executed sequence returns the original
-   response rather than re-executing. See also [04](04-stdin-thread-dies-on-bad-line.md)
+   response rather than re-executing. See [14](14-fully-specified-add-commands.md) for a
+   proposal on the command side, and also [04](04-stdin-thread-dies-on-bad-line.md)
    and [05](05-waiting-channels-leak.md) — same protocol layer.
 
 ## Related
