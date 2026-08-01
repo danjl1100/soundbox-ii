@@ -30,7 +30,7 @@ async fn main() -> eyre::Result<()> {
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "Listening for HTTP connections");
 
-    if let Ok(port_path) = std::env::var("SCRIPT_WRITE_PORT") {
+    if let Some(port_path) = config.script_write_port {
         std::thread::spawn(move || {
             let contents = format!("{}", addr.port());
             let result = std::fs::write(port_path, &contents);

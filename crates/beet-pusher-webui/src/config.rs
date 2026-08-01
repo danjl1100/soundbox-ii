@@ -6,6 +6,7 @@ use validator::Validate as _;
 pub struct Config {
     pub bind_ip: std::net::IpAddr,
     pub port: u16,
+    pub script_write_port: Option<std::path::PathBuf>,
 }
 impl Config {
     /// Loads the configuration from the environment
@@ -14,7 +15,11 @@ impl Config {
     /// Returns an error if the deserialization or validation fails
     pub fn from_env() -> eyre::Result<Self> {
         let config = ::config::Config::builder()
-            .add_source(::config::Environment::default().separator("__"))
+            .add_source(
+                ::config::Environment::default()
+                    .prefix("BEET_PUSHER_WEBUI")
+                    .separator("__"),
+            )
             .build()
             .context("failed to build configuration")?;
 

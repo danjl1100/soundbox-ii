@@ -43,3 +43,7 @@ Update the two callers that set the current names:
 Note the separate `SCRIPT_WRITE_PORT` variable read directly via `std::env::var` at
 `crates/beet-pusher-webui/src/bin/beet-pusher-webui.rs:33` (and `LOG_JSON` at
 `src/lib.rs:30`) — these bypass `Config` entirely and would ideally be folded into it.
+
+## Resolution
+
+Added prefix to env vars for `beet_pusher_webui`.

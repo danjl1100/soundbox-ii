@@ -19,9 +19,9 @@ impl PipeRunner {
             let port_file = dir.join("port_file.txt");
 
             let mut cmd = Command::new(env!("CARGO_BIN_EXE_beet-pusher-webui"));
-            cmd.env("SCRIPT_WRITE_PORT", &port_file)
-                .env("PORT", "0")
-                .env("BIND_IP", IP_ADDR_LOCAL)
+            cmd.env("BEET_PUSHER_WEBUI__SCRIPT_WRITE_PORT", &port_file)
+                .env("BEET_PUSHER_WEBUI__PORT", "0")
+                .env("BEET_PUSHER_WEBUI__BIND_IP", IP_ADDR_LOCAL)
                 .env("RUST_LOG", "beet_pusher=DEBUG");
             Ok((cmd, port_file))
         })?;

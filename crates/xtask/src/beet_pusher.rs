@@ -122,8 +122,9 @@ impl WebUiSpawn {
                         eyre::bail!("non-unicode env var {key:?}: {value:?}")
                     }
                 };
-                let bind_ip = get_or_default_var("BIND_IP", "127.0.0.1".to_string())?;
-                let port = get_or_default_var("PORT", "8080".to_string())?;
+                let bind_ip =
+                    get_or_default_var("BEET_PUSHER_WEBUI__BIND_IP", "127.0.0.1".to_string())?;
+                let port = get_or_default_var("BEET_PUSHER_WEBUI__PORT", "8080".to_string())?;
 
                 eprintln!();
                 eprintln!("{0:=<80}", "");
