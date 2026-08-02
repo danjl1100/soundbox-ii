@@ -26,3 +26,4 @@ pathdiff = "0.2.3"
 tempfile = "3.27.0"
 vlc-http-auth = { version = "0.1.0", path = "../vlc-http-auth" }
 vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }
+walkdir = "2.5.0"
