@@ -36,10 +36,3 @@ Consider whether the default config path should be somewhere outside the repo en
 (an XDG config directory), which would remove the problem at the source rather than
 papering over it. The `BEET_PUSHER_CONFIG_FILE` env var added on this branch already
 makes the location overridable.
-
-## Note
-
-Other untracked working-tree files at time of writing — `_trash/`,
-`2026-07-18_trip_patch.txt`, `test_case.sh`, `crates/beet-pusher/enqueue-detection-plan.md`,
-`rand-0.10-transitive-deps.md` — look like personal scratch rather than tooling output,
-and just want clearing out or `.git/info/exclude`.
