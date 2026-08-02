@@ -19,7 +19,6 @@ New issues should be added to this list (categorized after separate review)
 | [03](03-vlc-error-terminates-daemon.md) | Any VLC HTTP error terminates `beet-pusher` | high |
 | [04](04-stdin-thread-dies-on-bad-line.md) | Malformed stdout line shuts down the webui | medium |
 | [05](05-waiting-channels-leak.md) | `WaitingChannels` accumulates dead entries; linear scan | medium |
-| [09](09-dead-code-and-lint-opt-outs.md) | Commented-out code and accumulating lint opt-outs | low |
 | [10](10-test-timing-flakiness.md) | Sleep- and timeout-dependent tests | low |
 
 ## Reviewed as Scheduled for Later
