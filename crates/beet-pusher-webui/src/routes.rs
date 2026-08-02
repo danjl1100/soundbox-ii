@@ -1,4 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Defines the routes for the application
+
 use axum::{Router, routing::get};
 
 use crate::{
@@ -9,6 +11,7 @@ use crate::{
 use utoipa::OpenApi as _;
 use utoipa_swagger_ui::SwaggerUi;
 
+/// Creates the top-level router for the application
 pub fn router<T: BeetPusherPipe>(state: AppState<T>) -> Router {
     Router::new()
         .nest("/api/v1", api_routes())

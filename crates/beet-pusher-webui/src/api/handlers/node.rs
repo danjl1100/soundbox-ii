@@ -13,6 +13,7 @@ use crate::{
     error::{AppError, AppResult, ErrorOut},
 };
 
+/// Creates a router to mount at the nodes endpoint
 pub fn node_routes<T: BeetPusherPipe>() -> Router<AppState<T>> {
     Router::new().route("/create-bucket", post(create_bucket))
 }

@@ -1,4 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! State types for the application
+
 use std::sync::Arc;
 
 use crate::{
@@ -7,11 +9,13 @@ use crate::{
 };
 use axum::extract::FromRef;
 
+/// State for the web application
 pub struct AppState<T> {
-    pub config: Arc<Config>,
-    pub node_service: Arc<NodeService<T>>,
+    config: Arc<Config>,
+    node_service: Arc<NodeService<T>>,
 }
 impl<T: BeetPusherPipe> AppState<T> {
+    /// Creates the app state from components
     #[must_use]
     pub fn new(config: Config, pipe: T) -> Self {
         Self {

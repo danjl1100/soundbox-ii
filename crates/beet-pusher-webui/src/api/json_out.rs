@@ -16,9 +16,11 @@ impl<T> JsonOut<T> {
     }
 }
 
+/// Success/failure response from an API endpoint
 #[derive(serde::Serialize, ToSchema)]
 #[serde(tag = "status")]
 #[serde(rename_all = "snake_case")]
+#[allow(missing_docs, reason = "self-explanatory variants and fields")]
 pub enum ResponseOut<T> {
     Success { data: T },
     Fail { error: T },

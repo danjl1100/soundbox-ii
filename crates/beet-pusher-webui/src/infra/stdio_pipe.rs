@@ -1,4 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Communication to a [`beet_pusher`] backend
+
 use std::{
     collections::VecDeque,
     sync::atomic::{AtomicU64, Ordering},
@@ -6,10 +8,11 @@ use std::{
 
 use beet_pusher::pipe_exec::{CommandIn, RequestSequence};
 
-use crate::{domain::services::ports::BeetPusherPipe, infra::Shutdown};
+use crate::{Shutdown, domain::services::ports::BeetPusherPipe};
 
 type IoThread<T = ()> = std::thread::JoinHandle<std::io::Result<T>>;
 
+/// Communication bridge to [`beet_pusher`] over stdin/stdout
 #[must_use]
 pub struct StdioPipe {
     next_seq: AtomicU64,
@@ -172,6 +175,7 @@ impl BeetPusherPipe for StdioPipe {
         response.map_err(|()| PipeErrorInner::ResponseFailed.into())
     }
 }
+/// Error communicating over the [`StdioPipe`]
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct PipeError(#[from] PipeErrorInner);

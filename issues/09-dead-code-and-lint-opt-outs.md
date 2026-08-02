@@ -38,7 +38,7 @@ interactive prompt) and splits naturally.
 
 - [x] `crates/beet-pusher/src/bin/beet-pusher.rs:33` —
   `#[expect(clippy::too_many_lines, reason = "TODO cleanup modules in main")]`.
-- [ ] `crates/beet-pusher-webui/src/lib.rs:2` and `tests/entrypoint.rs:2` —
+- [x] `crates/beet-pusher-webui/src/lib.rs:2` and `tests/entrypoint.rs:2` —
   `#![expect(missing_docs, reason = "TODO while building")]`, opting an entire new crate
   out of the workspace's `missing_docs = "deny"`.
 - [ ] `crates/beet-pusher/src/pipe_exec.rs:4` — same, for the whole protocol module.

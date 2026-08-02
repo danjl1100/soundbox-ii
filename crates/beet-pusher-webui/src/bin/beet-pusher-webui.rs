@@ -1,12 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP server frontend to drive [`beet_pusher`]
 
-use beet_pusher_webui::{
-    config::Config,
-    create_app,
-    infra::{Shutdown, stdio_pipe::StdioPipe},
-    init_tracing,
-};
+use beet_pusher_webui::{Config, Shutdown, create_app, infra::stdio_pipe::StdioPipe, init_tracing};
 use eyre::Context as _;
 
 #[tokio::main]

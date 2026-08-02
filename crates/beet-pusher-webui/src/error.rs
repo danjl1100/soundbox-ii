@@ -1,4 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Errors from the API endpoint
+
 use std::collections::HashMap;
 
 use axum::{http::StatusCode, response::IntoResponse};
@@ -6,24 +8,33 @@ use utoipa::ToSchema;
 
 use crate::{api::JsonOut, domain::services::node_service::CreateBucketError};
 
+/// Result from the web API
 pub type AppResult<T> = Result<T, AppError>;
 
+/// Error from the web API
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
+    /// Parameter validation error
     #[error("{0}")]
     Validation(String),
+    /// Parameter validation error on multiple fields
     #[error("validation failed")]
     ValidationFields(HashMap<String, Vec<String>>),
+    /// Authentication required for this resource
     #[error("authentication required")]
     Unauthorized,
+    /// Insufficient authentication for this resource
     #[error("insufficient permissions")]
     Forbidden,
+    /// Command conflicts with existing data
     #[error("{0}")]
     Conflict(String),
+    /// Backend-specific internal error
     #[error(transparent)]
     Internal(#[from] eyre::Error),
 }
 
+/// Error payload out to the HTTP response layer
 #[derive(serde::Serialize, ToSchema)]
 pub struct ErrorOut {
     r#type: &'static str,

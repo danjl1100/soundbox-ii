@@ -8,7 +8,7 @@ use tracing_subscriber::{
 };
 
 pub mod api;
-pub mod config;
+mod config;
 pub mod domain;
 pub mod error;
 pub mod infra;
@@ -49,3 +49,6 @@ pub fn init_tracing(log_level: &str) {
         .with(fmt_layer)
         .init();
 }
+
+/// Signal to shutdown the application
+pub struct Shutdown;

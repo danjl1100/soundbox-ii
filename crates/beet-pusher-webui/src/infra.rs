@@ -1,5 +1,4 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-pub mod stdio_pipe;
+//! Details for the specific backend services
 
-/// Signal to shutdown the application
-pub struct Shutdown;
+pub mod stdio_pipe;
