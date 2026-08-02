@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-#![expect(missing_docs, reason = "TODO while building")]
+//! Entrypoint for all integration tests to run in parallel
 
 use axum::{Router, response::Response};
 use beet_pusher_webui::{create_app, domain::services::ports::BeetPusherPipe};
@@ -116,7 +116,7 @@ impl std::fmt::Debug for ReadResponse {
     }
 }
 
-pub fn init_test_tracing() {
+fn init_test_tracing() {
     static TRACING_ONCE: std::sync::Once = std::sync::Once::new();
 
     TRACING_ONCE.call_once(|| {

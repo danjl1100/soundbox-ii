@@ -2,10 +2,14 @@
 use eyre::Context as _;
 use validator::Validate as _;
 
+/// Top-level configuration for the web server
 #[derive(Debug, Clone, serde::Deserialize, validator::Validate)]
 pub struct Config {
+    /// Bind IP address
     pub bind_ip: std::net::IpAddr,
+    /// Bind port
     pub port: u16,
+    /// If provided, writes the bound port to the specified file
     pub script_write_port: Option<std::path::PathBuf>,
 }
 impl Config {

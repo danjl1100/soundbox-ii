@@ -1,7 +1,8 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-#![expect(missing_docs, reason = "TODO while building")]
+//! Web API interface for controlling [`beet_pusher`]
 
-use crate::{config::Config, domain::services::ports::BeetPusherPipe, state::AppState};
+pub use self::config::Config;
+use crate::{domain::services::ports::BeetPusherPipe, state::AppState};
 use tracing_subscriber::{
     EnvFilter, Layer as _, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -14,12 +15,16 @@ pub mod infra;
 pub mod routes;
 pub mod state;
 
+/// Creates the router for the core app
 #[expect(clippy::unused_async, reason = "future capability may require async")]
 pub async fn create_app(config: Config, pipe: impl BeetPusherPipe) -> axum::Router {
     let state = AppState::new(config, pipe);
     routes::router(state)
 }
 
+/// Initializes [`tracing`] based on the env vars:
+/// - `RUST_LOG` built in to [`EnvFilter`]
+/// - `LOG_JSON` (intentionally unscoped) to output as JSON
 pub fn init_tracing(log_level: &str) {
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));

@@ -1,4 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Extract information from requests
+
 use std::collections::HashMap;
 
 use axum::{Json, extract::FromRequest};
@@ -6,6 +8,7 @@ use validator::Validate;
 
 use crate::error::AppError;
 
+/// Like [`Json`] except with [`Validate::validate`] run as well
 pub struct ValidatedJson<T>(pub T);
 impl<T, S> FromRequest<S> for ValidatedJson<T>
 where
