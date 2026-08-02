@@ -10,8 +10,6 @@ pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    // #[error("resource not found")]
-    // NotFound,
     #[error("{0}")]
     Validation(String),
     #[error("validation failed")]
@@ -43,10 +41,6 @@ impl IntoResponse for AppError {
         };
 
         let (status, err_value) = match self {
-            // AppError::NotFound => (
-            //     StatusCode::NOT_FOUND,
-            //     err("not_found", self.to_string()),
-            // ),
             AppError::Validation(message) => {
                 (StatusCode::BAD_REQUEST, err("validation_error", message))
             }

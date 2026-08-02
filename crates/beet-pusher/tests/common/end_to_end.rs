@@ -8,18 +8,6 @@ use serde_json::json;
 
 mod pipe_runner;
 
-// TODO remove if not needed
-// fn base_beet_config(c: &mut fake_beet::ConfigAll) {
-//     // this is the current default script,
-//     // when changed then this will be emptier or completely unused
-//     c.for_args(["ls", "-f$id=$path", "grouping:1|2|3|4|5", "has_lyrics::^$"])
-//         .stdout_lines(["1=/path/to/file1.mp3", "2=/path/to/file2.mp3"]);
-//     c.for_args(["ls", "-f$id=$path", "added:2020..", "grouping::^$"])
-//         .stdout_lines(["5=/path/recent_file1.mp3", "6=/path/recent_file2.mp3"]);
-//     c.for_args(["ls", "-f$id=$path", "grouping::1|2|3|4|5", "has_lyrics::^$"])
-//         .stdout_lines(["7=/path/lyrics_file1.mp3"]);
-// }
-
 #[test]
 fn stdin_reports_unknown_command() -> eyre::Result<()> {
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {

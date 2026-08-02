@@ -12,16 +12,16 @@ configuration is meant to provide.
 Several blocks were commented out rather than deleted, some marked "TODO remove if
 unused":
 
-- `crates/beet-pusher/src/pusher.rs:193-207` — `SpigotEmptyError` and its `FillError`
+- [x] `crates/beet-pusher/src/pusher.rs:193-207` — `SpigotEmptyError` and its `FillError`
   variant.
-- `crates/beet-pusher/src/bin/beet-pusher.rs:36-47` — the `DEFAULT_SCRIPT` body, leaving
+- [x] `crates/beet-pusher/src/bin/beet-pusher.rs:36-47` — the `DEFAULT_SCRIPT` body, leaving
   the const as `""`.
-- `crates/beet-pusher/src/bin/beet-pusher.rs:371-375` — the empty-spigot bail in
+- [x] `crates/beet-pusher/src/bin/beet-pusher.rs:371-375` — the empty-spigot bail in
   `setup_spigot` (superseded: "Empty is a valid startup state").
-- `crates/beet-pusher-webui/src/error.rs:13-14, 46-49` — `AppError::NotFound`.
-- `crates/fake-vlc/src/lib.rs:325-338` — `lock_set_current_playing`.
-- `crates/beet-pusher-webui/src/infra/stdio_pipe.rs:122` — a `tracing::trace!` call.
-- `crates/beet-pusher/tests/common/end_to_end.rs:12` — `base_beet_config`.
+- [x] `crates/beet-pusher-webui/src/error.rs:13-14, 46-49` — `AppError::NotFound`.
+- [x] `crates/fake-vlc/src/lib.rs:325-338` — `lock_set_current_playing`.
+- [x] `crates/beet-pusher-webui/src/infra/stdio_pipe.rs:122` — a `tracing::trace!` call.
+- [x] `crates/beet-pusher/tests/common/end_to_end.rs:12` — `base_beet_config`.
 
 Git history preserves all of it. The `DEFAULT_SCRIPT` case is the most worth resolving,
 since an empty default script is a meaningful behavioural choice currently disguised as

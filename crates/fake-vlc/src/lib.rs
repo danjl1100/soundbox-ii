@@ -319,19 +319,6 @@ mod inner_mut {
             }
             result
         }
-        // pub fn lock_set_current_playing(&self, id: i32, state: PlayState) {
-        //     let Self {
-        //         model,
-        //         current_playing,
-        //     } = self;
-
-        //     {
-        //         let mut model = model.lock().expect("no mutex poison");
-        //         model.set_current_playing(id, state);
-        //     }
-
-        //     current_playing.notify_all();
-        // }
         pub fn wait_for_play_next(&self, wait_timeout: std::time::Duration) -> Option<()> {
             let Self {
                 model,

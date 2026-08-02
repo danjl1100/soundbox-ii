@@ -119,7 +119,6 @@ impl WaitingChannels {
                 break;
             }
             let _removed = list.pop_front();
-            // tracing::trace!(removed = removed.flatten().map(|v| v.value.0), "removed");
         }
     }
     fn push(&mut self, channel: Queued<beet_pusher::pipe_exec::RequestSequence>) {

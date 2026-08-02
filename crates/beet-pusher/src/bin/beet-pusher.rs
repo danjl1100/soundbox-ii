@@ -34,6 +34,9 @@ struct Args {
 fn main() -> eyre::Result<()> {
     // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
     const DEFAULT_SCRIPT: &str = "";
+    // NOTE: Uncomment to test with a sample script. Future state will persist
+    // the prior spigot state, so pre-charging it will not be necessary.
+    //
     // "
     // add-joint .
 
@@ -368,11 +371,6 @@ fn setup_spigot(
 
     let mut spigot = Network::from_commands_str_whitespace(script)?;
     fill_buckets(beet_cmd, &mut spigot)?;
-
-    // NOTE: Empty is a valid startup state
-    // if spigot.is_empty() {
-    //     eyre::bail!("no items for the selected filters, see RUST_LOG=trace output above");
-    // }
 
     Ok(spigot)
 }

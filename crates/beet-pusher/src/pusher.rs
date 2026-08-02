@@ -30,20 +30,9 @@ pub struct BeetPusher<'a, R> {
     spigot: bucket_spigot::Network<BeetItem, String>,
     rng: &'a mut R,
     client_state: vlc_http::ClientState,
-    // client: Client,
-    // http_runner: vlc_http::http_runner::ureq::HttpRunner,
     determined: Determined<BeetItem>,
     config: Config,
 }
-// struct Client {
-//     state: vlc_http::ClientState,
-// }
-// impl Client {
-//     fn new() -> Self {
-//         let state = vlc_http::ClientState::new();
-//         Self { state }
-//     }
-// }
 struct Config {
     base_url: BaseUrl,
 }
@@ -52,20 +41,11 @@ where
     R: ArbitrarySource,
 {
     /// Creates a new VLC client fed by the specified Network
-    pub fn new(
-        // auth: Auth,
-        rng: &'a mut R,
-        spigot: Network<BeetItem, String>,
-        base_url: BaseUrl,
-    ) -> Self {
-        // let http_runner = vlc_http::http_runner::ureq::HttpRunner::new(auth);
-
+    pub fn new(rng: &'a mut R, spigot: Network<BeetItem, String>, base_url: BaseUrl) -> Self {
         Self {
             spigot,
             rng,
             client_state: vlc_http::ClientState::default(),
-            // client: Client::new(),
-            // http_runner,
             determined: Determined::default(),
             config: Config { base_url },
         }
@@ -190,21 +170,9 @@ mod fill_determined {
         }
     }
 
-    // TODO remove if unused
-    // /// Error from [`BeetPusher::fill_determined`] where the spigot is empty
-    // #[derive(Debug, thiserror::Error)]
-    // #[error("bucket-spigot network must be non-empty:\n{view}")]
-    // pub struct SpigotEmptyError {
-    //     view: String,
-    // }
-
     /// Error filling the determined items list (from the bucket spigot)
     #[derive(Debug, thiserror::Error)]
     pub enum FillError<E> {
-        // TODO remove if unused
-        // /// The spigot is empty, nothing to fill
-        // #[error(transparent)]
-        // SpigotEmptyError(#[from] SpigotEmptyError),
         /// Fill failed to get randomness
         #[error("failed to get randomness")]
         Arbitrary(#[source] E),
@@ -382,8 +350,6 @@ impl<R> std::fmt::Debug for BeetPusher<'_, R> {
             spigot,
             rng: _,
             client_state,
-            // client: Client { state },
-            // http_runner: _,
             determined,
             config: Config { base_url },
         } = self;
