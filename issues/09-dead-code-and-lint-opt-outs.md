@@ -36,15 +36,19 @@ interactive prompt) and splits naturally.
 
 ## Lint opt-outs
 
-- `crates/beet-pusher/src/bin/beet-pusher.rs:33` —
+- [x] `crates/beet-pusher/src/bin/beet-pusher.rs:33` —
   `#[expect(clippy::too_many_lines, reason = "TODO cleanup modules in main")]`.
-- `crates/beet-pusher-webui/src/lib.rs:2` and `tests/entrypoint.rs:2` —
+- [ ] `crates/beet-pusher-webui/src/lib.rs:2` and `tests/entrypoint.rs:2` —
   `#![expect(missing_docs, reason = "TODO while building")]`, opting an entire new crate
   out of the workspace's `missing_docs = "deny"`.
-- `crates/beet-pusher/src/pipe_exec.rs:4` — same, for the whole protocol module.
+- [ ] `crates/beet-pusher/src/pipe_exec.rs:4` — same, for the whole protocol module.
 
 The blanket `missing_docs` opt-outs are the ones to plan for: the longer a crate grows
 under them, the more expensive lifting them becomes, and `pipe_exec` is precisely the
 module where the wire contract most needs documenting. Consider narrowing them to the
 specific items still in flux, or setting a checkpoint (e.g. "before the third endpoint
 lands") to remove them.
+
+## Resolution
+
+Removed dead code comments, refactored some long lines (completions marked `[x]`)

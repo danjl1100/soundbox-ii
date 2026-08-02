@@ -30,7 +30,6 @@ struct Args {
     json: bool,
 }
 
-#[expect(clippy::too_many_lines, reason = "TODO cleanup modules in main")]
 fn main() -> eyre::Result<()> {
     // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
     const DEFAULT_SCRIPT: &str = "";
@@ -59,7 +58,7 @@ fn main() -> eyre::Result<()> {
         json,
     } = Args::parse();
 
-    let mut http_runner = {
+    let http_runner = {
         let auth = auth_args_and_file.merge()?;
         let auth = vlc_http::Auth::new(auth)?;
         vlc_http_ureq::HttpRunner::new(auth)
@@ -114,7 +113,7 @@ fn main() -> eyre::Result<()> {
         beet,
     } = config_file;
 
-    let mut now_playing_observer = move |item: &BeetItem| {
+    let now_playing_observer = move |item: &BeetItem| {
         let beet_id = item.get_beet_id();
         let path = item.get_path().as_str();
 
@@ -137,9 +136,11 @@ fn main() -> eyre::Result<()> {
                 .context("failed to validate configured beet command")
         },
     )?;
-    let spigot = setup_spigot(&mut beet_cmd, &script)?;
 
-    let mut pusher = BeetPusher::new(rng, spigot, base_url);
+    let pusher = {
+        let spigot = setup_spigot(&mut beet_cmd, &script)?;
+        BeetPusher::new(rng, spigot, base_url)
+    };
     // let mut client_state = vlc_http::ClientState::new();
 
     let (loop_tx, loop_rx) = std::sync::mpsc::sync_channel(1);
@@ -153,16 +154,50 @@ fn main() -> eyre::Result<()> {
         });
     }
 
-    // TODO add a "determined holder" concept, to make it easy to:
-    // 1. Peek a bunch, update spigot
-    // 2. Load into VLC, retrieve "after current" items
-    // 3. Pop from the "determined" holder
-    // 4. Repeat from step 1, only peeking what is needed
-    // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
+    CommandLoop {
+        loop_rx,
+        pusher,
+        http_runner,
+        now_playing_observer,
+        beet_cmd,
+    }
+    .run()?;
 
-    {
+    tracing::trace!("END OF BEET-PUSHER MAIN");
+
+    Ok(())
+}
+
+struct CommandLoop<'a, R, F> {
+    loop_rx: std::sync::mpsc::Receiver<LoopEvent>,
+    pusher: BeetPusher<'a, R>,
+    http_runner: vlc_http_ureq::HttpRunner,
+    now_playing_observer: F,
+    beet_cmd: beet_pusher::BeetCommand<'a>,
+}
+impl<R, F, E> CommandLoop<'_, R, F>
+where
+    R: bucket_spigot::order::ArbitrarySource<Error: Send + Sync + 'static>,
+    F: FnMut(&beet_pusher::BeetItem) -> Result<(), E>,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    fn run(self) -> eyre::Result<()> {
+        // TODO add a "determined holder" concept, to make it easy to:
+        // 1. Peek a bunch, update spigot
+        // 2. Load into VLC, retrieve "after current" items
+        // 3. Pop from the "determined" holder
+        // 4. Repeat from step 1, only peeking what is needed
+        // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
         const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
         const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+        let Self {
+            loop_rx,
+            mut pusher,
+            mut http_runner,
+            mut now_playing_observer,
+            mut beet_cmd,
+        } = self;
 
         let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
 
@@ -258,11 +293,9 @@ fn main() -> eyre::Result<()> {
                 Err(RecvTimeoutError::Timeout) => {}
             }
         }
+
+        Ok(())
     }
-
-    tracing::trace!("END OF BEET-PUSHER MAIN");
-
-    Ok(())
 }
 
 enum LoopEvent {
