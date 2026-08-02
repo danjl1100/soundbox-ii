@@ -17,5 +17,7 @@ mod pusher;
 
 pub mod pipe_exec;
 
+pub mod command_loop;
+
 /// Signal to shutdown the application
 pub struct Shutdown;
