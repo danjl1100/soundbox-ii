@@ -29,7 +29,7 @@ commented-out example content.
 
 ## New clippy warning
 
-`crates/xtask/src/beet_pusher.rs:33` — `too_many_lines` (120/100) on `WebUiSpawn::spawn`.
+- [x] `crates/xtask/src/beet_pusher.rs:33` — `too_many_lines` (120/100) on `WebUiSpawn::spawn`.
 The only new clippy warning on the branch; everything else is clean. The function does
 five distinct things (build binaries, generate configs, start fake-vlc, spawn, drive an
 interactive prompt) and splits naturally.

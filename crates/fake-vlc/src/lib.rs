@@ -11,7 +11,8 @@ use self::inner_mut::InnerMut;
 
 mod arbtest;
 
-type SpawnHandle = std::thread::JoinHandle<Result<(), std::io::Error>>;
+/// Thread handle for a spawned [`FakeVlc::new`]
+pub type SpawnHandle = std::thread::JoinHandle<Result<(), std::io::Error>>;
 
 /// Server mimicking the VLC HTTP interface
 pub struct FakeVlc {

@@ -55,35 +55,16 @@ impl WebUiSpawn {
         } = args;
 
         let fake_beet_configs = simulate_beet
-            .then(|| -> eyre::Result<_> {
-                let fake_beet = fake_beet::try_build_bin_once()
-                    .as_ref()
-                    .context("failed to build fake-beet")?;
-
-                let config = gen_fake_beet_config(dir)?;
-                eprintln!("Created fake-beet config: {}", config.display());
-
-                // `beet-pusher` reads the `beet` executable path from its own config file, so it
-                // has to be generated here to point at the `fake-beet` build
-                let pusher_config = gen_beet_pusher_config(dir, fake_beet.path())?;
-                eprintln!("Created beet-pusher config: {}", pusher_config.display());
-
-                Ok((config, pusher_config))
-            })
+            .then(|| FakeBeetConfigs::new(dir))
             .transpose()?;
 
-        let (vlc_auth_file, fake_vlc_and_thread) = simulate_vlc
-            .then(|| -> eyre::Result<_> {
-                let (fake_vlc, thread) = ::fake_vlc::FakeVlc::new()?;
-                eprintln!("Spawned fake-vlc");
-
-                let vlc_auth_file = fake_vlc.create_config_file(dir, "fake-vlc.toml")?;
-                eprintln!("Created fake-vlc config: {}", vlc_auth_file.display());
-
-                Ok((vlc_auth_file, (fake_vlc, thread)))
-            })
+        let FakeVlcHandles {
+            vlc_auth_file,
+            fake_vlc_and_thread,
+        } = simulate_vlc
+            .then(|| FakeVlcHandles::new(dir))
             .transpose()?
-            .unzip();
+            .unwrap_or_default();
 
         // Spawn (not wait) on the beet-pusher-webui-spawn process to allow
         // fake-vlc to (interactively?) run in this process
@@ -95,8 +76,12 @@ impl WebUiSpawn {
                 cmd.env("BEET_PUSHER_WEBUI", beet_pusher_webui.path())
                     .env("BEET_PUSHER_BACKEND", beet_pusher.path());
 
-                if let Some((fake_beet_config, pusher_config)) = &fake_beet_configs {
-                    cmd.env("FAKE_BEET_CONFIG_FILE", fake_beet_config)
+                if let Some(fake_beet_configs) = &fake_beet_configs {
+                    let FakeBeetConfigs {
+                        config,
+                        pusher_config,
+                    } = fake_beet_configs;
+                    cmd.env("FAKE_BEET_CONFIG_FILE", config)
                         .env("BEET_PUSHER_CONFIG_FILE", pusher_config);
                 }
 
@@ -137,32 +122,8 @@ impl WebUiSpawn {
         )??;
 
         // interactive for the user
-        let mut kill_requested = false;
-        for line in std::io::stdin().lines() {
-            let line = line.context("failed to read stdin")?;
-            let line = line.trim();
-
-            if line.is_empty() {
-                continue;
-            }
-
-            match line {
-                "q" | "quit" => {
-                    beet_pusher_webui_spawn
-                        .kill()
-                        .context("failed to terminate beet-pusher-webui-spawn")?;
-
-                    kill_requested = true;
-                    break;
-                }
-                _ => {
-                    eprintln!(
-                        "unknown: {line:?}
-q | quit = kills the processes, to cleanup the harness tempdir correctly"
-                    );
-                }
-            }
-        }
+        let InteractivePromptOutput { process_killed } =
+            InteractivePromptOutput::run(&mut beet_pusher_webui_spawn)?;
 
         let status = beet_pusher_webui_spawn
             .wait()
@@ -181,7 +142,7 @@ q | quit = kills the processes, to cleanup the harness tempdir correctly"
         }
 
         if !status.success() {
-            if kill_requested {
+            if process_killed {
                 eprintln!("beet-pusher-webui-spawn killed ({status})");
             } else {
                 return Err(eyre::eyre!("beet-pusher-webui-spawn failed: {status}").into());
@@ -189,6 +150,44 @@ q | quit = kills the processes, to cleanup the harness tempdir correctly"
         }
 
         Ok(())
+    }
+}
+
+struct InteractivePromptOutput {
+    process_killed: bool,
+}
+impl InteractivePromptOutput {
+    fn run(process: &mut std::process::Child) -> eyre::Result<Self> {
+        let mut kill_requested = false;
+        for line in std::io::stdin().lines() {
+            let line = line.context("failed to read stdin")?;
+            let line = line.trim();
+
+            if line.is_empty() {
+                continue;
+            }
+
+            match line {
+                "q" | "quit" => {
+                    process
+                        .kill()
+                        .context("failed to terminate beet-pusher-webui-spawn")?;
+
+                    kill_requested = true;
+                    break;
+                }
+                _ => {
+                    eprintln!(
+                        "unknown: {line:?}
+q | quit = kills the processes, to cleanup the harness tempdir correctly"
+                    );
+                }
+            }
+        }
+
+        Ok(Self {
+            process_killed: kill_requested,
+        })
     }
 }
 
@@ -233,6 +232,34 @@ impl Binaries {
     }
 }
 
+struct FakeBeetConfigs {
+    // config for `fake-beet`
+    config: std::path::PathBuf,
+    // `beet-pusher` reads the `beet` executable path from its own config file, so it
+    // has to be generated here to point at the `fake-beet` build
+    pusher_config: std::path::PathBuf,
+}
+impl FakeBeetConfigs {
+    fn new(dir: &std::path::Path) -> eyre::Result<Self> {
+        let fake_beet = fake_beet::try_build_bin_once()
+            .as_ref()
+            .context("failed to build fake-beet")?;
+
+        let config = gen_fake_beet_config(dir)?;
+        eprintln!("Created fake-beet config: {}", config.display());
+
+        // `beet-pusher` reads the `beet` executable path from its own config file, so it
+        // has to be generated here to point at the `fake-beet` build
+        let pusher_config = gen_beet_pusher_config(dir, fake_beet.path())?;
+        eprintln!("Created beet-pusher config: {}", pusher_config.display());
+
+        Ok(Self {
+            config,
+            pusher_config,
+        })
+    }
+}
+
 fn gen_fake_beet_config(dir: &std::path::Path) -> eyre::Result<std::path::PathBuf> {
     let fake_beet_config = fake_beet::ConfigAll::setup_with(|c| {
         let dummy_long_response = "too many to count I mean so many items it's just almost endless with no filters specified"
@@ -266,6 +293,29 @@ fn gen_beet_pusher_config(
         ),
     )
     .context("failed to write beet-pusher config file")
+}
+
+#[derive(Default)]
+struct FakeVlcHandles {
+    vlc_auth_file: Option<std::path::PathBuf>,
+    fake_vlc_and_thread: Option<(::fake_vlc::FakeVlc, ::fake_vlc::SpawnHandle)>,
+}
+impl FakeVlcHandles {
+    fn new(dir: &std::path::Path) -> eyre::Result<Self> {
+        let (fake_vlc, thread) = ::fake_vlc::FakeVlc::new()?;
+        eprintln!("Spawned fake-vlc");
+
+        let vlc_auth_file = fake_vlc.create_config_file(dir, "fake-vlc.toml")?;
+        eprintln!("Created fake-vlc config: {}", vlc_auth_file.display());
+
+        let vlc_auth_file = Some(vlc_auth_file);
+        let fake_vlc_and_thread = Some((fake_vlc, thread));
+
+        Ok(Self {
+            vlc_auth_file,
+            fake_vlc_and_thread,
+        })
+    }
 }
 
 /// Simplified functional flags, displayed as help text
