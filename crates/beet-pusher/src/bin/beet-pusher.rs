@@ -6,7 +6,7 @@
 
 use crate::config_file::ConfigFile;
 use arg_util::ConfigFileOpen as _;
-use beet_pusher::{BeetItem, BeetPusher, Shutdown, fill_buckets};
+use beet_pusher::{BeetItem, BeetPusher, fill_buckets};
 use clap::Parser;
 use eyre::Context as _;
 use std::{borrow::Cow, path::PathBuf};
@@ -139,25 +139,24 @@ fn main() -> eyre::Result<()> {
         BeetPusher::new(rng, spigot, base_url)
     };
 
-    let (loop_tx, loop_rx) = std::sync::mpsc::sync_channel(1);
+    let (cmd_loop, loop_tx) = beet_pusher::command_loop::CommandLoop::new(
+        pusher,
+        http_runner,
+        now_playing_observer,
+        beet_cmd,
+    );
+
     if json {
         std::thread::spawn(move || {
             match beet_pusher::command_loop::pipe_cmd_loop(&loop_tx) {
                 Ok(()) => eprintln!("end of input on stdin"),
                 Err(e) => eprintln!("pipe_cmd_loop fatal error: {e:?}"),
             }
-            let _ = loop_tx.send(Shutdown.into());
+            loop_tx.send_shutdown();
         });
     }
 
-    beet_pusher::command_loop::CommandLoop {
-        loop_rx,
-        pusher,
-        http_runner,
-        now_playing_observer,
-        beet_cmd,
-    }
-    .run()?;
+    cmd_loop.run()?;
 
     tracing::trace!("END OF BEET-PUSHER MAIN");
 

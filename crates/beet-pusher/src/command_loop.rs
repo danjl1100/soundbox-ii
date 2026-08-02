@@ -1,4 +1,5 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
+//! Event loop logic to drive a [`BeetPusher`]
 
 use std::sync::mpsc::RecvTimeoutError;
 
@@ -9,20 +10,40 @@ use crate::{
     pipe_exec::{SpigotCmd, VlcCmd},
 };
 
-/// Inputs to run the command loop
+/// Command loop to drive a [`BeetPusher`]
 pub struct CommandLoop<'a, R, F> {
-    pub loop_rx: std::sync::mpsc::Receiver<LoopEvent>,
-    pub pusher: BeetPusher<'a, R>,
-    pub http_runner: vlc_http_ureq::HttpRunner,
-    pub now_playing_observer: F,
-    pub beet_cmd: BeetCommand<'a>,
+    loop_rx: std::sync::mpsc::Receiver<LoopEvent>,
+    pusher: BeetPusher<'a, R>,
+    http_runner: vlc_http_ureq::HttpRunner,
+    now_playing_observer: F,
+    beet_cmd: BeetCommand<'a>,
 }
-impl<R, F, E> CommandLoop<'_, R, F>
+impl<'a, R, F, E> CommandLoop<'a, R, F>
 where
     R: bucket_spigot::order::ArbitrarySource<Error: Send + Sync + 'static>,
     F: FnMut(&BeetItem) -> Result<(), E>,
     E: std::error::Error + Send + Sync + 'static,
 {
+    /// Creates a command loop with the specified resources
+    pub fn new(
+        pusher: BeetPusher<'a, R>,
+        http_runner: vlc_http_ureq::HttpRunner,
+        now_playing_observer: F,
+        beet_cmd: BeetCommand<'a>,
+    ) -> (Self, EventSender) {
+        let (loop_tx, loop_rx) = std::sync::mpsc::sync_channel(1);
+
+        let this = Self {
+            loop_rx,
+            pusher,
+            http_runner,
+            now_playing_observer,
+            beet_cmd,
+        };
+        let sender = EventSender { loop_tx };
+
+        (this, sender)
+    }
     /// Runs the main command loop
     ///
     /// # Errors
@@ -32,7 +53,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `loop_rx` ends without sending a [`Shutdown`] message
+    /// Panics if the `loop_rx` ends without sending a shutdown message
+    /// (guaranteed by [`EventSender`] drop impl)
     pub fn run(self) -> eyre::Result<()> {
         // TODO add a "determined holder" concept, to make it easy to:
         // 1. Peek a bunch, update spigot
@@ -150,7 +172,29 @@ where
     }
 }
 
-pub enum LoopEvent {
+/// Accepts events to add to the command loop
+pub struct EventSender {
+    loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
+}
+impl EventSender {
+    /// Documents the site of sending a shutdown request to the [`CommandLoop`], consuming this sender handle
+    pub fn send_shutdown(self) {
+        drop(self);
+    }
+}
+impl Drop for EventSender {
+    fn drop(&mut self) {
+        let _ = self.loop_tx.send(Shutdown.into());
+    }
+}
+impl AsRef<std::sync::mpsc::SyncSender<LoopEvent>> for EventSender {
+    fn as_ref(&self) -> &std::sync::mpsc::SyncSender<LoopEvent> {
+        &self.loop_tx
+    }
+}
+
+/// Event runnable by the [`CommandLoop`] (sent via [`EventSender`])
+enum LoopEvent {
     Shutdown(Shutdown),
     MaintainPlaylist,
     MaintainBuckets,
@@ -241,7 +285,12 @@ impl DebounceTask {
     }
 }
 
-pub fn pipe_cmd_loop(loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>) -> eyre::Result<()> {
+/// Pipes commands from stdin to the specified [`EventSender`]
+///
+/// # Errors
+///
+/// Returns an error if a stdin line is invalid
+pub fn pipe_cmd_loop(loop_tx: &EventSender) -> eyre::Result<()> {
     use crate::pipe_exec::ResponseOut;
 
     for line in std::io::stdin().lines() {
@@ -262,10 +311,12 @@ pub fn pipe_cmd_loop(loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>) -> eyre::
 
     Ok(())
 }
-fn pipe_cmd(
-    loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>,
-    line: String,
-) -> crate::pipe_exec::ResponseResult {
+/// Executes a line from stdin
+///
+/// # Errors
+///
+/// Returns an error if the [`LoopEvent`] callback fails
+fn pipe_cmd(loop_tx: &EventSender, line: String) -> crate::pipe_exec::ResponseResult {
     use crate::pipe_exec::Command as PipeCommand;
     use crate::pipe_exec::{Error, ErrorKind};
 
@@ -283,7 +334,7 @@ fn pipe_cmd(
         PipeCommand::Vlc(cmd) => LoopEvent::VlcCmd { reply_to, cmd },
     };
 
-    let _ = loop_tx.send(event);
+    let _ = loop_tx.as_ref().send(event);
     match rx.recv_timeout(RESPONSE_TIMEOUT) {
         Ok(result) => result.map(|data| (seq, data)).map_err(make_err),
         Err(e) => match e {
