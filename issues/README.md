@@ -20,7 +20,6 @@ Filed from the review of `feature/beet-pusher-web` before merging to `soundbox-i
 | [04](04-stdin-thread-dies-on-bad-line.md) | Malformed stdout line shuts down the webui | medium |
 | [05](05-waiting-channels-leak.md) | `WaitingChannels` accumulates dead entries; linear scan | medium |
 | [07](07-webui-has-no-authentication.md) | No authentication on the webui control surface | medium |
-| [08](08-new-crate-manifest-metadata.md) | New crates missing `license`/`authors`/`publish` | low |
 | [09](09-dead-code-and-lint-opt-outs.md) | Commented-out code and accumulating lint opt-outs | low |
 | [10](10-test-timing-flakiness.md) | Sleep- and timeout-dependent tests | low |
 | [11](11-gitignore-generated-files.md) | Generated config files are untracked, not ignored | low |
