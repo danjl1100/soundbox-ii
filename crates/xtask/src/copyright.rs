@@ -2,57 +2,44 @@
 //! Checks the copyright notice for modified files
 
 use crate::{CmdSettings, WriteOutput};
-use eyre::{Context, ContextCompat as _};
-use std::{
-    collections::HashMap,
-    io::{BufRead as _, BufReader},
-};
+use eyre::Context;
+use std::io::{BufRead as _, BufReader};
 
 const PREFIX: &str = "// Copyright (C) 2021-";
 const SUFFIX: &str =
     "  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details";
 
-/// Verifies the copyright notice for modified files in the GIT index, fixing if requested
+/// Verifies the copyright notice for all rust source files in `crates/`, fixing if requested
 ///
 /// # Errors
-/// Returns an error if the GIT I/O fails, errors are present without permission to fix,
-/// or I/O fails while performing fixes.
+///
+/// Returns an error if errors are present without permission to fix, or I/O
+/// fails while performing fixes.
 pub fn checks(_cmd: &CmdSettings, fix: Option<WriteOutput>) -> eyre::Result<()> {
     let current_year = jiff::Zoned::now().year().cast_unsigned();
 
-    let repo = git2::Repository::open_from_env().context("failed to open GIT repo")?;
-    let Some(workdir) = repo.workdir() else {
-        eyre::bail!("GIT workdir not found")
-    };
+    let crates_dir = crate::project_root();
 
-    let mut staged_files_list = find_staged_files_list(&repo, |path| {
-        std::path::Path::new(path)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
-    })?;
+    let mut files_display_need_update = vec![];
+    for entry in walkdir::WalkDir::new(crates_dir) {
+        let entry = entry?;
+        let path = entry.path();
 
-    let index = repo.index()?;
-
-    let mut files_need_update = vec![];
-    for entry in index.iter() {
-        let id = entry.id;
-        let path = String::from_utf8(entry.path).context("non-UTF8 filename in index")?;
-
-        let Some(status) = staged_files_list.remove(&path) else {
-            // index entry is not an eligible change
+        let Some(extension) = path.extension() else {
+            // not a rust file
             continue;
         };
+        if extension != "rs" {
+            // not a rust file
+            continue;
+        }
 
-        let index_object = repo
-            .find_object(id, None)
-            .context("index object not found in repo")?;
-        // dbg!((id, &path, &index_object));
-
-        let index_content = index_object
-            .as_blob()
-            .context("index object is not a blob")?
-            .content();
-        let copyright_result = check_copyright_header(index_content);
+        let copyright_result = {
+            let content = std::fs::File::open(path)
+                .with_context(|| format!("failed to open: {path}", path = path.display()))?;
+            let content = &mut BufReader::new(content);
+            check_copyright_header(content)
+        };
         match copyright_result {
             Ok(found) => {
                 let Some(fix_needed) = found.as_fix(current_year) else {
@@ -61,120 +48,61 @@ pub fn checks(_cmd: &CmdSettings, fix: Option<WriteOutput>) -> eyre::Result<()> 
                 };
 
                 if let Some(WriteOutput { .. }) = fix {
-                    if has_worktree_changes(status) {
-                        eyre::bail!(
-                            "refusing to update file with unstaged changes: {path:?} (use `git add -p` first to stage changes)"
-                        )
-                    }
-
-                    let path_absolute = workdir.join(&path);
-
-                    eprintln!("rewriting {path} ...");
+                    eprintln!("rewriting {path} ...", path = path.display());
 
                     // fix the copyright header
-                    let worktree_content = std::fs::read(&path_absolute)
-                        .with_context(|| format!("failed to read: {path}"))?;
+                    let worktree_content = std::fs::read(path).with_context(|| {
+                        format!("failed to read: {path}", path = path.display())
+                    })?;
                     let dest = std::fs::File::options()
                         .write(true)
-                        .open(&path_absolute)
-                        .with_context(|| format!("failed to open for writing: {path}"))?;
+                        .open(path)
+                        .with_context(|| {
+                            format!("failed to open for writing: {path}", path = path.display())
+                        })?;
                     fix_needed.apply(&worktree_content, current_year, dest)?;
 
-                    eprintln!("copyright updated: {path}");
+                    eprintln!("copyright updated: {path}", path = path.display());
                     continue;
                 }
 
                 if let CopyrightResult::Copyright { year, .. } = found {
                     // no fix - error invalid year
                     eprintln!(
-                        "copyright header out of date (found {year}, expected {current_year}): {path}"
+                        "copyright header out of date (found {year}, expected {current_year}): {path}",
+                        path = path.display()
                     );
                 } else {
                     // no fix - missing
-                    eprintln!("copyright header missing: {path}");
+                    eprintln!("copyright header missing: {path}", path = path.display());
                 }
             }
             Err(e) => {
-                return Err(eyre::eyre!(e))
-                    .with_context(|| format!("failed to read copyright header from: {path}"));
+                return Err(eyre::eyre!(e)).with_context(|| {
+                    format!(
+                        "failed to read copyright header from: {path}",
+                        path = path.display()
+                    )
+                });
             }
         }
 
-        files_need_update.push((path, status));
+        files_display_need_update.push(path.display().to_string());
     }
 
-    if !staged_files_list.is_empty() {
-        eyre::bail!("staged file not found in the index: {staged_files_list:#?}")
-    }
-
-    if !files_need_update.is_empty() {
-        let len = files_need_update.len();
+    if !files_display_need_update.is_empty() {
+        let len = files_display_need_update.len();
         let plural = if len == 1 { "" } else { "s" };
 
         eprintln!("Need copyright updated in {len} file{plural}:");
-        for (file, status) in &files_need_update {
-            let status_str = if has_worktree_changes(*status) {
-                "(unstaged changes) "
-            } else {
-                "                   "
-            };
-            eprintln!("{status_str}{file}");
+        for file in &files_display_need_update {
+            eprintln!("\t{file}");
         }
 
         eyre::bail!("Incorrect copyright in {len} file{plural} above");
     }
 
     Ok(())
-}
-
-fn has_worktree_changes(status: git2::Status) -> bool {
-    status.is_wt_new()
-        || status.is_wt_modified()
-        || status.is_wt_deleted()
-        || status.is_wt_typechange()
-        || status.is_wt_renamed()
-}
-
-fn find_staged_files_list(
-    repo: &git2::Repository,
-    filter_fn: impl Fn(&str) -> bool,
-) -> eyre::Result<HashMap<String, git2::Status>> {
-    let statuses = repo.statuses(Some(
-        git2::StatusOptions::new()
-            .show(git2::StatusShow::IndexAndWorkdir)
-            .no_refresh(true),
-    ))?;
-
-    statuses
-        .iter()
-        .filter_map(|entry| {
-            let status = entry.status();
-            if status.is_index_deleted() {
-                // ignore deleted files, nothing to check
-                return None;
-            }
-
-            if !(status.is_index_new()
-                || status.is_index_modified()
-                || status.is_index_renamed()
-                || status.is_index_typechange())
-            {
-                // not an index change (workdir only) - ignore
-                return None;
-            }
-
-            let Some(path_in_workdir) = entry.path() else {
-                return Some(Err(eyre::eyre!(
-                    "invalid (non-UTF8?) path in GIT status entry {:?}",
-                    entry.path_bytes()
-                )));
-            };
-
-            filter_fn(path_in_workdir)
-                .then(|| (path_in_workdir.to_string(), status))
-                .map(Ok)
-        })
-        .collect()
 }
 
 #[derive(Debug)]
@@ -259,14 +187,14 @@ impl CopyrightFix {
 /// Returns an IO error if reading the slice fails (e.g. non-UTF8 bytes)
 ///
 /// Within the success, case, returns the first line (if any) that did not match the copyright pattern
-fn check_copyright_header(content: &[u8]) -> std::io::Result<CopyrightResult> {
-    let mut lines = BufReader::new(content);
-
+fn check_copyright_header(
+    content: &mut BufReader<impl std::io::Read>,
+) -> std::io::Result<CopyrightResult> {
     let mut empty = true;
     let mut line = String::new();
     loop {
         line.clear();
-        let read = lines.read_line(&mut line)?;
+        let read = content.read_line(&mut line)?;
         if read == 0 {
             break;
         }
