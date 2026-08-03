@@ -8,9 +8,10 @@ Introduced: `feature/beet-pusher-web`
 
 Two unrelated timeout constants in two crates govern the same round trip:
 
-- `crates/beet-pusher-webui/src/domain/services/node_service.rs:6`
-  `const TIMEOUT: Duration = from_millis(100)` — how long the webui waits for a reply.
-- `crates/beet-pusher/src/bin/beet-pusher.rs:408`
+- `crates/beet-pusher-webui/src/domain/services/node_service.rs:31`
+  (used to be: `const TIMEOUT: Duration = from_millis(100)`) — how long the
+  webui waits for a reply.
+- `crates/beet-pusher/src/command_loop.rs:315`
   `const RESPONSE_TIMEOUT: Duration = from_millis(500)` — how long the backend's pipe
   thread waits for its own event loop.
 
@@ -33,10 +34,11 @@ behaviour, so it will need updating alongside the fix.
 
 ## Fix
 
-1. Make the webui timeout at least as long as the backend's, so a timeout on the caller
+- [x] Make the webui timeout at least as long as the backend's, so a timeout on the caller
    side implies the callee has also given up.
-2. Lift both from hard-coded consts to configuration, with a documented relationship
+- [x] Lift both from hard-coded consts to configuration, with a documented relationship
    (`webui_timeout >= backend_timeout + tick_interval`).
+  - didn't make configurable, left as constants with a clear relation
 3. Longer term, make the commands idempotent or give the backend a reply cache keyed by
    `RequestSequence`, so a retry of an already-executed sequence returns the original
    response rather than re-executing. See [14](14-fully-specified-add-commands.md) for a
@@ -48,3 +50,11 @@ behaviour, so it will need updating alongside the fix.
 The event loop's priority ordering also means a long `fill_buckets` (which shells out to
 `beet` and can take seconds) blocks command handling entirely. Worth considering whether
 the slow work belongs off the event-loop thread.
+
+
+## Resolution
+
+Extracted `beet_pusher` main logic to library module to document relationship
+between constants.
+
+(PLAN TO) Split "Related" section above to [15](15-query-beet-outside-event-loop.md)

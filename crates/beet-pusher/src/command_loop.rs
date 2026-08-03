@@ -10,6 +10,20 @@ use crate::{
     pipe_exec::{SpigotCmd, VlcCmd},
 };
 
+const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
+/// Returns the recommended timeout for clients listening for `beet_pusher` responses
+#[must_use]
+pub fn get_client_wait_timeout() -> std::time::Duration {
+    // NOTE: must be larger than `RESPONSE_TIMEOUT + FILL_PLAYLIST_INTERVAL`,
+    // so add a suitable interval
+    const ADDED_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+    RESPONSE_TIMEOUT + TICK_INTERVAL + ADDED_INTERVAL
+}
+
 /// Command loop to drive a [`BeetPusher`]
 pub struct CommandLoop<'a, R, F> {
     loop_rx: std::sync::mpsc::Receiver<LoopEvent>,
@@ -62,8 +76,6 @@ where
         // 3. Pop from the "determined" holder
         // 4. Repeat from step 1, only peeking what is needed
         // ---> Prototype as a struct here, the move to bucket_spigot::order if it's generally useful
-        const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
-        const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
         let Self {
             loop_rx,
@@ -311,6 +323,7 @@ pub fn pipe_cmd_loop(loop_tx: &EventSender) -> eyre::Result<()> {
 
     Ok(())
 }
+
 /// Executes a line from stdin
 ///
 /// # Errors
@@ -319,8 +332,6 @@ pub fn pipe_cmd_loop(loop_tx: &EventSender) -> eyre::Result<()> {
 fn pipe_cmd(loop_tx: &EventSender, line: String) -> crate::pipe_exec::ResponseResult {
     use crate::pipe_exec::Command as PipeCommand;
     use crate::pipe_exec::{Error, ErrorKind};
-
-    const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
     let crate::pipe_exec::CommandIn { seq, cmd } =
         serde_json::from_str(&line).map_err(|e| Error::new_invalid_command(line, e))?;
