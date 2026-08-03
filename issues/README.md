@@ -15,10 +15,10 @@ New issues should be added to this list (categorized after separate review)
 
 | # | Issue | Severity |
 |---|-------|----------|
-| [02](02-pipe-timeout-mismatch.md) | webui/backend pipe timeouts mismatched; non-idempotent retries | high |
 | [03](03-vlc-error-terminates-daemon.md) | Any VLC HTTP error terminates `beet-pusher` | high |
 | [04](04-stdin-thread-dies-on-bad-line.md) | Malformed stdout line shuts down the webui | medium |
 | [05](05-waiting-channels-leak.md) | `WaitingChannels` accumulates dead entries; linear scan | medium |
+| [15](15-query-beet-outside-event-loop.md) | Slow `beet`/VLC work blocks the command loop | medium |
 | [10](10-test-timing-flakiness.md) | Sleep- and timeout-dependent tests | low |
 
 ## Reviewed as Scheduled for Later
@@ -40,3 +40,8 @@ Manual review has separated these issues for later blocks of effort
 | [12](12-dependency-surface-growth.md) | Dependency surface roughly doubled | low |
 | [13](13-webui-architecture-review.md) | Revisit the ports-and-adapters layering | deferred |
 | [07](07-webui-has-no-authentication.md) | No authentication on the webui control surface | medium |
+
+## Closed
+
+See [`closed/`](closed/). Note that cross-references inside a closed file are not rewritten
+when it moves, so a link to a still-open issue reads as a sibling — look one directory up.

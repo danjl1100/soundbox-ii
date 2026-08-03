@@ -57,4 +57,4 @@ the slow work belongs off the event-loop thread.
 Extracted `beet_pusher` main logic to library module to document relationship
 between constants.
 
-(PLAN TO) Split "Related" section above to [15](15-query-beet-outside-event-loop.md)
+Split "Related" section above to [15](../15-query-beet-outside-event-loop.md)
