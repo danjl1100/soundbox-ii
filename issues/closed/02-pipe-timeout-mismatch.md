@@ -1,6 +1,6 @@
 # 02 - webui/backend pipe timeouts are mismatched, and retries are not idempotent
 
-Status: open
+Status: closed
 Severity: high
 Introduced: `feature/beet-pusher-web`
 

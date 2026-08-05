@@ -1,6 +1,6 @@
 # 01 - `fake-beet` is a normal dependency of `beet-pusher`
 
-Status: open
+Status: closed
 Severity: high
 Introduced: `feature/beet-pusher-web`
 

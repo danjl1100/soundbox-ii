@@ -1,6 +1,6 @@
 # 09 - Commented-out code and accumulating lint opt-outs
 
-Status: open
+Status: closed
 Severity: low
 Introduced: `feature/beet-pusher-web`
 

@@ -1,6 +1,6 @@
 # 06 - webui config reads the unprefixed environment
 
-Status: open
+Status: closed
 Severity: medium
 Introduced: `feature/beet-pusher-web`
 

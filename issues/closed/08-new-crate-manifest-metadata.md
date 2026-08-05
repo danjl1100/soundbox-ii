@@ -1,6 +1,6 @@
 # 08 - New crates are missing `license`, `authors`, and `publish`
 
-Status: open
+Status: closed
 Severity: low
 Introduced: `feature/beet-pusher-web`
 
