@@ -355,3 +355,17 @@ fn pipe_cmd(loop_tx: &EventSender, line: String) -> crate::pipe_exec::ResponseRe
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{RESPONSE_TIMEOUT, TICK_INTERVAL, get_client_wait_timeout};
+
+    #[test]
+    fn client_wait_timeout_invariants() {
+        let uut = get_client_wait_timeout();
+        assert!(
+            uut > RESPONSE_TIMEOUT + TICK_INTERVAL,
+            "client wait timeout is too short: {uut:?}"
+        );
+    }
+}
