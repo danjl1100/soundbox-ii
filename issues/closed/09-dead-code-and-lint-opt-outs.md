@@ -16,6 +16,7 @@ unused":
   variant.
 - [x] `crates/beet-pusher/src/bin/beet-pusher.rs:36-47` — the `DEFAULT_SCRIPT` body, leaving
   the const as `""`.
+  - Instead of removing the the commented-out script string, added a comment explaining why it is useful to keep for now, until state is persisted
 - [x] `crates/beet-pusher/src/bin/beet-pusher.rs:371-375` — the empty-spigot bail in
   `setup_spigot` (superseded: "Empty is a valid startup state").
 - [x] `crates/beet-pusher-webui/src/error.rs:13-14, 46-49` — `AppError::NotFound`.
