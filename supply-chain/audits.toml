@@ -19,6 +19,24 @@ criteria = "safe-to-deploy"
 delta = "1.12.1 -> 1.12.0"
 notes = "Docs change and inconsequential lifetime annotation"
 
+[[audits.camino]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "1.2.3 -> 1.2.5"
+notes = "Only change to unsafe is Utf8Path to Path conversions, in line with prior logic. Small update."
+
+[[audits.cargo-platform]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.1.3 -> 0.3.3"
+notes = "Minor functionality updates, no relevant changes seen"
+
+[[audits.cargo_metadata]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.15.3 -> 0.23.1"
+notes = "Cursory look: update to deps, minor API changes, no dubious behavior seen"
+
 [[audits.config]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -244,6 +262,12 @@ who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 version = "1.0.6"
 notes = "Only unsafe is unix reference to stdio handles, I/O usage is in line with the crate's purpose"
+
+[[audits.semver]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-run"
+delta = "1.0.26 -> 1.0.28"
+notes = "Minor MSRV-bump related changes"
 
 [[audits.serde_json]]
 who = "Daniel Lambert <danjl1100@gmail.com>"

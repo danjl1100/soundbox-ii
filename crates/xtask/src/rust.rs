@@ -3,6 +3,8 @@
 
 use crate::{CmdSettings, TypedResult, Verbosity, WriteOutput};
 
+mod metadata;
+
 /// Checks the rust source as a whole
 ///
 /// # Errors
@@ -12,6 +14,7 @@ pub fn checks(cmd: &CmdSettings, fix: Option<WriteOutput>) -> TypedResult<()> {
     clippy(cmd, fix)?;
     test(cmd)?;
     doc(cmd)?;
+    metadata::check_crates_metadata()?;
 
     Ok(())
 }
