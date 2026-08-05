@@ -17,10 +17,10 @@ const RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5
 /// Returns the recommended timeout for clients listening for `beet_pusher` responses
 #[must_use]
 pub fn get_client_wait_timeout() -> std::time::Duration {
-    // NOTE: must be larger than `RESPONSE_TIMEOUT + FILL_PLAYLIST_INTERVAL`,
-    // so add a suitable interval
     const ADDED_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
 
+    // NOTE: must be larger than `RESPONSE_TIMEOUT + FILL_PLAYLIST_INTERVAL`,
+    // so add a suitable `ADDED_INTERVAL`
     RESPONSE_TIMEOUT + TICK_INTERVAL + ADDED_INTERVAL
 }
 
