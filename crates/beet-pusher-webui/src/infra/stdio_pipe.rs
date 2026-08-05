@@ -152,6 +152,9 @@ impl BeetPusherPipe for StdioPipe {
         cmd: beet_pusher::pipe_exec::Command,
         timeout: std::time::Duration,
     ) -> Result<beet_pusher::pipe_exec::ResponseData, Self::Error> {
+        let start = std::time::Instant::now();
+        let get_remaining_time = || timeout.saturating_sub(start.elapsed());
+
         let seq = self.next_seq.fetch_add(1, Ordering::Relaxed);
         let seq = beet_pusher::pipe_exec::RequestSequence::from(seq);
 
@@ -163,11 +166,11 @@ impl BeetPusherPipe for StdioPipe {
         let cmd_tx_deadline = Queued { value: cmd, tx };
 
         self.cmd_tx
-            .send_timeout(cmd_tx_deadline, timeout)
+            .send_timeout(cmd_tx_deadline, get_remaining_time())
             .await
             .map_err(PipeErrorInner::SendTimeout)?;
 
-        let response = tokio::time::timeout(timeout, rx)
+        let response = tokio::time::timeout(get_remaining_time(), rx)
             .await
             .map_err(PipeErrorInner::RecvTimeout)?
             .map_err(PipeErrorInner::Recv)?;
