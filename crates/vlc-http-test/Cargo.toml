@@ -2,9 +2,9 @@
 name = "vlc-http-test"
 version = "0.1.0"
 edition = "2024"
+publish = false
 authors.workspace = true
 license.workspace = true
-publish.workspace = true
 
 [dependencies]
 arbitrary = { version = "1.4.2", features = ["derive"] }

@@ -42,7 +42,7 @@ Status values: `todo` · `done` · `accepted` (reviewed, deliberately not changi
 |---|---|---|---|
 | QP-4 | Make the client budget one deadline, not the same `timeout` spent twice | `crates/beet-pusher-webui/src/infra/stdio_pipe.rs:165-173` | [x] done |
 | QP-5 | Add a unit test asserting `get_client_wait_timeout() >= RESPONSE_TIMEOUT + TICK_INTERVAL` | `crates/beet-pusher/src/command_loop.rs` | [x] done |
-| QP-6 | Explicit `publish = false` on `stdio-test` and `vlc-http-test` | their `Cargo.toml` | [ ] todo |
+| QP-6 | Explicit `publish = false` on `stdio-test` and `vlc-http-test` | their `Cargo.toml` | [x] done |
 | QP-7 | Reword the `DEFAULT_SCRIPT` item in 09 — it is documented and retained, not removed | `issues/closed/09-...md:16` | [ ] todo |
 
 ### Deferred — file as issues rather than blocking the merge
