@@ -51,7 +51,7 @@ Status values: `todo` · `done` · `accepted` (reviewed, deliberately not changi
 |---|---|---|
 | QP-8 | Idempotent commands or a reply cache keyed by `RequestSequence` — the only thing that *closes* the duplicate-node race. Tracked by [14](issues/14-fully-specified-add-commands.md); QP-1 shrinks the window, this shuts it. | [ ] todo |
 | QP-9 | Teach `cargo xtask checks` to assert manifest metadata (`license`/`authors`/`publish`), so the next new crate cannot land without it | [x] done |
-| QP-10 | Confirm the bound port is logged at startup, now that the default port is `0` | [ ] todo |
+| QP-10 | Confirm the bound port is logged at startup, now that the default port is `0` | [x] done |
 
 ### Accepted — no action
 

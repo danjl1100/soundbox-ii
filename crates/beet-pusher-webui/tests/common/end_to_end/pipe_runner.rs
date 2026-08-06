@@ -2,7 +2,7 @@
 use std::process::Command;
 
 use eyre::Context as _;
-use stdio_test::{ExitStatusError, OutStr, Output, StdinMsg, StdioCmd};
+use stdio_test::{ErrStr, ExitStatusError, OutStr, Output, StdinMsg, StdioCmd};
 use ureq::http;
 
 const IP_ADDR_LOCAL: &str = "127.0.0.1";
@@ -12,6 +12,7 @@ pub struct PipeRunner {
     port: u16,
     respond_tx: std::sync::mpsc::Sender<ReplyPlan>,
     respond_thread: MpscSendThread<StdinMsg, Vec<ReplyPlan>>,
+    check_stderr_thread: std::thread::JoinHandle<eyre::Result<()>>,
 }
 impl PipeRunner {
     pub fn spawn() -> eyre::Result<Self> {
@@ -60,11 +61,14 @@ impl PipeRunner {
         let (respond_tx, respond_thread) =
             Self::spawn_respond(out_observer.stdin_tx, out_observer.stdout_rx);
 
+        let check_stderr_thread = Self::spawn_check_stderr(port, out_observer.stderr_rx);
+
         let this = Self {
             cmd,
             port,
             respond_tx,
             respond_thread,
+            check_stderr_thread,
         };
 
         Ok(this)
@@ -153,10 +157,15 @@ impl PipeRunner {
         let test_result = test_fn(&mut self);
 
         // then, wait for uut
-        let (wait_result, remaining_replies_result) = self.wait_success_inner();
+        let WaitSuccessInnerResult {
+            wait_result,
+            check_stderr_result,
+            remaining_replies_result,
+        } = self.wait_success_inner();
 
         let remaining_replies = remaining_replies_result?;
         let uut_result = wait_result?;
+        check_stderr_result?;
 
         let post_checks = Self::verify_empty_remaining_replies(remaining_replies);
 
@@ -167,11 +176,16 @@ impl PipeRunner {
         })
     }
     pub fn wait_success(self) -> eyre::Result<Result<Output, WaitSuccessError>> {
-        let (wait_result, remaining_replies_result) = self.wait_success_inner();
+        let WaitSuccessInnerResult {
+            wait_result,
+            check_stderr_result,
+            remaining_replies_result,
+        } = self.wait_success_inner();
 
         // LEVEL 1 - test harness failures
         let remaining_replies = remaining_replies_result?;
         let output_result = wait_result?;
+        check_stderr_result?;
 
         let uut_result = (|| {
             // LEVEL 2 - UUT execution failure
@@ -381,7 +395,42 @@ impl PipeRunner {
         });
         (respond_tx, respond_thread)
     }
-    fn wait_success_inner(self) -> (WaitSuccessResult, MpscSendResult<StdinMsg, Vec<ReplyPlan>>) {
+
+    fn spawn_check_stderr(
+        port: u16,
+        stderr_rx: std::sync::mpsc::Receiver<ErrStr>,
+    ) -> std::thread::JoinHandle<eyre::Result<()>> {
+        std::thread::spawn(move || {
+            let mut need_http_port_pattern = Some(format!("127.0.0.1:{port}"));
+            while let Ok(ErrStr(line)) = stderr_rx.recv() {
+                if let Some(pattern) = need_http_port_pattern.as_ref()
+                    && line.contains("beet_pusher_webui")
+                    && line.contains("Listening for HTTP connections")
+                    && line.contains(pattern)
+                {
+                    need_http_port_pattern.take();
+                    break;
+                }
+            }
+            if let Some(expected) = need_http_port_pattern {
+                eyre::bail!("expected HTTP port pattern in stderr: {expected:?}");
+            }
+            Ok(())
+        })
+    }
+}
+
+#[expect(
+    clippy::struct_field_names,
+    reason = "use sites want to name as results"
+)]
+struct WaitSuccessInnerResult {
+    wait_result: WaitSuccessResult,
+    check_stderr_result: eyre::Result<()>,
+    remaining_replies_result: MpscSendResult<StdinMsg, Vec<ReplyPlan>>,
+}
+impl PipeRunner {
+    fn wait_success_inner(self) -> WaitSuccessInnerResult {
         const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
         let Self {
@@ -389,6 +438,7 @@ impl PipeRunner {
             port: _,
             respond_tx,
             respond_thread,
+            check_stderr_thread,
         } = self;
 
         drop(respond_tx);
@@ -402,6 +452,15 @@ impl PipeRunner {
         // - drop respond_tx - end of input plans
         // - cmd.wait_success (drops cmd) - end of command output
         let remaining_replies_result = respond_thread.join().expect("panic in respond_thread");
-        (wait_result, remaining_replies_result)
+
+        let check_stderr_result = check_stderr_thread
+            .join()
+            .expect("painc in check_stderr_thread");
+
+        WaitSuccessInnerResult {
+            wait_result,
+            check_stderr_result,
+            remaining_replies_result,
+        }
     }
 }
