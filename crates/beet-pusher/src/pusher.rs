@@ -273,6 +273,8 @@ mod push_playlist {
             });
             Ok(hint)
         }
+    }
+    impl<R> BeetPusher<'_, R> {
         /// Runs the [`VlcCmd`] and updates the client state with the response
         ///
         /// # Errors

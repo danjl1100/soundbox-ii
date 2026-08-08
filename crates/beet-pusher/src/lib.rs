@@ -10,7 +10,8 @@ pub use self::pusher::{
     BeetPusher, FillDeterminedError, HintNeedPlaylistUpdate, NowPlayingObserver,
 };
 
-mod beet;
+pub mod beet;
+
 mod determined;
 mod path_url;
 mod pusher;

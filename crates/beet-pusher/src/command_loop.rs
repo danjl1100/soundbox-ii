@@ -4,11 +4,16 @@
 use std::sync::mpsc::RecvTimeoutError;
 
 use eyre::Context as _;
+use vlc_http_ureq::HttpRunner;
 
 use crate::{
-    BeetCommand, BeetItem, BeetPusher, HintNeedPlaylistUpdate, Shutdown, fill_buckets,
+    BeetCommand, BeetItem, BeetPusher, HintNeedPlaylistUpdate, Shutdown,
+    beet::{apply_bucket_fill_results, get_bucket_fill_needs},
     pipe_exec::{SpigotCmd, VlcCmd},
 };
+
+mod bucket_fill;
+mod queue;
 
 const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
 const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
@@ -27,10 +32,11 @@ pub fn get_client_wait_timeout() -> std::time::Duration {
 /// Command loop to drive a [`BeetPusher`]
 pub struct CommandLoop<'a, R, F> {
     loop_rx: std::sync::mpsc::Receiver<LoopEvent>,
+    loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
     pusher: BeetPusher<'a, R>,
     http_runner: vlc_http_ureq::HttpRunner,
     now_playing_observer: F,
-    beet_cmd: BeetCommand<'a>,
+    beet_cmd: BeetCommand<'static>,
 }
 impl<'a, R, F, E> CommandLoop<'a, R, F>
 where
@@ -43,12 +49,13 @@ where
         pusher: BeetPusher<'a, R>,
         http_runner: vlc_http_ureq::HttpRunner,
         now_playing_observer: F,
-        beet_cmd: BeetCommand<'a>,
+        beet_cmd: BeetCommand<'static>,
     ) -> (Self, EventSender) {
         let (loop_tx, loop_rx) = std::sync::mpsc::sync_channel(1);
 
         let this = Self {
             loop_rx,
+            loop_tx: loop_tx.clone(),
             pusher,
             http_runner,
             now_playing_observer,
@@ -79,11 +86,14 @@ where
 
         let Self {
             loop_rx,
+            loop_tx,
             mut pusher,
             mut http_runner,
             mut now_playing_observer,
-            mut beet_cmd,
+            beet_cmd,
         } = self;
+
+        let (bucket_fill_tx, bucket_fill_thread) = bucket_fill::spawn(loop_tx, beet_cmd);
 
         let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
 
@@ -100,7 +110,7 @@ where
                 timer_fill_bucket.set_active(false);
 
                 // next priority - update to reflect the user command
-                Ok(LoopEvent::MaintainBuckets)
+                Ok(LoopEvent::BucketFillStart)
             } else {
                 // lowest - process new commands
                 loop_rx.recv_timeout(TICK_INTERVAL)
@@ -128,46 +138,42 @@ where
                             }
                         }
                     }
-                    LoopEvent::MaintainBuckets => {
+                    LoopEvent::BucketFillStart => {
                         tracing::trace!("FILL BUCKETS");
 
                         let spigot = pusher.get_spigot_mut();
-                        fill_buckets(&mut beet_cmd, spigot)?;
+                        let needs = get_bucket_fill_needs(spigot).collect();
 
-                        // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
-                        timer_fill_playlist.set_immediate();
+                        bucket_fill_tx.queue(needs);
                     }
-                    LoopEvent::SpigotCmd { reply_to, cmd } => {
-                        use crate::pipe_exec::{ErrorKind, ResponseData};
-                        let spigot = pusher.get_spigot_mut();
-                        tracing::trace!(?cmd);
-                        let result = match spigot.modify_and_get_created_path(cmd.into()) {
-                            Ok(Some(path)) => Ok(ResponseData::NodeAdded { path }),
-                            Ok(None) => Ok(ResponseData::PassNoData),
-                            Err(e) => Err(ErrorKind::SpigotError(e)),
-                        };
-                        let _ = reply_to.send(result);
+                    LoopEvent::BucketFillResponse(response) => match response {
+                        bucket_fill::Response::Fill(result) => {
+                            let spigot = pusher.get_spigot_mut();
+                            apply_bucket_fill_results([result], spigot)?;
+                        }
+                        bucket_fill::Response::Complete => {
+                            // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
+                            timer_fill_playlist.set_immediate();
+                        }
+                    },
+                    LoopEvent::SpigotCmd(cmd) => {
+                        cmd.run(&mut pusher);
 
                         // causes update to buckets
                         timer_fill_bucket.defer();
                         timer_fill_bucket.set_active(true);
                     }
-                    LoopEvent::VlcCmd { reply_to, cmd } => {
-                        use crate::pipe_exec::{ErrorKind, ResponseData};
+                    LoopEvent::VlcCmd(cmd) => {
+                        let modifies_playlist = match &cmd.cmd {
+                            VlcCmd::SeekNext => true,
+                        };
 
-                        match cmd {
-                            VlcCmd::SeekNext => {
-                                // causes update to playlist
-                                timer_fill_playlist.set_immediate();
-                            }
+                        if modifies_playlist {
+                            // causes update to playlist
+                            timer_fill_playlist.set_immediate();
                         }
 
-                        tracing::trace!(?cmd);
-                        let result = match pusher.vlc_cmd(&mut http_runner, cmd) {
-                            Ok(()) => Ok(ResponseData::PassNoData),
-                            Err(e) => Err(ErrorKind::VlcRequest(e)),
-                        };
-                        let _ = reply_to.send(result);
+                        cmd.run(&mut pusher, &mut http_runner);
                     }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
@@ -180,7 +186,43 @@ where
             }
         }
 
+        drop(bucket_fill_tx);
+
+        bucket_fill_thread
+            .join()
+            .expect("panic in bucket_fill_thread");
+
         Ok(())
+    }
+}
+impl LoopEventSpigotCmd {
+    fn run<R>(self, pusher: &mut BeetPusher<'_, R>) {
+        use crate::pipe_exec::{ErrorKind, ResponseData};
+
+        let Self { reply_to, cmd } = self;
+
+        let spigot = pusher.get_spigot_mut();
+        tracing::trace!(?cmd);
+        let result = match spigot.modify_and_get_created_path(cmd.into()) {
+            Ok(Some(path)) => Ok(ResponseData::NodeAdded { path }),
+            Ok(None) => Ok(ResponseData::PassNoData),
+            Err(e) => Err(ErrorKind::SpigotError(e)),
+        };
+        let _ = reply_to.send(result);
+    }
+}
+impl LoopEventVlcCmd {
+    fn run<R>(self, pusher: &mut BeetPusher<'_, R>, http_runner: &mut HttpRunner) {
+        use crate::pipe_exec::{ErrorKind, ResponseData};
+
+        let Self { reply_to, cmd } = self;
+
+        tracing::trace!(?cmd);
+        let result = match pusher.vlc_cmd(http_runner, cmd) {
+            Ok(()) => Ok(ResponseData::PassNoData),
+            Err(e) => Err(ErrorKind::VlcRequest(e)),
+        };
+        let _ = reply_to.send(result);
     }
 }
 
@@ -209,15 +251,18 @@ impl AsRef<std::sync::mpsc::SyncSender<LoopEvent>> for EventSender {
 enum LoopEvent {
     Shutdown(Shutdown),
     MaintainPlaylist,
-    MaintainBuckets,
-    SpigotCmd {
-        reply_to: oneshot::Sender<crate::pipe_exec::ResponseResultInner>,
-        cmd: SpigotCmd,
-    },
-    VlcCmd {
-        reply_to: oneshot::Sender<crate::pipe_exec::ResponseResultInner>,
-        cmd: VlcCmd,
-    },
+    BucketFillStart,
+    BucketFillResponse(bucket_fill::Response),
+    SpigotCmd(LoopEventSpigotCmd),
+    VlcCmd(LoopEventVlcCmd),
+}
+struct LoopEventSpigotCmd {
+    reply_to: oneshot::Sender<crate::pipe_exec::ResponseResultInner>,
+    cmd: SpigotCmd,
+}
+struct LoopEventVlcCmd {
+    reply_to: oneshot::Sender<crate::pipe_exec::ResponseResultInner>,
+    cmd: VlcCmd,
 }
 impl From<Shutdown> for LoopEvent {
     fn from(value: Shutdown) -> Self {
@@ -341,8 +386,8 @@ fn pipe_cmd(loop_tx: &EventSender, line: String) -> crate::pipe_exec::ResponseRe
     let (reply_to, rx) = oneshot::channel();
 
     let event = match cmd {
-        PipeCommand::Spigot(cmd) => LoopEvent::SpigotCmd { reply_to, cmd },
-        PipeCommand::Vlc(cmd) => LoopEvent::VlcCmd { reply_to, cmd },
+        PipeCommand::Spigot(cmd) => LoopEvent::SpigotCmd(LoopEventSpigotCmd { reply_to, cmd }),
+        PipeCommand::Vlc(cmd) => LoopEvent::VlcCmd(LoopEventVlcCmd { reply_to, cmd }),
     };
 
     let _ = loop_tx.as_ref().send(event);

@@ -63,18 +63,18 @@ latency of a full library refill.
 
 Get the unbounded work off the thread that answers commands. Roughly in order of cost:
 
-1. Run `beet` queries on a worker thread (or a small pool) and deliver results back to the
+1. [x] Run `beet` queries on a worker thread (or a small pool) and deliver results back to the
    loop as a `LoopEvent::BucketsFilled { bucket, new_contents }`. `fill_buckets` already
    separates "which buckets need fill" from "query" from "apply"
    (`beet.rs:42-70`), so the split is mostly mechanical: the loop keeps ownership of the
    `Network`, the worker only owns the `BeetRunner` and returns items.
-2. Do the same for the VLC round trip, or at minimum give `HttpRunner` a request timeout so
+2. [ ] Do the same for the VLC round trip, or at minimum give `HttpRunner` a request timeout so
    `MaintainPlaylist` has a bounded worst case. Note [03](03-vlc-error-terminates-daemon.md)
    is about the *error* path of this same call — worth doing together.
-3. Reconsider the strict priority ladder once the blocking work is gone. With both slow arms
+3. [ ] Reconsider the strict priority ladder once the blocking work is gone. With both slow arms
    asynchronous, commands can be served promptly without starving maintenance, and
    `TICK_INTERVAL` stops being load-bearing for command latency.
-4. Give the `loop_tx.send` in `pipe_cmd` a timeout, so a full channel surfaces as an error
+4. [ ] Give the `loop_tx.send` in `pipe_cmd` a timeout, so a full channel surfaces as an error
    rather than an unbounded stall.
 
 ## Related

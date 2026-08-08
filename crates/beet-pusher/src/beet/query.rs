@@ -91,9 +91,9 @@ impl BeetItem {
     ///
     /// # Errors
     /// Returns an error if the `beet` command fails or produces invalid output
-    pub fn list_from_beet_query<T: BeetRunner>(
+    pub(super) fn list_from_beet_query<T: BeetRunner>(
         runner: &mut T,
-        filters: impl Iterator<Item = String>,
+        filters: impl IntoIterator<Item = String>,
     ) -> Result<Vec<Self>, Error<T::Error>> {
         let make_error = |kind| Error { kind };
 
@@ -103,7 +103,7 @@ impl BeetItem {
             ["ls", "-f$id=$path"]
                 .into_iter()
                 .map(std::borrow::Cow::Borrowed)
-                .chain(filters.map(std::borrow::Cow::Owned)),
+                .chain(filters.into_iter().map(std::borrow::Cow::Owned)),
         );
 
         let output = output.map_err(ErrorKind::Spawn).map_err(make_error)?;
