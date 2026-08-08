@@ -26,16 +26,49 @@ where
 }
 
 /// Sends [`bucket_spigot::Network`] items to VLC
+///
+/// NOTE: Requires an external [`vlc_http::ClientState`] for some action. This
+/// helps with separating the main sequencing logic (queued items) from the I/O
+/// (cached VLC state)
 pub struct BeetPusher<'a, R> {
     spigot: bucket_spigot::Network<BeetItem, String>,
     rng: &'a mut R,
-    client_state: vlc_http::ClientState,
+    // client_state: vlc_http::ClientState,
     determined: Determined<BeetItem>,
     config: Config,
 }
 struct Config {
     base_url: BaseUrl,
 }
+
+/// VLC client state with the [`vlc_http::sync::EndpointRequestor`], for use in the HTTP control
+/// actions of [`BeetPusher`]
+pub struct VlcDriver<T> {
+    pub(crate) client_state: vlc_http::ClientState,
+    pub(crate) http_runner: T,
+}
+impl<T> VlcDriver<T> {
+    /// Wraps the components together
+    pub fn new(client_state: vlc_http::ClientState, http_runner: T) -> Self {
+        Self {
+            client_state,
+            http_runner,
+        }
+    }
+    /// Combines the specified runner with the default [`vlc_http::ClientState`]
+    pub fn default_from_runner(http_runner: T) -> Self {
+        Self::new(vlc_http::ClientState::new(), http_runner)
+    }
+    /// Destructures into the inner parts
+    pub fn into_parts(self) -> (vlc_http::ClientState, T) {
+        let Self {
+            client_state,
+            http_runner,
+        } = self;
+        (client_state, http_runner)
+    }
+}
+
 impl<'a, R> BeetPusher<'a, R>
 where
     R: ArbitrarySource,
@@ -45,7 +78,6 @@ where
         Self {
             spigot,
             rng,
-            client_state: vlc_http::ClientState::default(),
             determined: Determined::default(),
             config: Config { base_url },
         }
@@ -64,36 +96,32 @@ impl<R> BeetPusher<'_, R> {
 }
 
 mod sync {
-    use super::BeetPusher;
-    use bucket_spigot::order::ArbitrarySource;
+    use crate::pusher::VlcDriver;
 
     // type UreqError = vlc_http::http_runner::ureq::Error;
-    type ExhaustResult<'a, T, E> =
+    pub(super) type ExhaustResult<'a, T, E> =
         Result<<T as vlc_http::Plan>::Output<'a>, vlc_http::sync::Error<T, E>>;
 
-    impl<R> BeetPusher<'_, R>
+    impl<T> VlcDriver<T>
     where
-        R: ArbitrarySource,
+        T: vlc_http::sync::EndpointRequestor,
     {
         /// Thin wrapper around [`vlc_http::sync::complete_plan`] with sane defaults
         ///
         /// # Errors
         /// Returns an error if the plan execution requests fail, see the function linked above for
         /// details
-        pub(crate) fn complete_plan<'a, U, E>(
-            query: U,
-            client_state: &'a mut vlc_http::ClientState,
-            http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
-        ) -> ExhaustResult<'a, U, E>
+        pub(crate) fn complete_plan<U>(&mut self, query: U) -> ExhaustResult<'_, U, T::Error>
         where
             U: vlc_http::Plan,
-            E: std::error::Error + 'static,
+            T::Error: std::error::Error + 'static,
         {
             const MAX_ENDPOINTS_PER_ACTION: usize = 100;
+
             let output = vlc_http::sync::complete_plan(
                 query,
-                client_state,
-                http_runner,
+                &mut self.client_state,
+                &mut self.http_runner,
                 MAX_ENDPOINTS_PER_ACTION,
             )?;
             Ok(output)
@@ -183,11 +211,14 @@ mod fill_determined {
 }
 
 mod push_playlist {
-    use crate::{FillDeterminedError, pipe_exec::VlcCmd};
+    use crate::{FillDeterminedError, pipe_exec::VlcCmd, pusher::VlcDriver};
 
     use super::{BeetPusher, NowPlayingObserver};
     use bucket_spigot::order::ArbitrarySource;
-    use vlc_http::goal::TargetPlaylistItems;
+    use vlc_http::{
+        ClientState,
+        goal::{ActionQuerySetItems, TargetPlaylistItems},
+    };
 
     /// [`BeetPusher::push_playlist_update`] anticipates that it needs to run again
     pub enum HintNeedPlaylistUpdate {
@@ -196,6 +227,7 @@ mod push_playlist {
         /// Recommend to run after ~500ms, to allow VLC to catch up to reporting the new status
         WaitForVlc,
     }
+    type PushPlaylistUpdateResult<T, U, R> = Result<Option<HintNeedPlaylistUpdate>, Error<T, U, R>>;
 
     impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Pushes the determined track list to VLC, notifies the `now_playing_observer`
@@ -204,15 +236,44 @@ mod push_playlist {
         /// # Errors
         /// Returns an error if updating the determined list fails, or the [`NowPlayingObserver`]
         /// fails
-        pub fn push_playlist_update<T, E>(
+        ///
+        /// # See Also
+        ///
+        /// 1. [`BeetPusher::get_playlist_update_action`]
+        /// 2. [`VlcDriver::run_playlist_update_action`]
+        /// 3. [`BeetPusher::push_playlist_update_action`]
+        pub fn push_playlist_update<T, U>(
             &mut self,
-            http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
+            vlc_driver: &mut VlcDriver<U>,
             now_playing_observer: Option<&mut T>,
-        ) -> Result<Option<HintNeedPlaylistUpdate>, Error<T::Error, E, R::Error>>
+        ) -> PushPlaylistUpdateResult<T::Error, U::Error, R::Error>
         where
             T: NowPlayingObserver,
-            E: std::error::Error + 'static,
+            U: vlc_http::sync::EndpointRequestor,
+            U::Error: std::error::Error + 'static,
         {
+            let action_opt = self.get_playlist_update_action()?;
+
+            let Some(action) = action_opt else {
+                return Ok(None);
+            };
+
+            let playlist_update_counts = vlc_driver.run_playlist_update_action(action);
+
+            self.push_playlist_update_action(playlist_update_counts, now_playing_observer)
+        }
+        /// Prepares the action required to push the determined track list to VLC
+        ///
+        /// # Errors
+        /// Returns an error if updating the determined list fails, or the [`NowPlayingObserver`]
+        /// fails
+        ///
+        /// # See Also
+        ///
+        /// - [`BeetPusher::push_playlist_update`]
+        pub fn get_playlist_update_action<T, E>(
+            &mut self,
+        ) -> Result<Option<TargetPlaylistItems>, Error<T, E, R::Error>> {
             let make_err = |kind| Error { kind };
 
             self.fill_determined()
@@ -228,17 +289,79 @@ mod push_playlist {
                 .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
                 .set_keep_history(5);
 
+            Ok(Some(target))
+        }
+    }
+    /// Result from [`BeetPusher::run_playlist_update_action`]
+    pub struct PlaylistUpdateCounts {
+        vlc_len: usize,
+        items_enqueued_count: usize,
+    }
+    impl<T> VlcDriver<T> {
+        /// Executes the playlist update action on the VLC http endpoint
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if the VLC operation(s) fail
+        ///
+        /// # See Also
+        ///
+        /// - [`BeetPusher::push_playlist_update`]
+        pub fn run_playlist_update_action(
+            &mut self,
+            target: TargetPlaylistItems,
+        ) -> Result<PlaylistUpdateCounts, Box<vlc_http::sync::Error<ActionQuerySetItems, T::Error>>>
+        where
+            T: vlc_http::sync::EndpointRequestor,
+            T::Error: std::error::Error + 'static,
+        {
             let action = self
                 .client_state
                 .build_plan()
                 .set_playlist_and_query_matched(target);
 
-            let playlist_result = Self::complete_plan(action, &mut self.client_state, http_runner)
-                .map_err(Box::new)
-                .map_err(ErrorKind::HttpRunner)
-                .map_err(make_err)?;
+            let playlist_result = self.complete_plan(action).map_err(Box::new)?;
             let vlc_len = playlist_result.get_matched_items().len();
             let items_enqueued_count = playlist_result.get_items_enqueued_count();
+            Ok(PlaylistUpdateCounts {
+                vlc_len,
+                items_enqueued_count,
+            })
+        }
+    }
+    impl<R> BeetPusher<'_, R> {
+        /// Updates the internal "determined" state based on the result from
+        /// [`VlcDriver::run_playlist_update_action`], returning a hint whether
+        /// more playlist items are needed from the spigot
+        ///
+        /// # Errors
+        ///
+        /// Returns an error if the playlist update failed, or resolving beet items fails
+        ///
+        /// # See Also
+        ///
+        /// - [`BeetPusher::push_playlist_update`]
+        pub fn push_playlist_update_action<T, E, V>(
+            &mut self,
+            playlist_update_result: Result<
+                PlaylistUpdateCounts,
+                Box<vlc_http::sync::Error<ActionQuerySetItems, E>>,
+            >,
+            now_playing_observer: Option<&mut T>,
+        ) -> Result<Option<HintNeedPlaylistUpdate>, Error<T::Error, E, V>>
+        where
+            T: NowPlayingObserver,
+            E: std::error::Error + 'static,
+        {
+            let make_err = |kind| Error { kind };
+
+            let PlaylistUpdateCounts {
+                vlc_len,
+                items_enqueued_count,
+            } = playlist_update_result
+                .map_err(ErrorKind::HttpRunner)
+                .map_err(make_err)?;
+
             // remove completed items for the beginning of the `determined` list
             if let Some(excess_at_start) = self.determined.len().checked_sub(vlc_len) {
                 let () = self
@@ -281,14 +404,14 @@ mod push_playlist {
         /// Returns an error if requesting the command endpoint or parsing the
         /// response fails
         pub fn vlc_cmd<E>(
-            &mut self,
+            client_state: &mut ClientState,
             http_runner: &mut impl vlc_http::sync::EndpointRequestor<Error = E>,
             cmd: VlcCmd,
         ) -> Result<(), E> {
             let cmd = vlc_http::Command::from(cmd);
 
             let response = http_runner.request(cmd.into())?;
-            self.client_state.update(response);
+            client_state.update(response);
 
             Ok(())
         }
@@ -351,13 +474,13 @@ impl<R> std::fmt::Debug for BeetPusher<'_, R> {
         let Self {
             spigot,
             rng: _,
-            client_state,
+            // client_state,
             determined,
             config: Config { base_url },
         } = self;
         f.debug_struct("BeetPusher")
             .field("spigot", &DebugAsDisplay(spigot.view_table_default()))
-            .field("client_state", client_state)
+            // .field("client_state", client_state)
             .field("determined.items", &determined.items())
             .field("determined.urls", &determined.urls())
             .field("config.base_url", base_url)

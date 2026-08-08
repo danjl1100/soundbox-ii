@@ -3,7 +3,7 @@
 
 use self::expect_beet::ExpectBeet;
 use self::expect_http::ExpectHttp;
-use beet_pusher::{BeetItem, BeetPusher, NowPlayingObserver};
+use beet_pusher::{BeetItem, BeetPusher, NowPlayingObserver, VlcDriver};
 use bucket_spigot::order::ArbitrarySource;
 use std::str::FromStr;
 use vlc_http_test::model::{Model, PlayState};
@@ -213,6 +213,7 @@ fn empty_beet_result() -> eyre::Result<()> {
 
     let pusher = &mut new_test_beet_pusher(spigot);
     let model = &mut Model::default();
+    let client_state = &mut vlc_http::ClientState::new();
 
     {
         let mut runner = ExpectBeet::new(&[(&["ls", "-f$id=$path"], "")]);
@@ -220,7 +221,7 @@ fn empty_beet_result() -> eyre::Result<()> {
         runner.assert_empty();
     }
 
-    let (runner, now_playing) = push_playlist_update(pusher, model)?;
+    let (runner, now_playing) = push_playlist_update(pusher, client_state, model)?;
     now_playing.assert_playing(&[]);
     runner.assert_empty();
 
@@ -252,6 +253,7 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
 
     let pusher = &mut new_test_beet_pusher(spigot);
     let model = &mut Model::default();
+    let client_state = &mut vlc_http::ClientState::new();
 
     {
         let mut runner = ExpectBeet::new(&[(&["ls", "-f$id=$path"], beet_items_str)]);
@@ -268,7 +270,7 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
         let expected_beet_items = &beet_items[loop_index..=loop_index];
 
         {
-            let (runner, now_playing) = push_playlist_update(pusher, model)?;
+            let (runner, now_playing) = push_playlist_update(pusher, client_state, model)?;
             now_playing.assert_playing(&[]);
             runner.assert_some_contains(&file_url_encoded);
             // TODO remove if not wanting to test specifics
@@ -293,7 +295,7 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
         model.set_current_playing(set_playing_id, PlayState::Playing);
 
         {
-            let (runner, now_playing) = push_playlist_update(pusher, model)?;
+            let (runner, now_playing) = push_playlist_update(pusher, client_state, model)?;
             now_playing.assert_playing(expected_beet_items);
             runner.assert_none_contains(&file_url_encoded);
             // TODO remove if not wanting to test specifics
@@ -310,14 +312,22 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
 
 fn push_playlist_update<'a>(
     pusher: &mut BeetPusher<'_, PanicRng>,
+    cs_ref: &mut vlc_http::ClientState,
     model: &'a mut Model,
 ) -> eyre::Result<(ExpectHttp<'a>, NowPlaying)> {
-    let mut runner = ExpectHttp::new(model);
     let mut now_playing = NowPlaying::default();
 
-    pusher.push_playlist_update(&mut runner, Some(&mut now_playing))?;
+    let client_state = std::mem::take(cs_ref);
+    let http_runner = ExpectHttp::new(model);
 
-    Ok((runner, now_playing))
+    let mut vlc_driver = VlcDriver::new(client_state, http_runner);
+
+    pusher.push_playlist_update(&mut vlc_driver, Some(&mut now_playing))?;
+
+    let (client_state, http_runner) = vlc_driver.into_parts();
+    *cs_ref = client_state;
+
+    Ok((http_runner, now_playing))
 }
 
 #[test]

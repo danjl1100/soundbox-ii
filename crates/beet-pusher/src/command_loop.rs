@@ -10,10 +10,12 @@ use crate::{
     BeetCommand, BeetItem, BeetPusher, HintNeedPlaylistUpdate, Shutdown,
     beet::{apply_bucket_fill_results, get_bucket_fill_needs},
     pipe_exec::{SpigotCmd, VlcCmd},
+    pusher::VlcDriver,
 };
 
 mod bucket_fill;
 mod queue;
+mod vlc_act;
 
 const TICK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
 const FILL_PLAYLIST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
@@ -88,10 +90,12 @@ where
             loop_rx,
             loop_tx,
             mut pusher,
-            mut http_runner,
+            http_runner,
             mut now_playing_observer,
             beet_cmd,
         } = self;
+
+        let mut vlc_driver = VlcDriver::default_from_runner(http_runner);
 
         let (bucket_fill_tx, bucket_fill_thread) = bucket_fill::spawn(loop_tx, beet_cmd);
 
@@ -121,7 +125,7 @@ where
                     LoopEvent::MaintainPlaylist => {
                         tracing::trace!("PLAYLIST UPDATE");
                         let hint_need_fill = pusher.push_playlist_update(
-                            &mut http_runner,
+                            &mut vlc_driver,
                             Some(&mut now_playing_observer),
                         )?;
                         match hint_need_fill {
@@ -173,7 +177,7 @@ where
                             timer_fill_playlist.set_immediate();
                         }
 
-                        cmd.run(&mut pusher, &mut http_runner);
+                        cmd.run(&mut vlc_driver);
                     }
                 },
                 Err(RecvTimeoutError::Disconnected) => {
@@ -212,14 +216,23 @@ impl LoopEventSpigotCmd {
     }
 }
 impl LoopEventVlcCmd {
-    fn run<R>(self, pusher: &mut BeetPusher<'_, R>, http_runner: &mut HttpRunner) {
+    fn run(self, vlc_driver: &mut VlcDriver<HttpRunner>) {
         use crate::pipe_exec::{ErrorKind, ResponseData};
+        use vlc_http::sync::EndpointRequestor as _;
 
         let Self { reply_to, cmd } = self;
 
         tracing::trace!(?cmd);
-        let result = match pusher.vlc_cmd(http_runner, cmd) {
-            Ok(()) => Ok(ResponseData::PassNoData),
+
+        let cmd = vlc_http::Command::from(cmd);
+
+        let response = vlc_driver.http_runner.request(cmd.into());
+
+        let result = match response {
+            Ok(response) => {
+                vlc_driver.client_state.update(response);
+                Ok(ResponseData::PassNoData)
+            }
             Err(e) => Err(ErrorKind::VlcRequest(e)),
         };
         let _ = reply_to.send(result);
