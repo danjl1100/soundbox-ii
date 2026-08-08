@@ -146,17 +146,21 @@ fn main() -> eyre::Result<()> {
         beet_cmd,
     );
 
-    if json {
+    let pipe_cmd_loop_thread = json.then(|| {
         std::thread::spawn(move || {
             match beet_pusher::command_loop::pipe_cmd_loop(&loop_tx) {
                 Ok(()) => eprintln!("end of input on stdin"),
                 Err(e) => eprintln!("pipe_cmd_loop fatal error: {e:?}"),
             }
             loop_tx.send_shutdown();
-        });
-    }
+        })
+    });
 
     cmd_loop.run()?;
+
+    if let Some(handle) = pipe_cmd_loop_thread {
+        handle.join().expect("panic in pipe_cmd_loop thread");
+    }
 
     tracing::trace!("END OF BEET-PUSHER MAIN");
 
