@@ -9,17 +9,18 @@ use crate::{
 
 use super::LoopEvent;
 
+#[derive(Debug)]
 pub enum Response {
     Fill(BucketQueryResult<std::io::Error>),
-    Complete,
+    End,
 }
 
 pub struct Sender {
-    queue_tx: queue::Tx<BucketQueryNeed>,
+    queue_tx: queue::Tx<Vec<BucketQueryNeed>>,
 }
 impl Sender {
     pub fn queue(&self, queries: Vec<BucketQueryNeed>) {
-        self.queue_tx.set_values(queries);
+        self.queue_tx.set_value(queries);
     }
 }
 
@@ -27,8 +28,8 @@ impl Sender {
 pub fn spawn(
     loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
     runner: BeetCommand<'static>,
-) -> (Sender, std::thread::JoinHandle<()>) {
-    let (queue_tx, mut queue_rx) = queue::channel();
+) -> (Sender, JoinHandle) {
+    let (queue_tx, mut queue_rx) = queue::channel(vec![]);
 
     let sender = Sender { queue_tx };
     let handle = std::thread::spawn(move || {
@@ -39,11 +40,11 @@ pub fn spawn(
             }
         }
     });
-    (sender, handle)
+    (sender, JoinHandle(handle))
 }
 
 fn run(
-    current_queue: &mut queue::Rx<BucketQueryNeed>,
+    current_queue: &mut queue::Rx<Vec<BucketQueryNeed>>,
     loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>,
     mut runner: BeetCommand<'static>,
 ) -> Result<(), SendError<LoopEvent>> {
@@ -58,8 +59,19 @@ fn run(
         loop_tx.send(LoopEvent::BucketFillResponse(Response::Fill(result)))?;
 
         if is_last {
-            loop_tx.send(LoopEvent::BucketFillResponse(Response::Complete))?;
+            loop_tx.send(LoopEvent::BucketFillResponse(Response::End))?;
         }
     }
     Ok(())
+}
+
+pub struct JoinHandle(std::thread::JoinHandle<()>);
+impl JoinHandle {
+    /// Joins the thread, consuming the associated sender to avoid a deadlock
+    pub fn join_and_drop(self, sender: Sender) -> std::thread::Result<()> {
+        drop(sender);
+
+        let Self(handle) = self;
+        handle.join()
+    }
 }

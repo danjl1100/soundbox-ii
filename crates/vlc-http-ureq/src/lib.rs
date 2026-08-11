@@ -5,8 +5,8 @@ use vlc_http::{Auth, Endpoint, Response, sync::EndpointRequestor};
 
 pub use ::ureq as ureq_crate;
 
-type ResponseStrObserver = dyn FnMut(&str);
-type ResponseObserver = dyn FnMut(&Response);
+type ResponseStrObserver = dyn FnMut(&str) + Send;
+type ResponseObserver = dyn FnMut(&Response) + Send;
 
 /// Fulfills [`Endpoint`]s using the [`ureq`] HTTP client library
 pub struct HttpRunner {

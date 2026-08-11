@@ -7,7 +7,8 @@ pub use self::beet::{BeetCommand, BeetItem, BeetPath, BeetRunner, fill_buckets};
 pub use self::determined::{Determined, UrlSource};
 pub use self::path_url::BaseUrl;
 pub use self::pusher::{
-    BeetPusher, FillDeterminedError, HintNeedPlaylistUpdate, NowPlayingObserver, VlcDriver,
+    BeetPusher, FillDeterminedError, HintNeedPlaylistUpdate, NowPlayingObserver,
+    PlaylistUpdateCounts, PlaylistUpdateCountsResult, VlcDriver,
 };
 
 pub mod beet;
@@ -21,4 +22,5 @@ pub mod pipe_exec;
 pub mod command_loop;
 
 /// Signal to shutdown the application
+#[derive(Debug)]
 struct Shutdown;

@@ -13,38 +13,38 @@ pub struct Popped<T> {
     pub is_last: bool,
 }
 
-pub fn channel<T>() -> (Tx<T>, Rx<T>) {
+pub fn channel<T>(value: T) -> (Tx<T>, Rx<T>) {
     let inner = Arc::new(Inner {
-        value: Mutex::new(Some(vec![])),
+        value: Mutex::new(Some(value)),
         cvar: Condvar::new(),
     });
     (Tx(inner.clone()), Rx(inner))
 }
 
-/// Sender for bulk items (`Vec<T>`)
+/// Sender for bulk items
 pub struct Tx<T>(Arc<Inner<T>>);
 /// Receiver for individual elements (`T`) in the current set, only
 pub struct Rx<T>(Arc<Inner<T>>);
 
 struct Inner<T> {
-    value: Mutex<Option<Vec<T>>>,
+    value: Mutex<Option<T>>,
     cvar: Condvar,
 }
 
 impl<T> Tx<T> {
     /// Replace the queued list with the specified values
-    pub fn set_values(&self, new_values: Vec<T>) {
+    pub fn set_value(&self, new_value: T) {
         let Self(inner) = self;
         let mut lock = inner.lock_or_panic();
 
-        if let Some(vec) = lock.as_mut() {
-            *vec = new_values;
+        if let Some(value) = lock.as_mut() {
+            *value = new_value;
             inner.cvar.notify_all();
         }
     }
 }
 
-impl<T> Rx<T> {
+impl<T> Rx<Vec<T>> {
     /// Wait for the next item, returning `None` if logically destructed
     pub fn pop_blocking(&self) -> Option<Popped<T>> {
         let Self(inner) = self;
@@ -79,7 +79,7 @@ impl<T> Rx<T> {
 }
 
 impl<T> Inner<T> {
-    fn lock_or_panic(&self) -> MutexGuard<'_, Option<Vec<T>>> {
+    fn lock_or_panic(&self) -> MutexGuard<'_, Option<T>> {
         self.value.lock().expect("no poison")
     }
     fn destruct(&self) {

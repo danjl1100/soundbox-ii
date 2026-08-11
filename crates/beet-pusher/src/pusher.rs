@@ -1,6 +1,8 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 pub use self::fill_determined::FillError as FillDeterminedError;
-pub use self::push_playlist::HintNeedPlaylistUpdate;
+pub use self::push_playlist::{
+    HintNeedPlaylistUpdate, PlaylistUpdateCounts, PlaylistUpdateCountsResult,
+};
 use crate::{BaseUrl, BeetItem, Determined};
 use bucket_spigot::{Network, order::ArbitrarySource};
 
@@ -221,13 +223,15 @@ mod push_playlist {
     };
 
     /// [`BeetPusher::push_playlist_update`] anticipates that it needs to run again
+    #[derive(Clone, Copy, Debug)]
     pub enum HintNeedPlaylistUpdate {
         /// Available to run immediately (deterministic internal structure change)
         Immediate,
         /// Recommend to run after ~500ms, to allow VLC to catch up to reporting the new status
         WaitForVlc,
     }
-    type PushPlaylistUpdateResult<T, U, R> = Result<Option<HintNeedPlaylistUpdate>, Error<T, U, R>>;
+    type PushPlaylistUpdateResult<T, U, R> =
+        Result<Option<HintNeedPlaylistUpdate>, ErrorAll<T, U, R>>;
 
     impl<R: ArbitrarySource> BeetPusher<'_, R> {
         /// Pushes the determined track list to VLC, notifies the `now_playing_observer`
@@ -252,7 +256,12 @@ mod push_playlist {
             U: vlc_http::sync::EndpointRequestor,
             U::Error: std::error::Error + 'static,
         {
-            let action_opt = self.get_playlist_update_action()?;
+            let make_err = |kind| ErrorAll { kind };
+
+            let action_opt = self
+                .get_playlist_update_action()
+                .map_err(ErrorKindAll::FillDetermined)
+                .map_err(make_err)?;
 
             let Some(action) = action_opt else {
                 return Ok(None);
@@ -261,6 +270,8 @@ mod push_playlist {
             let playlist_update_counts = vlc_driver.run_playlist_update_action(action);
 
             self.push_playlist_update_action(playlist_update_counts, now_playing_observer)
+                .map_err(ErrorKindAll::Update)
+                .map_err(make_err)
         }
         /// Prepares the action required to push the determined track list to VLC
         ///
@@ -271,14 +282,10 @@ mod push_playlist {
         /// # See Also
         ///
         /// - [`BeetPusher::push_playlist_update`]
-        pub fn get_playlist_update_action<T, E>(
+        pub fn get_playlist_update_action(
             &mut self,
-        ) -> Result<Option<TargetPlaylistItems>, Error<T, E, R::Error>> {
-            let make_err = |kind| Error { kind };
-
-            self.fill_determined()
-                .map_err(ErrorKind::FillDetermined)
-                .map_err(make_err)?;
+        ) -> Result<Option<TargetPlaylistItems>, FillDeterminedError<R::Error>> {
+            self.fill_determined()?;
 
             if self.determined.is_empty() {
                 // nothing to do, don't waste querying effort until we have items to push
@@ -293,10 +300,14 @@ mod push_playlist {
         }
     }
     /// Result from [`BeetPusher::run_playlist_update_action`]
+    #[derive(Debug)]
     pub struct PlaylistUpdateCounts {
         vlc_len: usize,
         items_enqueued_count: usize,
     }
+    /// Result from [`VlcDriver::run_playlist_update_action`]
+    pub type PlaylistUpdateCountsResult<E> =
+        Result<PlaylistUpdateCounts, Box<vlc_http::sync::Error<ActionQuerySetItems, E>>>;
     impl<T> VlcDriver<T> {
         /// Executes the playlist update action on the VLC http endpoint
         ///
@@ -310,7 +321,7 @@ mod push_playlist {
         pub fn run_playlist_update_action(
             &mut self,
             target: TargetPlaylistItems,
-        ) -> Result<PlaylistUpdateCounts, Box<vlc_http::sync::Error<ActionQuerySetItems, T::Error>>>
+        ) -> PlaylistUpdateCountsResult<T::Error>
         where
             T: vlc_http::sync::EndpointRequestor,
             T::Error: std::error::Error + 'static,
@@ -341,14 +352,14 @@ mod push_playlist {
         /// # See Also
         ///
         /// - [`BeetPusher::push_playlist_update`]
-        pub fn push_playlist_update_action<T, E, V>(
+        pub fn push_playlist_update_action<T, E>(
             &mut self,
             playlist_update_result: Result<
                 PlaylistUpdateCounts,
                 Box<vlc_http::sync::Error<ActionQuerySetItems, E>>,
             >,
             now_playing_observer: Option<&mut T>,
-        ) -> Result<Option<HintNeedPlaylistUpdate>, Error<T::Error, E, V>>
+        ) -> Result<Option<HintNeedPlaylistUpdate>, Error<T::Error, E>>
         where
             T: NowPlayingObserver,
             E: std::error::Error + 'static,
@@ -417,45 +428,34 @@ mod push_playlist {
         }
     }
 
-    #[derive(Debug)]
-    pub struct Error<E, F, G> {
-        kind: ErrorKind<E, F, G>,
+    /// Error from the combined [`BeetPusher::push_playlist_update`]
+    #[derive(Debug, thiserror::Error)]
+    #[error(transparent)]
+    pub struct ErrorAll<E, F, G> {
+        kind: ErrorKindAll<E, F, G>,
     }
-    #[derive(Debug)]
-    enum ErrorKind<E, F, G> {
-        HttpRunner(Box<vlc_http::sync::Error<vlc_http::goal::ActionQuerySetItems, F>>),
-        BeetPath(crate::path_url::ErrorBeetPath),
-        Observer(E),
+    #[derive(Debug, thiserror::Error)]
+    enum ErrorKindAll<E, F, G> {
+        #[error(transparent)]
+        Update(Error<E, F>),
+        #[error("failed to fill determined list")]
         FillDetermined(FillDeterminedError<G>),
     }
-    impl<E, F, G> std::error::Error for Error<E, F, G>
-    where
-        E: std::error::Error + 'static,
-        F: std::error::Error + 'static,
-        G: std::error::Error + 'static,
-    {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            let Self { kind } = self;
-            match kind {
-                ErrorKind::HttpRunner(source) => Some(source),
-                ErrorKind::Observer(source) => Some(source),
-                ErrorKind::BeetPath(source) => Some(source),
-                ErrorKind::FillDetermined(source) => Some(source),
-            }
-        }
+
+    /// Error from [`BeetPusher::push_playlist_update_action`]
+    #[derive(Debug, thiserror::Error)]
+    #[error(transparent)]
+    pub struct Error<E, F> {
+        kind: ErrorKind<E, F>,
     }
-    impl<E, F, G> std::fmt::Display for Error<E, F, G> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self { kind } = self;
-            match kind {
-                ErrorKind::HttpRunner(_) => write!(f, "failed to execute vlc_http set action"),
-                ErrorKind::Observer(_) => write!(f, "failed to update the NowPlayingObserver"),
-                ErrorKind::BeetPath(_) => {
-                    write!(f, "failed to update the determined playlist URLs")
-                }
-                ErrorKind::FillDetermined(_) => write!(f, "failed to fill determined list"),
-            }
-        }
+    #[derive(Debug, thiserror::Error)]
+    enum ErrorKind<E, F> {
+        #[error("failed to execute vlc_http set action")]
+        HttpRunner(#[source] Box<vlc_http::sync::Error<vlc_http::goal::ActionQuerySetItems, F>>),
+        #[error("failed to update the NowPlayingObserver")]
+        BeetPath(#[source] crate::path_url::ErrorBeetPath),
+        #[error("failed to update the determined playlist URLs")]
+        Observer(#[source] E),
     }
 }
 

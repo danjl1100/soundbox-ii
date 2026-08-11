@@ -107,11 +107,13 @@ pub fn apply_bucket_fill_results<T>(
 }
 
 /// Query needed from beet, created from [`get_bucket_fill_needs`]
+#[derive(Clone, Debug)]
 pub struct BucketQueryNeed {
     bucket: bucket_spigot::path::Path,
     filters: Vec<String>,
 }
 /// Output of a bucket's beet query, from [`BucketQueryNeed::query`]
+#[derive(Clone)]
 pub struct BucketItems {
     bucket: bucket_spigot::path::Path,
     new_contents: Vec<BeetItem>,
@@ -185,5 +187,19 @@ impl<T> std::fmt::Display for FillError<T> {
             FillErrorKind::Modify(_) => write!(f, "failed to modify network"),
             FillErrorKind::Query(_) => write!(f, "failed to query beet"),
         }
+    }
+}
+
+impl std::fmt::Debug for BucketItems {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            bucket,
+            new_contents,
+        } = self;
+        f.debug_struct("BucketItems")
+            .field("bucket", bucket)
+            // debug only the count if new contents, to avoid massive debug output
+            .field("new_contents(len)", &new_contents.len())
+            .finish_non_exhaustive()
     }
 }

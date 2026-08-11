@@ -95,118 +95,170 @@ where
             beet_cmd,
         } = self;
 
-        let mut vlc_driver = VlcDriver::default_from_runner(http_runner);
+        let (bucket_fill_tx, bucket_fill_thread) = bucket_fill::spawn(loop_tx.clone(), beet_cmd);
 
-        let (bucket_fill_tx, bucket_fill_thread) = bucket_fill::spawn(loop_tx, beet_cmd);
+        let (vlc_act_tx, vlc_act_thread) = {
+            let vlc_driver = VlcDriver::default_from_runner(http_runner);
+            vlc_act::spawn(loop_tx, vlc_driver)
+        };
 
-        let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
+        let loop_result: eyre::Result<()> = (|| {
+            let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
 
-        let mut timer_fill_bucket = DebounceTask::new(TICK_INTERVAL);
-        // only fill buckets when explicitly activated
-        timer_fill_bucket.set_active(false);
+            let mut timer_fill_bucket = DebounceTask::new(TICK_INTERVAL);
+            // only fill buckets when explicitly activated
+            timer_fill_bucket.set_active(false);
 
-        loop {
-            let event = if timer_fill_playlist.is_ready() {
-                // highest priority - feed the externally-advancing VLC
-                Ok(LoopEvent::MaintainPlaylist)
-            } else if timer_fill_bucket.is_ready() {
-                // only fill buckets when explicitly activated
-                timer_fill_bucket.set_active(false);
+            let mut shutdown_active = false;
 
-                // next priority - update to reflect the user command
-                Ok(LoopEvent::BucketFillStart)
-            } else {
-                // lowest - process new commands
-                loop_rx.recv_timeout(TICK_INTERVAL)
-            };
-            match event {
-                Ok(loop_event) => match loop_event {
-                    LoopEvent::Shutdown(Shutdown) => break,
-                    LoopEvent::MaintainPlaylist => {
-                        tracing::trace!("PLAYLIST UPDATE");
-                        let hint_need_fill = pusher.push_playlist_update(
-                            &mut vlc_driver,
-                            Some(&mut now_playing_observer),
-                        )?;
-                        match hint_need_fill {
-                            Some(HintNeedPlaylistUpdate::Immediate) => {
+            loop {
+                let event = if timer_fill_playlist.take_ready() {
+                    // highest priority - feed the externally-advancing VLC
+                    Ok(LoopEvent::MaintainPlaylistStart)
+                } else if timer_fill_bucket.take_ready() {
+                    // next priority - update to reflect the user command
+                    Ok(LoopEvent::BucketFillStart)
+                } else if shutdown_active && timer_fill_playlist.is_active {
+                    break;
+                } else {
+                    // lowest - process new commands
+                    loop_rx.recv_timeout(TICK_INTERVAL)
+                };
+
+                if let Ok(loop_event) = &event {
+                    tracing::trace!(?loop_event);
+                }
+
+                match event {
+                    Ok(loop_event) => match loop_event {
+                        LoopEvent::Shutdown(Shutdown) => shutdown_active = true,
+                        LoopEvent::MaintainPlaylistStart => {
+                            let mut queued_vlc_act = false;
+
+                            if let Some(action) = pusher.get_playlist_update_action()? {
+                                let result = vlc_act_tx.send_playlist_update_action(action);
+                                queued_vlc_act = result.is_ok();
+                                warn_queue_failed(result, "VLC playlist maintenance action");
+                            }
+
+                            if !queued_vlc_act {
+                                // resume timer, in case playlist needs change
+                                timer_fill_playlist.defer();
+                                timer_fill_playlist.set_active(true);
+                            }
+                        }
+                        LoopEvent::MaintainPlaylistResponse(result) => {
+                            // resume timer, no matter the result
+                            timer_fill_playlist.set_active(true);
+
+                            let playlist_update_counts = result.into_inner();
+
+                            let hint_need_fill = pusher.push_playlist_update_action(
+                                playlist_update_counts,
+                                Some(&mut now_playing_observer),
+                            )?;
+
+                            tracing::trace!(?hint_need_fill);
+                            match hint_need_fill {
+                                Some(HintNeedPlaylistUpdate::Immediate) => {
+                                    timer_fill_playlist.set_immediate();
+                                }
+                                Some(HintNeedPlaylistUpdate::WaitForVlc) => {
+                                    timer_fill_playlist
+                                        .defer_with(std::time::Duration::from_millis(500));
+                                }
+                                None => {
+                                    // requires periodic maintenance (VLC client self-advances)
+                                    timer_fill_playlist.defer();
+                                }
+                            }
+                        }
+                        LoopEvent::BucketFillStart => {
+                            let spigot = pusher.get_spigot_mut();
+                            let needs = get_bucket_fill_needs(spigot).collect();
+
+                            bucket_fill_tx.queue(needs);
+                        }
+                        LoopEvent::BucketFillResponse(response) => match response {
+                            bucket_fill::Response::Fill(result) => {
+                                let spigot = pusher.get_spigot_mut();
+                                apply_bucket_fill_results([result], spigot)?;
+
+                                // only fill buckets when explicitly activated
+                                // (NOT running `timer_fill_bucket.set_active(true)`)
+                            }
+                            bucket_fill::Response::End => {
+                                // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
                                 timer_fill_playlist.set_immediate();
                             }
-                            Some(HintNeedPlaylistUpdate::WaitForVlc) => {
-                                timer_fill_playlist
-                                    .defer_with(std::time::Duration::from_millis(500));
-                            }
-                            None => {
-                                // requires periodic maintenance (VLC client self-advances)
-                                timer_fill_playlist.defer();
-                            }
-                        }
-                    }
-                    LoopEvent::BucketFillStart => {
-                        tracing::trace!("FILL BUCKETS");
+                        },
+                        LoopEvent::SpigotCmd(cmd) => {
+                            cmd.run(&mut pusher);
 
-                        let spigot = pusher.get_spigot_mut();
-                        let needs = get_bucket_fill_needs(spigot).collect();
-
-                        bucket_fill_tx.queue(needs);
-                    }
-                    LoopEvent::BucketFillResponse(response) => match response {
-                        bucket_fill::Response::Fill(result) => {
-                            let spigot = pusher.get_spigot_mut();
-                            apply_bucket_fill_results([result], spigot)?;
+                            // causes update to buckets
+                            timer_fill_bucket.defer();
+                            timer_fill_bucket.set_active(true);
                         }
-                        bucket_fill::Response::Complete => {
-                            // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
-                            timer_fill_playlist.set_immediate();
+                        LoopEvent::VlcCmd(cmd) => {
+                            let result = vlc_act_tx.send_cmd(cmd);
+                            warn_queue_failed(result, "VLC command");
+                        }
+                        LoopEvent::VlcCmdResponse { modifies_playlist } => {
+                            if modifies_playlist {
+                                // causes update to playlist
+                                timer_fill_playlist.set_immediate();
+                            }
                         }
                     },
-                    LoopEvent::SpigotCmd(cmd) => {
-                        cmd.run(&mut pusher);
-
-                        // causes update to buckets
-                        timer_fill_bucket.defer();
-                        timer_fill_bucket.set_active(true);
-                    }
-                    LoopEvent::VlcCmd(cmd) => {
-                        let modifies_playlist = match &cmd.cmd {
-                            VlcCmd::SeekNext => true,
-                        };
-
-                        if modifies_playlist {
-                            // causes update to playlist
-                            timer_fill_playlist.set_immediate();
+                    Err(RecvTimeoutError::Disconnected) => {
+                        #[expect(clippy::panic, reason = "invalid shutdown state")]
+                        {
+                            panic!("all senders ended with no Shutdown received")
                         }
-
-                        cmd.run(&mut vlc_driver);
                     }
-                },
-                Err(RecvTimeoutError::Disconnected) => {
-                    #[expect(clippy::panic, reason = "invalid shutdown state")]
-                    {
-                        panic!("all senders ended with no Shutdown received")
-                    }
+                    Err(RecvTimeoutError::Timeout) => {}
                 }
-                Err(RecvTimeoutError::Timeout) => {}
             }
-        }
+            Ok(())
+        })();
 
-        drop(bucket_fill_tx);
+        eprintln!("WAIT for bucket_fill_thread to join");
+        warn_thread_panic(
+            bucket_fill_thread.join_and_drop(bucket_fill_tx),
+            "bucket fill",
+        );
 
-        bucket_fill_thread
-            .join()
-            .expect("panic in bucket_fill_thread");
+        eprintln!("WAIT for vlc_act_thread to join");
+        warn_thread_panic(vlc_act_thread.join_and_drop(vlc_act_tx), "VLC act");
 
-        Ok(())
+        loop_result
     }
 }
+fn warn_queue_failed<E>(result: Result<(), E>, kind: &str)
+where
+    E: Into<eyre::Report>,
+{
+    if let Err(e) = result {
+        let error = eyre::eyre!(e);
+        tracing::warn!(?error, "failed to queue {kind}");
+    }
+}
+fn warn_thread_panic(result: std::thread::Result<()>, kind: &str) {
+    if let Err(error) = result {
+        tracing::warn!(?error, "panic in {kind} thread");
+    }
+}
+
 impl LoopEventSpigotCmd {
     fn run<R>(self, pusher: &mut BeetPusher<'_, R>) {
         use crate::pipe_exec::{ErrorKind, ResponseData};
 
-        let Self { reply_to, cmd } = self;
+        let Self {
+            reply_to: OpaqueDebug(reply_to),
+            cmd,
+        } = self;
 
         let spigot = pusher.get_spigot_mut();
-        tracing::trace!(?cmd);
         let result = match spigot.modify_and_get_created_path(cmd.into()) {
             Ok(Some(path)) => Ok(ResponseData::NodeAdded { path }),
             Ok(None) => Ok(ResponseData::PassNoData),
@@ -220,9 +272,10 @@ impl LoopEventVlcCmd {
         use crate::pipe_exec::{ErrorKind, ResponseData};
         use vlc_http::sync::EndpointRequestor as _;
 
-        let Self { reply_to, cmd } = self;
-
-        tracing::trace!(?cmd);
+        let Self {
+            reply_to: OpaqueDebug(reply_to),
+            cmd,
+        } = self;
 
         let cmd = vlc_http::Command::from(cmd);
 
@@ -261,25 +314,43 @@ impl AsRef<std::sync::mpsc::SyncSender<LoopEvent>> for EventSender {
 }
 
 /// Event runnable by the [`CommandLoop`] (sent via [`EventSender`])
+#[derive(Debug)]
 enum LoopEvent {
     Shutdown(Shutdown),
-    MaintainPlaylist,
+    MaintainPlaylistStart,
+    MaintainPlaylistResponse(vlc_act::PlaylistResponse<vlc_http_ureq::Error>),
     BucketFillStart,
     BucketFillResponse(bucket_fill::Response),
     SpigotCmd(LoopEventSpigotCmd),
     VlcCmd(LoopEventVlcCmd),
+    VlcCmdResponse { modifies_playlist: bool },
 }
+#[derive(Debug)]
 struct LoopEventSpigotCmd {
-    reply_to: oneshot::Sender<crate::pipe_exec::ResponseResultInner>,
+    reply_to: OpaqueDebug<oneshot::Sender<crate::pipe_exec::ResponseResultInner>>,
     cmd: SpigotCmd,
 }
+#[derive(Debug)]
 struct LoopEventVlcCmd {
-    reply_to: oneshot::Sender<crate::pipe_exec::ResponseResultInner>,
+    reply_to: OpaqueDebug<oneshot::Sender<crate::pipe_exec::ResponseResultInner>>,
     cmd: VlcCmd,
 }
 impl From<Shutdown> for LoopEvent {
     fn from(value: Shutdown) -> Self {
         Self::Shutdown(value)
+    }
+}
+
+/// Helper to bridge derive for fields that are not [`Debug`]
+struct OpaqueDebug<T>(pub T);
+impl<T> From<T> for OpaqueDebug<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+impl<T> std::fmt::Debug for OpaqueDebug<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "_")
     }
 }
 
@@ -296,6 +367,13 @@ impl DebounceTask {
             interval,
             is_active: true,
         }
+    }
+    fn take_ready(&mut self) -> bool {
+        let is_ready = self.is_ready();
+        if is_ready {
+            self.set_active(false);
+        }
+        is_ready
     }
     fn is_ready(&self) -> bool {
         let Self {
@@ -397,6 +475,7 @@ fn pipe_cmd(loop_tx: &EventSender, line: String) -> crate::pipe_exec::ResponseRe
     let make_err = |kind| Error::new(seq, kind);
 
     let (reply_to, rx) = oneshot::channel();
+    let reply_to = reply_to.into();
 
     let event = match cmd {
         PipeCommand::Spigot(cmd) => LoopEvent::SpigotCmd(LoopEventSpigotCmd { reply_to, cmd }),
