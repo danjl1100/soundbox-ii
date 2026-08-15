@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! HTTP runner using [`ureq`] for [`vlc_http`]
-use std::str::FromStr as _;
+use std::{str::FromStr as _, time::Duration};
 use vlc_http::{Auth, Endpoint, Response, sync::EndpointRequestor};
 
 pub use ::ureq as ureq_crate;
@@ -13,6 +13,7 @@ pub struct HttpRunner {
     auth: Auth,
     observe_fn_responses_str: Option<Box<ResponseStrObserver>>,
     observe_fn_responses: Option<Box<ResponseObserver>>,
+    timeout_global: Option<Duration>,
 }
 impl HttpRunner {
     /// Creates a default with the specified [`Auth`]
@@ -21,6 +22,7 @@ impl HttpRunner {
             auth,
             observe_fn_responses: None,
             observe_fn_responses_str: None,
+            timeout_global: None,
         }
     }
     /// Allows custom logging of the raw HTTP response string, called for each endpoint
@@ -35,6 +37,12 @@ impl HttpRunner {
     /// NOTE: Replaces the previous "responses" observer function (if any)
     pub fn set_observe_responses(&mut self, f: Box<ResponseObserver>) -> &mut Self {
         self.observe_fn_responses = Some(f);
+        self
+    }
+    /// Sets the global timeout for each request (see
+    /// [`ureq::config::ConfigBuilder::timeout_global`])
+    pub fn set_timeout_global(&mut self, timeout: Duration) -> &mut Self {
+        self.timeout_global = Some(timeout);
         self
     }
 }
@@ -76,6 +84,9 @@ impl EndpointRequestor for HttpRunner {
         };
 
         let mut response = request
+            .config()
+            .timeout_global(self.timeout_global)
+            .build()
             .call()
             .map_err(Box::new)
             .map_err(ErrorKind::RequestCall)

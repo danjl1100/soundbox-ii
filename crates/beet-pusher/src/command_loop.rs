@@ -78,6 +78,10 @@ where
     ///
     /// Panics if the `loop_rx` ends without sending a shutdown message
     /// (guaranteed by [`EventSender`] drop impl)
+    #[expect(
+        clippy::too_many_lines,
+        reason = "TODO refactor branches into struct methods"
+    )]
     pub fn run(self) -> eyre::Result<()> {
         // TODO add a "determined holder" concept, to make it easy to:
         // 1. Peek a bunch, update spigot

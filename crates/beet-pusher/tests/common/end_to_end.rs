@@ -6,6 +6,7 @@ use crate::{
 
 use serde_json::json;
 
+mod fake_vlc_timeout;
 mod pipe_runner;
 
 #[test]
@@ -13,7 +14,7 @@ fn stdin_reports_unknown_command() -> eyre::Result<()> {
     fake_vlc::FakeVlc::with_new(|vlc, _runner| {
         let fake_beet_config = fake_beet::ConfigAll::default();
 
-        let mut r = PipeRunner::spawn(vlc, &fake_beet_config)?;
+        let mut r = PipeRunner::build(vlc, &fake_beet_config).spawn()?;
         let bad_input = "test string is **NOT** a JSON object";
         r.send_stdin_line(bad_input)?;
 
@@ -59,7 +60,7 @@ fn stdin_modify_spigot() -> eyre::Result<()> {
                 .stdout_lines(["23=item1", "59=item2"]);
         });
 
-        let mut r = PipeRunner::spawn(vlc, &fake_beet_config)?;
+        let mut r = PipeRunner::build(vlc, &fake_beet_config).spawn()?;
         r.send_stdin(&JsonLines::new([
             json!({
                 "seq": 1,

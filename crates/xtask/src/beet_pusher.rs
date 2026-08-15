@@ -302,7 +302,8 @@ struct FakeVlcHandles {
 }
 impl FakeVlcHandles {
     fn new(dir: &std::path::Path) -> eyre::Result<Self> {
-        let (fake_vlc, thread) = ::fake_vlc::FakeVlc::new()?;
+        let fake_vlc = ::fake_vlc::FakeVlc::new()?;
+        let thread = fake_vlc.spawn_handler();
         eprintln!("Spawned fake-vlc");
 
         let vlc_auth_file = fake_vlc.create_config_file(dir, "fake-vlc.toml")?;

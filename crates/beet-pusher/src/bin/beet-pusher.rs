@@ -27,6 +27,7 @@ struct Args {
     json: bool,
 }
 
+#[expect(clippy::too_many_lines, reason = "see TODO remove unused diagnostic")]
 fn main() -> eyre::Result<()> {
     // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
     const DEFAULT_SCRIPT: &str = "";
@@ -54,12 +55,6 @@ fn main() -> eyre::Result<()> {
         debug_items,
         json,
     } = Args::parse();
-
-    let http_runner = {
-        let auth = auth_args_and_file.merge()?;
-        let auth = vlc_http::Auth::new(auth)?;
-        vlc_http_ureq::HttpRunner::new(auth)
-    };
 
     // TODO handle weirder requests like:
     // <file:///clone/wilbur_dan/beet/Music/Louie%20Zong/3%/01%20That%20Someone%20Is%20You.mp3>
@@ -108,6 +103,7 @@ fn main() -> eyre::Result<()> {
         base_url,
         publish_id_file,
         beet,
+        vlc_http_timeout_millis,
     } = config_file;
 
     let now_playing_observer = move |item: &BeetItem| {
@@ -137,6 +133,18 @@ fn main() -> eyre::Result<()> {
     let pusher = {
         let spigot = setup_spigot(&mut beet_cmd, &script)?;
         BeetPusher::new(rng, spigot, base_url)
+    };
+
+    let http_runner = {
+        let auth = auth_args_and_file.merge()?;
+        let auth = vlc_http::Auth::new(auth)?;
+        let mut http_runner = vlc_http_ureq::HttpRunner::new(auth);
+
+        if let Some(millis) = vlc_http_timeout_millis {
+            http_runner.set_timeout_global(std::time::Duration::from_millis(millis));
+        }
+
+        http_runner
     };
 
     let (cmd_loop, loop_tx) = beet_pusher::command_loop::CommandLoop::new(
@@ -300,6 +308,7 @@ mod config_file {
         // If specified, writes the "now playing" ID to a text file for other scripts to pickup
         pub publish_id_file: Option<std::path::PathBuf>,
         pub beet: Option<std::path::PathBuf>,
+        pub vlc_http_timeout_millis: Option<u64>,
     }
 
     impl ConfigFile {
@@ -314,6 +323,7 @@ mod config_file {
                 ),
                 publish_id_file: Some("current_item_id.txt".into()),
                 beet: Some("/path/to/usr/bin/beet".into()),
+                vlc_http_timeout_millis: Some(2_000),
             }
             .write_template_for_file(path)
         }

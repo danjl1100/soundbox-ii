@@ -24,21 +24,41 @@ struct InnerShared {
     /// "Basic [base64]" version of `fake_password`
     fake_password_bearer: String,
     inner_mut: InnerMut,
+    response_delay: Option<std::time::Duration>,
 }
 impl FakeVlc {
+    /// [`Self::with_new_and_setup`] but without setup
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::with_new_and_setup`]
+    ///
+    /// # Panics
+    ///
+    /// See [`Self::with_new_and_setup`]
+    pub fn with_new<T>(
+        test_fn: impl FnOnce(&FakeVlc, &mut vlc_http_ureq::HttpRunner) -> eyre::Result<T>,
+    ) -> eyre::Result<T> {
+        Self::with_new_and_setup(|_| (), test_fn)
+    }
     /// Calls the specified function with an instance and configured
     /// [`vlc_http_ureq::HttpRunner`]
     ///
     /// # Errors
+    ///
     /// Returns an error if the server bind fails
     ///
     /// # Panics
+    ///
     /// Panics if shutting down the spawned thread handle fails due to panic
     /// elsewhere in the program
-    pub fn with_new<T>(
+    pub fn with_new_and_setup<T>(
+        setup_fn: impl FnOnce(&mut FakeVlc),
         test_fn: impl FnOnce(&FakeVlc, &mut vlc_http_ureq::HttpRunner) -> eyre::Result<T>,
     ) -> eyre::Result<T> {
-        let (vlc, thread_handle) = FakeVlc::new()?;
+        let mut vlc = FakeVlc::new()?;
+        setup_fn(&mut vlc);
+        let thread_handle = vlc.spawn_handler();
 
         let auth = vlc_http_auth::Auth::new(vlc.get_auth_cloned())?;
         let mut endpoint_caller = vlc_http_ureq::HttpRunner::new(auth);
@@ -54,16 +74,14 @@ impl FakeVlc {
     ///
     /// # Errors
     /// Returns an error if the server bind fails
-    pub fn new() -> eyre::Result<(Self, SpawnHandle)> {
+    pub fn new() -> eyre::Result<Self> {
         Self::new_bind_to("127.0.0.1:0")
     }
     /// Binds the HTTP server, for use in `spawn`
     ///
     /// # Errors
     /// Returns an error if the server bind fails
-    pub fn new_bind_to(
-        bind_address: impl std::net::ToSocketAddrs,
-    ) -> eyre::Result<(Self, SpawnHandle)> {
+    pub fn new_bind_to(bind_address: impl std::net::ToSocketAddrs) -> eyre::Result<Self> {
         let server = SocketServer::http(bind_address)
             .map_err(|e| eyre::eyre!(e))
             .context("failed to bind FakeVlc server")?;
@@ -86,14 +104,11 @@ impl FakeVlc {
             fake_password,
             fake_password_bearer,
             inner_mut: InnerMut::new(),
+            response_delay: None,
         };
         let inner_shared = Arc::new(inner_shared);
 
-        let this = Self { inner_shared };
-
-        let handle = this.spawn();
-
-        Ok((this, handle))
+        Ok(Self { inner_shared })
     }
     /// Returns the auth info required to connect to the HTTP server
     ///
@@ -127,9 +142,9 @@ impl FakeVlc {
             toml::to_string_pretty(&auth).context("failed to serialize fake_vlc::AuthInput")?;
         create_config_file(dir, file_name, &file_content)
     }
-    /// Borrows `self` to spawn an HTTP receive thread in a scope
+    /// Borrows `self` to spawn an HTTP receive thread
     #[must_use]
-    fn spawn(&self) -> SpawnHandle {
+    pub fn spawn_handler(&self) -> SpawnHandle {
         let Self { inner_shared } = self;
 
         // weak reference, to end the loop after receiving a wakeup
@@ -188,6 +203,13 @@ impl FakeVlc {
     pub fn wait_for_play_next(&self, wait_timeout: std::time::Duration) -> Option<()> {
         self.inner_shared.inner_mut.wait_for_play_next(wait_timeout)
     }
+    /// Sets a global delay to every fake-HTTP response, or returns `None` if
+    /// server is already spawned
+    pub fn set_response_delay(&mut self, response_delay: std::time::Duration) -> Option<()> {
+        let inner_shared = Arc::get_mut(&mut self.inner_shared)?;
+        inner_shared.response_delay = Some(response_delay);
+        Some(())
+    }
 }
 impl Drop for FakeVlc {
     fn drop(&mut self) {
@@ -223,6 +245,7 @@ impl InnerShared {
             fake_password: _, // bearer only, raw not used
             fake_password_bearer,
             inner_mut,
+            response_delay,
         } = self;
 
         let request = match server.inner().recv() {
@@ -263,6 +286,11 @@ impl InnerShared {
                 response
             }
         };
+
+        if let Some(delay) = response_delay {
+            std::thread::sleep(*delay);
+        }
+
         let result = request.respond(response);
         if let Err(e) = result {
             eprintln!("FakeVlc response error: {:?}", eyre::eyre!(e));

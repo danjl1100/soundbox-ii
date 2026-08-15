@@ -68,7 +68,7 @@ Get the unbounded work off the thread that answers commands. Roughly in order of
    separates "which buckets need fill" from "query" from "apply"
    (`beet.rs:42-70`), so the split is mostly mechanical: the loop keeps ownership of the
    `Network`, the worker only owns the `BeetRunner` and returns items.
-2. [ ] Do the same for the VLC round trip, or at minimum give `HttpRunner` a request timeout so
+2. [x] Do the same for the VLC round trip, or at minimum give `HttpRunner` a request timeout so
    `MaintainPlaylist` has a bounded worst case. Note [03](03-vlc-error-terminates-daemon.md)
    is about the *error* path of this same call — worth doing together.
 3. [ ] Reconsider the strict priority ladder once the blocking work is gone. With both slow arms

@@ -299,7 +299,7 @@ mod push_playlist {
             Ok(Some(target))
         }
     }
-    /// Result from [`BeetPusher::run_playlist_update_action`]
+    /// Report from [`VlcDriver::run_playlist_update_action`]
     #[derive(Debug)]
     pub struct PlaylistUpdateCounts {
         vlc_len: usize,
