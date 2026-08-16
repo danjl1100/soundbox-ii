@@ -144,3 +144,13 @@ impl std::fmt::Display for Error {
         write!(f, "{description}")
     }
 }
+impl Error {
+    /// If the error was caused by `ureq`, returns the inner [`ureq::Error`]
+    #[must_use]
+    pub fn try_as_ureq(&self) -> Option<&ureq::Error> {
+        match &self.kind {
+            ErrorKind::RequestCall(error) | ErrorKind::ResponseBody(error) => Some(error),
+            ErrorKind::ResponseParse(_) => None,
+        }
+    }
+}

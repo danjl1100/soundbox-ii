@@ -10,7 +10,7 @@ use crate::{
     BeetCommand, BeetItem, BeetPusher, HintNeedPlaylistUpdate, Shutdown,
     beet::{apply_bucket_fill_results, get_bucket_fill_needs},
     pipe_exec::{SpigotCmd, VlcCmd},
-    pusher::VlcDriver,
+    pusher::{Error as PusherError, VlcDriver},
 };
 
 mod bucket_fill;
@@ -82,7 +82,7 @@ where
         clippy::too_many_lines,
         reason = "TODO refactor branches into struct methods"
     )]
-    pub fn run(self) -> eyre::Result<()> {
+    pub fn run(self) -> Result<(), LoopError<E, R::Error>> {
         // TODO add a "determined holder" concept, to make it easy to:
         // 1. Peek a bunch, update spigot
         // 2. Load into VLC, retrieve "after current" items
@@ -99,6 +99,8 @@ where
             beet_cmd,
         } = self;
 
+        let mut vlc_exponential_backoff: Option<ExponentialBackoff> = None;
+
         let (bucket_fill_tx, bucket_fill_thread) = bucket_fill::spawn(loop_tx.clone(), beet_cmd);
 
         let (vlc_act_tx, vlc_act_thread) = {
@@ -106,7 +108,7 @@ where
             vlc_act::spawn(loop_tx, vlc_driver)
         };
 
-        let loop_result: eyre::Result<()> = (|| {
+        let loop_result: Result<(), LoopErrorKind<E, R::Error>> = (|| {
             let mut timer_fill_playlist = DebounceTask::new(FILL_PLAYLIST_INTERVAL);
 
             let mut timer_fill_bucket = DebounceTask::new(TICK_INTERVAL);
@@ -139,7 +141,10 @@ where
                         LoopEvent::MaintainPlaylistStart => {
                             let mut queued_vlc_act = false;
 
-                            if let Some(action) = pusher.get_playlist_update_action()? {
+                            if let Some(action) = pusher
+                                .get_playlist_update_action()
+                                .map_err(LoopErrorKind::PullItems)?
+                            {
                                 let result = vlc_act_tx.send_playlist_update_action(action);
                                 queued_vlc_act = result.is_ok();
                                 warn_queue_failed(result, "VLC playlist maintenance action");
@@ -157,24 +162,50 @@ where
 
                             let playlist_update_counts = result.into_inner();
 
-                            let hint_need_fill = pusher.push_playlist_update_action(
+                            let result = pusher.push_playlist_update_action(
                                 playlist_update_counts,
                                 Some(&mut now_playing_observer),
-                            )?;
+                            );
+                            let timer_hint_result: Result<
+                                Option<HintNeedPlaylistUpdate>,
+                                HintRetryableError,
+                            > = match result {
+                                Ok(hint) => Ok(Ok(hint)),
+                                Err(err) => {
+                                    if let Some(retryable) = is_retryable(&err) {
+                                        let err = eyre::eyre!(err);
+                                        eprintln!("{err:?}");
+                                        Ok(Err(retryable))
+                                    } else {
+                                        Err(LoopErrorKind::PlaylistUpdate(err))
+                                    }
+                                }
+                            }?;
 
-                            tracing::trace!(?hint_need_fill);
-                            match hint_need_fill {
-                                Some(HintNeedPlaylistUpdate::Immediate) => {
-                                    timer_fill_playlist.set_immediate();
+                            tracing::trace!(?timer_hint_result);
+
+                            if let Ok(hint) = timer_hint_result {
+                                vlc_exponential_backoff.take();
+
+                                match hint {
+                                    Some(HintNeedPlaylistUpdate::Immediate) => {
+                                        timer_fill_playlist.set_immediate();
+                                    }
+                                    Some(HintNeedPlaylistUpdate::WaitForVlc) => {
+                                        timer_fill_playlist
+                                            .defer_with(std::time::Duration::from_millis(500));
+                                    }
+                                    None => {
+                                        // requires periodic maintenance (VLC client self-advances)
+                                        timer_fill_playlist.defer();
+                                    }
                                 }
-                                Some(HintNeedPlaylistUpdate::WaitForVlc) => {
-                                    timer_fill_playlist
-                                        .defer_with(std::time::Duration::from_millis(500));
-                                }
-                                None => {
-                                    // requires periodic maintenance (VLC client self-advances)
-                                    timer_fill_playlist.defer();
-                                }
+                            } else {
+                                let backoff = vlc_exponential_backoff.get_or_insert(
+                                    ExponentialBackoff::doubling_range_secs((0.1, 90.0)),
+                                );
+
+                                timer_fill_playlist.defer_with(backoff.swap_next());
                             }
                         }
                         LoopEvent::BucketFillStart => {
@@ -186,7 +217,8 @@ where
                         LoopEvent::BucketFillResponse(response) => match response {
                             bucket_fill::Response::Fill(result) => {
                                 let spigot = pusher.get_spigot_mut();
-                                apply_bucket_fill_results([result], spigot)?;
+                                apply_bucket_fill_results([result], spigot)
+                                    .map_err(LoopErrorKind::FillBuckets)?;
 
                                 // only fill buckets when explicitly activated
                                 // (NOT running `timer_fill_bucket.set_active(true)`)
@@ -235,9 +267,10 @@ where
         eprintln!("WAIT for vlc_act_thread to join");
         warn_thread_panic(vlc_act_thread.join_and_drop(vlc_act_tx), "VLC act");
 
-        loop_result
+        loop_result.map_err(|kind| LoopError { kind })
     }
 }
+
 fn warn_queue_failed<E>(result: Result<(), E>, kind: &str)
 where
     E: Into<eyre::Report>,
@@ -250,6 +283,72 @@ where
 fn warn_thread_panic(result: std::thread::Result<()>, kind: &str) {
     if let Err(error) = result {
         tracing::warn!(?error, "panic in {kind} thread");
+    }
+}
+
+struct ExponentialBackoff {
+    range_seconds: (f64, f64),
+    multiplier: f64,
+}
+impl ExponentialBackoff {
+    fn doubling_range_secs(range_seconds: (f64, f64)) -> Self {
+        Self {
+            range_seconds,
+            multiplier: 2.0,
+        }
+    }
+    fn swap_next(&mut self) -> std::time::Duration {
+        let Self {
+            range_seconds: (min_secs, max_secs),
+            multiplier,
+        } = *self;
+
+        let next_secs = (min_secs * multiplier).max(min_secs).min(max_secs);
+
+        let Self {
+            range_seconds: (current, _),
+            ..
+        } = self;
+        std::time::Duration::from_secs_f64(std::mem::replace(current, next_secs))
+    }
+}
+
+#[derive(Debug)]
+struct HintRetryableError;
+fn is_retryable<E>(err: &PusherError<E, vlc_http_ureq::Error>) -> Option<HintRetryableError>
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    use crate::pusher::ErrorKind;
+    use vlc_http_ureq::ureq_crate::Error as UreqError;
+
+    let vlc_sync_err = match err.kind() {
+        ErrorKind::HttpRunner(error) => error,
+        ErrorKind::BeetPath(_) | ErrorKind::Observer(_) => return None,
+    };
+
+    let ureq_err = vlc_sync_err.try_as_endpoint_err()?.try_as_ureq()?;
+
+    match ureq_err {
+        UreqError::Io(_)
+        | UreqError::Timeout(_)
+        | UreqError::HostNotFound
+        | UreqError::ConnectionFailed => Some(HintRetryableError),
+        UreqError::StatusCode(_)
+        | UreqError::Http(_)
+        | UreqError::BadUri(_)
+        | UreqError::Protocol(_)
+        | UreqError::RedirectFailed
+        | UreqError::InvalidProxyUrl
+        | UreqError::BodyExceedsLimit(_)
+        | UreqError::TooManyRedirects
+        | UreqError::Tls(_)
+        | UreqError::RequireHttpsOnly(_)
+        | UreqError::LargeResponseHeader(_, _)
+        | UreqError::ConnectProxyFailed(_)
+        | UreqError::TlsRequired
+        | UreqError::Other(_)
+        | _ => None,
     }
 }
 
@@ -294,6 +393,22 @@ impl LoopEventVlcCmd {
         };
         let _ = reply_to.send(result);
     }
+}
+
+/// Error from the main [`CommandLoop::run`]
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct LoopError<E, R> {
+    kind: LoopErrorKind<E, R>,
+}
+#[derive(Debug, thiserror::Error)]
+enum LoopErrorKind<E, R> {
+    #[error("failed to pull items from the spigot")]
+    PullItems(#[source] crate::FillDeterminedError<R>),
+    #[error("failed to fill spigot bucket items")]
+    FillBuckets(#[source] crate::beet::FillError<std::io::Error>),
+    #[error("failed to push playlist update")]
+    PlaylistUpdate(#[source] crate::pusher::Error<E, vlc_http_ureq::Error>),
 }
 
 /// Accepts events to add to the command loop
@@ -507,6 +622,42 @@ mod tests {
         assert!(
             uut > RESPONSE_TIMEOUT + TICK_INTERVAL,
             "client wait timeout is too short: {uut:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests_backoff {
+    use super::ExponentialBackoff;
+
+    #[test]
+    fn backoff() {
+        let mut backoff = ExponentialBackoff::doubling_range_secs((1.0, 300.0));
+        let mut intervals = vec![];
+        loop {
+            let last = intervals.last().copied();
+
+            let new = backoff.swap_next().as_secs_f64();
+            intervals.push(new);
+
+            let Some(last) = last else {
+                continue;
+            };
+
+            #[expect(
+                clippy::float_cmp,
+                reason = "find saturating point (matching input parameter)"
+            )]
+            if new == last {
+                break;
+            }
+        }
+
+        assert_eq!(
+            intervals,
+            &[
+                1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 300.0, 300.0
+            ]
         );
     }
 }

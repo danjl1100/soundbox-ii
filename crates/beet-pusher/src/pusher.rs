@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 pub use self::fill_determined::FillError as FillDeterminedError;
 pub use self::push_playlist::{
-    HintNeedPlaylistUpdate, PlaylistUpdateCounts, PlaylistUpdateCountsResult,
+    Error, ErrorKind, HintNeedPlaylistUpdate, PlaylistUpdateCounts, PlaylistUpdateCountsResult,
 };
 use crate::{BaseUrl, BeetItem, Determined};
 use bucket_spigot::{Network, order::ArbitrarySource};
@@ -449,13 +449,18 @@ mod push_playlist {
         kind: ErrorKind<E, F>,
     }
     #[derive(Debug, thiserror::Error)]
-    enum ErrorKind<E, F> {
+    pub enum ErrorKind<E, F> {
         #[error("failed to execute vlc_http set action")]
         HttpRunner(#[source] Box<vlc_http::sync::Error<vlc_http::goal::ActionQuerySetItems, F>>),
         #[error("failed to update the NowPlayingObserver")]
         BeetPath(#[source] crate::path_url::ErrorBeetPath),
         #[error("failed to update the determined playlist URLs")]
         Observer(#[source] E),
+    }
+    impl<E, F> Error<E, F> {
+        pub fn kind(&self) -> &ErrorKind<E, F> {
+            &self.kind
+        }
     }
 }
 

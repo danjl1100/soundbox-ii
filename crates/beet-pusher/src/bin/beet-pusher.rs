@@ -182,6 +182,13 @@ fn init_tracing() {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 }
+
+/// Initial setup for the spigot
+///
+/// # Errors
+///
+/// Returns an error if the initial fill fails (likely indicating a
+/// configuration issue)
 fn setup_spigot(
     beet_cmd: &mut beet_pusher::BeetCommand,
     script: &str,

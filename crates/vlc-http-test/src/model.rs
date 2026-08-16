@@ -10,8 +10,13 @@ pub struct Model {
     is_random: bool,
     art_endpoints: Vec<String>,
     current_item_id: Option<(i32, PlayState)>,
+    requests_count: usize,
 }
-/// Serializable representation of [`Model`]
+/// Serializable representation of [`Model`], for stable model-fields only
+///
+/// NOTE: Excludes `requests_count`, as different idempotent commands sequencing
+/// implementations may differ.
+/// This JSON export represents only the model history/state.
 #[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename = "Model")]
 pub struct ModelJson<'a> {
@@ -92,16 +97,23 @@ impl Model {
         &self.items
     }
 
+    /// Returns the number of calls to [`Self::request`]
+    #[must_use]
+    pub fn get_requests_count(&self) -> usize {
+        self.requests_count
+    }
+
     /// Returns a serializable view
     #[must_use]
     pub fn as_json(&self) -> ModelJson<'_> {
         let Self {
             items_created,
             ref items,
-            repeat_mode: _, // accessor methods used instead
+            repeat_mode: _, // accessor methods only
             is_random,
             ref art_endpoints,
             current_item_id,
+            requests_count: _, // not intrinsic to model state (accessor method only)
         } = *self;
         ModelJson {
             items_created,
@@ -196,6 +208,8 @@ impl Model {
     /// # Errors
     /// Returns an error if the request endpoint is not valid
     pub fn request(&mut self, endpoint: &str) -> Result<ModelResponse, RequestError> {
+        self.requests_count += 1;
+
         // FIXME improve parsing strategy
         let (path, args) =
             endpoint

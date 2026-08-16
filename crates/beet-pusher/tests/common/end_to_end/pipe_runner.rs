@@ -29,7 +29,14 @@ impl PipeRunner {
     }
 }
 impl Builder<'_> {
+    /// Sets the additional HTTP timeout in milliseconds
+    ///
+    /// # Panics
+    ///
+    /// Panics if the input is less than 10, to avoid flakey tests
+    #[track_caller]
     pub fn set_vlc_http_timeout_millis(&mut self, millis: u64) -> &mut Self {
+        assert!(millis >= 10, "VLC HTTP client timeout must be non-zero");
         self.vlc_http_timeout_millis = Some(millis);
         self
     }

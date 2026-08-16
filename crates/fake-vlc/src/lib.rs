@@ -11,9 +11,6 @@ use self::inner_mut::InnerMut;
 
 mod arbtest;
 
-/// Thread handle for a spawned [`FakeVlc::new`]
-pub type SpawnHandle = std::thread::JoinHandle<Result<(), std::io::Error>>;
-
 /// Server mimicking the VLC HTTP interface
 pub struct FakeVlc {
     inner_shared: Arc<InnerShared>,
@@ -25,6 +22,7 @@ struct InnerShared {
     fake_password_bearer: String,
     inner_mut: InnerMut,
     response_delay: Option<std::time::Duration>,
+    http_fail_code: Option<u16>,
 }
 impl FakeVlc {
     /// [`Self::with_new_and_setup`] but without setup
@@ -65,8 +63,7 @@ impl FakeVlc {
 
         let result = test_fn(&vlc, &mut endpoint_caller)?;
 
-        drop(vlc);
-        thread_handle.join().expect("VLC thread panic")?;
+        thread_handle.shutdown_join().expect("VLC thread panic")?;
 
         Ok(result)
     }
@@ -105,6 +102,7 @@ impl FakeVlc {
             fake_password_bearer,
             inner_mut: InnerMut::new(),
             response_delay: None,
+            http_fail_code: None,
         };
         let inner_shared = Arc::new(inner_shared);
 
@@ -144,12 +142,12 @@ impl FakeVlc {
     }
     /// Borrows `self` to spawn an HTTP receive thread
     #[must_use]
-    pub fn spawn_handler(&self) -> SpawnHandle {
+    pub fn spawn_handler(&self) -> SpawnHandle<'_> {
         let Self { inner_shared } = self;
 
         // weak reference, to end the loop after receiving a wakeup
         let inner_shared = Arc::downgrade(inner_shared);
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             loop {
                 let Some(inner_shared) = inner_shared.upgrade() else {
                     // server dropped, after a request was received
@@ -166,8 +164,30 @@ impl FakeVlc {
                     ControlFlow::Continue(()) => {}
                 }
             }
-        })
+        });
+        SpawnHandle { handle, vlc: self }
     }
+}
+
+/// Thread handle for a spawned [`FakeVlc::new`]
+pub struct SpawnHandle<'a> {
+    handle: std::thread::JoinHandle<Result<(), std::io::Error>>,
+    vlc: &'a FakeVlc,
+}
+impl SpawnHandle<'_> {
+    /// Joins the inner thread, after shutting down the `FakeVlc` reference
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the inner thread panicked or returned an error
+    pub fn shutdown_join(self) -> std::thread::Result<Result<(), std::io::Error>> {
+        let Self { handle, vlc } = self;
+        vlc.wait_for_shutdown();
+        handle.join()
+    }
+}
+
+impl FakeVlc {
     /// Clones the playlist items currently present in the model
     ///
     /// # Panics
@@ -194,6 +214,12 @@ impl FakeVlc {
         });
         json_result.expect("serialize")
     }
+    /// Returns the number of HTTP requests processed by the [`vlc_http_test::Model`]
+    pub fn get_requests_count(&self) -> usize {
+        self.inner_shared
+            .inner_mut
+            .lock_with_model_ref(vlc_http_test::Model::get_requests_count)
+    }
     /// Waits for a "next" item to be available (per
     /// [`vlc_http_test::Model::get_available_next_track`]) then returns
     /// `Some(())` after advancing the VLC model to be playing that track.
@@ -203,21 +229,50 @@ impl FakeVlc {
     pub fn wait_for_play_next(&self, wait_timeout: std::time::Duration) -> Option<()> {
         self.inner_shared.inner_mut.wait_for_play_next(wait_timeout)
     }
-    /// Sets a global delay to every fake-HTTP response, or returns `None` if
-    /// server is already spawned
-    pub fn set_response_delay(&mut self, response_delay: std::time::Duration) -> Option<()> {
-        let inner_shared = Arc::get_mut(&mut self.inner_shared)?;
+}
+impl FakeVlc {
+    /// Sets a global delay to every fake-HTTP response
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server is already spawned
+    pub fn set_response_delay(&mut self, response_delay: std::time::Duration) {
+        let inner_shared = self.config_inner_shared();
         inner_shared.response_delay = Some(response_delay);
-        Some(())
+    }
+    /// Sets the HTTP error code to return for all requests
+    pub fn set_http_fail_code(&mut self, code: u16) {
+        let inner_shared = self.config_inner_shared();
+        inner_shared.http_fail_code = Some(code);
+    }
+    fn config_inner_shared(&mut self) -> &mut InnerShared {
+        Arc::get_mut(&mut self.inner_shared)
+            .expect("exclusive reference ensures spawn_handler is not alive")
+    }
+}
+
+impl FakeVlc {
+    /// Notifies the server to unblock (forcibly interrupt) pending recv
+    /// operations, blocking until all spawned threads have exited
+    fn wait_for_shutdown(&self) {
+        /// arbitrary timeout to panic in favor of continuing to block
+        const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+        let Self { inner_shared, .. } = self;
+        let start = std::time::Instant::now();
+        while Arc::weak_count(inner_shared) > 0 {
+            if start.elapsed() > WAIT_TIMEOUT {
+                unreachable!("FakeVlc::wait_for_shutdown exceeded {WAIT_TIMEOUT:?} wait timeout");
+            }
+
+            inner_shared.server.inner().unblock();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
     }
 }
 impl Drop for FakeVlc {
     fn drop(&mut self) {
-        let Self { inner_shared, .. } = self;
-        while Arc::weak_count(inner_shared) > 0 {
-            inner_shared.server.inner().unblock();
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
+        self.wait_for_shutdown();
     }
 }
 
@@ -246,6 +301,7 @@ impl InnerShared {
             fake_password_bearer,
             inner_mut,
             response_delay,
+            http_fail_code,
         } = self;
 
         let request = match server.inner().recv() {
@@ -263,15 +319,17 @@ impl InnerShared {
             }
         };
 
-        let response_parts = match AuthError::from_request(&request, fake_password_bearer) {
-            Ok(()) => match InnerMut::lock_model_request(inner_mut, &request) {
+        let auth_result = AuthError::from_request(&request, fake_password_bearer);
+        let response_parts = match (auth_result, http_fail_code) {
+            (Ok(()), Some(http_fail_code)) => (String::new(), Some(*http_fail_code)),
+            (Ok(()), None) => match InnerMut::lock_model_request(inner_mut, &request) {
                 Ok(vlc_http_test::model::ModelResponse::Json(response)) => (response, None),
                 Ok(vlc_http_test::model::ModelResponse::Art) => {
                     ("request for Art".to_string(), Some(400))
                 }
                 Err(error) => (error.to_string(), Some(400)),
             },
-            Err(auth_err) => {
+            (Err(auth_err), _) => {
                 eprintln!("{auth_err}");
                 (String::new(), Some(auth_err.http_code()))
             }

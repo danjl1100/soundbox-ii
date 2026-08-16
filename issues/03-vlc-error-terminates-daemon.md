@@ -29,11 +29,11 @@ A user restarting VLC should not take the web UI with it.
 
 ## Fix
 
-Handle the error inside the loop rather than propagating: log it, and either retry with
+[x] Handle the error inside the loop rather than propagating: log it, and either retry with
 backoff or defer the timer and continue. `timer_fill_playlist.defer()` already exists as
 the "try again later" mechanism.
 
-Decide deliberately which errors *are* fatal (e.g. bad auth credentials, which will never
+[x] Decide deliberately which errors *are* fatal (e.g. bad auth credentials, which will never
 succeed on retry) and keep only those propagating — the `Error`/`ErrorKind` split in
 `crates/beet-pusher/src/pusher.rs:365+` gives a place to make that distinction explicit.
 

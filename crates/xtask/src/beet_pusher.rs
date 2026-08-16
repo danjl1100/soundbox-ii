@@ -58,11 +58,14 @@ impl WebUiSpawn {
             .then(|| FakeBeetConfigs::new(dir))
             .transpose()?;
 
+        let fake_vlc = simulate_vlc.then(::fake_vlc::FakeVlc::new).transpose()?;
+
         let FakeVlcHandles {
             vlc_auth_file,
-            fake_vlc_and_thread,
-        } = simulate_vlc
-            .then(|| FakeVlcHandles::new(dir))
+            fake_vlc_thread,
+        } = fake_vlc
+            .as_ref()
+            .map(|fake_vlc| FakeVlcHandles::new(dir, fake_vlc))
             .transpose()?
             .unwrap_or_default();
 
@@ -133,10 +136,9 @@ impl WebUiSpawn {
             clippy::missing_panics_doc,
             reason = "passthru panic from spawned thread"
         )]
-        if let Some((fake_vlc, thread)) = fake_vlc_and_thread {
-            drop(fake_vlc);
+        if let Some(thread) = fake_vlc_thread {
             thread
-                .join()
+                .shutdown_join()
                 .expect("fake_vlc thread panic")
                 .context("fake_vlc thread failed")?;
         }
@@ -296,13 +298,12 @@ fn gen_beet_pusher_config(
 }
 
 #[derive(Default)]
-struct FakeVlcHandles {
+struct FakeVlcHandles<'a> {
     vlc_auth_file: Option<std::path::PathBuf>,
-    fake_vlc_and_thread: Option<(::fake_vlc::FakeVlc, ::fake_vlc::SpawnHandle)>,
+    fake_vlc_thread: Option<::fake_vlc::SpawnHandle<'a>>,
 }
-impl FakeVlcHandles {
-    fn new(dir: &std::path::Path) -> eyre::Result<Self> {
-        let fake_vlc = ::fake_vlc::FakeVlc::new()?;
+impl<'a> FakeVlcHandles<'a> {
+    fn new(dir: &std::path::Path, fake_vlc: &'a ::fake_vlc::FakeVlc) -> eyre::Result<Self> {
         let thread = fake_vlc.spawn_handler();
         eprintln!("Spawned fake-vlc");
 
@@ -310,11 +311,11 @@ impl FakeVlcHandles {
         eprintln!("Created fake-vlc config: {}", vlc_auth_file.display());
 
         let vlc_auth_file = Some(vlc_auth_file);
-        let fake_vlc_and_thread = Some((fake_vlc, thread));
+        let fake_vlc_thread = Some(thread);
 
         Ok(Self {
             vlc_auth_file,
-            fake_vlc_and_thread,
+            fake_vlc_thread,
         })
     }
 }

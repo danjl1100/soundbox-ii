@@ -12,7 +12,11 @@ mod common {
 fn init_tracing() {
     use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
     let _ = tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().compact())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .with_test_writer(),
+        )
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
 }

@@ -172,3 +172,18 @@ where
         write!(f, " for source {source:?}")
     }
 }
+impl<T, E> Error<T, E> {
+    /// Returns the inner error `E` if the error originated from the
+    /// [`EndpointRequestor`]
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(self)` for all other error kinds not from
+    /// [`EndpointRequestor`]
+    pub fn try_as_endpoint_err(&self) -> Option<&E> {
+        match &self.kind {
+            ErrorKind::EndpointFn(error) => Some(error),
+            ErrorKind::Poll(_) | ErrorKind::IterationCountExceeded { .. } => None,
+        }
+    }
+}
