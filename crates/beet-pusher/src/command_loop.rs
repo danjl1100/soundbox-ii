@@ -118,141 +118,146 @@ where
             let mut shutdown_active = false;
 
             loop {
-                let event = if timer_fill_playlist.take_ready() {
-                    // highest priority - feed the externally-advancing VLC
+                let event_result = if let Ok(loop_event) = loop_rx.try_recv() {
+                    // highest priority - maintenance requires regular processing of events
+                    // for multi-step (background) processes
+                    Ok(loop_event)
+                    // NOTE: Ignoring `Err(_)` case, as this should be replayed in the last `else` below
+                } else if timer_fill_playlist.take_ready() {
+                    // next priority - feed the externally-advancing VLC
                     Ok(LoopEvent::MaintainPlaylistStart)
                 } else if timer_fill_bucket.take_ready() {
-                    // next priority - update to reflect the user command
+                    // lowest priority - update to reflect user commands
                     Ok(LoopEvent::BucketFillStart)
                 } else if shutdown_active && timer_fill_playlist.is_active {
                     break;
                 } else {
-                    // lowest - process new commands
+                    // lowest - wait to process new commands (same as first case, but with interval)
                     loop_rx.recv_timeout(TICK_INTERVAL)
                 };
 
-                if let Ok(loop_event) = &event {
-                    tracing::trace!(?loop_event);
-                }
-
-                match event {
-                    Ok(loop_event) => match loop_event {
-                        LoopEvent::Shutdown(Shutdown) => shutdown_active = true,
-                        LoopEvent::MaintainPlaylistStart => {
-                            let mut queued_vlc_act = false;
-
-                            if let Some(action) = pusher
-                                .get_playlist_update_action()
-                                .map_err(LoopErrorKind::PullItems)?
-                            {
-                                let result = vlc_act_tx.send_playlist_update_action(action);
-                                queued_vlc_act = result.is_ok();
-                                warn_queue_failed(result, "VLC playlist maintenance action");
-                            }
-
-                            if !queued_vlc_act {
-                                // resume timer, in case playlist needs change
-                                timer_fill_playlist.defer();
-                                timer_fill_playlist.set_active(true);
-                            }
-                        }
-                        LoopEvent::MaintainPlaylistResponse(result) => {
-                            // resume timer, no matter the result
-                            timer_fill_playlist.set_active(true);
-
-                            let playlist_update_counts = result.into_inner();
-
-                            let result = pusher.push_playlist_update_action(
-                                playlist_update_counts,
-                                Some(&mut now_playing_observer),
-                            );
-                            let timer_hint_result: Result<
-                                Option<HintNeedPlaylistUpdate>,
-                                HintRetryableError,
-                            > = match result {
-                                Ok(hint) => Ok(Ok(hint)),
-                                Err(err) => {
-                                    if let Some(retryable) = is_retryable(&err) {
-                                        let err = eyre::eyre!(err);
-                                        eprintln!("{err:?}");
-                                        Ok(Err(retryable))
-                                    } else {
-                                        Err(LoopErrorKind::PlaylistUpdate(err))
-                                    }
-                                }
-                            }?;
-
-                            tracing::trace!(?timer_hint_result);
-
-                            if let Ok(hint) = timer_hint_result {
-                                vlc_exponential_backoff.take();
-
-                                match hint {
-                                    Some(HintNeedPlaylistUpdate::Immediate) => {
-                                        timer_fill_playlist.set_immediate();
-                                    }
-                                    Some(HintNeedPlaylistUpdate::WaitForVlc) => {
-                                        timer_fill_playlist
-                                            .defer_with(std::time::Duration::from_millis(500));
-                                    }
-                                    None => {
-                                        // requires periodic maintenance (VLC client self-advances)
-                                        timer_fill_playlist.defer();
-                                    }
-                                }
-                            } else {
-                                let backoff = vlc_exponential_backoff.get_or_insert(
-                                    ExponentialBackoff::doubling_range_secs((0.1, 90.0)),
-                                );
-
-                                timer_fill_playlist.defer_with(backoff.swap_next());
-                            }
-                        }
-                        LoopEvent::BucketFillStart => {
-                            let spigot = pusher.get_spigot_mut();
-                            let needs = get_bucket_fill_needs(spigot).collect();
-
-                            bucket_fill_tx.queue(needs);
-                        }
-                        LoopEvent::BucketFillResponse(response) => match response {
-                            bucket_fill::Response::Fill(result) => {
-                                let spigot = pusher.get_spigot_mut();
-                                apply_bucket_fill_results([result], spigot)
-                                    .map_err(LoopErrorKind::FillBuckets)?;
-
-                                // only fill buckets when explicitly activated
-                                // (NOT running `timer_fill_bucket.set_active(true)`)
-                            }
-                            bucket_fill::Response::End => {
-                                // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
-                                timer_fill_playlist.set_immediate();
-                            }
-                        },
-                        LoopEvent::SpigotCmd(cmd) => {
-                            cmd.run(&mut pusher);
-
-                            // causes update to buckets
-                            timer_fill_bucket.defer();
-                            timer_fill_bucket.set_active(true);
-                        }
-                        LoopEvent::VlcCmd(cmd) => {
-                            let result = vlc_act_tx.send_cmd(cmd);
-                            warn_queue_failed(result, "VLC command");
-                        }
-                        LoopEvent::VlcCmdResponse { modifies_playlist } => {
-                            if modifies_playlist {
-                                // causes update to playlist
-                                timer_fill_playlist.set_immediate();
-                            }
-                        }
-                    },
+                let loop_event = match event_result {
+                    Ok(loop_event) => loop_event,
                     Err(RecvTimeoutError::Disconnected) => {
                         #[expect(clippy::panic, reason = "invalid shutdown state")]
                         {
                             panic!("all senders ended with no Shutdown received")
                         }
                     }
-                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Timeout) => continue,
+                };
+
+                tracing::trace!(?loop_event);
+
+                match loop_event {
+                    LoopEvent::Shutdown(Shutdown) => shutdown_active = true,
+                    LoopEvent::MaintainPlaylistStart => {
+                        let mut queued_vlc_act = false;
+
+                        if let Some(action) = pusher
+                            .get_playlist_update_action()
+                            .map_err(LoopErrorKind::PullItems)?
+                        {
+                            let result = vlc_act_tx.send_playlist_update_action(action);
+                            queued_vlc_act = result.is_ok();
+                            warn_queue_failed(result, "VLC playlist maintenance action");
+                        }
+
+                        if !queued_vlc_act {
+                            // resume timer, in case playlist needs change
+                            timer_fill_playlist.defer();
+                            timer_fill_playlist.set_active(true);
+                        }
+                    }
+                    LoopEvent::MaintainPlaylistResponse(result) => {
+                        // resume timer, no matter the result
+                        timer_fill_playlist.set_active(true);
+
+                        let playlist_update_counts = result.into_inner();
+
+                        let result = pusher.push_playlist_update_action(
+                            playlist_update_counts,
+                            Some(&mut now_playing_observer),
+                        );
+                        let timer_hint_result: Result<
+                            Option<HintNeedPlaylistUpdate>,
+                            HintRetryableError,
+                        > = match result {
+                            Ok(hint) => Ok(Ok(hint)),
+                            Err(err) => {
+                                if let Some(retryable) = is_retryable(&err) {
+                                    let err = eyre::eyre!(err);
+                                    eprintln!("{err:?}");
+                                    Ok(Err(retryable))
+                                } else {
+                                    Err(LoopErrorKind::PlaylistUpdate(err))
+                                }
+                            }
+                        }?;
+
+                        tracing::trace!(?timer_hint_result);
+
+                        if let Ok(hint) = timer_hint_result {
+                            vlc_exponential_backoff.take();
+
+                            match hint {
+                                Some(HintNeedPlaylistUpdate::Immediate) => {
+                                    timer_fill_playlist.set_immediate();
+                                }
+                                Some(HintNeedPlaylistUpdate::WaitForVlc) => {
+                                    timer_fill_playlist
+                                        .defer_with(std::time::Duration::from_millis(500));
+                                }
+                                None => {
+                                    // requires periodic maintenance (VLC client self-advances)
+                                    timer_fill_playlist.defer();
+                                }
+                            }
+                        } else {
+                            let backoff = vlc_exponential_backoff.get_or_insert(
+                                ExponentialBackoff::doubling_range_secs((0.1, 90.0)),
+                            );
+
+                            timer_fill_playlist.defer_with(backoff.swap_next());
+                        }
+                    }
+                    LoopEvent::BucketFillStart => {
+                        let spigot = pusher.get_spigot_mut();
+                        let needs = get_bucket_fill_needs(spigot).collect();
+
+                        bucket_fill_tx.queue(needs);
+                    }
+                    LoopEvent::BucketFillResponse(response) => match response {
+                        bucket_fill::Response::Fill(result) => {
+                            let spigot = pusher.get_spigot_mut();
+                            apply_bucket_fill_results([result], spigot)
+                                .map_err(LoopErrorKind::FillBuckets)?;
+
+                            // only fill buckets when explicitly activated
+                            // (NOT running `timer_fill_bucket.set_active(true)`)
+                        }
+                        bucket_fill::Response::End => {
+                            // NOTE: causes update to playlist, BUT cannot delay playlist upkeep
+                            timer_fill_playlist.set_immediate();
+                        }
+                    },
+                    LoopEvent::SpigotCmd(cmd) => {
+                        cmd.run(&mut pusher);
+
+                        // causes update to buckets
+                        timer_fill_bucket.defer();
+                        timer_fill_bucket.set_active(true);
+                    }
+                    LoopEvent::VlcCmd(cmd) => {
+                        let result = vlc_act_tx.send_cmd(cmd);
+                        warn_queue_failed(result, "VLC command");
+                    }
+                    LoopEvent::VlcCmdResponse { modifies_playlist } => {
+                        if modifies_playlist {
+                            // causes update to playlist
+                            timer_fill_playlist.set_immediate();
+                        }
+                    }
                 }
             }
             Ok(())

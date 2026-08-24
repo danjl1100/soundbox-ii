@@ -71,7 +71,7 @@ Get the unbounded work off the thread that answers commands. Roughly in order of
 2. [x] Do the same for the VLC round trip, or at minimum give `HttpRunner` a request timeout so
    `MaintainPlaylist` has a bounded worst case. Note [03](03-vlc-error-terminates-daemon.md)
    is about the *error* path of this same call — worth doing together.
-3. [ ] Reconsider the strict priority ladder once the blocking work is gone. With both slow arms
+3. [x] Reconsider the strict priority ladder once the blocking work is gone. With both slow arms
    asynchronous, commands can be served promptly without starving maintenance, and
    `TICK_INTERVAL` stops being load-bearing for command latency.
 4. [ ] Give the `loop_tx.send` in `pipe_cmd` a timeout, so a full channel surfaces as an error
