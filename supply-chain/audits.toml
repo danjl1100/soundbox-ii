@@ -55,6 +55,12 @@ criteria = "safe-to-deploy"
 delta = "1.4.2 -> 1.5.0"
 notes = "No material change to unsafe, no capabilities change seen either"
 
+[[audits.crossbeam-utils]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.8.21 -> 0.8.22"
+notes = "Low confidence, updates to unsafe appear sane as documented"
+
 [[audits.darling]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"

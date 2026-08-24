@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
-use std::sync::mpsc::SendError;
+use crossbeam_channel::SendError;
 
 use crate::{
     BeetCommand,
@@ -26,7 +26,7 @@ impl Sender {
 
 /// Spawns a thread to handle [`BucketQueryNeed`] requests
 pub fn spawn(
-    loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
+    loop_tx: crossbeam_channel::Sender<LoopEvent>,
     runner: BeetCommand<'static>,
 ) -> (Sender, JoinHandle) {
     let (queue_tx, mut queue_rx) = queue::channel(vec![]);
@@ -45,7 +45,7 @@ pub fn spawn(
 
 fn run(
     current_queue: &mut queue::Rx<Vec<BucketQueryNeed>>,
-    loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>,
+    loop_tx: &crossbeam_channel::Sender<LoopEvent>,
     mut runner: BeetCommand<'static>,
 ) -> Result<(), SendError<LoopEvent>> {
     while let Some(elem) = current_queue.pop_blocking() {

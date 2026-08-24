@@ -27,6 +27,7 @@ vlc-http = { version = "0.1.0", path = "../vlc-http" }
 vlc-http-auth-clap = { version = "0.1.0", path = "../vlc-http-auth-clap" }
 vlc-http-ureq = { version = "0.1.0", path = "../vlc-http-ureq" }
 oneshot = { version = "0.2.1", features = ["std"] }
+crossbeam-channel = "0.5.16"
 
 [dev-dependencies]
 fake-beet = { path = "../fake-beet" }

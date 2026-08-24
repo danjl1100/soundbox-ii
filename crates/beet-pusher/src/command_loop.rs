@@ -1,7 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Event loop logic to drive a [`BeetPusher`]
 
-use std::sync::mpsc::RecvTimeoutError;
+use crossbeam_channel::RecvTimeoutError;
 
 use eyre::Context as _;
 use vlc_http_ureq::HttpRunner;
@@ -33,8 +33,8 @@ pub fn get_client_wait_timeout() -> std::time::Duration {
 
 /// Command loop to drive a [`BeetPusher`]
 pub struct CommandLoop<'a, R, F> {
-    loop_rx: std::sync::mpsc::Receiver<LoopEvent>,
-    loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
+    loop_rx: crossbeam_channel::Receiver<LoopEvent>,
+    loop_tx: crossbeam_channel::Sender<LoopEvent>,
     pusher: BeetPusher<'a, R>,
     http_runner: vlc_http_ureq::HttpRunner,
     now_playing_observer: F,
@@ -53,7 +53,7 @@ where
         now_playing_observer: F,
         beet_cmd: BeetCommand<'static>,
     ) -> (Self, EventSender) {
-        let (loop_tx, loop_rx) = std::sync::mpsc::sync_channel(1);
+        let (loop_tx, loop_rx) = crossbeam_channel::bounded(1);
 
         let this = Self {
             loop_rx,
@@ -418,9 +418,28 @@ enum LoopErrorKind<E, R> {
 
 /// Accepts events to add to the command loop
 pub struct EventSender {
-    loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
+    loop_tx: crossbeam_channel::Sender<LoopEvent>,
 }
 impl EventSender {
+    /// Sends the event with a timeout
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the send times out or is disconnected
+    fn send_timeout(&self, event: LoopEvent) -> Result<(), crate::pipe_exec::ErrorKind> {
+        use crate::pipe_exec::ErrorKind;
+        use crossbeam_channel::SendTimeoutError;
+
+        const SEND_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
+
+        let Self { loop_tx } = self;
+        loop_tx
+            .send_timeout(event, SEND_TIMEOUT)
+            .map_err(|e| match e {
+                SendTimeoutError::Disconnected(_) => ErrorKind::LoopShutdown,
+                SendTimeoutError::Timeout(_) => ErrorKind::InternalTimeout,
+            })
+    }
     /// Documents the site of sending a shutdown request to the [`CommandLoop`], consuming this sender handle
     pub fn send_shutdown(self) {
         drop(self);
@@ -428,12 +447,8 @@ impl EventSender {
 }
 impl Drop for EventSender {
     fn drop(&mut self) {
-        let _ = self.loop_tx.send(Shutdown.into());
-    }
-}
-impl AsRef<std::sync::mpsc::SyncSender<LoopEvent>> for EventSender {
-    fn as_ref(&self) -> &std::sync::mpsc::SyncSender<LoopEvent> {
-        &self.loop_tx
+        // send (with a timeout to avoid hang in Drop)
+        let _ = self.send_timeout(Shutdown.into());
     }
 }
 
@@ -606,7 +621,8 @@ fn pipe_cmd(loop_tx: &EventSender, line: String) -> crate::pipe_exec::ResponseRe
         PipeCommand::Vlc(cmd) => LoopEvent::VlcCmd(LoopEventVlcCmd { reply_to, cmd }),
     };
 
-    let _ = loop_tx.as_ref().send(event);
+    loop_tx.send_timeout(event).map_err(make_err)?;
+
     match rx.recv_timeout(RESPONSE_TIMEOUT) {
         Ok(result) => result.map(|data| (seq, data)).map_err(make_err),
         Err(e) => match e {

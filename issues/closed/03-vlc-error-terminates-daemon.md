@@ -1,6 +1,6 @@
 # 03 - Any VLC HTTP error terminates the `beet-pusher` daemon
 
-Status: open
+Status: closed
 Severity: high
 Introduced: `feature/beet-pusher-web`
 
@@ -39,3 +39,7 @@ succeed on retry) and keep only those propagating — the `Error`/`ErrorKind` sp
 
 The same question applies to `fill_buckets(&mut beet_cmd, spigot)?` at
 `bin/beet-pusher.rs:211`, where a `beet` invocation failure is likewise fatal.
+
+## Resolution
+
+Added retry backoff for playlist fill errors that are retryable (e.g. HTTP timeout)

@@ -1,6 +1,6 @@
 # 15 - Slow `beet` and VLC work runs on the command-loop thread
 
-Status: open
+Status: closed
 Severity: medium
 Introduced: `feature/beet-pusher-web`
 
@@ -74,7 +74,7 @@ Get the unbounded work off the thread that answers commands. Roughly in order of
 3. [x] Reconsider the strict priority ladder once the blocking work is gone. With both slow arms
    asynchronous, commands can be served promptly without starving maintenance, and
    `TICK_INTERVAL` stops being load-bearing for command latency.
-4. [ ] Give the `loop_tx.send` in `pipe_cmd` a timeout, so a full channel surfaces as an error
+4. [x] Give the `loop_tx.send` in `pipe_cmd` a timeout, so a full channel surfaces as an error
    rather than an unbounded stall.
 
 ## Related
@@ -89,3 +89,13 @@ alternatives.
 [13](13-webui-architecture-review.md) covers the layering this would sit inside;
 [05](05-waiting-channels-leak.md) and [04](04-stdin-thread-dies-on-bad-line.md) are the same
 protocol layer.
+
+## Resolution
+
+Moved beet and VLC requests to separate threads by splitting operations into
+on-loop and off-loop components.
+
+Reorganized the command loop to prioritize events over maintenance timers.
+
+Added timeout to loop event sends (using `crossbeam_channel`) to surface buffer
+contention.

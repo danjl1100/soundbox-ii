@@ -192,6 +192,9 @@ pub enum ErrorKind {
     /// Internal timeout error
     #[error("internal request operation timed out")]
     InternalTimeout,
+    /// Internal shutdown error
+    #[error("internal service is shutdown")]
+    LoopShutdown,
 }
 impl Error {
     /// Constructs a new error for a specific sequence

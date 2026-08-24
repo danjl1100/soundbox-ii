@@ -1,6 +1,6 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 
-use std::sync::mpsc::SendError;
+use crossbeam_channel::SendError;
 
 use vlc_http::goal::TargetPlaylistItems;
 use vlc_http_ureq::HttpRunner;
@@ -55,7 +55,7 @@ impl Sender {
 
 /// Spawns a thread to handle VLC requests
 pub fn spawn(
-    loop_tx: std::sync::mpsc::SyncSender<LoopEvent>,
+    loop_tx: crossbeam_channel::Sender<LoopEvent>,
     mut vlc_driver: VlcDriver<HttpRunner>,
 ) -> (Sender, JoinHandle) {
     const CHANNEL_DEPTH: usize = 4;
@@ -73,7 +73,7 @@ pub fn spawn(
 
 fn run(
     rx: &mut std::sync::mpsc::Receiver<Action>,
-    loop_tx: &std::sync::mpsc::SyncSender<LoopEvent>,
+    loop_tx: &crossbeam_channel::Sender<LoopEvent>,
     vlc_driver: &mut VlcDriver<HttpRunner>,
 ) -> Result<(), SendError<LoopEvent>> {
     while let Ok(action) = rx.recv() {
