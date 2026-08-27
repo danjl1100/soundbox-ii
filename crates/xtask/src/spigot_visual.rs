@@ -62,8 +62,7 @@ impl Run {
         cfg_select! {
             unix => {
                 // replace the current process
-                let never = crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
-                match never {}
+                crate::unix_exec::exec_cargo(|c| cmd_spigot_visual(c, args))?;
             }
             _ => {
                 // Fallback for non-Unix systems
