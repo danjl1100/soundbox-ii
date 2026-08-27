@@ -15,8 +15,8 @@ fn parse() -> Result<(), Box<dyn std::error::Error>> {
     let input_folder = {
         let mut path_buf: PathBuf = std::env::current_exe()?
             .ancestors()
-            .nth(4)
-            .expect("test exe within target/debug/deps/vlc_http-????")
+            .nth(7)
+            .expect("test exe within target/debug/build/vlc-http/????/out/vlc-http-????")
             .to_path_buf();
         // crate root
         path_buf.extend(&["crates", "vlc-http", "src", "response", "tests", "input"]);
