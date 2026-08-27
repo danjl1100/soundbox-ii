@@ -26,11 +26,11 @@ impl TestPipe {
 }
 impl BeetPusherPipe for TestPipe {
     type Error = std::convert::Infallible;
-    async fn send(
+    fn send(
         &self,
         command: beet_pusher::pipe_exec::Command,
         _timeout: std::time::Duration,
-    ) -> Result<beet_pusher::pipe_exec::ResponseData, Self::Error> {
+    ) -> impl Future<Output = Result<beet_pusher::pipe_exec::ResponseData, Self::Error>> {
         use beet_pusher::pipe_exec::{Command, ResponseData, SpigotCmd, VlcCmd};
         let resp = match command {
             Command::Spigot(SpigotCmd::AddNode {
@@ -52,7 +52,7 @@ impl BeetPusherPipe for TestPipe {
             )
             | Command::Vlc(VlcCmd::SeekNext) => ResponseData::PassNoData,
         };
-        Ok(resp)
+        std::future::ready(Ok(resp))
     }
 }
 
