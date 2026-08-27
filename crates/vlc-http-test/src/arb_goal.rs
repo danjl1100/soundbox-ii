@@ -103,7 +103,7 @@ impl From<ArbTargetPlaylistItems> for TargetPlaylistItems {
         let ArbTargetPlaylistItems { items } = value;
         let items = items
             .into_iter()
-            .map(|s| Url::from_str(&format!("file:///{s}")).expect("valid URL"))
+            .map(|AsciiString(s)| Url::from_str(&format!("file:///{s}")).expect("valid URL"))
             .collect();
         TargetPlaylistItems::new().set_urls(items)
     }
