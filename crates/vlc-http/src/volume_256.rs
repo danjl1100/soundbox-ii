@@ -28,8 +28,9 @@ pub(super) struct VolumePercentDelta256 {
 }
 impl From<VolumePercentDelta> for VolumePercentDelta256 {
     fn from(delta: VolumePercentDelta) -> Self {
+        let VolumePercentDelta(value) = delta;
         Self {
-            is_negative: delta.value() < 0,
+            is_negative: value < 0,
             magnitude: delta.unsigned_abs().into(),
         }
     }
@@ -60,7 +61,7 @@ impl VolumePercent256 {
 impl From<VolumePercent> for VolumePercent256 {
     fn from(percent: VolumePercent) -> Self {
         // VolumePercent enforces bounds 0-300 (inclusive)
-        let percent = percent.value();
+        let VolumePercent(percent) = percent;
 
         // result is 0-768 (inclusive), comfortably fits in u16
         let based_256 = f32::from(percent) * Self::PERCENT_TO_256;

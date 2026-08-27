@@ -7,6 +7,8 @@
 //!
 //! NOTE: See `vlc_http::client_state::PlanBuilder` for options to query information
 
+#![feature(mut_restriction)]
+
 pub use ::url;
 
 pub use self::command::Command;

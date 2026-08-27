@@ -87,7 +87,7 @@ mod volume {
 
     /// Volume percentage clamped to 0 - 300% (inclusive)
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct Percent(u16);
+    pub struct Percent(pub mut(self) u16);
     impl Percent {
         /// Constructor for volume percentage
         ///
@@ -108,16 +108,11 @@ mod volume {
                     signed: false,
                 })
         }
-        /// Returns the percentage value
-        #[must_use]
-        pub fn value(self) -> u16 {
-            self.0
-        }
     }
 
     /// Volume percentage delta clamped to +/- 300% (inclusive)
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct PercentDelta(i16);
+    pub struct PercentDelta(pub mut(self) i16);
     impl PercentDelta {
         /// Constructor for volume percentage delta
         ///
@@ -144,13 +139,9 @@ mod volume {
         #[expect(clippy::missing_panics_doc, reason = "invariant of type")]
         #[must_use]
         pub fn unsigned_abs(self) -> Percent {
-            let magnitude = self.value().unsigned_abs();
+            let Self(value) = self;
+            let magnitude = value.unsigned_abs();
             Percent::new(magnitude).expect("identical bounds for delta and percent")
-        }
-        /// Returns the percentage delta value
-        #[must_use]
-        pub fn value(self) -> i16 {
-            self.0
         }
     }
 }
