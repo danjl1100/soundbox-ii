@@ -5,7 +5,7 @@ pub use self::status_cmd::CmdSettings;
 pub use self::status_cmd::{SpawnError, SpawnFail};
 pub use self::typed_err::{TypedErr, TypedResult};
 pub use self::verbosity::{ArgsCmdSettings, Verbosity};
-pub use self::write_output::{ArgFix, WriteOutput};
+pub use self::write_output::{ArgFix, ArgFixCopyright, WriteOutput};
 use eyre::Context as _;
 use std::{
     path::{Path, PathBuf},
@@ -23,6 +23,8 @@ pub mod vlc;
 pub mod unix_exec;
 
 mod write_output {
+    use crate::copyright::WriteCopyright;
+
     /// The user wants to write files to improve the result
     #[derive(Clone, Copy, Debug)]
     pub struct WriteOutput {
@@ -39,35 +41,54 @@ mod write_output {
         }
     }
 
-    #[derive(Clone, Debug, clap::Args)]
-    pub(crate) struct ArgFixJsFmt {
-        /// Write formatting fixes to JavaScript source files
-        #[clap(long)]
-        fix: bool,
-    }
-    impl ArgFixJsFmt {
-        /// Returns the inner typed value
-        pub fn into_inner(self) -> Option<WriteOutput> {
-            let Self { fix } = self;
-            fix.then_some(WriteOutput { _sealed: () })
-        }
+    macro_rules! arg_fix {
+        (
+            $(
+                $(#[$outer_meta:meta])*
+                $vis:vis struct $Name:ident($decorate_fn:expr => $Out:ty) {
+                    $(#[$meta:meta])*
+                    $field:ident : bool,
+                }
+            )+
+        ) => {
+            $(
+                $(#[$outer_meta])*
+                #[derive(Clone, Debug, clap::Args)]
+                $vis struct $Name {
+                    $(#[$meta])*
+                    $field: bool,
+                }
+                impl $Name {
+                    /// Returns the inner typed value
+                    #[allow(unused, reason = "macro blanket definition")]
+                    pub fn into_inner(self) -> Option<$Out> {
+                        let Self { $field } = self;
+                        $field.then_some($decorate_fn(WriteOutput { _sealed: () }))
+                    }
+                }
+            )+
+        };
     }
 
-    /// clap builder for [`WriteOutput`] in the context of `--fix` in checks
-    #[derive(Clone, Debug, clap::Args)]
-    pub struct ArgFix {
-        /// Attempt to fix checks by writing to files (otherwise, run read-only checks)
-        #[clap(long)]
-        fix: bool,
-    }
-    impl ArgFix {
-        /// Returns the inner typed value
-        #[must_use]
-        pub fn into_inner(self) -> Option<WriteOutput> {
-            let Self { fix } = self;
-            fix.then_some(WriteOutput { _sealed: () })
+    arg_fix!(
+        /// clap builder for [`WriteOutput`] in the context of `--fix` in checks
+        pub struct ArgFix(|x| x => WriteOutput) {
+            /// Attempt to fix checks by writing to files (otherwise, run read-only checks)
+            #[clap(long)]
+            fix: bool,
         }
-    }
+        /// clap builder for [`WriteOutput`] in the context of `--fix` in checks
+        pub struct ArgFixCopyright(WriteCopyright::from => WriteCopyright) {
+            /// Attempt to fix copyright checks by writing to files (otherwise, read-only check)
+            #[clap(long)]
+            fix_copyright: bool,
+        }
+        pub(crate) struct ArgFixJsFmt(|x| x => WriteOutput) {
+            /// Write formatting fixes to JavaScript source files
+            #[clap(long)]
+            fix: bool,
+        }
+    );
 }
 
 mod verbosity {

@@ -32,7 +32,7 @@ Status values: `todo` · `done` · `accepted` (reviewed, deliberately not changi
 
 | ID | Action | Where | Status |
 |---|---|---|---|
-| QP-1 | Land [15](issues/15-query-beet-outside-event-loop.md) — slow `beet`/VLC work off the command loop | see issue | [ ] todo |
+| QP-1 | Land [15](issues/15-query-beet-outside-event-loop.md) — slow `beet`/VLC work off the command loop | see issue | [x] done |
 | QP-2 | Fix the invariant comment: it names `FILL_PLAYLIST_INTERVAL`, the code adds `TICK_INTERVAL` | `crates/beet-pusher/src/command_loop.rs:20` | [x] done |
 | QP-3 | Set `Status: closed` in all five closed issue files | `issues/closed/*.md` | [x] done |
 

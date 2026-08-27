@@ -46,15 +46,24 @@ struct AllChecks {
     cmd_args: xtask::ArgsCmdSettings,
     #[clap(flatten)]
     fix: xtask::ArgFix,
+    #[clap(flatten)]
+    fix_copyright: xtask::ArgFixCopyright,
 }
 impl AllChecks {
     fn all_checks(self) -> TypedResult<()> {
-        let AllChecks { cmd_args, fix } = self;
+        let AllChecks {
+            cmd_args,
+            fix,
+            fix_copyright,
+        } = self;
         let fix = fix.into_inner();
+
+        // accept specific fix, or the general "fix all"
+        let fix_copyright = fix_copyright.into_inner().or(fix.map(Into::into));
 
         let cmd = &cmd_args.into_inner();
 
-        xtask::copyright::checks(cmd, fix)?;
+        xtask::copyright::checks(cmd, fix_copyright)?;
         xtask::supply_chain::checks(cmd, fix)?;
         xtask::rust::checks(cmd, fix)?;
         xtask::spigot_visual::checks(cmd, fix)?;

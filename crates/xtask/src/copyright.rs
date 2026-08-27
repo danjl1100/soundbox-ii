@@ -9,13 +9,22 @@ const PREFIX: &str = "// Copyright (C) 2021-";
 const SUFFIX: &str =
     "  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details";
 
+/// The user wants to write (at last) copyright headers
+#[derive(Clone, Copy)]
+pub struct WriteCopyright(WriteOutput);
+impl From<WriteOutput> for WriteCopyright {
+    fn from(value: WriteOutput) -> Self {
+        Self(value)
+    }
+}
+
 /// Verifies the copyright notice for all rust source files in `crates/`, fixing if requested
 ///
 /// # Errors
 ///
 /// Returns an error if errors are present without permission to fix, or I/O
 /// fails while performing fixes.
-pub fn checks(_cmd: &CmdSettings, fix: Option<WriteOutput>) -> eyre::Result<()> {
+pub fn checks(_cmd: &CmdSettings, fix: Option<WriteCopyright>) -> eyre::Result<()> {
     let current_year = jiff::Zoned::now().year().cast_unsigned();
 
     let crates_dir = crate::project_root();
@@ -47,7 +56,7 @@ pub fn checks(_cmd: &CmdSettings, fix: Option<WriteOutput>) -> eyre::Result<()> 
                     continue;
                 };
 
-                if let Some(WriteOutput { .. }) = fix {
+                if let Some(WriteCopyright(WriteOutput { .. })) = fix {
                     eprintln!("rewriting {path} ...", path = path.display());
 
                     // fix the copyright header
