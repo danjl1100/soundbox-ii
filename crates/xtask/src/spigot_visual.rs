@@ -366,7 +366,7 @@ mod gen_bindings {
             })
             .collect::<Result<Vec<PathBuf>, std::io::Error>>()?;
         if !extra_files.is_empty() {
-            eyre::bail!("extra files in folder {}: {extra_files:#?}", dir.display())
+            eyre::bail!("extra files in folder {}: {extra_files:#?}", dir.display());
         }
         Ok(())
     }
@@ -380,11 +380,11 @@ mod gen_bindings {
 
         // check for type "file" ...
         if !entry_type.is_file() {
-            eyre::bail!("expected file, found {entry_type:?}")
+            eyre::bail!("expected file, found {entry_type:?}");
         }
         // ... with a filename
         let Some(full_name) = entry_path.file_name() else {
-            eyre::bail!("no filename")
+            eyre::bail!("no filename");
         };
         // (skip ignored)
         if IGNORE_FILE_NAMES.iter().any(|v| *v == full_name) {
@@ -392,7 +392,7 @@ mod gen_bindings {
         }
 
         let Ok(full_name) = String::from_utf8(full_name.as_encoded_bytes().to_vec()) else {
-            eyre::bail!("non-utf8 filename: {}", full_name.display())
+            eyre::bail!("non-utf8 filename: {}", full_name.display());
         };
         let (name, extension_multi) = full_name
             .split_once('.')
@@ -403,14 +403,14 @@ mod gen_bindings {
             eyre::bail!(
                 "refusing to remove unknown file name: {}",
                 entry_path.display()
-            )
+            );
         }
         // ... with the expected extension
         if Some(extension) != extension_multi {
             eyre::bail!(
                 "refusing to remove unknown file extension: {}",
                 entry_path.display()
-            )
+            );
         }
 
         // .. then delete

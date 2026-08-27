@@ -94,7 +94,7 @@ mod weights {
             if weights.is_empty() {
                 None
             } else {
-                assert!(!weights.is_empty());
+                assert_ne!(weights, [] as [u32; _]);
                 weights
                     .iter()
                     .any(|&w| w != 0)

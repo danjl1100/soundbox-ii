@@ -154,7 +154,7 @@ impl CopyrightFix {
                     if read == 0 {
                         eyre::bail!(
                             "file does not match index, refusing to overwrite (`git add -p` to stage latest version, then retry)"
-                        )
+                        );
                     }
 
                     if line == expect_line {

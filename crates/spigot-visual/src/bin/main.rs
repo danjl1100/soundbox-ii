@@ -46,7 +46,9 @@ fn main() -> eyre::Result<()> {
 
     let server = match tiny_http::Server::http(config.bind_address) {
         Ok(server) => server,
-        Err(e) => eyre::bail!(e),
+        Err(e) => {
+            eyre::bail!(e);
+        }
     };
 
     let (cmd_err_tx, cmd_err_rx) = std::sync::mpsc::sync_channel(1);

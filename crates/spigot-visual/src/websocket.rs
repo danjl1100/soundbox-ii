@@ -155,7 +155,7 @@ impl<T: Command> WebsocketUpgrade<T> {
                     }
                 }
                 Message::Binary(data) => {
-                    eyre::bail!("unimplemented: Message::Binary({data:?})")
+                    eyre::bail!("unimplemented: Message::Binary({data:?})");
                     // eprintln!("Received binary data: {} bytes", data.len());
                     // if let Err(e) = websocket.write(Message::Binary(data)) {
                     //     eprintln!("Error sending binary data: {e}");
@@ -171,7 +171,7 @@ impl<T: Command> WebsocketUpgrade<T> {
                     // Ignore pong messages and raw frames
                 }
                 Message::Close(_) => {
-                    eyre::bail!("WebSocket connection closed by client")
+                    eyre::bail!("WebSocket connection closed by client");
                 }
             }
         }

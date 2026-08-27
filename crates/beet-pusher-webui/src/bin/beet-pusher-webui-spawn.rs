@@ -32,10 +32,10 @@ mod spawner {
         /// Returns the spawner arguments if the spawner's main should run
         pub fn try_new() -> eyre::Result<Self> {
             let Ok(webui_env) = std::env::var(ENV_BEET_PUSHER_WEBUI) else {
-                eyre::bail!("{ENV_BEET_PUSHER_WEBUI} env string not specified")
+                eyre::bail!("{ENV_BEET_PUSHER_WEBUI} env string not specified");
             };
             let Ok(backend_env) = std::env::var(ENV_BEET_PUSHER_BACKEND) else {
-                eyre::bail!("{ENV_BEET_PUSHER_BACKEND} env string not specified")
+                eyre::bail!("{ENV_BEET_PUSHER_BACKEND} env string not specified");
             };
             Ok(Self {
                 webui_env: std::path::PathBuf::from(webui_env),
@@ -70,7 +70,9 @@ mod spawner {
             match (result1, result2) {
                 (Ok(()), Ok(())) => Ok(()),
                 (Ok(()), Err(e)) | (Err(e), Ok(())) => Err(e).context("stdio stream copy failed"),
-                (Err(e1), Err(e2)) => eyre::bail!("stdio stream copy errors: {e1} and {e2}"),
+                (Err(e1), Err(e2)) => {
+                    eyre::bail!("stdio stream copy errors: {e1} and {e2}");
+                }
             }
         }
     }

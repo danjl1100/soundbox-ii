@@ -55,7 +55,7 @@ pub fn fake_beet_main() -> eyre::Result<ExitCode> {
 
     let args: Vec<_> = std::env::args().skip(1).collect();
     let Some(config) = config_all.into_configs_map().remove(&args) else {
-        eyre::bail!("unknown fake-beet args: {args:?}")
+        eyre::bail!("unknown fake-beet args: {args:?}");
     };
 
     let exit_code = config.execute();

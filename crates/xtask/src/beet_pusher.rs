@@ -107,7 +107,7 @@ impl WebUiSpawn {
                         Ok(value)
                     }
                     Err(std::env::VarError::NotUnicode(value)) => {
-                        eyre::bail!("non-unicode env var {key:?}: {value:?}")
+                        eyre::bail!("non-unicode env var {key:?}: {value:?}");
                     }
                 };
                 let bind_ip =

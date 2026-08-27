@@ -36,7 +36,7 @@ impl<E> AppLogic<E> {
     ) -> eyre::Result<Self> {
         // let (state_file, _script) = StateFile::new("state.txt".into())?;
         if false {
-            eyre::bail!("")
+            eyre::bail!("");
         }
 
         // let spigot = Self::create_spigot(script)?;
@@ -143,7 +143,7 @@ fn app_logic_cmd(kind: SpigotCommandKind) -> eyre::Result<SpigotResponse> {
         }
         SpigotCommandKind::Network(_network_modify_cmd) => todo!(), // TODO
         SpigotCommandKind::Shutdown => {
-            eyre::bail!("client requested shutdown")
+            eyre::bail!("client requested shutdown");
         }
     };
     Ok(response)

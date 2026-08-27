@@ -95,7 +95,7 @@ fn main() -> eyre::Result<()> {
             eyre::bail!(
                 "config file not found, wrote template to {}",
                 template_file.display()
-            )
+            );
         }
         Err(error) => Err(error)?,
     };

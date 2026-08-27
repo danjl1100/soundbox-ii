@@ -216,7 +216,7 @@ where
         const CELL_Y_STRIDE: u32 = CELL_HEIGHT + CELL_HEIGHT_PAD;
 
         let Ok(row_count) = u32::try_from(table.get_rows().len()) else {
-            eyre::bail!("table row count too large for u32")
+            eyre::bail!("table row count too large for u32");
         };
         let canvas_width = CELL_X_STRIDE * row_count;
         let canvas_height = CELL_Y_STRIDE * table.get_max_row_width();
