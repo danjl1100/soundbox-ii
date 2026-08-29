@@ -75,7 +75,18 @@ Restrict the new path to the **next child index** (append-only). Arbitrary-index
 insertion would require `order` and `bucket_paths` to renumber siblings, which is a
 much larger change and is not needed for the retry-safety goal.
 
-### 1. Canonical command form (breaking)
+### 0. Migrate old imperative command to a different name (breaking)
+
+NOTE: May move to deprecate the old imperative command later, at different interfaces
+
+```rust
+ModifyCmd::AddBucket { parent: Path } -> ModifyCmd::AddBucketTo { parent: Path }
+ModifyCmd::AddJoint { parent: Path } -> ModifyCmd::AddJointTo { parent: Path }
+```
+
+The clap tests and tests using clap need to migrate.
+
+### 1. Add canonical command form
 
 ```rust
 ModifyCmd::AddBucket { new_path: Path }
