@@ -14,12 +14,10 @@ pub fn exec_cargo(
 }
 /// Runs the specified command, replacing the current process
 #[expect(clippy::missing_errors_doc, reason = "infallible")]
-pub fn exec_cmd(
-    cmd: &str,
-    args_fn: impl FnOnce(&mut Command) -> &mut Command,
-) -> eyre::Result<std::convert::Infallible> {
-    exec_cmd_try_args(cmd, |c| Ok(args_fn(c)))
-        .unwrap_or_else(|never: std::convert::Infallible| match never {})
+pub fn exec_cmd(cmd: &str, args_fn: impl FnOnce(&mut Command) -> &mut Command) -> eyre::Result<!> {
+    let result = exec_cmd_try_args(cmd, |c| Ok::<_, !>(args_fn(c)))?;
+    let Err(e) = result;
+    Err(e)
 }
 /// Runs the specified command, replacing the current process
 #[expect(clippy::missing_errors_doc, reason = "infallible")]

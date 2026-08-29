@@ -193,10 +193,7 @@ mod typed_err {
         //     match kind {
         //         TypedErrKind::Spawn(_) => Self(kind),
         //         TypedErrKind::Eyre(e) => {
-        //             let e = match map_fn(Err(e)) {
-        //                 Ok(never) => match never {},
-        //                 Err(e) => e,
-        //             };
+        //             let Err(e) = map_fn(Err(e));
         //             Self(TypedErrKind::Eyre(e))
         //         }
         //     }

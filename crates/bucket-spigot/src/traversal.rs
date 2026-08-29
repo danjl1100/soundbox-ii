@@ -219,9 +219,8 @@ mod simple_visitor {
         ControlFlow, DepthFirstVisitor, TraversalElem, generic_order_opt::OrderNodeSliceImpl,
     };
 
-    pub(super) enum Never {}
     pub(super) struct SimpleVisitor<F>(pub F);
-    impl<S: ?Sized, T, U, F> DepthFirstVisitor<T, U, Never, S> for SimpleVisitor<F>
+    impl<S: ?Sized, T, U, F> DepthFirstVisitor<T, U, !, S> for SimpleVisitor<F>
     where
         S: OrderNodeSliceImpl,
         F: for<'b> FnMut(TraversalElem<'b, S::Node, T, U>),
@@ -229,7 +228,7 @@ mod simple_visitor {
         fn visit(
             &mut self,
             elem: TraversalElem<'_, S::Node, T, U>,
-        ) -> Result<Result<(), ControlFlow>, Never> {
+        ) -> Result<Result<(), ControlFlow>, !> {
             (self.0)(elem);
             Ok(Ok(()))
         }

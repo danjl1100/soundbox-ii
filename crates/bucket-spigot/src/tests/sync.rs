@@ -5,13 +5,12 @@
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-pub(crate) enum Never {}
 /// Executes the `risky_fn`, but if it takes longer than `timeout` then calls `timeout_fn` which
 /// must halt
 pub(crate) fn run_with_timeout<T: Send>(
     risky_fn: impl FnOnce() -> T + Send,
     timeout: Duration,
-    timeout_fn: impl FnOnce(Duration) -> Never,
+    timeout_fn: impl FnOnce(Duration) -> !,
 ) -> T {
     const WAIT_DURATION: Duration = Duration::from_millis(1);
     const MUTEX_POISONED: &str = "finish mutex should not be poisoned";

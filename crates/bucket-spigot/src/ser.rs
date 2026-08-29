@@ -35,8 +35,6 @@ mod vec_visitor {
     use super::Visitor;
     use crate::ModifyCmdRef;
 
-    pub(super) enum Never {}
-
     /// Simple [`Visitor`] that clones the items into a [`Vec`]
     pub(super) struct VecVisitor<T, U, V, F>
     where
@@ -64,13 +62,13 @@ mod vec_visitor {
         F: FnMut(ModifyCmdRef<'_, T, U>) -> V,
     {
         type Ok = Vec<V>;
-        type Error = Never;
-        fn visit(&mut self, cmd: ModifyCmdRef<'_, T, U>) -> Result<(), Never> {
+        type Error = !;
+        fn visit(&mut self, cmd: ModifyCmdRef<'_, T, U>) -> Result<(), !> {
             let Self { elems, map_fn, .. } = self;
             elems.push(map_fn(cmd));
             Ok(())
         }
-        fn finish(self) -> Result<Vec<V>, Never> {
+        fn finish(self) -> Result<Vec<V>, !> {
             let Self { elems, .. } = self;
             Ok(elems)
         }
@@ -135,8 +133,8 @@ where
     pub(crate) fn serialize_as_command_lines(&self) -> Vec<String> {
         let visitor =
             vec_visitor::VecVisitor::new(|modify_cmd| modify_cmd.display_as_cmd().to_string());
-        self.serialize(visitor)
-            .unwrap_or_else(|never| match never {})
+        let Ok(lines) = self.serialize(visitor);
+        lines
     }
 }
 impl<T, U> Network<T, U> {
@@ -153,8 +151,8 @@ impl<T, U> Network<T, U> {
             reason = "closure helps for inference (why?)"
         )]
         let visitor = vec_visitor::VecVisitor::new(|modify_cmd_ref| modify_cmd_ref.to_owned());
-        self.serialize(visitor)
-            .unwrap_or_else(|never| match never {})
+        let Ok(cmds) = self.serialize(visitor);
+        cmds
     }
     // TODO is there any use-case for serializing from a specific node? like, for (non-tabular) views?
     fn serialize<V>(&self, mut dest: V) -> Result<V::Ok, V::Error>

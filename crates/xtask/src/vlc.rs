@@ -40,7 +40,8 @@ impl ArbitratedInput {
         cfg_select! {
             unix => {
                 // replace the current process
-                crate::unix_exec::exec_cmd(cmd, |c| self.cmd_args(c)).map(|never| match never {})
+                let Err(e) = crate::unix_exec::exec_cmd(cmd, |c| self.cmd_args(c));
+                Err(e)
             }
             _ => {
                 // Fallback for non-Unix systems
