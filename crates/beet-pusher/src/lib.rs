@@ -3,6 +3,8 @@
 //! 1. queryies [`BeetItem`]s from beet to fill a [`bucket_spigot::Network`]
 //! 2. pushes items from the spigot to [`vlc_http`]
 
+#![feature(mut_restriction)]
+
 pub use self::beet::{BeetCommand, BeetItem, BeetPath, BeetRunner, fill_buckets};
 pub use self::determined::{Determined, UrlSource};
 pub use self::path_url::BaseUrl;

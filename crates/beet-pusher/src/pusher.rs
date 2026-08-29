@@ -93,7 +93,7 @@ impl<R> BeetPusher<'_, R> {
     /// Returns `true` if VLC has consumed all determined items (i.e. a refill is needed)
     #[must_use]
     pub fn is_determined_empty(&self) -> bool {
-        self.determined.is_empty()
+        self.determined.items.is_empty()
     }
 }
 
@@ -152,7 +152,7 @@ mod fill_determined {
                 return Ok(());
             }
 
-            let peek_len = match self.determined.items().len() {
+            let peek_len = match self.determined.items.len() {
                 len @ 0..=0 => Some(1 - len),
                 1 => None,
                 2.. => unreachable!("determined should be 1 item or fewer"),
@@ -187,12 +187,12 @@ mod fill_determined {
                 self.spigot.finalize_peeked(peeked.accept_into_inner());
 
                 tracing::debug!(
-                    items = ?self.determined.items(),
+                    items = ?self.determined.items,
                     "Selected new desired items",
                 );
             }
             assert_eq!(
-                self.determined.len(),
+                self.determined.items.len(),
                 1,
                 "determine should be 1 item after peek"
             );
@@ -287,13 +287,13 @@ mod push_playlist {
         ) -> Result<Option<TargetPlaylistItems>, FillDeterminedError<R::Error>> {
             self.fill_determined()?;
 
-            if self.determined.is_empty() {
+            if self.determined.items.is_empty() {
                 // nothing to do, don't waste querying effort until we have items to push
                 return Ok(None);
             }
 
             let target = TargetPlaylistItems::new()
-                .set_urls(self.determined.urls().to_vec()) // FIXME cloning to vec feels so wrong...
+                .set_urls(self.determined.urls.clone()) // FIXME cloning to vec feels so wrong...
                 .set_keep_history(5);
 
             Ok(Some(target))
@@ -374,7 +374,7 @@ mod push_playlist {
                 .map_err(make_err)?;
 
             // remove completed items for the beginning of the `determined` list
-            if let Some(excess_at_start) = self.determined.len().checked_sub(vlc_len) {
+            if let Some(excess_at_start) = self.determined.items.len().checked_sub(vlc_len) {
                 let () = self
                     .determined
                     .modify(&self.config.base_url, |determined| {
@@ -486,8 +486,8 @@ impl<R> std::fmt::Debug for BeetPusher<'_, R> {
         f.debug_struct("BeetPusher")
             .field("spigot", &DebugAsDisplay(spigot.view_table_default()))
             // .field("client_state", client_state)
-            .field("determined.items", &determined.items())
-            .field("determined.urls", &determined.urls())
+            .field("determined.items", &determined.items)
+            .field("determined.urls", &determined.urls)
             .field("config.base_url", base_url)
             .finish()
     }

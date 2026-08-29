@@ -11,13 +11,7 @@ use crate::{
     pipe_exec::VlcCmd,
 };
 
-pub struct PlaylistResponse<E>(PlaylistUpdateCountsResult<E>);
-impl<E> PlaylistResponse<E> {
-    pub fn into_inner(self) -> PlaylistUpdateCountsResult<E> {
-        let Self(inner) = self;
-        inner
-    }
-}
+pub struct PlaylistResponse<E>(pub mut(self) PlaylistUpdateCountsResult<E>);
 impl<E> std::fmt::Debug for PlaylistResponse<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self(inner) = self;

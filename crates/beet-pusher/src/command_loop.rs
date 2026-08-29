@@ -173,7 +173,7 @@ where
                         // resume timer, no matter the result
                         timer_fill_playlist.set_active(true);
 
-                        let playlist_update_counts = result.into_inner();
+                        let vlc_act::PlaylistResponse(playlist_update_counts) = result;
 
                         let result = pusher.push_playlist_update_action(
                             playlist_update_counts,

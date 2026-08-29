@@ -3,8 +3,11 @@ use crate::BeetPath;
 
 /// `Vec<T>` where each modification re-creates a URL cache
 pub struct Determined<T> {
-    items: Vec<T>,
-    urls: Vec<url::Url>,
+    /// Inner items
+    pub mut(self) items: Vec<T>,
+    /// Cached items from the [`UrlSource`] used in [`Self::modify`], guaranteed
+    /// to match the length of `items`
+    pub mut(self) urls: Vec<url::Url>,
 }
 impl<T> Default for Determined<T> {
     fn default() -> Self {
@@ -18,32 +21,6 @@ impl<T> Determined<T>
 where
     T: AsRef<BeetPath>,
 {
-    /// Returns the items
-    #[allow(clippy::must_use_candidate, reason = "accessor")]
-    pub fn items(&self) -> &[T] {
-        &self.items
-    }
-    /// Returns the cached URLs
-    #[allow(clippy::must_use_candidate, reason = "accessor")]
-    pub fn urls(&self) -> &[url::Url] {
-        &self.urls
-    }
-    #[allow(
-        clippy::must_use_candidate,
-        missing_docs,
-        reason = "self explanatory accessor"
-    )]
-    pub fn len(&self) -> usize {
-        self.items.len()
-    }
-    #[allow(
-        clippy::must_use_candidate,
-        missing_docs,
-        reason = "self explanatory accessor"
-    )]
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
     /// Allow modification of the `Vec<T>`, then clears and rebuilds the URL cache for the new
     /// items
     ///
