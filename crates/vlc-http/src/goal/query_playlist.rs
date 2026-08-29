@@ -13,9 +13,9 @@ impl Plan for QueryPlaylist {
     type Output<'a> = &'a [response::playlist::Item];
 
     fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
-        let playlist_info = state.playlist_info();
-        let step = if playlist_info.get_sequence().is_after(self.start_sequence)? {
-            Step::Done(&playlist_info.items[..])
+        let playlist_info = &state.playlist_info;
+        let step = if playlist_info.sequence.is_after(self.start_sequence)? {
+            Step::Done(&playlist_info.inner.items[..])
         } else {
             Step::Need(Endpoint::query_playlist())
         };
@@ -25,7 +25,7 @@ impl Plan for QueryPlaylist {
 impl PlanConstructor for QueryPlaylist {
     type Args = ();
     fn new((): Self::Args, state: ClientStateSequence) -> Self {
-        let start_sequence = state.playlist_info();
+        let start_sequence = state.playlist_info;
         Self { start_sequence }
     }
 }

@@ -5,10 +5,6 @@ use crate::command::{VolumePercent, VolumePercentDelta};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct VolumePercent256(u16);
 impl VolumePercent256 {
-    #[must_use]
-    pub fn value(self) -> u16 {
-        self.0
-    }
     /// Convert the 256-based value into the equivalent precentage
     pub(crate) fn unchecked_to_percent(based_256: u16) -> u16 {
         let percent = f32::from(based_256) / Self::PERCENT_TO_256;
@@ -38,7 +34,7 @@ impl From<VolumePercentDelta> for VolumePercentDelta256 {
 
 impl std::fmt::Display for VolumePercent256 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let value = self.value();
+        let Self(value) = self;
         write!(f, "{value}")
     }
 }
@@ -50,7 +46,7 @@ impl std::fmt::Display for VolumePercentDelta256 {
         } = *self;
 
         let sign_char = if is_negative { '-' } else { '+' };
-        let magnitude = VolumePercent256::value(magnitude);
+        let VolumePercent256(magnitude) = magnitude;
         write!(f, "{sign_char}{magnitude}")
     }
 }

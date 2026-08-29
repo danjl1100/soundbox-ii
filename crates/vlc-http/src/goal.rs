@@ -29,11 +29,11 @@ mod builders {
     impl PlanBuilder<'_> {
         /// Creates a [`Plan`](`super::Plan`) to query the playlist items
         pub fn query_playlist(self) -> QueryPlaylist {
-            QueryPlaylist::new((), self.get_sequence())
+            QueryPlaylist::new((), self.sequence)
         }
         /// Creates a [`Plan`](`super::Plan`) to query the playback status
         pub fn query_playback(self) -> QueryPlayback {
-            QueryPlayback::new((), self.get_sequence())
+            QueryPlayback::new((), self.sequence)
         }
         /// Returns an endpoint source for setting the `playlist_items` and querying matched items
         /// after the current playing item.
@@ -44,7 +44,7 @@ mod builders {
             self,
             target: TargetPlaylistItems,
         ) -> ActionQuerySetItems {
-            let inner = playlist_items::Update::new(target, self.get_sequence());
+            let inner = playlist_items::Update::new(target, self.sequence);
             ActionQuerySetItems(inner)
         }
         /// Creates a [`Plan`](`super::Plan`) to apply the desired goal
@@ -52,10 +52,10 @@ mod builders {
             use super::ActionPlanInner as Inner;
             let inner = match goal {
                 Goal::PlaybackMode(mode) => {
-                    Inner::PlaybackMode(playback_mode::Set::new(mode, self.get_sequence()))
+                    Inner::PlaybackMode(playback_mode::Set::new(mode, self.sequence))
                 }
                 Goal::PlaylistSet(target) => {
-                    Inner::PlaylistSet(playlist_items::Set::new(target, self.get_sequence()))
+                    Inner::PlaylistSet(playlist_items::Set::new(target, self.sequence))
                 }
             };
             ActionPlan(inner)

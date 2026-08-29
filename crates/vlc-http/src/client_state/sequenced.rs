@@ -5,8 +5,8 @@ pub(crate) use sequence::Sequence;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Sequenced<T> {
-    inner: T,
-    sequence: Sequence,
+    pub(crate) mut(self) inner: T,
+    pub(crate) mut(self) sequence: Sequence,
 }
 impl<T> Sequenced<T> {
     fn new(inner: T, instance: Instance) -> Self {
@@ -15,21 +15,12 @@ impl<T> Sequenced<T> {
             sequence: Sequence::new(instance),
         }
     }
-    pub fn get_sequence(&self) -> Sequence {
-        self.sequence
-    }
     fn increment(&mut self) {
         self.sequence = self.sequence.next();
     }
     pub fn replace(&mut self, new: T) -> T {
         self.increment();
         std::mem::replace(&mut self.inner, new)
-    }
-}
-impl<T> std::ops::Deref for Sequenced<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
 

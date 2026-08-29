@@ -128,6 +128,8 @@
 //! [`SeekNext`]: `Command::SeekNext`
 //! [`SeekPrevious`]: `Command::SeekPrevious`
 
+#![feature(mut_restriction)]
+
 // re-export crates
 pub use ::vlc_http_auth::http;
 pub use ::vlc_http_cmd::url;

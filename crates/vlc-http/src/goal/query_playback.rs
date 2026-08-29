@@ -13,11 +13,9 @@ impl Plan for QueryPlayback {
     type Output<'a> = &'a response::PlaybackStatus;
 
     fn next<'a>(&mut self, state: &'a ClientState) -> Result<Step<Self::Output<'a>>, Error> {
-        let playback_status = state.playback_status();
-        let status_updated = playback_status
-            .get_sequence()
-            .is_after(self.start_sequence)?;
-        let step = match &**playback_status {
+        let playback_status = &state.playback_status;
+        let status_updated = playback_status.sequence.is_after(self.start_sequence)?;
+        let step = match &playback_status.inner {
             Some(playback) if status_updated => Step::Done(playback),
             _ => Step::Need(Endpoint::query_status()),
         };
@@ -28,7 +26,7 @@ impl PlanConstructor for QueryPlayback {
     type Args = ();
 
     fn new((): Self::Args, state: ClientStateSequence) -> Self {
-        let start_sequence = state.playback_status();
+        let start_sequence = state.playback_status;
         Self { start_sequence }
     }
 }

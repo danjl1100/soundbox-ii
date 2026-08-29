@@ -11,8 +11,10 @@ mod sequenced;
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ClientState {
-    playlist_info: Sequenced<response::PlaylistInfo>,
-    playback_status: Sequenced<Option<response::PlaybackStatus>>,
+    // NOTE: All mutable access to state must flow through [`Action`](crate::Action) to ensure the
+    // user considered the cache invalidation cases
+    pub(crate) mut(self) playlist_info: Sequenced<response::PlaylistInfo>,
+    pub(crate) mut(self) playback_status: Sequenced<Option<response::PlaybackStatus>>,
 }
 
 impl ClientState {
@@ -77,20 +79,9 @@ impl ClientState {
             playback_status,
         } = self;
         ClientStateSequence {
-            playlist_info: playlist_info.get_sequence(),
-            playback_status: playback_status.get_sequence(),
+            playlist_info: playlist_info.sequence,
+            playback_status: playback_status.sequence,
         }
-    }
-
-    /// NOTE: All access to state must flow through [`Action`](crate::Action) to ensure the user
-    /// considered the cache invalidation cases
-    pub(crate) fn playlist_info(&self) -> &Sequenced<response::PlaylistInfo> {
-        &self.playlist_info
-    }
-    /// NOTE: All access to state must flow through [`Action`](crate::Action) to ensure the user
-    /// considered the cache invalidation cases
-    pub(crate) fn playback_status(&self) -> &Sequenced<Option<response::PlaybackStatus>> {
-        &self.playback_status
     }
 }
 impl Default for ClientState {
@@ -114,28 +105,17 @@ impl Default for ClientState {
 pub struct PlanBuilder<'a> {
     // NOTE: This artificial lifetime constrains users to guide them to keep short-lived refs
     _phantom: std::marker::PhantomData<&'a ()>,
-    sequence: ClientStateSequence,
-}
-impl PlanBuilder<'_> {
-    pub(crate) fn get_sequence(self) -> ClientStateSequence {
-        self.sequence
-    }
+    pub(crate) mut(self) sequence: ClientStateSequence,
 }
 
 /// Instant in the lifetime of the [`ClientState`] cache, for use in
 /// [`PlanBuilder::assume_cache_valid_since()`]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ClientStateSequence {
-    playlist_info: Sequence,
-    playback_status: Sequence,
+    pub(crate) mut(self) playlist_info: Sequence,
+    pub(crate) mut(self) playback_status: Sequence,
 }
 impl ClientStateSequence {
-    pub(crate) fn playlist_info(self) -> Sequence {
-        self.playlist_info
-    }
-    pub(crate) fn playback_status(self) -> Sequence {
-        self.playback_status
-    }
     // fn try_min(self, other: Self) -> Result<Self, InvalidClientInstance> {
     //     let Self {
     //         playlist_info,
