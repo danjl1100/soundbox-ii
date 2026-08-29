@@ -182,8 +182,8 @@ impl<T, U> Network<T, U> {
 
             let (_last, parent) = path.split_last().expect("node should not be pathless root");
             let creation_cmd = match node_item {
-                crate::Child::Bucket(_) => ModifyCmdRef::AddBucket { parent },
-                crate::Child::Joint(_) => ModifyCmdRef::AddJoint { parent },
+                crate::Child::Bucket(_) => ModifyCmdRef::AddBucketTo { parent },
+                crate::Child::Joint(_) => ModifyCmdRef::AddJointTo { parent },
             };
             dest.visit(creation_cmd)?;
 

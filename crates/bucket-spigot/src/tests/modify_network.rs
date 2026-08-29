@@ -17,15 +17,15 @@ fn empty() {
 fn joint_filters() -> eyre::Result<()> {
     let log = Network::<u8, i32>::default().run_script(
         "
-        modify add-joint .
+        modify add-joint-to .
         modify set-filters .0 1 2 3
         get-filters .0
 
-        modify add-joint .0
+        modify add-joint-to .0
         modify set-filters -- .0.0 -4
         get-filters .0.0
 
-        modify add-joint .0
+        modify add-joint-to .0
         modify set-filters .0.1 5
         get-filters .0.1
 
@@ -96,17 +96,17 @@ fn joint_filters() -> eyre::Result<()> {
 fn bucket_filters() -> eyre::Result<()> {
     let log = Network::<u8, i32>::default().run_script(
         "
-        modify add-joint .
+        modify add-joint-to .
         modify set-filters .0 254
-        modify add-bucket .0
+        modify add-bucket-to .0
         modify set-filters -- .0.0 -9
         get-filters .0.0
 
-        modify add-bucket .0
+        modify add-bucket-to .0
         modify set-filters -- .0.1 -4
         get-filters .0.1
 
-        modify add-bucket .
+        modify add-bucket-to .
         modify set-filters .1 5
         get-filters .1
 
@@ -122,7 +122,7 @@ fn bucket_filters() -> eyre::Result<()> {
     insta::assert_ron_snapshot!(log, @r###"
     Log([
       BucketsNeedingFill("modify set-filters .0 254"),
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0",
       ]),
       BucketsNeedingFill("modify set-filters -- .0.0 -9", [
@@ -136,7 +136,7 @@ fn bucket_filters() -> eyre::Result<()> {
           -9,
         ],
       ]),
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0",
         ".0.1",
       ]),
@@ -152,7 +152,7 @@ fn bucket_filters() -> eyre::Result<()> {
           -4,
         ],
       ]),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0.0",
         ".0.1",
         ".1",
@@ -204,12 +204,12 @@ fn bucket_filters() -> eyre::Result<()> {
 fn joint_filter_invalidates_buckets() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-joint .
-        modify add-bucket .0
+        modify add-joint-to .
+        modify add-bucket-to .0
         modify fill-bucket .0.0 item item2
-        modify add-joint .0
-        modify add-joint .0.1
-        modify add-bucket .0.1.0
+        modify add-joint-to .0
+        modify add-joint-to .0.1
+        modify add-bucket-to .0.1.0
         modify fill-bucket .0.1.0.0 item item2
 
         modify set-filters .0 filter-1 filter-2
@@ -224,11 +224,11 @@ fn joint_filter_invalidates_buckets() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.0 item item2"),
-      BucketsNeedingFill("modify add-bucket .0.1.0", [
+      BucketsNeedingFill("modify add-bucket-to .0.1.0", [
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1.0.0 item item2"),
@@ -258,12 +258,12 @@ fn joint_filter_invalidates_buckets() -> eyre::Result<()> {
 fn bucket_filter_invalidates_only_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-joint .
-        modify add-bucket .0
+        modify add-joint-to .
+        modify add-bucket-to .0
         modify fill-bucket .0.0 item item2
-        modify add-joint .0
-        modify add-joint .0.1
-        modify add-bucket .0.1.0
+        modify add-joint-to .0
+        modify add-joint-to .0.1
+        modify add-bucket-to .0.1.0
         modify fill-bucket .0.1.0.0 item item2
 
         topology
@@ -281,11 +281,11 @@ fn bucket_filter_invalidates_only_bucket() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.0 item item2"),
-      BucketsNeedingFill("modify add-bucket .0.1.0", [
+      BucketsNeedingFill("modify add-bucket-to .0.1.0", [
         ".0.1.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1.0.0 item item2"),
@@ -326,14 +326,14 @@ fn single_bucket() -> eyre::Result<()> {
     let mut network = Network::<String, u8>::default();
     let log = network.run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         peek 9999
         modify fill-bucket .0 a b c
         ",
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       Peek([]),
@@ -347,7 +347,7 @@ fn single_bucket() -> eyre::Result<()> {
 fn delete_empty_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0 abc def
 
         !!expect_error delete non-empty bucket
@@ -364,7 +364,7 @@ fn delete_empty_bucket() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 abc def"),
@@ -384,8 +384,8 @@ fn delete_empty_bucket() -> eyre::Result<()> {
 fn delete_empty_joint() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-joint .
-        modify add-joint .0
+        modify add-joint-to .
+        modify add-joint-to .0
 
         !!expect_error delete non-empty joint
         modify delete-empty .0
@@ -406,10 +406,10 @@ fn delete_empty_joint() -> eyre::Result<()> {
 fn delete_updates_weights() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
-        modify add-joint .
-        modify add-joint .1
-        modify add-bucket .1
+        modify add-bucket-to .
+        modify add-joint-to .
+        modify add-joint-to .1
+        modify add-bucket-to .1
 
         modify set-weight .0 5
         modify set-weight .1.0 7
@@ -429,10 +429,10 @@ fn delete_updates_weights() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
-      BucketsNeedingFill("modify add-bucket .1", [
+      BucketsNeedingFill("modify add-bucket-to .1", [
         ".0",
         ".1.1",
       ]),
@@ -467,14 +467,14 @@ fn delete_updates_weights() -> eyre::Result<()> {
 fn fill_path_past_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         !!expect_error fill path beyond bucket
         modify fill-bucket .0.0
         ",
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       ExpectError("modify fill-bucket .0.0", "unknown path: .0.0"),
@@ -487,14 +487,14 @@ fn fill_path_past_bucket() -> eyre::Result<()> {
 fn set_filter_past_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         !!expect_error set filter beyond bucket
         modify set-filters .0.0
         ",
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       ExpectError("modify set-filters .0.0", "unknown path: .0.0"),
@@ -507,9 +507,9 @@ fn set_filter_past_bucket() -> eyre::Result<()> {
 fn set_weights() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-joint .
-        modify add-bucket .0
-        modify add-bucket .
+        modify add-joint-to .
+        modify add-bucket-to .0
+        modify add-bucket-to .
 
         topology weights
 
@@ -522,10 +522,10 @@ fn set_weights() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0",
       ]),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0.0",
         ".1",
       ]),
@@ -550,13 +550,13 @@ fn set_weights() -> eyre::Result<()> {
 fn delete_bucket_before_fill() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
-        modify add-joint .
-        modify add-bucket .1
+        modify add-bucket-to .
+        modify add-joint-to .
+        modify add-bucket-to .1
 
         modify delete-empty .0
 
-        modify add-bucket .
+        modify add-bucket-to .
 
         stats bucket-paths-map
         get-bucket-path 1
@@ -565,14 +565,14 @@ fn delete_bucket_before_fill() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
-      BucketsNeedingFill("modify add-bucket .1", [
+      BucketsNeedingFill("modify add-bucket-to .1", [
         ".0",
         ".1.0",
       ]),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0.0",
         ".1",
       ]),
@@ -597,8 +597,8 @@ fn delete_bucket_before_fill() -> eyre::Result<()> {
 fn delete_then_view() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .
+        add-joint-to .
+        add-joint-to .
         delete-empty .0
         ",
     )?;
@@ -616,7 +616,7 @@ fn delete_then_view() -> eyre::Result<()> {
 fn delete_child_of_bucket() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
 
         !!expect_error
         modify delete-empty .0.0
@@ -627,7 +627,7 @@ fn delete_child_of_bucket() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       ExpectError("modify delete-empty .0.0", "unknown path: .0.0"),

@@ -11,12 +11,12 @@ use crate::Network;
 fn repeat_empty() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-joint .
-        modify add-joint .0
-        modify add-joint .0.0
-        modify add-bucket .0.0.0
+        modify add-joint-to .
+        modify add-joint-to .0
+        modify add-joint-to .0.0
+        modify add-bucket-to .0.0.0
         modify fill-bucket .0.0.0.0
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .1 a
 
         topology
@@ -27,11 +27,11 @@ fn repeat_empty() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0.0.0", [
+      BucketsNeedingFill("modify add-bucket-to .0.0.0", [
         ".0.0.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.0.0.0"),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".1",
       ]),
       BucketsNeedingFill("modify fill-bucket .1 a"),
@@ -64,7 +64,7 @@ fn test_case_nested(depth: usize, peek_2_exponent: u8) -> String {
         } else {
             ".0".repeat(i)
         };
-        writeln!(script, "modify add-joint  {parent_path}").unwrap();
+        writeln!(script, "modify add-joint-to  {parent_path}").unwrap();
     }
 
     let empty_parent = if depth == 0 {
@@ -73,7 +73,7 @@ fn test_case_nested(depth: usize, peek_2_exponent: u8) -> String {
         ".0".repeat(depth)
     };
     let empty_path = ".0".repeat(depth + 1);
-    writeln!(script, "modify add-bucket {empty_parent}").unwrap();
+    writeln!(script, "modify add-bucket-to {empty_parent}").unwrap();
 
     let (filled_parent, filled_path) = if depth == 0 {
         (".", ".1")
@@ -82,7 +82,7 @@ fn test_case_nested(depth: usize, peek_2_exponent: u8) -> String {
     }
     .to_owned();
     writeln!(script).unwrap();
-    writeln!(script, "modify add-bucket {filled_parent}").unwrap();
+    writeln!(script, "modify add-bucket-to {filled_parent}").unwrap();
     writeln!(script, "modify fill-bucket {filled_path} a").unwrap();
 
     writeln!(script).unwrap();
@@ -114,9 +114,9 @@ fn creates_script() -> eyre::Result<()> {
     let script = test_case_nested(0, 4);
     insta::assert_snapshot!(script, @r###"
     # bury the `empty` bucket at depth=0
-    modify add-bucket .
+    modify add-bucket-to .
 
-    modify add-bucket .
+    modify add-bucket-to .
     modify fill-bucket .1 a
 
     topology
@@ -149,10 +149,10 @@ fn creates_script() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(&script)?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
         ".1",
       ]),
@@ -185,10 +185,10 @@ fn big_branch_8() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(&script)?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0.0.0.0.0.0.0.0", [
+      BucketsNeedingFill("modify add-bucket-to .0.0.0.0.0.0.0.0", [
         ".0.0.0.0.0.0.0.0.0",
       ]),
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0.0.0.0.0.0.0.0",
         ".0.1",
       ]),
@@ -241,10 +241,10 @@ fn big_branch_16() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(&script)?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0", [
+      BucketsNeedingFill("modify add-bucket-to .0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0", [
         ".0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",
       ]),
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0",
         ".0.1",
       ]),

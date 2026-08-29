@@ -35,13 +35,13 @@ fn main() -> eyre::Result<()> {
     // the prior spigot state, so pre-charging it will not be necessary.
     //
     // "
-    // add-joint .
+    // add-joint-to .
 
-    // add-bucket .0
+    // add-bucket-to .0
     // set-order-type .0.0 shuffle
     // set-filters .0.0 added:2020.. grouping::^$
 
-    // add-bucket .0
+    // add-bucket-to .0
     // set-order-type .0.1 shuffle
     // set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
     // ";

@@ -22,17 +22,17 @@ fn empty() {
 fn table_weights() -> eyre::Result<()> {
     let mut network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-bucket .
+        add-bucket-to .
         fill-bucket .0 abc def ghi jkl
-        add-joint .
-        add-joint .1
-        add-bucket .1
+        add-joint-to .
+        add-joint-to .1
+        add-bucket-to .1
         fill-bucket .1.1 qrs tuv wxyz
 
-        add-joint .1.0
-        add-bucket .1.0
+        add-joint-to .1.0
+        add-bucket-to .1.0
         fill-bucket .1.0.1 1 2 3 4
-        add-bucket .1.0
+        add-bucket-to .1.0
         fill-bucket .1.0.2 5 6 7 8 9
         ",
     )?;
@@ -107,23 +107,23 @@ fn table_weights() -> eyre::Result<()> {
 fn arbitrary_pattern1() -> eyre::Result<NetworkStrings> {
     Ok(NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-bucket .
-        add-bucket .
-        add-bucket .
-        add-joint .
+        add-joint-to .
+        add-bucket-to .
+        add-bucket-to .
+        add-bucket-to .
+        add-joint-to .
 
-        add-joint .0
-        add-bucket .0
+        add-joint-to .0
+        add-bucket-to .0
 
-        add-bucket .0.0
-        add-bucket .0.0
+        add-bucket-to .0.0
+        add-bucket-to .0.0
 
-        add-bucket .4
-        add-joint .4
+        add-bucket-to .4
+        add-joint-to .4
 
-        add-bucket .4.1
-        add-bucket .4.1
+        add-bucket-to .4.1
+        add-bucket-to .4.1
 
         set-weight .0 0
         set-weight .0.1 50
@@ -247,12 +247,12 @@ fn table_depths_narrow_to_wider() -> eyre::Result<()> {
 fn simple_gap() -> eyre::Result<()> {
     let mut network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .
-        add-joint .
+        add-joint-to .
+        add-joint-to .
+        add-joint-to .
 
-        add-joint .0
-        add-joint .2
+        add-joint-to .0
+        add-joint-to .2
         ",
     )?;
     let log = network.run_script("topology")?;
@@ -286,9 +286,9 @@ fn simple_gap() -> eyre::Result<()> {
 fn simple_max_depth() -> eyre::Result<()> {
     let mut network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .0
-        add-joint .0.0
+        add-joint-to .
+        add-joint-to .0
+        add-joint-to .0.0
         ",
     )?;
     let log = network.run_script("topology")?;
@@ -341,17 +341,17 @@ fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
 fn unique_weights() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .
-        add-joint .
-        add-joint .
-        add-joint .
+        add-joint-to .
+        add-joint-to .
+        add-joint-to .
+        add-joint-to .
+        add-joint-to .
 
-        add-joint .0
-        add-joint .0
-        add-joint .0
-        add-joint .0
-        add-joint .0
+        add-joint-to .0
+        add-joint-to .0
+        add-joint-to .0
+        add-joint-to .0
+        add-joint-to .0
 
         set-weight .0 1
         set-weight .1 2
@@ -472,9 +472,9 @@ fn table_depth_child_right() -> eyre::Result<()> {
 fn table_view_bucket() -> eyre::Result<()> {
     let mut network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-bucket .
-        add-bucket .0
+        add-joint-to .
+        add-bucket-to .
+        add-bucket-to .0
         ",
     )?;
     let path_1 = Path::from_str(".1").unwrap();
@@ -505,7 +505,7 @@ fn table_view_bucket() -> eyre::Result<()> {
 fn fill_width_at<T, U>(network: &mut Network<T, U>, parent: PathRef<'_>, count: usize) {
     for _ in 0..count {
         network
-            .modify(crate::ModifyCmd::AddJoint {
+            .modify(crate::ModifyCmd::AddJointTo {
                 parent: parent.to_owned(),
             })
             .unwrap();
@@ -516,7 +516,7 @@ fn fill_depth_at<T, U>(network: &mut Network<T, U>, parent: Path, count: usize) 
     let mut depth_path = parent;
     for _ in 0..count {
         network
-            .modify(crate::ModifyCmd::AddJoint {
+            .modify(crate::ModifyCmd::AddJointTo {
                 parent: depth_path.clone(),
             })
             .unwrap();
@@ -579,9 +579,9 @@ fn limit_width_child() -> eyre::Result<()> {
     const N: usize = 50;
     let mut network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .
-        add-joint .1
+        add-joint-to .
+        add-joint-to .
+        add-joint-to .1
         ",
     )?;
 
@@ -627,10 +627,10 @@ fn limit_width_child() -> eyre::Result<()> {
 fn node_count() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .
-        add-joint .0
-        add-joint .1
+        add-joint-to .
+        add-joint-to .
+        add-joint-to .0
+        add-joint-to .1
         ",
     )?;
 
@@ -887,34 +887,34 @@ fn view_specific_complex() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
         set-order-type . shuffle
-        add-bucket .
+        add-bucket-to .
         set-order-type .0 in-order
-        add-joint .
+        add-joint-to .
         set-weight .1 1988479017
         delete-empty .1
         set-order-type . shuffle
         set-weight .0 647436531
         set-weight .0 3135499917
-        add-joint .
-        add-joint .1
-        add-joint .1.0
+        add-joint-to .
+        add-joint-to .1
+        add-joint-to .1.0
         set-order-type .1 in-order
-        add-joint .1.0.0
+        add-joint-to .1.0.0
         set-weight .1 110430342
-        add-bucket .1.0.0.0
-        add-joint .1.0.0.0
-        add-joint .1
-        add-joint .1.1
-        add-joint .
+        add-bucket-to .1.0.0.0
+        add-joint-to .1.0.0.0
+        add-joint-to .1
+        add-joint-to .1.1
+        add-joint-to .
         set-weight .1.1.0 2412235562
-        add-joint .1.0
-        add-joint .1.0.1
-        add-bucket .1.0.0.0
-        add-bucket .2
+        add-joint-to .1.0
+        add-joint-to .1.0.1
+        add-bucket-to .1.0.0.0
+        add-bucket-to .2
         set-weight .1.0.1 2297929128
         set-order-type .2 in-order
-        add-joint .1.0
-        add-joint .1.1.0
+        add-joint-to .1.0
+        add-joint-to .1.1.0
         set-order-type .1.0.0 in-order
         ",
     )?;

@@ -46,8 +46,8 @@ pub enum Command {
 #[serde(tag = "cmd")]
 #[serde(rename_all = "snake_case")]
 pub enum SpigotCmd {
-    /// Create a node
-    AddNode {
+    /// Create a node to the specified parent
+    AddNodeTo {
         /// Parent for the node
         parent: NodePath,
         /// Kind of node
@@ -75,9 +75,9 @@ impl From<SpigotCmd> for bucket_spigot::ModifyCmd<BeetItem, String> {
     fn from(value: SpigotCmd) -> Self {
         use bucket_spigot::ModifyCmd;
         match value {
-            SpigotCmd::AddNode { parent, node_kind } => match node_kind {
+            SpigotCmd::AddNodeTo { parent, node_kind } => match node_kind {
                 // TODO: NodeKind::Joint => ModifyCmd::AddJoint { parent },
-                NodeKind::Bucket => ModifyCmd::AddBucket { parent },
+                NodeKind::Bucket => ModifyCmd::AddBucketTo { parent },
             },
             SpigotCmd::SetFilters { path, new_filters } => {
                 ModifyCmd::SetFilters { path, new_filters }

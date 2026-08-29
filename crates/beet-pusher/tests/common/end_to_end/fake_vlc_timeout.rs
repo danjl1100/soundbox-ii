@@ -194,7 +194,7 @@ impl TestCase {
 
                 r.send_stdin(&JsonLines::new([json!({
                     "seq": 1,
-                    "cmd": "add_node",
+                    "cmd": "add_node_to",
                     "parent": ".",
                     "node_kind": "bucket",
                 })]))?;

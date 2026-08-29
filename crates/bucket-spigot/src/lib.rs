@@ -113,12 +113,12 @@ impl<T, U> Network<T, U> {
         cmd: ModifyCmd<T, U>,
     ) -> Result<Option<Path>, ModifyError> {
         let result = match cmd {
-            ModifyCmd::AddBucket { parent } => {
+            ModifyCmd::AddBucketTo { parent } => {
                 let bucket = Child::Bucket(self.new_bucket());
                 let path = self.add_child(bucket, parent)?;
                 Ok(Some(path))
             }
-            ModifyCmd::AddJoint { parent } => {
+            ModifyCmd::AddJointTo { parent } => {
                 let path = self.add_child(Child::Joint(Joint::default()), parent)?;
                 Ok(Some(path))
             }
@@ -530,13 +530,13 @@ impl<T, U> Child<T, U> {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ModifyCmd<T, U> {
-    /// Add a new bucket
-    AddBucket {
+    /// Add a new bucket to the specified parent
+    AddBucketTo {
         /// Parent path for the new bucket
         parent: Path,
     },
-    /// Add a new joint
-    AddJoint {
+    /// Add a new joint to the specified parent
+    AddJointTo {
         /// Parent path for the new joint
         parent: Path,
     },
@@ -590,10 +590,10 @@ mod modify_cmd_ref {
     #[non_exhaustive]
     #[must_use]
     pub enum ModifyCmdRef<'a, T, U> {
-        AddBucket {
+        AddBucketTo {
             parent: PathRef<'a>,
         },
-        AddJoint {
+        AddJointTo {
             parent: PathRef<'a>,
         },
         DeleteEmpty {
@@ -625,10 +625,10 @@ mod modify_cmd_ref {
     impl<'a, T, U> From<&'a ModifyCmd<T, U>> for ModifyCmdRef<'a, T, U> {
         fn from(value: &'a ModifyCmd<T, U>) -> Self {
             match value {
-                ModifyCmd::AddBucket { parent } => Self::AddBucket {
+                ModifyCmd::AddBucketTo { parent } => Self::AddBucketTo {
                     parent: parent.as_ref(),
                 },
-                ModifyCmd::AddJoint { parent } => Self::AddJoint {
+                ModifyCmd::AddJointTo { parent } => Self::AddJointTo {
                     parent: parent.as_ref(),
                 },
                 ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty {
@@ -668,10 +668,10 @@ mod modify_cmd_ref {
         #[must_use]
         pub fn to_owned(self) -> ModifyCmd<T, U> {
             match self {
-                Self::AddBucket { parent } => ModifyCmd::AddBucket {
+                Self::AddBucketTo { parent } => ModifyCmd::AddBucketTo {
                     parent: parent.to_owned(),
                 },
-                Self::AddJoint { parent } => ModifyCmd::AddJoint {
+                Self::AddJointTo { parent } => ModifyCmd::AddJointTo {
                     parent: parent.to_owned(),
                 },
                 Self::DeleteEmpty { path } => ModifyCmd::DeleteEmpty {

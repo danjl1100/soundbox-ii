@@ -227,7 +227,7 @@ where
                 let cmd = cmd.into();
                 let output_buckets = matches!(
                     &cmd,
-                    ModifyCmd::AddBucket { .. }
+                    ModifyCmd::AddBucketTo { .. }
                         | ModifyCmd::FillBucket { .. }
                         | ModifyCmd::SetFilters { .. }
                 );

@@ -22,7 +22,7 @@ impl<T: BeetPusherPipe> NodeService<T> {
     /// # Errors
     /// Returns an error if sending the request fails, or the response is incorrect
     pub async fn create_bucket(&self, parent: NodePath) -> Result<NodePath, CreateBucketError> {
-        let cmd = Command::Spigot(SpigotCmd::AddNode {
+        let cmd = Command::Spigot(SpigotCmd::AddNodeTo {
             parent,
             node_kind: beet_pusher::pipe_exec::NodeKind::Bucket,
         });

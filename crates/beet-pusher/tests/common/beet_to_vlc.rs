@@ -209,7 +209,7 @@ fn new_beet_spigot(script: &str) -> bucket_spigot::Network<BeetItem, String> {
 /// Must tolerate empty results, in case of transient invalid queries while the user is editing
 #[test]
 fn empty_beet_result() -> eyre::Result<()> {
-    let spigot = new_beet_spigot("add-bucket .");
+    let spigot = new_beet_spigot("add-bucket-to .");
 
     let pusher = &mut new_test_beet_pusher(spigot);
     let model = &mut Model::default();
@@ -237,7 +237,7 @@ fn queries_beet_for_buckets() -> eyre::Result<()> {
 
     let spigot = new_beet_spigot(
         "
-    add-bucket .
+    add-bucket-to .
     ",
     );
 

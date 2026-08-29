@@ -8,7 +8,7 @@ use crate::Network;
 fn simple_in_order() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0 a b c
         peek-assert a
         peek 3
@@ -21,7 +21,7 @@ fn simple_in_order() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 a b c"),
@@ -41,15 +41,15 @@ fn simple_in_order() -> eyre::Result<()> {
 fn weighted_in_order() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-joint .
-        modify add-joint .0
-        modify add-bucket .0.0
+        modify add-joint-to .
+        modify add-joint-to .0
+        modify add-bucket-to .0.0
         modify fill-bucket .0.0.0 nested-inner-1 nested-inner-2 nested-inner-3
 
-        modify add-bucket .0
+        modify add-bucket-to .0
         modify fill-bucket .0.1 middle-1 middle-2 middle-3
 
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .1 base-1 base-2 base-3
 
         modify set-weight .0     4
@@ -65,15 +65,15 @@ fn weighted_in_order() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .0.0", [
+      BucketsNeedingFill("modify add-bucket-to .0.0", [
         ".0.0.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.0.0 nested-inner-1 nested-inner-2 nested-inner-3"),
-      BucketsNeedingFill("modify add-bucket .0", [
+      BucketsNeedingFill("modify add-bucket-to .0", [
         ".0.1",
       ]),
       BucketsNeedingFill("modify fill-bucket .0.1 middle-1 middle-2 middle-3"),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".1",
       ]),
       BucketsNeedingFill("modify fill-bucket .1 base-1 base-2 base-3"),
@@ -148,9 +148,9 @@ fn weighted_in_order() -> eyre::Result<()> {
 fn two_alternating() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0 zero
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .1 one
         peek --apply --show-bucket-ids 5
         peek --apply --show-bucket-ids 5
@@ -158,11 +158,11 @@ fn two_alternating() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 zero"),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".1",
       ]),
       BucketsNeedingFill("modify fill-bucket .1 one"),
@@ -203,12 +203,12 @@ fn two_alternating() -> eyre::Result<()> {
 fn depth_2() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0 top-0-a top-0-b top-0-c
-        modify add-joint .
-        modify add-bucket .1
+        modify add-joint-to .
+        modify add-bucket-to .1
         modify fill-bucket .1.0 bot-1.0-a bot-1.0-b
-        modify add-bucket .1
+        modify add-bucket-to .1
         modify fill-bucket .1.1 bot-1.1-a bot-1.1-b
 
         topology
@@ -226,15 +226,15 @@ fn depth_2() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 top-0-a top-0-b top-0-c"),
-      BucketsNeedingFill("modify add-bucket .1", [
+      BucketsNeedingFill("modify add-bucket-to .1", [
         ".1.0",
       ]),
       BucketsNeedingFill("modify fill-bucket .1.0 bot-1.0-a bot-1.0-b"),
-      BucketsNeedingFill("modify add-bucket .1", [
+      BucketsNeedingFill("modify add-bucket-to .1", [
         ".1.1",
       ]),
       BucketsNeedingFill("modify fill-bucket .1.1 bot-1.1-a bot-1.1-b"),
@@ -302,11 +302,11 @@ fn continue_if_first_is_empty() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
         # first is empty
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0
 
         # second has items
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .1 a b c
 
         peek --show-bucket-ids 3
@@ -314,11 +314,11 @@ fn continue_if_first_is_empty() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0"),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".1",
       ]),
       BucketsNeedingFill("modify fill-bucket .1 a b c"),
@@ -341,9 +341,9 @@ fn continue_if_first_is_empty() -> eyre::Result<()> {
 fn skips_empty_weight() -> eyre::Result<()> {
     let log = Network::new_strings_run_script(
         "
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0 item-1
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .1 item-2
 
         modify set-weight .0 0
@@ -354,11 +354,11 @@ fn skips_empty_weight() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 item-1"),
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".1",
       ]),
       BucketsNeedingFill("modify fill-bucket .1 item-2"),
@@ -400,7 +400,7 @@ fn sets_order_type_non_strict() -> eyre::Result<()> {
         "
         enable-rng 0dfb8b701d6e8d57c83b0c9c6a92a16424fe
 
-        modify add-bucket .
+        modify add-bucket-to .
         modify fill-bucket .0 a b c d
 
         modify set-order-type .0 in-order
@@ -415,7 +415,7 @@ fn sets_order_type_non_strict() -> eyre::Result<()> {
     )?;
     insta::assert_ron_snapshot!(log, @r###"
     Log([
-      BucketsNeedingFill("modify add-bucket .", [
+      BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 a b c d"),

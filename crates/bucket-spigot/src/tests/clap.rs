@@ -47,26 +47,26 @@ fn parse_cli(args: &[&'static str]) -> Result<crate::ModifyCmd<String, String>, 
         .map_err(|err| err.to_string())
 }
 
-fn add_bucket() {
-    insta::assert_ron_snapshot!(parse_cli(&["add-bucket", "."]), @r###"
-    Ok(AddBucket(
+fn add_bucket_to() {
+    insta::assert_ron_snapshot!(parse_cli(&["add-bucket-to", "."]), @r###"
+    Ok(AddBucketTo(
       parent: ".",
     ))
     "###);
-    insta::assert_ron_snapshot!(parse_cli(&["add-bucket", ".1.2.3.4"]), @r###"
-    Ok(AddBucket(
+    insta::assert_ron_snapshot!(parse_cli(&["add-bucket-to", ".1.2.3.4"]), @r###"
+    Ok(AddBucketTo(
       parent: ".1.2.3.4",
     ))
     "###);
 }
-fn add_joint() {
-    insta::assert_ron_snapshot!(parse_cli(&["add-joint", "."]), @r###"
-    Ok(AddJoint(
+fn add_joint_to() {
+    insta::assert_ron_snapshot!(parse_cli(&["add-joint-to", "."]), @r###"
+    Ok(AddJointTo(
       parent: ".",
     ))
     "###);
-    insta::assert_ron_snapshot!(parse_cli(&["add-joint", ".1.2.3.4"]), @r###"
-    Ok(AddJoint(
+    insta::assert_ron_snapshot!(parse_cli(&["add-joint-to", ".1.2.3.4"]), @r###"
+    Ok(AddJointTo(
       parent: ".1.2.3.4",
     ))
     "###);
@@ -134,8 +134,8 @@ fn set_order_type() {
 fn parse_cli_exhaustive() {
     test_exhaustive! {
         for ModifyCmd<String, String>,
-        ModifyCmd::AddBucket { .. } => { add_bucket(); }
-        ModifyCmd::AddJoint { .. } => { add_joint(); }
+        ModifyCmd::AddBucketTo { .. } => { add_bucket_to(); }
+        ModifyCmd::AddJointTo { .. } => { add_joint_to(); }
         ModifyCmd::DeleteEmpty { .. } => { delete_empty(); }
         ModifyCmd::FillBucket { .. } => { fill_bucket(); }
         ModifyCmd::SetFilters { .. } => { set_filters(); }
@@ -172,14 +172,14 @@ fn clap_display_roundtrip() {
     let path1: Path = ".1.2.3.4".parse().unwrap();
 
     test_exhaustive!(for CrateModifyCmd,
-        CrateModifyCmd::AddBucket { .. } => {
-            CrateModifyCmd::AddBucket {
+        CrateModifyCmd::AddBucketTo { .. } => {
+            CrateModifyCmd::AddBucketTo {
                 parent: path1.clone(),
             }
             .display_as_cmd_verified();
         }
-        CrateModifyCmd::AddJoint { .. } => {
-            CrateModifyCmd::AddJoint {
+        CrateModifyCmd::AddJointTo { .. } => {
+            CrateModifyCmd::AddJointTo {
                 parent: path1.clone(),
             }
             .display_as_cmd_verified();

@@ -32,13 +32,13 @@ where
     T: ArgBounds,
     U: ArgBounds,
 {
-    /// Add a new bucket
-    AddBucket {
+    /// Add a new bucket to the specified parent
+    AddBucketTo {
         /// Parent path for the new bucket
         parent: Path,
     },
-    /// Add a new joint
-    AddJoint {
+    /// Add a new joint to the specified parent
+    AddJointTo {
         /// Parent path for the new joint
         parent: Path,
     },
@@ -164,8 +164,8 @@ mirror_impl! {
 }
 mirror_impl! {
     impl From ModifyCmd crate::ModifyCmd = crate::ModifyCmd<T, U>, self::ModifyCmd = self::ModifyCmd<T, U> {
-        AddBucket { parent },
-        AddJoint { parent },
+        AddBucketTo { parent },
+        AddJointTo { parent },
         DeleteEmpty { path },
         FillBucket { bucket, new_contents },
         SetFilters { path, new_filters },
@@ -231,8 +231,8 @@ where
         {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.0 {
-                    Other::AddBucket { parent } => write!(f, "add-bucket {parent}"),
-                    Other::AddJoint { parent } => write!(f, "add-joint {parent}"),
+                    Other::AddBucketTo { parent } => write!(f, "add-bucket-to {parent}"),
+                    Other::AddJointTo { parent } => write!(f, "add-joint-to {parent}"),
                     Other::DeleteEmpty { path } => write!(f, "delete-empty {path}"),
                     Other::FillBucket {
                         bucket,
@@ -381,8 +381,8 @@ mod network_cmd_lines {
         /// use bucket_spigot::{Network, path::Path};
         /// let network: Network<String, String> = Network::from_commands_str_whitespace(
         ///     "
-        ///     add-joint .
-        ///     add-bucket .0
+        ///     add-joint-to .
+        ///     add-bucket-to .0
         ///     set-filters .0.0 filter values
         ///     fill-bucket .0.0 item1 item2 item3
         ///     "
@@ -446,8 +446,8 @@ mod network_cmd_lines {
         /// ```
         /// use bucket_spigot::Network;
         ///
-        /// let construction_string = r#"add-joint .
-        /// add-bucket .0
+        /// let construction_string = r#"add-joint-to .
+        /// add-bucket-to .0
         /// set-filters .0.0 filter values
         /// fill-bucket .0.0 item1 item2 item3"#;
         /// let network: Network<String, String> =
@@ -468,8 +468,8 @@ mod network_cmd_lines {
         ///     }
         /// }
         ///
-        /// let construction_string = r#"add-joint .
-        /// add-bucket .0
+        /// let construction_string = r#"add-joint-to .
+        /// add-bucket-to .0
         /// set-filters .0.0 [2,4,5,7]
         /// fill-bucket .0.0 [2,54,6,3,3,2,0,40]"#;
         /// let network: Network<String, String> =

@@ -33,7 +33,7 @@ impl BeetPusherPipe for TestPipe {
     ) -> impl Future<Output = Result<beet_pusher::pipe_exec::ResponseData, Self::Error>> {
         use beet_pusher::pipe_exec::{Command, ResponseData, SpigotCmd, VlcCmd};
         let resp = match command {
-            Command::Spigot(SpigotCmd::AddNode {
+            Command::Spigot(SpigotCmd::AddNodeTo {
                 parent: mut path,
                 node_kind: _,
             }) if self.fake_add_node => {
@@ -41,7 +41,7 @@ impl BeetPusherPipe for TestPipe {
                 ResponseData::NodeAdded { path }
             }
             Command::Spigot(
-                SpigotCmd::AddNode {
+                SpigotCmd::AddNodeTo {
                     parent: _,
                     node_kind: _,
                 }

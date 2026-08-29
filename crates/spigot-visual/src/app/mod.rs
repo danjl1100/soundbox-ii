@@ -66,13 +66,13 @@ impl<E> AppLogic<E> {
     //     } else {
     //         // NOTE: **DO NOT** quote arguments, as there is no interpreter to strip the quotes
     //         const DEFAULT_SCRIPT: &str = "
-    //             add-joint .
+    //             add-joint-to .
 
-    //             add-bucket .0
+    //             add-bucket-to .0
     //             set-order-type .0.0 shuffle
     //             set-filters .0.0 added:2020.. grouping::^$
 
-    //             add-bucket .0
+    //             add-bucket-to .0
     //             set-order-type .0.1 shuffle
     //             set-filters .0.1 grouping::1|2|3|4|5 has_lyrics::^$
     //             ";
@@ -194,10 +194,10 @@ pub enum SpigotResponse {
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "cmd")]
 pub enum NetworkModifyCmd {
-    AddBucket {
+    AddBucketTo {
         parent: Path,
     },
-    AddJoint {
+    AddJointTo {
         parent: Path,
     },
     DeleteEmpty {
@@ -220,8 +220,8 @@ impl From<NetworkModifyCmd> for bucket_spigot::ModifyCmd<String, String> {
     fn from(value: NetworkModifyCmd) -> Self {
         use NetworkModifyCmd as Local;
         match value {
-            Local::AddBucket { parent } => Self::AddBucket { parent },
-            Local::AddJoint { parent } => Self::AddJoint { parent },
+            Local::AddBucketTo { parent } => Self::AddBucketTo { parent },
+            Local::AddJointTo { parent } => Self::AddJointTo { parent },
             Local::DeleteEmpty { path } => Self::DeleteEmpty { path },
             Local::SetFilters { path, new_filters } => Self::SetFilters { path, new_filters },
             Local::SetWeight { path, new_weight } => Self::SetWeight { path, new_weight },

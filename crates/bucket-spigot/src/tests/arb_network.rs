@@ -72,8 +72,8 @@ mod seed {
     }
     #[derive(arbtest::arbitrary::Arbitrary)]
     pub(super) enum Full<T, U> {
-        AddBucket,
-        AddJoint,
+        AddBucketTo,
+        AddJointTo,
         DeleteEmpty,
         FillBucket { new_contents: Vec<T> },
         SetFilters { new_filters: Vec<U> },
@@ -86,8 +86,8 @@ mod seed {
             use Full as Seed;
             use ModifyCmd as Cmd;
             match value {
-                Cmd::AddBucket { parent } => (parent, Seed::AddBucket),
-                Cmd::AddJoint { parent } => (parent, Seed::AddJoint),
+                Cmd::AddBucketTo { parent } => (parent, Seed::AddBucketTo),
+                Cmd::AddJointTo { parent } => (parent, Seed::AddJointTo),
                 Cmd::DeleteEmpty { path } => (path, Seed::DeleteEmpty),
                 Cmd::FillBucket {
                     bucket,
@@ -112,8 +112,8 @@ mod seed {
             use Full as Seed;
             use ModifyCmd as Cmd;
             match value {
-                (parent, Seed::AddBucket) => Cmd::AddBucket { parent },
-                (parent, Seed::AddJoint) => Cmd::AddJoint { parent },
+                (parent, Seed::AddBucketTo) => Cmd::AddBucketTo { parent },
+                (parent, Seed::AddJointTo) => Cmd::AddJointTo { parent },
                 (path, Seed::DeleteEmpty) => Cmd::DeleteEmpty { path },
                 (bucket, Seed::FillBucket { new_contents }) => Cmd::FillBucket {
                     bucket,
@@ -131,8 +131,8 @@ mod seed {
 
     #[derive(arbtest::arbitrary::Arbitrary)]
     pub(super) enum NoItems<U> {
-        AddBucket,
-        AddJoint,
+        AddBucketTo,
+        AddJointTo,
         DeleteEmpty,
         SetFilters { new_filters: Vec<U> },
         SetWeight { new_weight: u32 },
@@ -142,8 +142,8 @@ mod seed {
         fn from(value: NoItems<U>) -> Self {
             use NoItems as Seed;
             match value {
-                Seed::AddJoint => Self::AddJoint,
-                Seed::AddBucket => Self::AddBucket,
+                Seed::AddJointTo => Self::AddJointTo,
+                Seed::AddBucketTo => Self::AddBucketTo,
                 Seed::DeleteEmpty => Self::DeleteEmpty,
                 Seed::SetFilters { new_filters } => Self::SetFilters { new_filters },
                 Seed::SetWeight { new_weight } => Self::SetWeight { new_weight },
@@ -158,8 +158,8 @@ mod seed {
         fn try_from(value: Full<never::Arg, U>) -> Result<Self, Self::Error> {
             use Full as Seed;
             let new = match value {
-                Seed::AddBucket => Self::AddBucket,
-                Seed::AddJoint => Self::AddJoint,
+                Seed::AddBucketTo => Self::AddBucketTo,
+                Seed::AddJointTo => Self::AddJointTo,
                 Seed::DeleteEmpty => Self::DeleteEmpty,
                 Seed::FillBucket { new_contents } => return Err(new_contents),
                 Seed::SetFilters { new_filters } => Self::SetFilters { new_filters },
@@ -366,7 +366,7 @@ where
             let seed = seed.into();
             let path_options = match &seed {
                 // only joints
-                Seed::AddBucket | Seed::AddJoint => &scratch.joints,
+                Seed::AddBucketTo | Seed::AddJointTo => &scratch.joints,
                 // only buckets
                 Seed::FillBucket { .. } => &scratch.buckets,
                 // any node
@@ -399,12 +399,12 @@ where
 
             // update path lists
             match &seed {
-                Seed::AddBucket => {
+                Seed::AddBucketTo => {
                     let new_path = get_new_path();
 
                     scratch.add_bucket((&path_clone, new_path));
                 }
-                Seed::AddJoint => {
+                Seed::AddJointTo => {
                     let new_path = get_new_path();
 
                     scratch.add_joint((&path_clone, new_path));

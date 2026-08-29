@@ -64,38 +64,38 @@ enum RenderMode {
 fn main() -> eyre::Result<()> {
     // TODO script from user input (e.g. interactive prompt, file, or web input)
     // let script = "
-    //     add-joint .
-    //     add-bucket .0
-    //     add-bucket .0
+    //     add-joint-to .
+    //     add-bucket-to .0
+    //     add-bucket-to .0
 
-    //     add-joint .
-    //     add-joint .1
-    //     add-bucket .1
+    //     add-joint-to .
+    //     add-joint-to .1
+    //     add-bucket-to .1
 
-    //     add-joint .
+    //     add-joint-to .
     //     ";
     let script = "
-        add-joint .
-        add-bucket .
-        add-bucket .
-        add-bucket .
-        add-joint .
+        add-joint-to .
+        add-bucket-to .
+        add-bucket-to .
+        add-bucket-to .
+        add-joint-to .
 
-        add-joint .0
-        add-bucket .0
+        add-joint-to .0
+        add-bucket-to .0
 
-        add-bucket .0.0
-        add-bucket .0.0
-        add-bucket .0.0
-        add-bucket .0.0
-        add-bucket .0.0
+        add-bucket-to .0.0
+        add-bucket-to .0.0
+        add-bucket-to .0.0
+        add-bucket-to .0.0
+        add-bucket-to .0.0
 
-        add-bucket .4
-        add-joint .4
-        add-bucket .4
+        add-bucket-to .4
+        add-joint-to .4
+        add-bucket-to .4
 
-        add-bucket .4.1
-        add-bucket .4.1
+        add-bucket-to .4.1
+        add-bucket-to .4.1
 
         set-weight .0 0
         set-weight .0.1 50

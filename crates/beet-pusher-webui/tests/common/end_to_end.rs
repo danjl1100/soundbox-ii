@@ -55,7 +55,7 @@ fn create_bucket() -> eyre::Result<()> {
     let plan_add_bucket = |seq, parent, created| ReplyPlan {
         request_pattern: json!({
             "seq": seq,
-            "cmd": "add_node",
+            "cmd": "add_node_to",
             "parent": parent,
             "node_kind": "bucket",
         }),
@@ -109,19 +109,19 @@ fn create_bucket() -> eyre::Result<()> {
         //
         json!({
             "seq": 0,
-            "cmd": "add_node",
+            "cmd": "add_node_to",
             "parent": ".",
             "node_kind": "bucket",
         }),
         json!({
             "seq": 1,
-            "cmd": "add_node",
+            "cmd": "add_node_to",
             "parent": ".",
             "node_kind": "bucket",
         }),
         json!({
             "seq": 2,
-            "cmd": "add_node",
+            "cmd": "add_node_to",
             "parent": ".0",
             "node_kind": "bucket",
         }),

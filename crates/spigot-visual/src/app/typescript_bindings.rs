@@ -22,10 +22,10 @@ enum SpigotResponse {
 #[ts(export)]
 #[serde(tag = "kind")]
 enum NetworkModifyCmd {
-    AddBucket {
+    AddBucketTo {
         parent: Path,
     },
-    AddJoint {
+    AddJointTo {
         parent: Path,
     },
     DeleteEmpty {
@@ -96,10 +96,10 @@ mod construction_proof_input {
         fn try_from(value: NetworkModifyCmd) -> Result<Self, Self::Error> {
             use NetworkModifyCmd as Local;
             let converted = match value {
-                Local::AddBucket { parent } => Self::AddBucket {
+                Local::AddBucketTo { parent } => Self::AddBucketTo {
                     parent: parent.try_into()?,
                 },
-                Local::AddJoint { parent } => Self::AddJoint {
+                Local::AddJointTo { parent } => Self::AddJointTo {
                     parent: parent.try_into()?,
                 },
                 Local::DeleteEmpty { path } => Self::DeleteEmpty {

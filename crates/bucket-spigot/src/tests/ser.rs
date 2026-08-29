@@ -76,7 +76,7 @@ where
         // TODO remove diabolical test-of-tests
         if cmds_is_empty {
             network_rebuilt
-                .modify(ModifyCmd::AddBucket {
+                .modify(ModifyCmd::AddBucketTo {
                     parent: Path::empty(),
                 })
                 .unwrap();
@@ -126,18 +126,18 @@ fn empty() {
 fn nodes_shallow() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-bucket .
-        add-bucket .
-        add-bucket .
-        add-bucket .
+        add-bucket-to .
+        add-bucket-to .
+        add-bucket-to .
+        add-bucket-to .
         ",
     )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
-        add-bucket .
-        add-bucket .
-        add-bucket .
-        add-bucket .
+        add-bucket-to .
+        add-bucket-to .
+        add-bucket-to .
+        add-bucket-to .
         "###);
     });
 
@@ -148,16 +148,16 @@ fn nodes_shallow() -> eyre::Result<()> {
 fn nodes_narrow() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-joint .
-        add-joint .0
-        add-joint .0.0
+        add-joint-to .
+        add-joint-to .0
+        add-joint-to .0.0
         ",
     )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
-        add-joint .
-        add-joint .0
-        add-joint .0.0
+        add-joint-to .
+        add-joint-to .0
+        add-joint-to .0.0
         "###);
     });
 
@@ -168,26 +168,26 @@ fn nodes_narrow() -> eyre::Result<()> {
 fn node_placement() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-bucket .
-        add-joint .
+        add-bucket-to .
+        add-joint-to .
 
-        add-bucket .1
-        add-bucket .1
-        add-joint .1
-        add-bucket .1
+        add-bucket-to .1
+        add-bucket-to .1
+        add-joint-to .1
+        add-bucket-to .1
 
-        add-bucket .1.2
+        add-bucket-to .1.2
         ",
     )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
-        add-bucket .
-        add-joint .
-        add-bucket .1
-        add-bucket .1
-        add-joint .1
-        add-bucket .1.2
-        add-bucket .1
+        add-bucket-to .
+        add-joint-to .
+        add-bucket-to .1
+        add-bucket-to .1
+        add-joint-to .1
+        add-bucket-to .1.2
+        add-bucket-to .1
         "###);
     });
 
@@ -198,8 +198,8 @@ fn node_placement() -> eyre::Result<()> {
 fn node_filters() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-bucket .
-        add-joint .
+        add-bucket-to .
+        add-joint-to .
 
         set-filters .0 abc def
         set-filters .1 ghi jkl
@@ -207,9 +207,9 @@ fn node_filters() -> eyre::Result<()> {
     )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
-        add-bucket .
+        add-bucket-to .
         set-filters .0 abc def
-        add-joint .
+        add-joint-to .
         set-filters .1 ghi jkl
         "###);
     });
@@ -221,14 +221,14 @@ fn node_filters() -> eyre::Result<()> {
 fn node_items() -> eyre::Result<()> {
     let network = NetworkStrings::from_commands_str_whitespace(
         "
-        add-bucket .
+        add-bucket-to .
 
         fill-bucket .0 abc def
         ",
     )?;
     network.check_ser(|cmds| {
         insta::assert_snapshot!(cmds_script(cmds), @r###"
-        add-bucket .
+        add-bucket-to .
         fill-bucket .0 abc def
         "###);
     });
@@ -243,7 +243,7 @@ fn node_order_type() -> eyre::Result<()> {
             path: ".0".parse().unwrap(),
             new_order_type,
         };
-        check_rebuilds_script("add-joint .", vec![set_order_type])?;
+        check_rebuilds_script("add-joint-to .", vec![set_order_type])?;
     }
     Ok(())
 }
@@ -255,7 +255,7 @@ fn node_weight() -> eyre::Result<()> {
             path: ".0".parse().unwrap(),
             new_weight,
         };
-        check_rebuilds_script("add-joint .", vec![set_weight])?;
+        check_rebuilds_script("add-joint-to .", vec![set_weight])?;
     }
     Ok(())
 }
