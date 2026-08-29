@@ -54,32 +54,23 @@ impl std::fmt::Display for VolumePercentDelta256 {
     }
 }
 
-mod numeric {
-    //! Encapsulation boundary for the numeric limits on the volume types
-    //!
-    //! Invariants:
-    //! - [`Percent`] value is within 0 to 300 (inclusive)
+impl VolumePercent256 {
+    pub(super) const PERCENT_TO_256: f32 = (256.0 / 100.0);
+}
+impl From<VolumePercent> for VolumePercent256 {
+    fn from(percent: VolumePercent) -> Self {
+        // VolumePercent enforces bounds 0-300 (inclusive)
+        let percent = percent.value();
 
-    use super::{VolumePercent, VolumePercent256};
-
-    impl VolumePercent256 {
-        pub(super) const PERCENT_TO_256: f32 = (256.0 / 100.0);
-    }
-    impl From<VolumePercent> for VolumePercent256 {
-        fn from(percent: VolumePercent) -> Self {
-            // VolumePercent enforces bounds 0-300 (inclusive)
-            let percent = percent.value();
-
-            // result is 0-768 (inclusive), comfortably fits in u16
-            let based_256 = f32::from(percent) * Self::PERCENT_TO_256;
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "target size comfortably fits 0-768 (inclusive)"
-            )]
-            #[expect(clippy::cast_sign_loss, reason = "value is always non-negative")]
-            {
-                Self(based_256.round() as u16)
-            }
+        // result is 0-768 (inclusive), comfortably fits in u16
+        let based_256 = f32::from(percent) * Self::PERCENT_TO_256;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "target size comfortably fits 0-768 (inclusive)"
+        )]
+        #[expect(clippy::cast_sign_loss, reason = "value is always non-negative")]
+        {
+            Self(based_256.round() as u16)
         }
     }
 }
