@@ -1,6 +1,8 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Library helper for faking a `vlc` HTTP server in end-to-end integration tests
 
+#![feature(mut_restriction)]
+
 use eyre::Context as _;
 use std::{ops::ControlFlow, sync::Arc};
 
@@ -265,7 +267,9 @@ impl FakeVlc {
                 unreachable!("FakeVlc::wait_for_shutdown exceeded {WAIT_TIMEOUT:?} wait timeout");
             }
 
-            inner_shared.server.inner().unblock();
+            let SocketServer(server) = &inner_shared.server;
+            server.unblock();
+
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
@@ -296,7 +300,7 @@ pub fn create_config_file(
 impl InnerShared {
     fn recv_and_run_request(&self) -> ControlFlow<std::io::Result<()>> {
         let Self {
-            server,
+            server: SocketServer(server),
             fake_password: _, // bearer only, raw not used
             fake_password_bearer,
             inner_mut,
@@ -304,7 +308,7 @@ impl InnerShared {
             http_fail_code,
         } = self;
 
-        let request = match server.inner().recv() {
+        let request = match server.recv() {
             Ok(req) => req,
             Err(e) => {
                 let result = if e.kind() == std::io::ErrorKind::Other
@@ -458,23 +462,17 @@ mod only_socket_addr {
 
     /// Newtype wrapper around [`tiny_http::Server`] that has a socket address
     /// (not Unix domain socket)
-    pub struct SocketServer(tiny_http::Server);
+    pub struct SocketServer(pub mut(self) tiny_http::Server);
     impl SocketServer {
         pub fn http(
             bind_address: impl std::net::ToSocketAddrs,
         ) -> Result<SocketServer, Box<dyn std::error::Error + Send + Sync>> {
             tiny_http::Server::http(bind_address).map(Self)
         }
-        pub fn inner(&self) -> &tiny_http::Server {
-            let Self(server) = self;
-            server
-        }
         #[must_use]
         pub fn get_server_addr(&self) -> SocketAddr {
-            self.inner()
-                .server_addr()
-                .to_ip()
-                .expect("bound to an IP address")
+            let Self(inner) = self;
+            inner.server_addr().to_ip().expect("bound to an IP address")
         }
     }
 }
