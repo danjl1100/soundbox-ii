@@ -705,7 +705,10 @@ mod modify_cmd_ref {
 }
 
 /// Error modifying the [`Network`]
+// #[derive(thiserror::Error)]
+// #[error(transparent)]
 pub struct ModifyError(ModifyErr);
+// #[derive(Debug, thiserror::Error)]
 enum ModifyErr {
     UnknownPath(UnknownPath),
     UnknownOrderPath(order::UnknownOrderPath),
@@ -797,7 +800,7 @@ impl std::fmt::Display for UnknownPath {
 }
 
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, thiserror::Error)]
 pub struct UnknownPathRef<'a>(PathRef<'a>);
 impl UnknownPathRef<'_> {
     /// Clones to create an owned version of the error

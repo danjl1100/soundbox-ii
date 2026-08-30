@@ -320,6 +320,12 @@ criteria = "safe-to-deploy"
 delta = "0.4.8 -> 0.4.12"
 notes = "Removed build script, added unsafe that looks valid (MaybeUninit in get_disjoint_mut fn)"
 
+[[audits.syn]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.0.117 -> 3.0.4"
+notes = "A very-cursory look (almost of no value, for a dep this meta/high-level) shows no changes to soundness/capabilities surface"
+
 [[audits.sync_wrapper]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
@@ -332,11 +338,23 @@ criteria = "safe-to-deploy"
 delta = "2.0.16 -> 2.0.18"
 notes = "No changes to unsafe, no ambient capabilities used. Generated code does not appear to substantially change."
 
+[[audits.thiserror]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.0.18 -> 2.0.20"
+notes = "No material changes in crate source"
+
 [[audits.thiserror-impl]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "2.0.16 -> 2.0.18"
 notes = "No unsafe changes, only changing clippy allows generated and identifier for `__private`"
+
+[[audits.thiserror-impl]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "2.0.18 -> 2.0.20"
+notes = "No material changes to crate sources"
 
 [[audits.tokio-macros]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
