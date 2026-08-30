@@ -233,6 +233,18 @@ No unsafe, direct port of [cited std source] with `camino` optional duplication
 [cited std source]: https://github.com/rust-lang/rust/blob/e1d0de82cc40b666b88d4a6d2c9dcbc81d7ed27f/src/librustc_back/rpath.rs#L116-L158
 """
 
+[[audits.ref-cast]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "1.0.27"
+notes = "Build script is sane, no unsafe (besides unsafe trait impl) in this crate"
+
+[[audits.ref-cast-impl]]
+who = "Daniel Lambert <danjl1100@gmail.com>"
+criteria = "safe-to-deploy"
+version = "1.0.27"
+notes = "The unsafe pointer transmutes seem plausible (to the untrained eye). It is the central point of this crate, so there are no other unknown/unexpected points of unsafety. Just very narrow-scoped transmutes after several (sufficient?) static checks on the type are done."
+
 [[audits.ron]]
 who = "Daniel Lambert <danjl1100@gmail.com>"
 criteria = "safe-to-run"

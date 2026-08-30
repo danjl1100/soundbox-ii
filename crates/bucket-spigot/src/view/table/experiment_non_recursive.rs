@@ -3,7 +3,7 @@
 use super::TableParams;
 use crate::{
     Child, Trees,
-    path::PathRef,
+    path::PathSlice,
     traversal::{ControlFlow, DepthFirstVisitor, TraversalElem},
     view::{
         Cell, NodeDetails, NodeKind, Row, TableView,
@@ -118,7 +118,7 @@ struct TableBuilderVisitor<'a> {
     prev_continuation_marker_needed: Option<usize>,
 }
 impl TableBuilderVisitor<'_> {
-    fn get_depth(&self, path: PathRef<'_>) -> Option<usize> {
+    fn get_depth(&self, path: &PathSlice) -> Option<usize> {
         // if self.base_path.is_empty() {
         //     // base_path is root --> depth = path_len - 1
         //     path.len().checked_sub(self.base_path.len() + 1)
@@ -347,7 +347,7 @@ impl<T, U> DepthFirstVisitor<T, U, ViewError> for &mut TableBuilderVisitor<'_> {
     }
     fn finalize_after_children(
         &mut self,
-        path: PathRef<'_>,
+        path: &PathSlice,
         child_sum: usize,
     ) -> Result<usize, ViewError> {
         dbg!(("finalize_after_children", path, child_sum));

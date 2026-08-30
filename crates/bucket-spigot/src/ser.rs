@@ -3,7 +3,7 @@
 //! Serialize/deserialize a [`Network`] via a sequence of [`ModifyCmdRef`]s
 
 use crate::{
-    ModifyCmd, ModifyCmdRef, ModifyError, Network, order::OrderType, path::Path,
+    ModifyCmd, ModifyCmdRef, ModifyError, Network, order::OrderType, path::PathSlice,
     traversal::TraversalElem,
 };
 
@@ -165,7 +165,7 @@ impl<T, U> Network<T, U> {
             let root_order_type = self.trees.order.node().get_order_type();
             if root_order_type != OrderType::default() {
                 dest.visit(ModifyCmdRef::SetOrderType {
-                    path: Path::empty().as_ref(),
+                    path: PathSlice::empty(),
                     new_order_type: root_order_type,
                 })?;
             }

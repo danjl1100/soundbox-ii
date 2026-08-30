@@ -4,7 +4,7 @@
 //! [`Network`](`crate::Network`) topology.
 
 use super::{Order, OrderType};
-use crate::path::{Path, PathRef};
+use crate::path::{Path, PathSlice};
 use std::rc::Rc;
 
 #[derive(Clone, Default, Debug)]
@@ -19,7 +19,7 @@ impl Root {
     /// Adds a default node at the specified path.
     ///
     /// Returns the index of the new child on success.
-    pub(crate) fn add(&mut self, path: PathRef<'_>) -> Result<usize, UnknownOrderPath> {
+    pub(crate) fn add(&mut self, path: &PathSlice) -> Result<usize, UnknownOrderPath> {
         let parent = self.0.make_mut(path)?;
         let dest_children = &mut parent.children;
 
@@ -29,7 +29,7 @@ impl Root {
 
         Ok(new_index)
     }
-    pub(crate) fn remove(&mut self, path: PathRef<'_>) -> Result<(), Option<UnknownOrderPath>> {
+    pub(crate) fn remove(&mut self, path: &PathSlice) -> Result<(), Option<UnknownOrderPath>> {
         let (child_index, parent_path) = path.split_last().ok_or(None)?;
         let parent = self.0.make_mut(parent_path)?;
         let dest_children = &mut parent.children;
@@ -45,7 +45,7 @@ impl Root {
     pub(crate) fn set_order_type(
         &mut self,
         new_order_type: OrderType,
-        path: PathRef<'_>,
+        path: &PathSlice,
     ) -> Result<(), UnknownOrderPath> {
         let dest = self.0.make_mut(path)?;
 
@@ -68,7 +68,7 @@ impl Node {
     pub(crate) fn get_children(&self) -> &[Rc<Node>] {
         &self.children
     }
-    fn make_mut(&mut self, path: PathRef<'_>) -> Result<&mut Self, UnknownOrderPath> {
+    fn make_mut(&mut self, path: &PathSlice) -> Result<&mut Self, UnknownOrderPath> {
         let mut current = self;
 
         for next_index in path {
@@ -83,12 +83,6 @@ impl Node {
 }
 
 /// The specified path does not match an order-node
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("unknown order path: {0}")]
 pub struct UnknownOrderPath(pub(crate) Path);
-
-impl std::fmt::Display for UnknownOrderPath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(path) = self;
-        write!(f, "unknown order path: {path:?}")
-    }
-}

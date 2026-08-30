@@ -1,6 +1,8 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Location-dependent identifier for nodes
 
+pub use self::path_slice::PathSlice;
+
 use serde::Deserialize;
 use std::str::FromStr;
 
@@ -12,42 +14,16 @@ const DELIMITER: &str = ".";
 #[must_use]
 pub struct Path(
     #[serde(
-        serialize_with = "path_elems_serialize",
+        serialize_with = "path_slice::path_elems_serialize",
         deserialize_with = "path_elems_deserialize"
     )]
     Vec<usize>,
 );
 
-/// Borrow of a [`Path`]
-#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(transparent)]
-#[allow(clippy::module_name_repetitions, reason = "re-export name fits")]
-pub struct PathRef<'a>(#[serde(serialize_with = "path_elems_serialize")] &'a [usize]);
-
 impl Path {
     /// Constructs an empty [`Path`]
     pub const fn empty() -> Self {
         Self(vec![])
-    }
-    /// Borrows the path
-    #[must_use]
-    pub fn as_ref(&self) -> PathRef<'_> {
-        let Self(elems) = self;
-        PathRef(elems)
-    }
-    /// Returns an iterator for path elements
-    pub fn iter(&self) -> Iter<'_> {
-        self.as_ref().into_iter()
-    }
-    /// Returns the length of the path
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.as_ref().len()
-    }
-    /// Returns whether the path is empty
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.as_ref().is_empty()
     }
     /// Appends a path element
     pub fn push(&mut self, elem: usize) {
@@ -60,7 +36,7 @@ impl Path {
     /// Modify the path as-if the specified path was removed from the network
     ///
     /// e.g. If this path is a "greater" sibling of the removed path, then decrement this path
-    pub(crate) fn modify_for_removed(&mut self, removed: PathRef<'_>) -> Result<(), RemovedSelf> {
+    pub(crate) fn modify_for_removed(&mut self, removed: &PathSlice) -> Result<(), RemovedSelf> {
         use std::cmp::Ordering;
 
         let mut this = self.0.iter_mut().peekable();
@@ -99,39 +75,90 @@ impl FromIterator<usize> for Path {
     }
 }
 
-impl PathRef<'static> {
-    /// Constructs an immutable reference to the root path
-    ///
-    /// NOTE: Must [convert to owned](`PathRef::to_owned`) to append elements
-    #[allow(clippy::must_use_candidate, reason = "does not allocate")]
-    pub const fn empty() -> Self {
-        Self(&[])
+mod path_slice {
+    use super::{Iter, Path};
+
+    /// Borrow of a [`Path`], only usable as `&PathSlice`
+    #[derive(PartialEq, Eq, ref_cast::RefCastCustom, serde::Serialize)]
+    #[repr(transparent)]
+    #[serde(transparent)]
+    pub struct PathSlice(#[serde(serialize_with = "path_elems_serialize")] [usize]);
+    impl PathSlice {
+        #[ref_cast::ref_cast_custom]
+        const fn new(path: &[usize]) -> &Self;
+
+        /// Reference to the empty [`Path`]
+        #[must_use]
+        pub const fn empty() -> &'static Self {
+            Self::new(&[])
+        }
+
+        /// Iterates the path elements
+        pub fn iter(&self) -> Iter<'_> {
+            Iter(self.0.iter())
+        }
+
+        /// Returns the length of the path
+        #[must_use]
+        pub fn len(&self) -> usize {
+            self.0.len()
+        }
+        /// Returns whether the path is empty
+        #[must_use]
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
+        }
+        /// Returns the last element and the rest (if any)
+        #[must_use]
+        pub fn split_last(&self) -> Option<(usize, &Self)> {
+            let (&last, rest) = self.0.split_last()?;
+            Some((last, Self::new(rest)))
+        }
+
+        /// Clones the reference into an owned [`Path`]
+        pub fn to_owned(&self) -> Path {
+            Path(self.0.to_vec())
+        }
+    }
+    impl Path {
+        // NOT ABLE TO BE CONST: impl AsRef<PathSlice> for Path {
+        /// Creates a [`PathSlice`] reference
+        #[must_use]
+        const fn as_slice(&self) -> &PathSlice {
+            PathSlice::new(self.0.as_slice())
+        }
+    }
+    impl std::ops::Deref for Path {
+        type Target = PathSlice;
+        fn deref(&self) -> &Self::Target {
+            self.as_slice()
+        }
+    }
+
+    /// serialize slice of usize as if it were inside a [`Path`]
+    pub(super) fn path_elems_serialize<S>(value: &[usize], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(PathSlice::new(value))
     }
 }
-impl<'a> PathRef<'a> {
-    /// Returns an iterator for path elements
-    pub fn iter(self) -> Iter<'a> {
-        self.into_iter()
-    }
-    /// Returns the length of the path
-    #[must_use]
-    pub fn len(self) -> usize {
-        self.0.len()
-    }
-    /// Returns whether the path is empty
-    #[must_use]
-    pub fn is_empty(self) -> bool {
-        self.0.is_empty()
-    }
-    /// Returns the last element and the rest (if any)
-    #[must_use]
-    pub fn split_last(self) -> Option<(usize, Self)> {
-        let (&last, rest) = self.0.split_last()?;
-        Some((last, Self(rest)))
-    }
-    /// Clones the inner [`Path`]
-    pub fn to_owned(self) -> Path {
-        Path(self.0.to_vec())
+/// deserialize a Vec of usize as if it were inside a [`Path`]
+fn path_elems_deserialize<'de, D>(deserializer: D) -> Result<Vec<usize>, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    let input = <&str>::deserialize(deserializer)?;
+    Path::from_str(input)
+        .map(|Path(elems)| elems)
+        .map_err(serde::de::Error::custom)
+}
+
+impl<'a> IntoIterator for &'a PathSlice {
+    type IntoIter = Iter<'a>;
+    type Item = usize;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -143,21 +170,6 @@ impl Iterator for Iter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(iter) = self;
         iter.next().copied()
-    }
-}
-impl<'a> IntoIterator for &'a Path {
-    type Item = usize;
-    type IntoIter = Iter<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.as_ref().into_iter()
-    }
-}
-impl<'a> IntoIterator for PathRef<'a> {
-    type Item = usize;
-    type IntoIter = Iter<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        let Self(elems) = self;
-        Iter(elems.iter())
     }
 }
 
@@ -189,13 +201,13 @@ impl FromStr for Path {
 
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <PathRef as std::fmt::Display>::fmt(&self.as_ref(), f)
+        <PathSlice as std::fmt::Display>::fmt(self, f)
     }
 }
-impl std::fmt::Display for PathRef<'_> {
+impl std::fmt::Display for PathSlice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(elems) = *self;
-        if elems.is_empty() {
+        let mut elems = self.iter().peekable();
+        if elems.peek().is_none() {
             write!(f, "{DELIMITER}")
         } else {
             for elem in elems {
@@ -210,9 +222,9 @@ impl std::fmt::Debug for Path {
         write!(f, "Path({self})")
     }
 }
-impl std::fmt::Debug for PathRef<'_> {
+impl std::fmt::Debug for PathSlice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PathRef({self})")
+        write!(f, "PathSlice({self})")
     }
 }
 
@@ -253,22 +265,3 @@ impl From<ErrorInner> for Error {
 /// Error modifying a path: the removed path matches self
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct RemovedSelf;
-
-/// serialize slice of usize as if it were inside a [`Path`]
-fn path_elems_serialize<S>(value: &[usize], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.collect_str(&PathRef(value))
-}
-
-/// deserialize a Vec of usize as if it were inside a [`Path`]
-fn path_elems_deserialize<'de, D>(deserializer: D) -> Result<Vec<usize>, D::Error>
-where
-    D: serde::de::Deserializer<'de>,
-{
-    let input = <&str>::deserialize(deserializer)?;
-    Path::from_str(input)
-        .map(|Path(elems)| elems)
-        .map_err(serde::de::Error::custom)
-}

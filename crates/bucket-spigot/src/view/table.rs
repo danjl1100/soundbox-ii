@@ -5,7 +5,7 @@ use crate::{
     Child, Network,
     child_vec::{ChildVec, Weights},
     order::OrderNode,
-    path::{Path, PathRef},
+    path::{Path, PathSlice},
 };
 use std::{ops::ControlFlow, rc::Rc};
 
@@ -319,7 +319,7 @@ pub struct TableParams<'a> {
     max_depth: Option<u32>,
     max_width: Option<u32>,
     max_node_count: Option<u32>,
-    base_path: PathRef<'a>,
+    base_path: &'a PathSlice,
 }
 impl TableParamsOwned {
     /// Returns a reference version of the owned fields
@@ -334,7 +334,7 @@ impl TableParamsOwned {
             max_depth,
             max_width,
             max_node_count,
-            base_path: base_path.as_ref(),
+            base_path,
         }
     }
     // Modify functions for non-`Copy` types only
@@ -360,11 +360,11 @@ impl<'a> TableParams<'a> {
         self
     }
     /// Sets base [`Path`]
-    pub fn set_base_path(mut self, base_path: PathRef<'a>) -> Self {
+    pub fn set_base_path(mut self, base_path: &'a PathSlice) -> Self {
         self.base_path = base_path;
         self
     }
-    /// Returns an owned version of the fields (cloning [`PathRef`] if any is set)
+    /// Returns an owned version of the fields (cloning [`PathSlice`] if any is set)
     #[must_use]
     pub fn to_owned(self) -> TableParamsOwned {
         let Self {
@@ -414,7 +414,7 @@ impl Default for TableParams<'_> {
             max_depth: None,
             max_width: None,
             max_node_count: None,
-            base_path: PathRef::empty(),
+            base_path: PathSlice::empty(),
         }
     }
 }

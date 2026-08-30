@@ -362,13 +362,13 @@ fn delete_empty_bucket() -> eyre::Result<()> {
         get-bucket-path 1234567890
         ",
     )?;
-    insta::assert_ron_snapshot!(log, @r###"
+    insta::assert_ron_snapshot!(log, @r#"
     Log([
       BucketsNeedingFill("modify add-bucket-to .", [
         ".0",
       ]),
       BucketsNeedingFill("modify fill-bucket .0 abc def"),
-      ExpectError("modify delete-empty .0", "cannot delete non-empty bucket: Path(.0)"),
+      ExpectError("modify delete-empty .0", "cannot delete non-empty bucket: .0"),
       BucketsNeedingFill("modify fill-bucket .0"),
       Topology([]),
       InternalStats(BucketPathsMap(
@@ -377,7 +377,7 @@ fn delete_empty_bucket() -> eyre::Result<()> {
       )),
       ExpectError("get-bucket-path 1234567890", "unknown bucket id: 1234567890"),
     ])
-    "###);
+    "#);
     Ok(())
 }
 #[test]
@@ -394,11 +394,11 @@ fn delete_empty_joint() -> eyre::Result<()> {
         modify delete-empty .0
         ",
     )?;
-    insta::assert_ron_snapshot!(log, @r###"
+    insta::assert_ron_snapshot!(log, @r#"
     Log([
-      ExpectError("modify delete-empty .0", "cannot delete non-empty joint: Path(.0)"),
+      ExpectError("modify delete-empty .0", "cannot delete non-empty joint: .0"),
     ])
-    "###);
+    "#);
     Ok(())
 }
 
@@ -690,7 +690,7 @@ fn delete_from_arbitrary_network() {
                 Ok(()) => {
                     // shift down the affected entries
                     for p in &mut paths {
-                        p.modify_for_removed(path.as_ref())
+                        p.modify_for_removed(&path)
                             .unwrap_or_else(|_: RemovedSelf| {
                                 panic!("removed path {path} should already be removed from paths")
                             });

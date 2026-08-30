@@ -378,7 +378,7 @@ mod network_cmd_lines {
         ///
         /// # Example
         /// ```
-        /// use bucket_spigot::{Network, path::Path};
+        /// use bucket_spigot::{Network, path::{Path, PathSlice}};
         /// let network: Network<String, String> = Network::from_commands_str_whitespace(
         ///     "
         ///     add-joint-to .
@@ -389,7 +389,7 @@ mod network_cmd_lines {
         /// ).unwrap();
         ///
         /// let bucket_path: Path = ".0.0".parse().unwrap();
-        /// let bucket_path = bucket_path.as_ref();
+        /// let bucket_path: &PathSlice = &bucket_path;
         ///
         /// let expected_filters = vec!["filter".to_string(), "values".to_string()];
         /// assert_eq!(network.get_filters(bucket_path).unwrap(), &[&expected_filters]);

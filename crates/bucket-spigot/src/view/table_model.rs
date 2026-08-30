@@ -2,7 +2,7 @@
 
 use crate::{
     order::OrderType,
-    path::{Path, PathRef},
+    path::{Path, PathSlice},
 };
 
 #[cfg(all(test, feature = "ts-rs"))]
@@ -144,8 +144,8 @@ impl Cell {
 impl NodeDetails {
     /// Returns the path of the node
     #[must_use]
-    pub fn get_path(&self) -> PathRef<'_> {
-        self.path.as_ref()
+    pub fn get_path(&self) -> &PathSlice {
+        &self.path
     }
     /// Returns `true` if the node is reachable from the spigot root
     #[must_use]

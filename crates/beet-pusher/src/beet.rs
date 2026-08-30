@@ -60,19 +60,19 @@ pub fn fill_buckets<U: BeetRunner>(
 pub fn get_bucket_fill_needs(
     spigot: &mut bucket_spigot::Network<BeetItem, String>,
 ) -> impl Iterator<Item = BucketQueryNeed> + use<'_> {
-    use bucket_spigot::path::PathRef;
+    use bucket_spigot::path::PathSlice;
 
     // NOTE: The intermediate `collect` is needed because:
     // 1. get_buckets_needing_fill requires `&mut Network` to update an internal cache
     let buckets: Vec<_> = spigot
         .get_buckets_needing_fill()
-        .map(PathRef::to_owned)
+        .map(PathSlice::to_owned)
         .collect();
 
     // 2. get_filters requires `&Network`
     buckets.into_iter().map(|bucket| {
         let filters = spigot
-            .get_filters(bucket.as_ref())
+            .get_filters(&bucket)
             .expect("path should be valid for bucket needing fill")
             .into_iter()
             .flat_map(|filter_set| filter_set.iter().cloned())

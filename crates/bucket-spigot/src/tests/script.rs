@@ -5,10 +5,10 @@ use super::{
     fake_rng,
 };
 use crate::{
-    BucketId, ModifyCmd, ModifyError, Network,
+    BucketId, ModifyCmd, ModifyErr, ModifyError, Network, UnknownPathSlice,
     bucket_paths_map::BucketPathsMap,
     clap::ModifyCmd as ClapModifyCmd,
-    path::{Path, PathRef},
+    path::{Path, PathSlice},
 };
 use ::clap::Parser as _;
 use arbitrary::Unstructured;
@@ -236,7 +236,7 @@ where
                 let entry = if output_buckets {
                     let mut buckets: Vec<_> = self
                         .get_buckets_needing_fill()
-                        .map(PathRef::to_owned)
+                        .map(PathSlice::to_owned)
                         .collect();
                     buckets.sort();
                     Some(Entry::BucketsNeedingFill(command_str.to_owned(), buckets))
@@ -247,7 +247,9 @@ where
             }
             Command::GetFilters { path } => {
                 let filters = self
-                    .get_filters(path.as_ref())
+                    .get_filters(&path)
+                    .map_err(UnknownPathSlice::to_owned)
+                    .map_err(ModifyErr::from)
                     .map_err(ModifyError::from)
                     .map_err(Kind::Modify)?;
                 let filters = filters
@@ -260,6 +262,7 @@ where
                 let bucket_id = BucketId(bucket_id);
                 let path = self
                     .find_bucket_path(bucket_id)
+                    .map_err(ModifyErr::from)
                     .map_err(ModifyError::from)
                     .map_err(Kind::Modify)?
                     .to_owned();

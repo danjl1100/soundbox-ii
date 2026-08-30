@@ -2,7 +2,7 @@
 
 use crate::{UnknownPath, order::UnknownOrderPath};
 
-/// Error modifying the [`Network`]
+/// Error viewing the [`Network`]
 pub struct ViewError(ViewErr);
 enum ViewErr {
     UnknownPath(UnknownPath),

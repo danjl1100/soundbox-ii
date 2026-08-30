@@ -18,10 +18,12 @@
 //! walking from the spigot (root node) to the bucket.
 //!
 
-use crate::traversal::ChildFound;
+use crate::{
+    path::{Path, PathSlice},
+    traversal::ChildFound,
+};
 use bucket_paths_map::BucketPathsMap;
 use child_vec::{ChildVec, Weights};
-use path::{Path, PathRef};
 
 mod child_vec;
 pub mod clap;
@@ -126,9 +128,7 @@ impl<T, U> Network<T, U> {
             ModifyCmd::FillBucket {
                 bucket,
                 new_contents,
-            } => self
-                .set_bucket_items(new_contents, bucket.as_ref())
-                .map(|()| None),
+            } => self.set_bucket_items(new_contents, &bucket).map(|()| None),
             ModifyCmd::SetFilters { path, new_filters } => {
                 self.set_filters(new_filters, path).map(|()| None)
             }
@@ -141,14 +141,15 @@ impl<T, U> Network<T, U> {
             } => Ok(self
                 .trees
                 .order
-                .set_order_type(new_order_type, path.as_ref())?)
+                .set_order_type(new_order_type, &path)
+                .map_err(ModifyErr::from)?)
             .map(|()| None),
         };
 
         #[cfg(test)]
         self.trees.assert_topologies_match();
 
-        result
+        result.map_err(ModifyError::from)
     }
     fn new_bucket(&mut self) -> Bucket<T, U> {
         let id = self.bucket_id_counter;
@@ -159,11 +160,11 @@ impl<T, U> Network<T, U> {
     ///
     /// # Errors
     /// Returns an error if the bucket id does not match any live bucket nodes
-    pub fn find_bucket_path(&mut self, id: BucketId) -> Result<PathRef<'_>, UnknownBucketId> {
+    pub fn find_bucket_path(&mut self, id: BucketId) -> Result<&PathSlice, UnknownBucketId> {
         self.bucket_paths.get_cached(id).ok_or(UnknownBucketId(id))
     }
     /// Returns the paths to buckets needing to be filled (e.g. filters may have changed)
-    pub fn get_buckets_needing_fill(&mut self) -> impl Iterator<Item = PathRef<'_>> {
+    pub fn get_buckets_needing_fill(&mut self) -> impl Iterator<Item = &PathSlice> {
         // pre-populate cache
         if self.bucket_paths.is_cache_missing_any_need_fill() {
             // effort to cache 1 item is not significantly different from refreshing entire cache
@@ -187,21 +188,18 @@ impl<T, U> Network<T, U> {
     /// # Errors
     ///
     /// Returns an error if the path is unknown
-    pub fn get_filters(&self, path: PathRef<'_>) -> Result<Vec<&[U]>, UnknownPath> {
+    pub fn get_filters<'a>(&self, path: &'a PathSlice) -> Result<Vec<&[U]>, &'a UnknownPathSlice> {
         let mut filter_groups = Vec::new();
 
-        self.trees
-            .item
-            .for_each_direct_child(path, |child| {
-                let filters = match child {
-                    Child::Bucket(bucket) => &bucket.filters,
-                    Child::Joint(joint) => &joint.filters,
-                };
-                if !filters.is_empty() {
-                    filter_groups.push(&filters[..]);
-                }
-            })
-            .map_err(UnknownPathRef::to_owned)?;
+        self.trees.item.for_each_direct_child(path, |child| {
+            let filters = match child {
+                Child::Bucket(bucket) => &bucket.filters,
+                Child::Joint(joint) => &joint.filters,
+            };
+            if !filters.is_empty() {
+                filter_groups.push(&filters[..]);
+            }
+        })?;
 
         Ok(filter_groups)
     }
@@ -213,8 +211,8 @@ impl<T, U> Network<T, U> {
     /// Returns an error if the specified path is invalid
     fn count_direct_child_nodes_of<'a>(
         &self,
-        path: PathRef<'a>,
-    ) -> Result<Option<usize>, UnknownPathRef<'a>> {
+        path: &'a PathSlice,
+    ) -> Result<Option<usize>, &'a UnknownPathSlice> {
         let (children, _found) = self.trees.item.for_each_direct_child(path, |_| {})?;
 
         let child_node_count = children.map(child_vec::ChildVec::len);
@@ -231,17 +229,17 @@ impl<T, U> Network<T, U> {
         total_count
     }
 
-    fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyError> {
-        let dest = self.trees.item.find_child_mut(parent_path.as_ref());
+    fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyErr> {
+        let dest = self.trees.item.find_child_mut(&parent_path);
         let dest = match dest {
             Ok(ChildFound::RootChildren(child_vec)) => child_vec,
             Ok(ChildFound::Joint(joint)) => &mut joint.next,
             Ok(ChildFound::Bucket(_)) => return Err(CannotAddToBucket(parent_path).into()),
-            Err(UnknownPathRef(_)) => return Err(UnknownPath(parent_path).into()),
+            Err(UnknownPathSlice(_)) => return Err(UnknownPath(parent_path).into()),
         };
 
         // add order for child (fails if node/order structures are not identical)
-        let child_index = self.trees.order.add(parent_path.as_ref())?;
+        let child_index = self.trees.order.add(&parent_path)?;
 
         let child_index_expected = dest.len();
         assert_eq!(
@@ -267,22 +265,21 @@ impl<T, U> Network<T, U> {
 
         // queue for refilling new bucket
         if let Some(bucket_id) = bucket_id {
-            self.bucket_paths
-                .add_needs_fill(bucket_id, child_path.as_ref());
+            self.bucket_paths.add_needs_fill(bucket_id, &child_path);
         }
 
         Ok(child_path)
     }
-    fn delete_empty(&mut self, path: Path) -> Result<(), ModifyError> {
-        let Some((final_index, parent_path)) = path.as_ref().split_last() else {
-            return Err(ModifyErr::DeleteRoot.into());
+    fn delete_empty(&mut self, path: Path) -> Result<(), ModifyErr> {
+        let Some((final_index, parent_path)) = path.split_last() else {
+            return Err(ModifyErr::DeleteRoot);
         };
 
         let dest = self.trees.item.find_child_mut(parent_path);
         let dest = match dest {
             Ok(ChildFound::RootChildren(child_vec)) => child_vec,
             Ok(ChildFound::Joint(joint)) => &mut joint.next,
-            Ok(ChildFound::Bucket(_)) | Err(UnknownPathRef(_)) => {
+            Ok(ChildFound::Bucket(_)) | Err(UnknownPathSlice(_)) => {
                 return Err(UnknownPath(path).into());
             }
         };
@@ -293,16 +290,16 @@ impl<T, U> Network<T, U> {
 
         match target_elem_items {
             Child::Bucket(bucket) if !bucket.items.is_empty() => {
-                return Err(ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)).into());
+                return Err(ModifyErr::DeleteNonemptyBucket(path));
             }
             Child::Joint(joint) if !joint.next.is_empty() => {
-                return Err(ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)).into());
+                return Err(ModifyErr::DeleteNonemptyJoint(path));
             }
             Child::Bucket(_) | Child::Joint(_) => {}
         }
 
         // remove order first, in case it errors
-        self.trees.order.remove(path.as_ref()).map_err(|err| {
+        self.trees.order.remove(&path).map_err(|err| {
             err.unwrap_or_else(|| {
                 unreachable!(
                     "DeleteRoot error from order should be detected when checking item nodes"
@@ -318,16 +315,15 @@ impl<T, U> Network<T, U> {
         dest.remove(final_index);
 
         // update the cache for the removed node path
-        self.bucket_paths
-            .update_for_removed_path(path.as_ref(), bucket_id);
+        self.bucket_paths.update_for_removed_path(&path, bucket_id);
 
         Ok(())
     }
     fn set_bucket_items(
         &mut self,
         new_contents: Vec<T>,
-        bucket_path: PathRef<'_>,
-    ) -> Result<(), ModifyError> {
+        bucket_path: &PathSlice,
+    ) -> Result<(), ModifyErr> {
         let dest_bucket = match self.trees.item.find_bucket_mut(bucket_path) {
             Ok(Some(bucket)) => bucket,
             Ok(None) => Err(ModifyErr::FillJoint)?,
@@ -339,13 +335,13 @@ impl<T, U> Network<T, U> {
 
         Ok(())
     }
-    fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyError> {
-        let dest = self.trees.item.find_child_mut(path.as_ref());
+    fn set_filters(&mut self, new_filters: Vec<U>, path: Path) -> Result<(), ModifyErr> {
+        let dest = self.trees.item.find_child_mut(&path);
         let (dest_filters, needs_fill_info) = match dest {
             Ok(ChildFound::RootChildren(_)) => Err(ModifyErr::FilterRoot)?,
             Ok(ChildFound::Joint(joint)) => (&mut joint.filters, Ok(&joint.next)),
             Ok(ChildFound::Bucket(bucket)) => (&mut bucket.filters, Err(bucket.id)),
-            Err(UnknownPathRef(_)) => return Err(UnknownPath(path).into()),
+            Err(UnknownPathSlice(_)) => return Err(UnknownPath(path).into()),
         };
 
         *dest_filters = new_filters;
@@ -364,21 +360,21 @@ impl<T, U> Network<T, U> {
             }
             Err(bucket_id) => {
                 // target is bucket
-                self.bucket_paths.add_needs_fill(bucket_id, path.as_ref());
+                self.bucket_paths.add_needs_fill(bucket_id, &path);
             }
         }
 
         Ok(())
     }
-    fn set_weight(&mut self, new_weight: u32, path: Path) -> Result<(), ModifyError> {
-        let Some((last_index, parent_path)) = path.as_ref().split_last() else {
-            return Err(ModifyErr::WeightRoot.into());
+    fn set_weight(&mut self, new_weight: u32, path: Path) -> Result<(), ModifyErr> {
+        let Some((last_index, parent_path)) = path.split_last() else {
+            return Err(ModifyErr::WeightRoot);
         };
         let dest = self.trees.item.find_child_mut(parent_path);
         let dest = match dest {
             Ok(ChildFound::RootChildren(child_vec)) => child_vec,
             Ok(ChildFound::Joint(joint)) => &mut joint.next,
-            Ok(ChildFound::Bucket(_)) | Err(UnknownPathRef(_)) => {
+            Ok(ChildFound::Bucket(_)) | Err(UnknownPathSlice(_)) => {
                 return Err(UnknownPath(path).into());
             }
         };
@@ -414,7 +410,7 @@ impl<T, U> Network<T, U> {
 mod bucket_paths_map {
     use crate::{
         BucketId,
-        path::{Path, PathRef},
+        path::{Path, PathSlice},
     };
     use std::collections::{HashMap, HashSet};
 
@@ -434,7 +430,7 @@ mod bucket_paths_map {
         pub(super) fn iter_needs_fill(&self) -> impl Iterator<Item = BucketId> + '_ {
             self.ids_needing_fill.iter().copied()
         }
-        pub(super) fn add_needs_fill(&mut self, id: BucketId, path: PathRef<'_>) {
+        pub(super) fn add_needs_fill(&mut self, id: BucketId, path: &PathSlice) {
             self.ids_needing_fill.insert(id);
             self.add_cached(id, path);
         }
@@ -443,7 +439,7 @@ mod bucket_paths_map {
         }
         pub(super) fn update_for_removed_path(
             &mut self,
-            removed_path: PathRef<'_>,
+            removed_path: &PathSlice,
             removed_bucket_id: Option<BucketId>,
         ) {
             let Self {
@@ -459,16 +455,16 @@ mod bucket_paths_map {
                     .expect("removed bucket path should already be removed from the path cache");
             }
         }
-        pub(super) fn add_cached(&mut self, id: BucketId, path: PathRef<'_>) {
+        pub(super) fn add_cached(&mut self, id: BucketId, path: &PathSlice) {
             match self.cached_paths.get(&id) {
-                Some(existing) if existing.as_ref() == path => {}
+                Some(existing) if &**existing == path => {}
                 _ => {
                     self.cached_paths.insert(id, path.to_owned());
                 }
             }
         }
-        pub(super) fn get_cached(&self, id: BucketId) -> Option<PathRef<'_>> {
-            self.cached_paths.get(&id).map(Path::as_ref)
+        pub(super) fn get_cached(&self, id: BucketId) -> Option<&PathSlice> {
+            self.cached_paths.get(&id).map(|v| &**v)
         }
 
         #[cfg(test)]
@@ -580,7 +576,7 @@ pub enum ModifyCmd<T, U> {
 }
 pub use modify_cmd_ref::ModifyCmdRef;
 mod modify_cmd_ref {
-    use crate::{ModifyCmd, order, path::PathRef};
+    use crate::{ModifyCmd, order, path::PathSlice};
 
     /// Reference to a [`ModifyCmd`]
     ///
@@ -591,28 +587,28 @@ mod modify_cmd_ref {
     #[must_use]
     pub enum ModifyCmdRef<'a, T, U> {
         AddBucketTo {
-            parent: PathRef<'a>,
+            parent: &'a PathSlice,
         },
         AddJointTo {
-            parent: PathRef<'a>,
+            parent: &'a PathSlice,
         },
         DeleteEmpty {
-            path: PathRef<'a>,
+            path: &'a PathSlice,
         },
         FillBucket {
-            bucket: PathRef<'a>,
+            bucket: &'a PathSlice,
             new_contents: &'a [T],
         },
         SetFilters {
-            path: PathRef<'a>,
+            path: &'a PathSlice,
             new_filters: &'a [U],
         },
         SetWeight {
-            path: PathRef<'a>,
+            path: &'a PathSlice,
             new_weight: u32,
         },
         SetOrderType {
-            path: PathRef<'a>,
+            path: &'a PathSlice,
             new_order_type: order::OrderType,
         },
     }
@@ -625,35 +621,28 @@ mod modify_cmd_ref {
     impl<'a, T, U> From<&'a ModifyCmd<T, U>> for ModifyCmdRef<'a, T, U> {
         fn from(value: &'a ModifyCmd<T, U>) -> Self {
             match value {
-                ModifyCmd::AddBucketTo { parent } => Self::AddBucketTo {
-                    parent: parent.as_ref(),
-                },
-                ModifyCmd::AddJointTo { parent } => Self::AddJointTo {
-                    parent: parent.as_ref(),
-                },
-                ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty {
-                    path: path.as_ref(),
-                },
+                ModifyCmd::AddBucketTo { parent } => Self::AddBucketTo { parent },
+                ModifyCmd::AddJointTo { parent } => Self::AddJointTo { parent },
+                ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty { path },
                 ModifyCmd::FillBucket {
                     bucket,
                     new_contents,
                 } => Self::FillBucket {
-                    bucket: bucket.as_ref(),
+                    bucket,
                     new_contents,
                 },
-                ModifyCmd::SetFilters { path, new_filters } => Self::SetFilters {
-                    path: path.as_ref(),
-                    new_filters,
-                },
+                ModifyCmd::SetFilters { path, new_filters } => {
+                    Self::SetFilters { path, new_filters }
+                }
                 ModifyCmd::SetWeight { path, new_weight } => Self::SetWeight {
-                    path: path.as_ref(),
+                    path,
                     new_weight: *new_weight,
                 },
                 ModifyCmd::SetOrderType {
                     path,
                     new_order_type,
                 } => Self::SetOrderType {
-                    path: path.as_ref(),
+                    path,
                     new_order_type: *new_order_type,
                 },
             }
@@ -664,7 +653,7 @@ mod modify_cmd_ref {
         T: Clone,
         U: Clone,
     {
-        /// Converts the inner [`PathRef`] to an owned path (if any)
+        /// Converts the inner [`PathSlice`] to an owned path (if any)
         #[must_use]
         pub fn to_owned(self) -> ModifyCmd<T, U> {
             match self {
@@ -705,77 +694,32 @@ mod modify_cmd_ref {
 }
 
 /// Error modifying the [`Network`]
-// #[derive(thiserror::Error)]
-// #[error(transparent)]
-pub struct ModifyError(ModifyErr);
-// #[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
+#[error(transparent)]
+pub struct ModifyError(#[from] ModifyErr);
+#[derive(Debug, thiserror::Error)]
 enum ModifyErr {
-    UnknownPath(UnknownPath),
-    UnknownOrderPath(order::UnknownOrderPath),
-    UnknownBucketId(UnknownBucketId),
-    AddToBucket(CannotAddToBucket),
-    DeleteRoot,
-    DeleteNonemptyBucket(CannotDeleteNonempty),
-    DeleteNonemptyJoint(CannotDeleteNonempty),
-    FilterRoot,
-    FillJoint,
-    WeightRoot,
-}
-impl From<UnknownPath> for ModifyError {
-    fn from(value: UnknownPath) -> Self {
-        Self(ModifyErr::UnknownPath(value))
-    }
-}
-impl From<order::UnknownOrderPath> for ModifyError {
-    fn from(value: order::UnknownOrderPath) -> Self {
-        Self(ModifyErr::UnknownOrderPath(value))
-    }
-}
-impl From<UnknownBucketId> for ModifyError {
-    fn from(value: UnknownBucketId) -> Self {
-        Self(ModifyErr::UnknownBucketId(value))
-    }
-}
-impl From<CannotAddToBucket> for ModifyError {
-    fn from(value: CannotAddToBucket) -> Self {
-        Self(ModifyErr::AddToBucket(value))
-    }
-}
-impl From<ModifyErr> for ModifyError {
-    fn from(value: ModifyErr) -> Self {
-        Self(value)
-    }
-}
+    #[error(transparent)]
+    UnknownPath(#[from] UnknownPath),
+    #[error(transparent)]
+    UnknownOrderPath(#[from] order::UnknownOrderPath),
+    #[error(transparent)]
+    UnknownBucketId(#[from] UnknownBucketId),
+    #[error(transparent)]
+    AddToBucket(#[from] CannotAddToBucket),
 
-impl std::error::Error for ModifyError {}
-impl std::fmt::Display for ModifyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(inner) = self;
-        match inner {
-            ModifyErr::UnknownPath(err) => write!(f, "{err}"),
-            ModifyErr::UnknownOrderPath(err) => {
-                write!(f, "{err}")
-            }
-            ModifyErr::UnknownBucketId(err) => {
-                write!(f, "{err}")
-            }
-            ModifyErr::AddToBucket(CannotAddToBucket(path)) => {
-                write!(f, "cannot add to bucket: {path:?}")
-            }
-            ModifyErr::DeleteRoot => write!(f, "cannot delete the spigot (root node)"),
-            ModifyErr::DeleteNonemptyBucket(CannotDeleteNonempty(path)) => {
-                write!(f, "cannot delete non-empty bucket: {path:?}")
-            }
-            ModifyErr::DeleteNonemptyJoint(CannotDeleteNonempty(path)) => {
-                write!(f, "cannot delete non-empty joint: {path:?}")
-            }
-            ModifyErr::FilterRoot => write!(f, "cannot filter the spigot (root node)"),
-            ModifyErr::FillJoint => {
-                write!(f, "cannot fill joint (only buckets have items)")
-            }
-            ModifyErr::WeightRoot => write!(f, "cannot weight the spigot (root node)"),
-        }
-    }
+    #[error("cannot delete non-empty bucket: {0}")]
+    DeleteNonemptyBucket(Path),
+    #[error("cannot delete non-empty joint: {0}")]
+    DeleteNonemptyJoint(Path),
+    #[error("cannot delete the spigot (root node)")]
+    DeleteRoot,
+    #[error("cannot filter the spigot (root node)")]
+    FilterRoot,
+    #[error("cannot fill joint (only buckets have items)")]
+    FillJoint,
+    #[error("cannot weight the spigot (root node)")]
+    WeightRoot,
 }
 impl std::fmt::Debug for ModifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -784,51 +728,38 @@ impl std::fmt::Debug for ModifyError {
 }
 
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub struct UnknownPath(Path);
-impl UnknownPath {
-    /// Returns an error with a reference to the inner [`Path`]
-    #[must_use]
-    pub fn as_ref(&self) -> UnknownPathRef<'_> {
-        UnknownPathRef(self.0.as_ref())
-    }
-}
 impl std::fmt::Display for UnknownPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.as_ref().fmt(f)
+        UnknownPathSlice::new(&self.0).fmt(f)
     }
 }
 
 /// The specified path does not match a node (any of the joints, buckets, or root spigot)
-#[derive(Clone, Copy, Debug, thiserror::Error)]
-pub struct UnknownPathRef<'a>(PathRef<'a>);
-impl UnknownPathRef<'_> {
+#[derive(Debug, thiserror::Error, ref_cast::RefCastCustom)]
+#[repr(transparent)]
+#[error("unknown path: {0}")]
+pub struct UnknownPathSlice(PathSlice);
+impl UnknownPathSlice {
+    #[ref_cast::ref_cast_custom]
+    fn new(path: &PathSlice) -> &Self;
+
     /// Clones to create an owned version of the error
-    fn to_owned(self) -> UnknownPath {
+    fn to_owned(&self) -> UnknownPath {
         UnknownPath(self.0.to_owned())
-    }
-}
-impl std::fmt::Display for UnknownPathRef<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(path) = self;
-        write!(f, "unknown path: {path}")
     }
 }
 
 /// The specified bucket id does not match any bucket
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+#[error("unknown bucket id: {}", .0.0)]
 pub struct UnknownBucketId(BucketId);
-impl std::fmt::Display for UnknownBucketId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self(BucketId(id)) = self;
-        write!(f, "unknown bucket id: {id}")
-    }
-}
 
 /// Buckets cannot have filters or child joints or buckets
+#[derive(Debug, thiserror::Error)]
+#[error("cannot add to bucket: {0}")]
 pub(crate) struct CannotAddToBucket(Path);
-/// Only allowed to delete empty joints or buckets
-pub(crate) struct CannotDeleteNonempty(Path);
 
 #[cfg(test)]
 #[allow(clippy::panic)] // TODO use actual error handling for tests, `eyre` prints good details!

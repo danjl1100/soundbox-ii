@@ -5,15 +5,15 @@ use self::{
     simple_visitor::SimpleVisitor,
 };
 use crate::{
-    Bucket, Child, Joint, Trees, UnknownPath, UnknownPathRef,
+    Bucket, Child, Joint, Trees, UnknownPath, UnknownPathSlice,
     child_vec::{ChildVec, Weights},
     order,
-    path::{Path, PathRef},
+    path::{Path, PathSlice},
 };
 
 #[derive(Clone, Copy)]
 pub(crate) struct TraversalElem<'a, O, T, U> {
-    pub node_path: PathRef<'a>,
+    pub node_path: &'a PathSlice,
     /// Weight entries in the parent, or `None` if no weights exist (all zero)
     pub parent_weights: Option<Weights<'a>>,
     pub node_weight: u32,
@@ -89,9 +89,8 @@ impl<T, U> Trees<T, U> {
         };
 
         let parent_path = path
-            .as_ref()
             .split_last()
-            .map_or_else(|| path.as_ref(), |(_, parent)| parent);
+            .map_or_else(|| &*path, |(_, parent)| parent);
 
         for next_index in parent_path {
             assert_eq!(
@@ -111,7 +110,7 @@ impl<T, U> Trees<T, U> {
                 Child::Joint(joint) => {
                     let parent_weights = current_items.weights();
                     visit_fn(TraversalElem {
-                        node_path: path.as_ref(),
+                        node_path: &path,
                         parent_weights,
                         node_weight: parent_weights.and_then(|w| w.get(next_index)).unwrap_or(0),
                         node_item: next_child_item,
@@ -199,11 +198,7 @@ pub(crate) trait DepthFirstVisitor<T, U, E, S: ?Sized + OrderNodeSliceImpl = Ord
         &mut self,
         elem: TraversalElem<'_, S::Node, T, U>,
     ) -> Result<Result<(), ControlFlow>, E>;
-    fn finalize_after_children(
-        &mut self,
-        _path: PathRef<'_>,
-        child_sum: usize,
-    ) -> Result<usize, E> {
+    fn finalize_after_children(&mut self, _path: &PathSlice, child_sum: usize) -> Result<usize, E> {
         Ok(child_sum)
     }
 
@@ -324,7 +319,7 @@ impl<S: ?Sized, T, U> Subtrees<'_, S, T, U> {
                     .expect("stack should not double pop when last existed");
                 if true {
                     // if V::is_finalize_required() {
-                    let accepted_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
+                    let accepted_sum = visitor.finalize_after_children(path, sum)?;
                     if let Some(last) = stack.last_mut() {
                         last.3 += accepted_sum;
                     }
@@ -336,7 +331,7 @@ impl<S: ?Sized, T, U> Subtrees<'_, S, T, U> {
             path.push(index);
 
             let visit_result = visitor.visit(TraversalElem {
-                node_path: path.as_ref(),
+                node_path: path,
                 parent_weights: child_weights,
                 node_weight,
                 node_item,
@@ -351,7 +346,7 @@ impl<S: ?Sized, T, U> Subtrees<'_, S, T, U> {
                     if true {
                         // if V::is_finalize_required() {
                         // stack popped, nowhere to record the sum
-                        let _ignored_sum = visitor.finalize_after_children(path.as_ref(), sum)?;
+                        let _ignored_sum = visitor.finalize_after_children(path, sum)?;
                     }
                     continue;
                 }
@@ -385,7 +380,7 @@ impl<S: ?Sized, T, U> Subtrees<'_, S, T, U> {
                 _ => {
                     if true {
                         // if V::is_finalize_required() {
-                        let accepted_sum = visitor.finalize_after_children(path.as_ref(), 0)?;
+                        let accepted_sum = visitor.finalize_after_children(path, 0)?;
                         last.3 += accepted_sum;
                     }
 
@@ -406,15 +401,15 @@ impl<T, U> ChildVec<Child<T, U>> {
     /// Returns the children at the path (if any) and the matched node (if not root)
     pub(crate) fn for_each_direct_child<'a, 'b>(
         &'a self,
-        path: PathRef<'b>,
+        path: &'b PathSlice,
         mut process_child_fn: impl FnMut(&'a Child<T, U>),
-    ) -> Result<OptChildrenAndChildRef<'a, T, U>, UnknownPathRef<'b>> {
+    ) -> Result<OptChildrenAndChildRef<'a, T, U>, &'b UnknownPathSlice> {
         let mut current = Some(self);
         let mut found = None;
 
         for next_index in path {
             let Some(next_child) = current.and_then(|c| c.children().get(next_index)) else {
-                return Err(UnknownPathRef(path));
+                return Err(UnknownPathSlice::new(path));
             };
 
             process_child_fn(next_child);
@@ -431,8 +426,8 @@ impl<T, U> ChildVec<Child<T, U>> {
 
     pub(crate) fn find_bucket_mut<'a, 'b>(
         &'a mut self,
-        bucket_path: PathRef<'b>,
-    ) -> Result<Option<&'a mut Bucket<T, U>>, UnknownPathRef<'b>> {
+        bucket_path: &'b PathSlice,
+    ) -> Result<Option<&'a mut Bucket<T, U>>, &'b UnknownPathSlice> {
         match self.find_child_mut(bucket_path)? {
             ChildFound::Bucket(bucket) => Ok(Some(bucket)),
             _ => Ok(None),
@@ -441,8 +436,8 @@ impl<T, U> ChildVec<Child<T, U>> {
 
     pub(crate) fn find_child_mut<'a, 'b>(
         &'a mut self,
-        path: PathRef<'b>,
-    ) -> Result<ChildFound<'a, T, U>, UnknownPathRef<'b>> {
+        path: &'b PathSlice,
+    ) -> Result<ChildFound<'a, T, U>, &'b UnknownPathSlice> {
         let mut current = ChildFound::RootChildren(self);
 
         for next_index in path {
@@ -450,7 +445,7 @@ impl<T, U> ChildVec<Child<T, U>> {
                 .into_child_vec()
                 .and_then(|c| c.children_mut().get_mut(next_index))
             else {
-                return Err(UnknownPathRef(path));
+                return Err(UnknownPathSlice::new(path));
             };
             current = match next_child {
                 Child::Bucket(bucket) => ChildFound::Bucket(bucket),

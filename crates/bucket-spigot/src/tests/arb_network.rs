@@ -272,7 +272,7 @@ impl ScratchPaths {
         self.all_mut(|_label, paths| {
             paths.retain(|p| p != node);
             for path in paths {
-                path.modify_for_removed(node.as_ref())
+                path.modify_for_removed(node)
                     .unwrap_or_else(|_: RemovedSelf| {
                         panic!("deleted path {node} should already be removed from the list")
                     });
@@ -383,7 +383,7 @@ where
             let path = u.choose(path_options)?;
 
             let len_of_dest = network
-                .count_direct_child_nodes_of(path.as_ref())
+                .count_direct_child_nodes_of(path)
                 .expect("current path should be valid");
 
             let get_new_path = || {
@@ -410,20 +410,19 @@ where
                     scratch.add_joint((&path_clone, new_path));
                 }
                 Seed::DeleteEmpty => {
-                    let parent_now_empty =
-                        path_clone.as_ref().split_last().and_then(|(last, parent)| {
-                            // necessary condition: deleted must be index `0` to be the last one
-                            if last == 0 {
-                                // verify no siblings remain
-                                let new_child_count = network
-                                    .count_direct_child_nodes_of(parent)
-                                    .expect("parent should be valid path")
-                                    .expect("parent should be a joint");
-                                (new_child_count == 0).then_some(parent.to_owned())
-                            } else {
-                                None
-                            }
-                        });
+                    let parent_now_empty = path_clone.split_last().and_then(|(last, parent)| {
+                        // necessary condition: deleted must be index `0` to be the last one
+                        if last == 0 {
+                            // verify no siblings remain
+                            let new_child_count = network
+                                .count_direct_child_nodes_of(parent)
+                                .expect("parent should be valid path")
+                                .expect("parent should be a joint");
+                            (new_child_count == 0).then_some(parent.to_owned())
+                        } else {
+                            None
+                        }
+                    });
                     scratch.delete(&path_clone, parent_now_empty);
                 }
                 Seed::FillBucket { new_contents } => {

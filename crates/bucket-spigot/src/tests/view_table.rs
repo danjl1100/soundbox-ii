@@ -2,7 +2,7 @@
 
 use crate::{
     Network,
-    path::{Path, PathRef},
+    path::{Path, PathSlice},
     tests::script::NetworkStrings,
     view::TableParams,
 };
@@ -333,7 +333,7 @@ fn simple_max_depth() -> eyre::Result<()> {
 
 fn view_path<T, U>(network: &Network<T, U>, path_str: &str) -> String {
     let path = Path::from_str(path_str).unwrap();
-    let params = TableParams::default().set_base_path(path.as_ref());
+    let params = TableParams::default().set_base_path(&path);
     network.view_table(params).unwrap().to_string()
 }
 
@@ -436,7 +436,7 @@ fn table_depth_child_right() -> eyre::Result<()> {
 
     let params = TableParams::default();
     let path = Path::from_str(".4").unwrap();
-    let params = params.set_base_path(path.as_ref());
+    let params = params.set_base_path(&path);
 
     let right_max = network.view_table(params).unwrap();
     let right_depth_2 = network.view_table(params.set_max_depth(2)).unwrap();
@@ -479,8 +479,8 @@ fn table_view_bucket() -> eyre::Result<()> {
     )?;
     let path_1 = Path::from_str(".1").unwrap();
     let path_2 = Path::from_str(".0.0").unwrap();
-    let params_1 = TableParams::default().set_base_path(path_1.as_ref());
-    let params_2 = TableParams::default().set_base_path(path_2.as_ref());
+    let params_1 = TableParams::default().set_base_path(&path_1);
+    let params_2 = TableParams::default().set_base_path(&path_2);
     insta::assert_snapshot!(network.view_table(params_1).unwrap(), @r###"
     Table {
     X <--- .1 bucket (empty) in order
@@ -502,7 +502,7 @@ fn table_view_bucket() -> eyre::Result<()> {
 }
 
 /// Add `count` child joints to specified node
-fn fill_width_at<T, U>(network: &mut Network<T, U>, parent: PathRef<'_>, count: usize) {
+fn fill_width_at<T, U>(network: &mut Network<T, U>, parent: &PathSlice, count: usize) {
     for _ in 0..count {
         network
             .modify(crate::ModifyCmd::AddJointTo {
@@ -525,7 +525,7 @@ fn fill_depth_at<T, U>(network: &mut Network<T, U>, parent: Path, count: usize) 
 }
 
 fn fill_width_and_depth<T, U>(network: &mut Network<T, U>, parent: Path, count: usize) {
-    fill_width_at(network, parent.as_ref(), count);
+    fill_width_at(network, &parent, count);
 
     let below_parent = {
         let mut below_parent = parent;
@@ -563,7 +563,7 @@ fn limit_width_root() {
 
     let offset = Path::from_str(".2").unwrap();
     let width_2 = network
-        .view_table(params_width_2.set_base_path(offset.as_ref()))
+        .view_table(params_width_2.set_base_path(&offset))
         .unwrap();
     insta::assert_snapshot!(width_2, @r###"
     Table {
@@ -589,7 +589,7 @@ fn limit_width_child() -> eyre::Result<()> {
     fill_width_and_depth(&mut network, base.clone(), N);
 
     // full view is LONG
-    let params = TableParams::default().set_base_path(base.as_ref());
+    let params = TableParams::default().set_base_path(&base);
     let full = network.view_table(params).unwrap();
     insta::assert_snapshot!(full);
 
@@ -608,7 +608,7 @@ fn limit_width_child() -> eyre::Result<()> {
 
     // shortened view, from second column
     let offset_path = Path::from_str(".1.0").unwrap();
-    let params_width_2_offset = params_width_2.set_base_path(offset_path.as_ref());
+    let params_width_2_offset = params_width_2.set_base_path(&offset_path);
     let width_2_offset = network.view_table(params_width_2_offset).unwrap();
     insta::assert_snapshot!(width_2_offset, @r###"
     Table {

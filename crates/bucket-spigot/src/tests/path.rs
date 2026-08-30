@@ -21,13 +21,13 @@ fn path(input: &str) -> Result<Path, Error> {
     result
 }
 fn path_elems(input: &str) -> Result<PathStructural, Error> {
-    path(input).map(|path| PathStructural(path.into_iter().collect()))
+    path(input).map(|path| PathStructural(path.iter().collect()))
 }
 
 fn json_de_elems(input: &str) -> PathStructural {
     let elems = {
         let path: Path = serde_json::from_str(input).expect("test JSON input should be valid");
-        let elems: Vec<_> = path.into_iter().collect();
+        let elems: Vec<_> = path.iter().collect();
         elems
     };
     let recreated_path: Path = elems.iter().copied().collect();
@@ -122,7 +122,7 @@ fn check_remove(original: &str, other: &str) -> Result<Option<&'static str>, Rem
         .parse()
         .expect("test other Path input should be valid");
 
-    target.modify_for_removed(other.as_ref())?;
+    target.modify_for_removed(&other)?;
     let modified_str = target.to_string();
     let changed: Option<&str> = (original != modified_str).then_some(modified_str.leak());
     Ok(changed)

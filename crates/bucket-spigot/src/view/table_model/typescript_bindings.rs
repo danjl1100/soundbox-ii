@@ -57,7 +57,7 @@ mod construction_proof {
     mod orig {
         pub(super) use super::super::super::{Cell, NodeDetails, Row, TableView};
         pub(super) use crate::order::OrderType;
-        pub(super) use crate::path::PathRef;
+        pub(super) use crate::path::PathSlice;
         pub(super) use crate::view::NodeKind;
     }
     use super::{Cell, NodeDetails, NodeKind, OrderType, Path, Row, TableView};
@@ -102,7 +102,7 @@ mod construction_proof {
                 order_type,
             } = value;
             Self {
-                path: Path::from_path(path.as_ref()),
+                path: Path::from_path(&path),
                 active,
                 weight,
                 kind: kind.into(),
@@ -129,7 +129,7 @@ mod construction_proof {
         }
     }
     impl Path {
-        fn from_path(value: orig::PathRef<'_>) -> Self {
+        fn from_path(value: &orig::PathSlice) -> Self {
             Self(value.to_string())
         }
     }
