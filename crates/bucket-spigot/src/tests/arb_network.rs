@@ -72,7 +72,9 @@ mod seed {
     }
     #[derive(arbtest::arbitrary::Arbitrary)]
     pub(super) enum Full<T, U> {
+        AddBucket,
         AddBucketTo,
+        AddJoint,
         AddJointTo,
         DeleteEmpty,
         FillBucket { new_contents: Vec<T> },
@@ -86,7 +88,9 @@ mod seed {
             use Full as Seed;
             use ModifyCmd as Cmd;
             match value {
+                Cmd::AddBucket { new_path } => (new_path, Seed::AddBucket),
                 Cmd::AddBucketTo { parent } => (parent, Seed::AddBucketTo),
+                Cmd::AddJoint { new_path } => (new_path, Seed::AddJoint),
                 Cmd::AddJointTo { parent } => (parent, Seed::AddJointTo),
                 Cmd::DeleteEmpty { path } => (path, Seed::DeleteEmpty),
                 Cmd::FillBucket {
@@ -112,7 +116,9 @@ mod seed {
             use Full as Seed;
             use ModifyCmd as Cmd;
             match value {
+                (new_path, Seed::AddBucket) => Cmd::AddBucket { new_path },
                 (parent, Seed::AddBucketTo) => Cmd::AddBucketTo { parent },
+                (new_path, Seed::AddJoint) => Cmd::AddJoint { new_path },
                 (parent, Seed::AddJointTo) => Cmd::AddJointTo { parent },
                 (path, Seed::DeleteEmpty) => Cmd::DeleteEmpty { path },
                 (bucket, Seed::FillBucket { new_contents }) => Cmd::FillBucket {
@@ -131,7 +137,9 @@ mod seed {
 
     #[derive(arbtest::arbitrary::Arbitrary)]
     pub(super) enum NoItems<U> {
+        AddBucket,
         AddBucketTo,
+        AddJoint,
         AddJointTo,
         DeleteEmpty,
         SetFilters { new_filters: Vec<U> },
@@ -142,8 +150,10 @@ mod seed {
         fn from(value: NoItems<U>) -> Self {
             use NoItems as Seed;
             match value {
-                Seed::AddJointTo => Self::AddJointTo,
+                Seed::AddBucket => Self::AddBucket,
                 Seed::AddBucketTo => Self::AddBucketTo,
+                Seed::AddJoint => Self::AddJoint,
+                Seed::AddJointTo => Self::AddJointTo,
                 Seed::DeleteEmpty => Self::DeleteEmpty,
                 Seed::SetFilters { new_filters } => Self::SetFilters { new_filters },
                 Seed::SetWeight { new_weight } => Self::SetWeight { new_weight },
@@ -158,7 +168,9 @@ mod seed {
         fn try_from(value: Full<never::Arg, U>) -> Result<Self, Self::Error> {
             use Full as Seed;
             let new = match value {
+                Seed::AddBucket => Self::AddBucket,
                 Seed::AddBucketTo => Self::AddBucketTo,
+                Seed::AddJoint => Self::AddJoint,
                 Seed::AddJointTo => Self::AddJointTo,
                 Seed::DeleteEmpty => Self::DeleteEmpty,
                 Seed::FillBucket { new_contents } => return Err(new_contents),
@@ -364,9 +376,12 @@ where
         for _ in 0..u.arbitrary_len::<S>()? {
             let seed: S = u.arbitrary()?;
             let seed = seed.into();
-            let path_options = match &seed {
+            let seed_path_options = match &seed {
                 // only joints
-                Seed::AddBucketTo | Seed::AddJointTo => &scratch.joints,
+                Seed::AddBucket | Seed::AddJoint | Seed::AddBucketTo | Seed::AddJointTo => {
+                    // for all, path_options list the parent
+                    &scratch.joints
+                }
                 // only buckets
                 Seed::FillBucket { .. } => &scratch.buckets,
                 // any node
@@ -376,18 +391,18 @@ where
                 // only empty nodes
                 Seed::DeleteEmpty => &scratch.emptys,
             };
-            if path_options.is_empty() {
+            if seed_path_options.is_empty() {
                 // no paths for the chosen seed, retry for the next seed
                 continue;
             }
-            let path = u.choose(path_options)?;
+            let seed_path = u.choose(seed_path_options)?.clone();
 
             let len_of_dest = network
-                .count_direct_child_nodes_of(path)
+                .count_direct_child_nodes_of(&seed_path)
                 .expect("current path should be valid");
 
             let get_new_path = || {
-                let mut new = path.clone();
+                let mut new = seed_path.clone();
                 new.push(len_of_dest.expect("only add to joint"));
 
                 scratch.assert_not_contains(&new);
@@ -395,22 +410,34 @@ where
                 new
             };
 
-            let path_clone = path.clone();
-
             // update path lists
-            match &seed {
+            let override_cmd_path = match &seed {
+                Seed::AddBucket => {
+                    let new_path = get_new_path();
+                    scratch.add_bucket((&seed_path, new_path.clone()));
+
+                    Some(new_path)
+                }
                 Seed::AddBucketTo => {
                     let new_path = get_new_path();
+                    scratch.add_bucket((&seed_path, new_path));
 
-                    scratch.add_bucket((&path_clone, new_path));
+                    None
+                }
+                Seed::AddJoint => {
+                    let new_path = get_new_path();
+                    scratch.add_joint((&seed_path, new_path.clone()));
+
+                    Some(new_path)
                 }
                 Seed::AddJointTo => {
                     let new_path = get_new_path();
+                    scratch.add_joint((&seed_path, new_path));
 
-                    scratch.add_joint((&path_clone, new_path));
+                    None
                 }
                 Seed::DeleteEmpty => {
-                    let parent_now_empty = path_clone.split_last().and_then(|(last, parent)| {
+                    let parent_now_empty = seed_path.split_last().and_then(|(last, parent)| {
                         // necessary condition: deleted must be index `0` to be the last one
                         if last == 0 {
                             // verify no siblings remain
@@ -423,16 +450,24 @@ where
                             None
                         }
                     });
-                    scratch.delete(&path_clone, parent_now_empty);
+                    scratch.delete(&seed_path, parent_now_empty);
+
+                    None
                 }
                 Seed::FillBucket { new_contents } => {
                     let empty = new_contents.is_empty();
-                    scratch.fill_bucket(&path_clone, empty);
-                }
-                Seed::SetFilters { .. } | Seed::SetWeight { .. } | Seed::SetOrderType { .. } => {}
-            }
+                    scratch.fill_bucket(&seed_path, empty);
 
-            let cmd = ModifyCmd::from((path_clone, seed));
+                    None
+                }
+                Seed::SetFilters { .. } | Seed::SetWeight { .. } | Seed::SetOrderType { .. } => {
+                    None
+                }
+            };
+
+            let cmd_path = override_cmd_path.unwrap_or(seed_path);
+
+            let cmd = ModifyCmd::from((cmd_path, seed));
             let cmd_str = cmd.as_ref().display_as_cmd().to_string();
             if DEBUG {
                 println!("-> {cmd_str}");

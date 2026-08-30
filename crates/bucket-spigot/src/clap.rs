@@ -32,10 +32,20 @@ where
     T: ArgBounds,
     U: ArgBounds,
 {
+    /// Add a new bucket
+    AddBucket {
+        /// Path for the new bucket
+        new_path: Path,
+    },
     /// Add a new bucket to the specified parent
     AddBucketTo {
         /// Parent path for the new bucket
         parent: Path,
+    },
+    /// Add a new joint
+    AddJoint {
+        /// Path for the new joint
+        new_path: Path,
     },
     /// Add a new joint to the specified parent
     AddJointTo {
@@ -164,7 +174,9 @@ mirror_impl! {
 }
 mirror_impl! {
     impl From ModifyCmd crate::ModifyCmd = crate::ModifyCmd<T, U>, self::ModifyCmd = self::ModifyCmd<T, U> {
+        AddBucket { new_path },
         AddBucketTo { parent },
+        AddJoint { new_path },
         AddJointTo { parent },
         DeleteEmpty { path },
         FillBucket { bucket, new_contents },
@@ -231,7 +243,9 @@ where
         {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.0 {
+                    Other::AddBucket { new_path } => write!(f, "add-bucket {new_path}"),
                     Other::AddBucketTo { parent } => write!(f, "add-bucket-to {parent}"),
+                    Other::AddJoint { new_path } => write!(f, "add-joint {new_path}"),
                     Other::AddJointTo { parent } => write!(f, "add-joint-to {parent}"),
                     Other::DeleteEmpty { path } => write!(f, "delete-empty {path}"),
                     Other::FillBucket {

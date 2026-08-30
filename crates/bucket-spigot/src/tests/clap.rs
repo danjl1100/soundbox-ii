@@ -47,6 +47,18 @@ fn parse_cli(args: &[&'static str]) -> Result<crate::ModifyCmd<String, String>, 
         .map_err(|err| err.to_string())
 }
 
+fn add_bucket() {
+    insta::assert_ron_snapshot!(parse_cli(&["add-bucket", "."]), @r###"
+    Ok(AddBucket(
+      new_path: ".",
+    ))
+    "###);
+    insta::assert_ron_snapshot!(parse_cli(&["add-bucket", ".1.2.3.4"]), @r###"
+    Ok(AddBucket(
+      new_path: ".1.2.3.4",
+    ))
+    "###);
+}
 fn add_bucket_to() {
     insta::assert_ron_snapshot!(parse_cli(&["add-bucket-to", "."]), @r###"
     Ok(AddBucketTo(
@@ -56,6 +68,18 @@ fn add_bucket_to() {
     insta::assert_ron_snapshot!(parse_cli(&["add-bucket-to", ".1.2.3.4"]), @r###"
     Ok(AddBucketTo(
       parent: ".1.2.3.4",
+    ))
+    "###);
+}
+fn add_joint() {
+    insta::assert_ron_snapshot!(parse_cli(&["add-joint", "."]), @r###"
+    Ok(AddJoint(
+      new_path: ".",
+    ))
+    "###);
+    insta::assert_ron_snapshot!(parse_cli(&["add-joint", ".1.2.3.4"]), @r###"
+    Ok(AddJoint(
+      new_path: ".1.2.3.4",
     ))
     "###);
 }
@@ -134,7 +158,9 @@ fn set_order_type() {
 fn parse_cli_exhaustive() {
     test_exhaustive! {
         for ModifyCmd<String, String>,
+        ModifyCmd::AddBucket { .. } => { add_bucket(); }
         ModifyCmd::AddBucketTo { .. } => { add_bucket_to(); }
+        ModifyCmd::AddJoint { .. } => { add_joint(); }
         ModifyCmd::AddJointTo { .. } => { add_joint_to(); }
         ModifyCmd::DeleteEmpty { .. } => { delete_empty(); }
         ModifyCmd::FillBucket { .. } => { fill_bucket(); }
@@ -172,9 +198,21 @@ fn clap_display_roundtrip() {
     let path1: Path = ".1.2.3.4".parse().unwrap();
 
     test_exhaustive!(for CrateModifyCmd,
+        CrateModifyCmd::AddBucket { .. } => {
+            CrateModifyCmd::AddBucket {
+                new_path: path1.clone(),
+            }
+            .display_as_cmd_verified();
+        }
         CrateModifyCmd::AddBucketTo { .. } => {
             CrateModifyCmd::AddBucketTo {
                 parent: path1.clone(),
+            }
+            .display_as_cmd_verified();
+        }
+        CrateModifyCmd::AddJoint { .. } => {
+            CrateModifyCmd::AddJoint {
+                new_path: path1.clone(),
             }
             .display_as_cmd_verified();
         }

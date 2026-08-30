@@ -19,9 +19,12 @@
 //!
 
 use crate::{
-    path::{Path, PathSlice},
+    order::UnknownOrderPath,
+    path::{Path, PathNonempty, PathSlice, PathSliceNonempty},
     traversal::ChildFound,
 };
+// TODO - extract modules from this (long) lib.rs
+
 use bucket_paths_map::BucketPathsMap;
 use child_vec::{ChildVec, Weights};
 
@@ -115,13 +118,22 @@ impl<T, U> Network<T, U> {
         cmd: ModifyCmd<T, U>,
     ) -> Result<Option<Path>, ModifyError> {
         let result = match cmd {
+            ModifyCmd::AddBucket { new_path } => {
+                let bucket = Child::Bucket(self.new_bucket());
+                self.add_child_at(bucket, new_path)?;
+                Ok(None)
+            }
             ModifyCmd::AddBucketTo { parent } => {
                 let bucket = Child::Bucket(self.new_bucket());
-                let path = self.add_child(bucket, parent)?;
+                let path = self.add_child_under(bucket, parent)?;
                 Ok(Some(path))
             }
+            ModifyCmd::AddJoint { new_path } => {
+                self.add_child_at(Child::Joint(Joint::default()), new_path)?;
+                Ok(None)
+            }
             ModifyCmd::AddJointTo { parent } => {
-                let path = self.add_child(Child::Joint(Joint::default()), parent)?;
+                let path = self.add_child_under(Child::Joint(Joint::default()), parent)?;
                 Ok(Some(path))
             }
             ModifyCmd::DeleteEmpty { path } => self.delete_empty(path).map(|()| None),
@@ -229,7 +241,42 @@ impl<T, U> Network<T, U> {
         total_count
     }
 
-    fn add_child(&mut self, child: Child<T, U>, parent_path: Path) -> Result<Path, ModifyErr> {
+    fn add_child_at(&mut self, child: Child<T, U>, new_path: Path) -> Result<(), ModifyErr> {
+        let Some(new_path_ref) = PathSliceNonempty::try_new(&new_path) else {
+            return Err(ModifyErr::AddAtPath(new_path));
+        };
+        let (child_index, parent_path) = new_path_ref.split_last();
+
+        let dest = self.trees.item.find_child_mut(parent_path);
+        let dest = match dest {
+            Ok(ChildFound::RootChildren(child_vec)) => child_vec,
+            Ok(ChildFound::Joint(joint)) => &mut joint.next,
+            Ok(ChildFound::Bucket(_)) => {
+                return Err(CannotAddToBucket(parent_path.to_owned()).into());
+            }
+            Err(UnknownPathSlice(_)) => return Err(UnknownPath(parent_path.to_owned()).into()),
+        };
+
+        if dest.len() != child_index {
+            return Err(ModifyErr::AddAtPath(new_path));
+        }
+
+        Self::insert_node(
+            child,
+            new_path_ref,
+            &mut self.trees.order,
+            &mut self.bucket_paths,
+            dest,
+        )?;
+
+        Ok(())
+    }
+
+    fn add_child_under(
+        &mut self,
+        child: Child<T, U>,
+        parent_path: Path,
+    ) -> Result<Path, ModifyErr> {
         let dest = self.trees.item.find_child_mut(&parent_path);
         let dest = match dest {
             Ok(ChildFound::RootChildren(child_vec)) => child_vec,
@@ -238,13 +285,38 @@ impl<T, U> Network<T, U> {
             Err(UnknownPathSlice(_)) => return Err(UnknownPath(parent_path).into()),
         };
 
-        // add order for child (fails if node/order structures are not identical)
-        let child_index = self.trees.order.add(&parent_path)?;
+        // build child path
+        let child_path = {
+            let child_index = dest.len();
+            PathNonempty::new(parent_path, child_index)
+        };
 
-        let child_index_expected = dest.len();
+        Self::insert_node(
+            child,
+            child_path.as_ref(),
+            &mut self.trees.order,
+            &mut self.bucket_paths,
+            dest,
+        )?;
+
+        Ok(child_path.into_inner())
+    }
+
+    /// Adds an order node (panics if the trees are out of sync), adds the
+    /// child to `dest`, and if the node is a bucket then queues for fill
+    #[track_caller]
+    fn insert_node(
+        child: Child<T, U>,
+        child_path: &PathSliceNonempty,
+        trees_order: &mut order::Root,
+        bucket_paths: &mut BucketPathsMap,
+        dest: &mut ChildVec<Child<T, U>>,
+    ) -> Result<(), UnknownOrderPath> {
+        let (child_index, parent_path) = child_path.split_last();
         assert_eq!(
-            child_index, child_index_expected,
-            "order nodes should match item nodes"
+            child_index,
+            dest.len(),
+            "insert_node child_path index should match destination"
         );
 
         let bucket_id = if let Child::Bucket(bucket) = &child {
@@ -253,22 +325,22 @@ impl<T, U> Network<T, U> {
             None
         };
 
+        // add order for child (fails if node/order structures are not identical)
+        let child_index_order = trees_order.add(parent_path)?;
+        assert_eq!(
+            child_index_order, child_index,
+            "order nodes should match item nodes"
+        );
+
         // add child
         dest.push(child);
 
-        // build child path
-        let child_path = {
-            let mut path = parent_path;
-            path.push(child_index);
-            path
-        };
-
         // queue for refilling new bucket
         if let Some(bucket_id) = bucket_id {
-            self.bucket_paths.add_needs_fill(bucket_id, &child_path);
+            bucket_paths.add_needs_fill(bucket_id, child_path.as_inner());
         }
 
-        Ok(child_path)
+        Ok(())
     }
     fn delete_empty(&mut self, path: Path) -> Result<(), ModifyErr> {
         let Some((final_index, parent_path)) = path.split_last() else {
@@ -526,10 +598,20 @@ impl<T, U> Child<T, U> {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ModifyCmd<T, U> {
+    /// Add a new bucket
+    AddBucket {
+        /// Path for the new bucket
+        new_path: Path,
+    },
     /// Add a new bucket to the specified parent
     AddBucketTo {
         /// Parent path for the new bucket
         parent: Path,
+    },
+    /// Add a new joint
+    AddJoint {
+        /// Path for the new joint
+        new_path: Path,
     },
     /// Add a new joint to the specified parent
     AddJointTo {
@@ -586,8 +668,14 @@ mod modify_cmd_ref {
     #[non_exhaustive]
     #[must_use]
     pub enum ModifyCmdRef<'a, T, U> {
+        AddBucket {
+            new_path: &'a PathSlice,
+        },
         AddBucketTo {
             parent: &'a PathSlice,
+        },
+        AddJoint {
+            new_path: &'a PathSlice,
         },
         AddJointTo {
             parent: &'a PathSlice,
@@ -621,7 +709,9 @@ mod modify_cmd_ref {
     impl<'a, T, U> From<&'a ModifyCmd<T, U>> for ModifyCmdRef<'a, T, U> {
         fn from(value: &'a ModifyCmd<T, U>) -> Self {
             match value {
+                ModifyCmd::AddBucket { new_path } => Self::AddBucket { new_path },
                 ModifyCmd::AddBucketTo { parent } => Self::AddBucketTo { parent },
+                ModifyCmd::AddJoint { new_path } => Self::AddJoint { new_path },
                 ModifyCmd::AddJointTo { parent } => Self::AddJointTo { parent },
                 ModifyCmd::DeleteEmpty { path } => Self::DeleteEmpty { path },
                 ModifyCmd::FillBucket {
@@ -657,8 +747,14 @@ mod modify_cmd_ref {
         #[must_use]
         pub fn to_owned(self) -> ModifyCmd<T, U> {
             match self {
+                Self::AddBucket { new_path } => ModifyCmd::AddBucket {
+                    new_path: new_path.to_owned(),
+                },
                 Self::AddBucketTo { parent } => ModifyCmd::AddBucketTo {
                     parent: parent.to_owned(),
+                },
+                Self::AddJoint { new_path } => ModifyCmd::AddJoint {
+                    new_path: new_path.to_owned(),
                 },
                 Self::AddJointTo { parent } => ModifyCmd::AddJointTo {
                     parent: parent.to_owned(),
@@ -708,6 +804,8 @@ enum ModifyErr {
     #[error(transparent)]
     AddToBucket(#[from] CannotAddToBucket),
 
+    #[error("cannot replace existing node: {0}")]
+    AddAtPath(Path),
     #[error("cannot delete non-empty bucket: {0}")]
     DeleteNonemptyBucket(Path),
     #[error("cannot delete non-empty joint: {0}")]

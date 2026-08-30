@@ -1,6 +1,7 @@
 // Copyright (C) 2021-2026  Daniel Lambert. Licensed under GPL-3.0-or-later, see /COPYING file for details
 //! Location-dependent identifier for nodes
 
+pub(crate) use self::nonempty::{PathNonempty, PathSliceNonempty};
 pub use self::path_slice::PathSlice;
 
 use serde::Deserialize;
@@ -225,6 +226,57 @@ impl std::fmt::Debug for Path {
 impl std::fmt::Debug for PathSlice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "PathSlice({self})")
+    }
+}
+
+mod nonempty {
+    //! Invariants
+    //! - [`PathNonempty`] contains [`Path`]
+    //! - [`PathSliceNonempty`] contains nonempty [`PathSlice`]
+
+    use super::{Path, PathSlice};
+
+    pub(crate) struct PathNonempty(Path);
+    impl PathNonempty {
+        pub fn new(parent: Path, child_index: usize) -> Self {
+            let mut path = parent;
+            path.push(child_index);
+            Self(path)
+        }
+        pub fn as_ref(&self) -> &PathSliceNonempty {
+            let Self(inner) = self;
+            PathSliceNonempty::try_new(inner).expect("nonempty")
+        }
+        pub fn into_inner(self) -> Path {
+            let Self(inner) = self;
+            inner
+        }
+    }
+
+    #[derive(ref_cast::RefCastCustom)]
+    #[repr(transparent)]
+    // NOTE: `pub(crate)` to avoid polluting the public API with non-empty-ness. Return an error instead.
+    pub(crate) struct PathSliceNonempty(PathSlice);
+    impl PathSliceNonempty {
+        #[ref_cast::ref_cast_custom]
+        fn new_unchecked(path: &PathSlice) -> &Self;
+
+        pub fn try_new(path: &PathSlice) -> Option<&PathSliceNonempty> {
+            if path.is_empty() {
+                None
+            } else {
+                Some(Self::new_unchecked(path))
+            }
+        }
+
+        pub fn split_last(&self) -> (usize, &PathSlice) {
+            let Self(inner) = self;
+            inner.split_last().expect("nonempty")
+        }
+        pub fn as_inner(&self) -> &PathSlice {
+            let Self(inner) = self;
+            inner
+        }
     }
 }
 

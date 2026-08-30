@@ -156,3 +156,10 @@ the webui, and it makes the [02](02-pipe-timeout-mismatch.md) retry hazard struc
 impossible rather than timing-dependent. Do it after the timeout fix in
 [02](02-pipe-timeout-mismatch.md) lands (which is the actual bug), and verify the webui
 can obtain the tree before committing to step 3.
+
+## Resolution
+
+- [x] Part 0 - Rename commands
+- [ ] Part 1 - Add canonical commands
+- [ ] Part 2 - CLI script commands interface
+- [ ] Part 3 - Web API interface
